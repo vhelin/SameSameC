@@ -1223,7 +1223,78 @@ int create_statement(void) {
     /* next token */
     _next_token();
 
-    
+    node = allocate_tree_node_with_children(TREE_NODE_TYPE_WHILE, 2);
+    if (node == NULL)
+      return FAILED;
+
+    if (g_token_current->id != TOKEN_ID_SYMBOL || g_token_current->value != '(') {
+      snprintf(g_error_message, sizeof(g_error_message), "Expected '(', but got %s.\n", _get_token_simple(g_token_current));
+      print_error(g_error_message, ERROR_ERR);
+      free_tree_node(node);
+      return FAILED;
+    }
+
+    /* next token */
+    _next_token();
+
+    /* create_condition() will put all tree_nodes it parses to g_open_condition */
+    if (_open_condition_push() == FAILED) {
+      free_tree_node(node);
+      return FAILED;
+    }
+
+    fprintf(stderr, "create_statement(): IF\n");
+      
+    if (create_condition() == FAILED) {
+      _open_condition_pop();
+      free_tree_node(node);
+      return FAILED;
+    }
+
+    fprintf(stderr, "- create_condition() - create_statement()\n");
+
+    tree_node_add_child(node, _get_current_open_condition());
+    _open_condition_pop();
+      
+    if (g_token_current->id != TOKEN_ID_SYMBOL || g_token_current->value != ')') {
+      snprintf(g_error_message, sizeof(g_error_message), "Expected ')', but got %s.\n", _get_token_simple(g_token_current));
+      print_error(g_error_message, ERROR_ERR);
+      free_tree_node(node);
+      return FAILED;
+    }
+
+    /* next token */
+    _next_token();
+
+    if (g_token_current->id != TOKEN_ID_SYMBOL || g_token_current->value != '{') {
+      snprintf(g_error_message, sizeof(g_error_message), "Expected '{', but got %s.\n", _get_token_simple(g_token_current));
+      print_error(g_error_message, ERROR_ERR);
+      free_tree_node(node);
+      return FAILED;
+    }
+
+    /* start parsing a block */
+      
+    if (_open_block_push() == FAILED) {
+      free_tree_node(node);
+      return FAILED;
+    }
+
+    fprintf(stderr, "create_statement(): IF\n");
+      
+    if (create_block() == FAILED) {
+      free_tree_node(node);
+      return FAILED;
+    }
+
+    fprintf(stderr, "- create_block() - create_statement()\n");
+
+    tree_node_add_child(node, _get_current_open_block());
+    _open_block_pop();
+
+    tree_node_add_child(_get_current_open_block(), node);
+
+    return SUCCEEDED;    
   }
   else if (g_token_current->id == TOKEN_ID_FOR) {
   }

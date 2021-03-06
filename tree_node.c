@@ -21,21 +21,21 @@ int tree_node_add_child(struct tree_node *node, struct tree_node *child) {
     return FAILED;
   }
 
-  if (node->added_children >= node->child_count) {
+  if (node->added_children >= node->children_max) {
     /* try to increase the child list size */
-    int new_child_count = node->child_count + 64;
+    int new_children_max = node->children_max + 64;
     int i;
 
-    node->children = realloc(node->children, sizeof(struct tree_node *) * new_child_count);
+    node->children = realloc(node->children, sizeof(struct tree_node *) * new_children_max);
     if (node->children == NULL) {    
       print_error("Cannot increase node's child list!\n", ERROR_DIR);
       return FAILED;
     }
 
-    for (i = node->child_count; i < new_child_count; i++)
+    for (i = node->children_max; i < new_children_max; i++)
       node->children[i] = NULL;
 
-    node->child_count = new_child_count;
+    node->children_max = new_children_max;
   }
 
   node->children[node->added_children] = child;
@@ -52,7 +52,7 @@ void free_tree_node_children(struct tree_node *node) {
   if (node == NULL)
     return;
 
-  for (i = 0; i < node->child_count; i++) {
+  for (i = 0; i < node->children_max; i++) {
     if (node->children[i] != NULL) {
       free_tree_node(node->children[i]);
       node->children[i] = NULL;
@@ -64,7 +64,7 @@ void free_tree_node_children(struct tree_node *node) {
     node->children = NULL;
   }
 
-  node->child_count = 0;
+  node->children_max = 0;
   node->added_children = 0;
 }
 
@@ -99,7 +99,7 @@ struct tree_node *allocate_tree_node(int type) {
   node->value_double = 0.0;
   node->label = NULL;
   node->children = NULL;
-  node->child_count = 0;
+  node->children_max = 0;
   node->added_children = 0;
   node->file_id = g_current_filename_id;
   node->line_number = g_current_line_number;
@@ -108,7 +108,7 @@ struct tree_node *allocate_tree_node(int type) {
 }
 
 
-struct tree_node *allocate_tree_node_with_children(int type, int child_count) {
+struct tree_node *allocate_tree_node_with_children(int type, int children_max) {
 
   struct tree_node *node = allocate_tree_node(type);
   int i;
@@ -116,17 +116,17 @@ struct tree_node *allocate_tree_node_with_children(int type, int child_count) {
   if (node == NULL)
     return NULL;
 
-  node->children = calloc(sizeof(struct tree_node *) * child_count, 1);
+  node->children = calloc(sizeof(struct tree_node *) * children_max, 1);
   if (node->children == NULL) {
     print_error("Out of memory while allocating a new tree node.\n", ERROR_DIR);
     free(node);
     return NULL;
   }
 
-  for (i = 0; i < child_count; i++)
+  for (i = 0; i < children_max; i++)
     node->children[i] = NULL;
 
-  node->child_count = child_count;
+  node->children_max = children_max;
   
   return node;
 }

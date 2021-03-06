@@ -36,9 +36,9 @@ void main() {
   return;
 
   j = 0;
-  //while (j < 16) {
-  //    j++;
-  //}
+  while (j < 16) {
+      j++;
+  }
 
   value = sum_2(value, 1);
   sum_1((TWO+1)*(TWO+TWO));

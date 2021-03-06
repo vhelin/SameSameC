@@ -259,8 +259,8 @@ struct tree_node {
   char *label;
   int file_id;
   int line_number;
-  int child_count;
   int added_children;
+  int children_max;
   struct tree_node **children;
 };
 
@@ -282,6 +282,7 @@ struct tree_node {
 #define TREE_NODE_TYPE_CONDITION           15
 #define TREE_NODE_TYPE_IF                  16
 #define TREE_NODE_TYPE_INCREMENT_DECREMENT 17
+#define TREE_NODE_TYPE_WHILE               18
 
 #endif /* _DEFINES_H */
 
