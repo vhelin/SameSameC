@@ -93,13 +93,26 @@ static void _print_simple_tree_node(struct tree_node *node) {
     fprintf(stderr, ")");
   }
   else if (node->type == TREE_NODE_TYPE_INCREMENT_DECREMENT) {
-    fprintf(stderr, "%s", node->label);
-    if (node->value == SYMBOL_INCREMENT)
-      fprintf(stderr, "++");
-    else if (node->value == SYMBOL_DECREMENT)
-      fprintf(stderr, "--");
-    else
-      fprintf(stderr, "?");
+    if (node->value_double > 0.0) {
+      /* post */
+      fprintf(stderr, "%s", node->label);
+      if (node->value == SYMBOL_INCREMENT)
+        fprintf(stderr, "++");
+      else if (node->value == SYMBOL_DECREMENT)
+        fprintf(stderr, "--");
+      else
+        fprintf(stderr, "?");
+    }
+    else {
+      /* pre */
+      if (node->value == SYMBOL_INCREMENT)
+        fprintf(stderr, "++");
+      else if (node->value == SYMBOL_DECREMENT)
+        fprintf(stderr, "--");
+      else
+        fprintf(stderr, "?");
+      fprintf(stderr, "%s", node->label);
+    }
   }
   else
     fprintf(stderr, "?");
