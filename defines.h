@@ -285,4 +285,3 @@ struct tree_node {
 #define TREE_NODE_TYPE_WHILE               18
 
 #endif /* _DEFINES_H */
-

@@ -302,6 +302,10 @@ int stack_calculate_tree_node(struct tree_node *node, int *value) {
       si[q].type = STACK_ITEM_TYPE_STRING;
       fprintf(stderr, "GOT STACK ITEM %s\n", si[q].string);
     }
+    else if (child->type == TREE_NODE_TYPE_INCREMENT_DECREMENT) {
+      /* increment/decrement cannot be calculated here, only on the target machine... */
+      return FAILED;
+    }
     else if (child->type == TREE_NODE_TYPE_FUNCTION_CALL) {
       /* function calls cannot be calculated here, only on the target machine... */
       return FAILED;
