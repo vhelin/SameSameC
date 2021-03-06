@@ -40,6 +40,13 @@ void main() {
       j++;
   }
 
+  for (j = 0, j = 1, j = 2; j < 16; j++) {
+      j = j;
+      for (k = 0; k < 8; k++) {
+          int8 m = k;
+      }
+  }
+
   value = sum_2(value, 1);
   sum_1((TWO+1)*(TWO+TWO));
   global_var = global_var + 1;

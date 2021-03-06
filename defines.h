@@ -283,5 +283,6 @@ struct tree_node {
 #define TREE_NODE_TYPE_IF                  16
 #define TREE_NODE_TYPE_INCREMENT_DECREMENT 17
 #define TREE_NODE_TYPE_WHILE               18
+#define TREE_NODE_TYPE_FOR                 19
 
 #endif /* _DEFINES_H */

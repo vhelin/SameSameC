@@ -65,10 +65,10 @@ int compare_next_token(char *token) {
 
   /* skip white space */
   ii = g_source_pointer;
-  for (e = g_buffer[ii]; e == ' ' || e == ',' || e == 0x0A; e = g_buffer[++ii])
+  for (e = g_buffer[ii]; e == ' ' || e == 0x0A; e = g_buffer[++ii])
     ;
 
-  for (t = 0; t < length && e != ' ' && e != ',' && e != 0x0A; ) {
+  for (t = 0; t < length && e != ' ' && e != 0x0A; ) {
     if (toupper((int)token[t]) != toupper((int)e))
       return FAILED;
     t++;
@@ -89,7 +89,7 @@ int input_next_string(void) {
 
   
   /* skip white space */
-  for (e = g_buffer[g_source_pointer++]; e == ' ' || e == ','; e = g_buffer[g_source_pointer++])
+  for (e = g_buffer[g_source_pointer++]; e == ' '; e = g_buffer[g_source_pointer++])
     ;
 
   if (e == 0x0A)
@@ -131,7 +131,7 @@ int input_number(void) {
 
 
   /* skip white space */
-  for (e = g_buffer[g_source_pointer++]; e == ' ' || e == ','; e = g_buffer[g_source_pointer++])
+  for (e = g_buffer[g_source_pointer++]; e == ' '; e = g_buffer[g_source_pointer++])
     ;
 
   if (e == 0x0A)
@@ -517,7 +517,7 @@ void skip_whitespace(void) {
   while (1) {
     if (g_source_pointer == g_size)
       break;
-    if (g_buffer[g_source_pointer] == ' ' || g_buffer[g_source_pointer] == ',') {
+    if (g_buffer[g_source_pointer] == ' ') {
       g_source_pointer++;
       g_newline_beginning = OFF;
       continue;
@@ -563,7 +563,7 @@ int get_next_plain_string(void) {
 
 int is_char_a_symbol(char c) {
 
-  if (c == '=' || c == '>' || c == '<' || c == '!' || c == '+' || c == '-' || c == '*' || c == '/' || c == '(' || c == ')' || c == '&' || c == '|' || c == ';' || c == '~' || c == '#' || c == '^' || c == '{' || c == '}' || c == '[' || c == ']')
+  if (c == '=' || c == '>' || c == '<' || c == '!' || c == '+' || c == '-' || c == '*' || c == '/' || c == '(' || c == ')' || c == '&' || c == '|' || c == ';' || c == '~' || c == '#' || c == '^' || c == '{' || c == '}' || c == '[' || c == ']' || c == ',')
     return YES;
   else
     return NO;

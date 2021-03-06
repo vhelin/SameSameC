@@ -22,19 +22,42 @@ extern int g_verbose_mode, g_input_float_mode;
 extern char *g_variable_types[4], *g_two_char_symbols[10], g_label[MAX_NAME_LENGTH + 1];
 extern double g_parsed_double;
 
-static int g_current_indentation_depth = 0;
+static int g_current_indentation_depth = 0, g_print_is_inside_for = NO;
 static char g_current_indentation[256];
 
 
 static char *_get_current_indentation() {
 
-  int i;
+  int i, depth;
 
-  for (i = 0; i < g_current_indentation_depth; i++)
+  if (g_print_is_inside_for == YES)
+    depth = 0;
+  else
+    depth = g_current_indentation_depth;
+  
+  for (i = 0; i < depth; i++)
     g_current_indentation[i] = ' ';
-  g_current_indentation[g_current_indentation_depth] = 0;
+  g_current_indentation[depth] = 0;
 
   return g_current_indentation;
+}
+
+
+static char *_get_current_end_of_line() {
+
+  if (g_print_is_inside_for == YES)
+    return "";
+  else
+    return "\n";
+}
+
+
+static char *_get_current_end_of_statement() {
+
+  if (g_print_is_inside_for == YES)
+    return "";
+  else
+    return ";";
 }
 
 
@@ -141,7 +164,7 @@ static void _print_assignment(struct tree_node *node) {
 
   _print_expression(node->children[1]);
 
-  fprintf(stderr, ";\n");
+  fprintf(stderr, "%s%s", _get_current_end_of_statement(), _get_current_end_of_line());
 }
 
 
@@ -170,29 +193,31 @@ static void _print_function_call(struct tree_node *node) {
 
   _print_simple_tree_node(node);
 
-  fprintf(stderr, ";\n");
+  fprintf(stderr, "%s%s", _get_current_end_of_statement(), _get_current_end_of_line());
 }
 
 
-static void _print_condition(struct tree_node *node) {
+static void _print_condition(struct tree_node *node, int level) {
 
   int i;
   
   if (node == NULL)
     return;
 
-  fprintf(stderr, "(");
+  if (level > 0)
+    fprintf(stderr, "(");
 
   for (i = 0; i < node->added_children; i++) {
     if (node->children[i]->type == TREE_NODE_TYPE_CONDITION)
-      _print_condition(node->children[i]);
+      _print_condition(node->children[i], level + 1);
     else if (node->children[i]->type == TREE_NODE_TYPE_EXPRESSION)
       _print_expression(node->children[i]);
     else
       _print_simple_tree_node(node->children[i]);
   }
-  
-  fprintf(stderr, ")");
+
+  if (level > 0)
+    fprintf(stderr, ")");
 }
 
 
@@ -203,14 +228,14 @@ static void _print_if(struct tree_node *node) {
   if (node == NULL)
     return;
 
-  fprintf(stderr, "%sif ", _get_current_indentation());
-    
+  fprintf(stderr, "%sif (", _get_current_indentation());
+
   for (i = 0; i < node->added_children; i++) {
     if (node->children[i]->type == TREE_NODE_TYPE_CONDITION) {
       if (i > 0)
-        fprintf(stderr, "%selse if ", _get_current_indentation());
-      _print_condition(node->children[i]);
-      fprintf(stderr, " {\n");
+        fprintf(stderr, "%selse if (", _get_current_indentation());
+      _print_condition(node->children[i], 0);
+      fprintf(stderr, ") {\n");
       got_condition = YES;
     }
     else if (node->children[i]->type == TREE_NODE_TYPE_BLOCK) {
@@ -234,19 +259,50 @@ static void _print_while(struct tree_node *node) {
     return;
   }
 
-  fprintf(stderr, "%swhile ", _get_current_indentation());
-  _print_condition(node->children[0]);
-  fprintf(stderr, " {\n");
+  fprintf(stderr, "%swhile (", _get_current_indentation());
+  _print_condition(node->children[0], 0);
+  fprintf(stderr, ") {\n");
   _print_block(node->children[1]);
   fprintf(stderr, "%s}\n", _get_current_indentation());
 }
 
 
-static void _print_statement(struct tree_node *node) {
+static void _print_for(struct tree_node *node) {
 
   if (node == NULL)
     return;
 
+  if (node->added_children != 4) {
+    fprintf(stderr, "We have a FOR with added_children != 4! Please submit a bug report!\n");
+    return;
+  }
+  
+  fprintf(stderr, "%sfor (", _get_current_indentation());
+
+  g_print_is_inside_for = YES;
+
+  _print_block(node->children[0]);
+  fprintf(stderr, "; ");
+  _print_condition(node->children[1], 0);
+  fprintf(stderr, "; ");
+  _print_block(node->children[2]);
+  fprintf(stderr, ") {\n");
+
+  g_print_is_inside_for = NO;
+
+  _print_block(node->children[3]);
+  fprintf(stderr, "%s}\n", _get_current_indentation());
+}
+
+
+static void _print_statement(struct tree_node *node, int line) {
+
+  if (node == NULL)
+    return;
+
+  if (g_print_is_inside_for == YES && line > 0)
+    fprintf(stderr, ",");
+  
   if (node->type == TREE_NODE_TYPE_CREATE_VARIABLE)
     _print_create_variable(node);
   else if (node->type == TREE_NODE_TYPE_ASSIGNMENT)
@@ -259,13 +315,15 @@ static void _print_statement(struct tree_node *node) {
     _print_if(node);
   else if (node->type == TREE_NODE_TYPE_WHILE)
     _print_while(node);
+  else if (node->type == TREE_NODE_TYPE_FOR)
+    _print_for(node);
   else if (node->type == TREE_NODE_TYPE_INCREMENT_DECREMENT) {
     fprintf(stderr, "%s", _get_current_indentation());
     _print_simple_tree_node(node);
-    fprintf(stderr, ";\n");
+    fprintf(stderr, "%s%s", _get_current_end_of_statement(), _get_current_end_of_line());
   }
   else
-    fprintf(stderr, "%s?;\n", _get_current_indentation());
+    fprintf(stderr, "%s?%s%s", _get_current_indentation(), _get_current_end_of_statement(), _get_current_end_of_line());
 }
 
 
@@ -284,7 +342,7 @@ static void _print_block(struct tree_node *node) {
   g_current_indentation_depth += 2;
 
   for (i = 0; i < node->added_children; i++)
-    _print_statement(node->children[i]);
+    _print_statement(node->children[i], i);
 
   g_current_indentation_depth -= 2;
 }
@@ -512,6 +570,22 @@ static void _simplify_expressions_while(struct tree_node *node) {
 }
 
 
+static void _simplify_expressions_for(struct tree_node *node) {
+
+  int i;
+  
+  if (node == NULL)
+    return;
+
+  for (i = 0; i < node->added_children; i++) {
+    if (node->children[i]->type == TREE_NODE_TYPE_CONDITION)
+      _simplify_expressions_condition(node->children[i]);
+    else if (node->children[i]->type == TREE_NODE_TYPE_BLOCK)
+      _simplify_expressions_block(node->children[i]);
+  }
+}
+
+
 static void _simplify_expressions_statement(struct tree_node *node) {
 
   if (node == NULL)
@@ -529,6 +603,8 @@ static void _simplify_expressions_statement(struct tree_node *node) {
     _simplify_expressions_if(node);
   else if (node->type == TREE_NODE_TYPE_WHILE)
     _simplify_expressions_while(node);
+  else if (node->type == TREE_NODE_TYPE_FOR)
+    _simplify_expressions_for(node);
 }
 
 
