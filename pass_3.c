@@ -150,9 +150,12 @@ static void _print_return(struct tree_node *node) {
   if (node == NULL)
     return;
 
-  fprintf(stderr, "%sreturn ", _get_current_indentation());
+  fprintf(stderr, "%sreturn", _get_current_indentation());
 
-  _print_expression(node->children[0]);
+  if (node->added_children > 0) {
+    fprintf(stderr, " ");
+    _print_expression(node->children[0]);
+  }
 
   fprintf(stderr, ";\n");
 }
@@ -424,7 +427,8 @@ static void _simplify_expressions_return(struct tree_node *node) {
   if (node == NULL)
     return;
 
-  _simplify_expressions(node->children[0]);
+  if (node->added_children > 0)
+    _simplify_expressions(node->children[0]);
 }
 
 

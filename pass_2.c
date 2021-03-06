@@ -1218,6 +1218,12 @@ int create_statement(void) {
     return SUCCEEDED;
   }
   else if (g_token_current->id == TOKEN_ID_WHILE) {
+    /* while */
+    
+    /* next token */
+    _next_token();
+
+    
   }
   else if (g_token_current->id == TOKEN_ID_FOR) {
   }
@@ -1236,6 +1242,12 @@ int create_statement(void) {
       
       /* next token */
       _next_token();
+
+      node = allocate_tree_node(TREE_NODE_TYPE_RETURN);
+      if (node == NULL)
+        return FAILED;
+
+      tree_node_add_child(_get_current_open_block(), node);
 
       return SUCCEEDED;
     }
