@@ -142,12 +142,27 @@ static void _print_simple_tree_node(struct tree_node *node) {
 }
 
 
+static char *_get_pointer_stars(struct tree_node *node) {
+
+  if (node == NULL)
+    return "";
+  if (node->type != TREE_NODE_TYPE_VARIABLE_TYPE)
+    return "?";
+  if (node->value_double == 0)
+    return "";
+  if (node->value_double == 1)
+    return "*";
+
+  return "?";
+}
+
+
 static void _print_create_variable(struct tree_node *node) {
 
   if (node == NULL)
     return;
 
-  fprintf(stderr, "%s%s %s = ", _get_current_indentation(), g_variable_types[node->children[0]->value], node->children[1]->label);
+  fprintf(stderr, "%s%s %s%s = ", _get_current_indentation(), g_variable_types[node->children[0]->value], _get_pointer_stars(node->children[0]), node->children[1]->label);
 
   _print_expression(node->children[2]);
 
@@ -355,12 +370,12 @@ static void _print_function_definition(struct tree_node *node) {
   if (node == NULL)
     return;
 
-  fprintf(stderr, "%s %s(", g_variable_types[node->children[0]->value], node->children[1]->label);
+  fprintf(stderr, "%s %s%s(", g_variable_types[node->children[0]->value], _get_pointer_stars(node->children[0]), node->children[1]->label);
 
   for (i = 2; i < node->added_children-1; i += 2) {
     if (i > 2)
       fprintf(stderr, ", ");
-    fprintf(stderr, "%s %s", g_variable_types[node->children[i]->value], node->children[i+1]->label);
+    fprintf(stderr, "%s %s%s", g_variable_types[node->children[i]->value], _get_pointer_stars(node->children[i]), node->children[i+1]->label);
   }
   
   fprintf(stderr, ") {\n");
@@ -402,9 +417,6 @@ int pass_3(void) {
   for (i = 0; i < g_global_nodes->added_children; i++)
     _print_global_node(g_global_nodes->children[i]);
 
-  if (check_function_call_validity() == FAILED)
-    return FAILED;
-  
   return SUCCEEDED;
 }
 
@@ -657,11 +669,5 @@ int simplify_expressions(void) {
   for (i = 0; i < g_global_nodes->added_children; i++)
     _simplify_expressions_global_node(g_global_nodes->children[i]);
   
-  return SUCCEEDED;
-}
-
-
-int check_function_call_validity(void) {
-
   return SUCCEEDED;
 }

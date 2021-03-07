@@ -3,6 +3,7 @@
 .define THREE TWO+1
 
 int8 global_var = 123+THREE;
+int8 *main_ptr = main;
 
 void main() {
   int8 value = 8 >> 1;
@@ -59,4 +60,8 @@ int8 sum_2(int8 value1, int8 value2) {
 
 int8 sum_1(int8 value) {
   return value + 1;
+}
+
+int8 *add_to_main(int8 adder) {
+  return main + adder;
 }

@@ -299,8 +299,7 @@ int pass_2(void) {
   for (i = 0; i < 256; i++)
     g_open_expression[i] = NULL;
   
-  /* we allow total 1024 global variables and function definitions */
-  g_global_nodes = allocate_tree_node_with_children(TREE_NODE_TYPE_GLOBAL_NODES, 1024);
+  g_global_nodes = allocate_tree_node_with_children(TREE_NODE_TYPE_GLOBAL_NODES, 256);
   if (g_global_nodes == NULL)
     return FAILED;
   
@@ -834,10 +833,18 @@ int create_statement(void) {
     /* variable creation */
     int variable_type = g_token_current->value;
     char name[MAX_NAME_LENGTH + 1];
+    int pointer_depth = 0;
 
     /* next token */
     _next_token();
 
+    if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == '*') {
+      pointer_depth = 1;
+
+      /* next token */
+      _next_token();
+    }
+    
     if (g_token_current->id != TOKEN_ID_VALUE_STRING) {
       snprintf(g_error_message, sizeof(g_error_message), "%s must be followed by a variable name.\n", g_variable_types[variable_type]);
       print_error(g_error_message, ERROR_ERR);
@@ -905,11 +912,14 @@ int create_statement(void) {
     tree_node_add_child(node, _get_current_open_expression());
     _open_expression_pop();
 
+    /* store the pointer depth (0 - not a pointer, 1 - is a pointer) */
+    node->children[0]->value_double = pointer_depth;
+    
     if (node->children[0] == NULL || node->children[1] == NULL || node->children[2] == NULL) {
       free_tree_node(node);
       return FAILED;
     }
-
+    
     tree_node_add_child(_get_current_open_block(), node);
 
     if (!(g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == ';')) {
@@ -1586,9 +1596,17 @@ struct tree_node *create_variable_or_function(void) {
   int variable_type = g_token_current->value;
   char name[MAX_NAME_LENGTH + 1];
   struct tree_node *node = NULL;
+  int pointer_depth = 0;
 
   /* next token */
   _next_token();
+
+  if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == '*') {
+    pointer_depth = 1;
+
+    /* next token */
+    _next_token();
+  }
 
   if (g_token_current->id != TOKEN_ID_VALUE_STRING) {
     snprintf(g_error_message, sizeof(g_error_message), "%s must be followed by a variable or function name.\n", g_variable_types[variable_type]);
@@ -1662,6 +1680,9 @@ struct tree_node *create_variable_or_function(void) {
       return NULL;
     }
 
+    /* store the pointer depth (0 - not a pointer, 1 - is a pointer) */
+    node->children[0]->value_double = pointer_depth;
+    
     return node;
   }
   else {
@@ -1672,7 +1693,7 @@ struct tree_node *create_variable_or_function(void) {
 
     /* start collecting the argument types and names */
 
-    g_open_function_definition = allocate_tree_node_with_children(TREE_NODE_TYPE_FUNCTION_DEFINITION, 32);
+    g_open_function_definition = allocate_tree_node_with_children(TREE_NODE_TYPE_FUNCTION_DEFINITION, 16);
     if (g_open_function_definition == NULL)
       return NULL;
 
@@ -1684,6 +1705,9 @@ struct tree_node *create_variable_or_function(void) {
       g_open_function_definition = NULL;
       return NULL;
     }
+
+    /* store the pointer depth (0 - not a pointer, 1 - is a pointer) */
+    g_open_function_definition->children[0]->value_double = pointer_depth;
     
     while (1) {
       if (g_token_current->id == TOKEN_ID_VARIABLE_TYPE) {
@@ -1701,8 +1725,20 @@ struct tree_node *create_variable_or_function(void) {
         /* next token */
         _next_token();
 
+        pointer_depth = 0;
+        
+        if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == '*') {
+          pointer_depth = 1;
+
+          /* next token */
+          _next_token();
+        }
+
+        /* store the pointer depth (0 - not a pointer, 1 - is a pointer) */
+        node->value_double = pointer_depth;
+        
         if (g_token_current->id != TOKEN_ID_VALUE_STRING) {
-          snprintf(g_error_message, sizeof(g_error_message), "Was expecting an argument name, got something else...\n");
+          snprintf(g_error_message, sizeof(g_error_message), "Expected an argument name, but got %s.\n", _get_token_simple(g_token_current));
           print_error(g_error_message, ERROR_ERR);
           free_tree_node(g_open_function_definition);
           g_open_function_definition = NULL;
@@ -1758,7 +1794,7 @@ struct tree_node *create_variable_or_function(void) {
         return node;
       }
       else {
-        snprintf(g_error_message, sizeof(g_error_message), "Was expecting a variable type, got something else...\n");
+        snprintf(g_error_message, sizeof(g_error_message), "Expected a variable type or a ')', but got %s.\n", _get_token_simple(g_token_current));
         print_error(g_error_message, ERROR_ERR);
         return NULL;
       }
