@@ -159,12 +159,27 @@ static char *_get_pointer_stars(struct tree_node *node) {
 
 static void _print_create_variable(struct tree_node *node) {
 
+  int i;
+  
   if (node == NULL)
     return;
 
-  fprintf(stderr, "%s%s %s%s = ", _get_current_indentation(), g_variable_types[node->children[0]->value], _get_pointer_stars(node->children[0]), node->children[1]->label);
+  fprintf(stderr, "%s%s %s%s", _get_current_indentation(), g_variable_types[node->children[0]->value], _get_pointer_stars(node->children[0]), node->children[1]->label);
 
-  _print_expression(node->children[2]);
+  if (node->value == 0) {
+    /* not an array */
+    fprintf(stderr, " = ");
+    _print_expression(node->children[2]);
+  }
+  else {
+    /* an array */
+    fprintf(stderr, "[%d] = ", node->value);
+    for (i = 2; i < node->added_children; i++) {
+      if (i > 2)
+        fprintf(stderr, ", ");
+      _print_expression(node->children[i]);
+    }
+  }
 
   fprintf(stderr, ";\n");
 }
@@ -496,10 +511,13 @@ static void _simplify_expressions(struct tree_node *node) {
 
 static void _simplify_expressions_create_variable(struct tree_node *node) {
 
+  int i;
+  
   if (node == NULL)
     return;
 
-  _simplify_expressions(node->children[2]);
+  for (i = 2; i < node->added_children; i++)
+    _simplify_expressions(node->children[i]);
 }
 
 

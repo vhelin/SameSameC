@@ -4,11 +4,16 @@
 
 int8 global_var = 123+THREE;
 int8 *main_ptr = main;
+int8 array_1[] = { 0+0, 1+0, 2+0, 3+0, 4+(0+0), 5+0, 6+0, 7+0 };
+int8 array_2[16];
+int8 array_3[8] = { 1, 2, 3 };
+int8 zero;
 
 void main() {
   int8 value = 8 >> 1;
   int8 j = 0;
   int8 k = 0;
+  int8 q;
 
   if (value > 7+2-1-1) {
      value = 3+2+1;
