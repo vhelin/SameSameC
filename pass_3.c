@@ -115,6 +115,11 @@ static void _print_simple_tree_node(struct tree_node *node) {
     }
     fprintf(stderr, ")");
   }
+  else if (node->type == TREE_NODE_TYPE_ARRAY_ITEM) {
+    fprintf(stderr, "%s[", node->label);
+    _print_expression(node->children[0]);
+    fprintf(stderr, "]");
+  }
   else if (node->type == TREE_NODE_TYPE_INCREMENT_DECREMENT) {
     if (node->value_double > 0.0) {
       /* post */
@@ -190,11 +195,23 @@ static void _print_assignment(struct tree_node *node) {
   if (node == NULL)
     return;
 
-  fprintf(stderr, "%s%s = ", _get_current_indentation(), node->children[0]->label);
+  /* array assignment? */
+  if (node->added_children > 2) {
+    fprintf(stderr, "%s%s[", _get_current_indentation(), node->children[0]->label);
 
-  _print_expression(node->children[1]);
+    _print_expression(node->children[1]);
+    fprintf(stderr, "] = ");
+    _print_expression(node->children[2]);
+    
+    fprintf(stderr, "%s%s", _get_current_end_of_statement(), _get_current_end_of_line());
+  }
+  else {
+    fprintf(stderr, "%s%s = ", _get_current_indentation(), node->children[0]->label);
 
-  fprintf(stderr, "%s%s", _get_current_end_of_statement(), _get_current_end_of_line());
+    _print_expression(node->children[1]);
+
+    fprintf(stderr, "%s%s", _get_current_end_of_statement(), _get_current_end_of_line());
+  }
 }
 
 
@@ -527,6 +544,10 @@ static void _simplify_expressions_assignment(struct tree_node *node) {
     return;
 
   _simplify_expressions(node->children[1]);
+
+  /* array assignment? */
+  if (node->added_children > 2)
+    _simplify_expressions(node->children[2]);
 }
 
 

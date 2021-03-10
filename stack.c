@@ -310,6 +310,10 @@ int stack_calculate_tree_node(struct tree_node *node, int *value) {
       /* function calls cannot be calculated here, only on the target machine... */
       return FAILED;
     }
+    else if (child->type == TREE_NODE_TYPE_ARRAY_ITEM) {
+      /* array items cannot be calculated here, only on the target machine... */
+      return FAILED;
+    }
     else {
       fprintf(stderr, "STACK_CALCULATE_TREE_NODE: Got an unhandled tree_node of type %d! Please submit a bug report!\n", child->type);
       return FAILED;

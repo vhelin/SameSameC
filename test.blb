@@ -15,6 +15,10 @@ void main() {
   int8 k = 0;
   int8 q;
 
+  array_3[0] = 1;
+  array_3[1] = array_2[0];
+  array_3[2] = array_1[0] + 1;
+
   if (value > 7+2-1-1) {
      value = 3+2+1;
   }

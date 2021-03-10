@@ -23,7 +23,7 @@ int tree_node_add_child(struct tree_node *node, struct tree_node *child) {
 
   if (node->added_children >= node->children_max) {
     /* try to increase the child list size */
-    int new_children_max = node->children_max + 64;
+    int new_children_max = node->children_max + 32;
     int i;
 
     node->children = realloc(node->children, sizeof(struct tree_node *) * new_children_max);
