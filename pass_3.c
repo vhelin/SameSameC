@@ -70,8 +70,10 @@ static void _print_expression(struct tree_node *node) {
 
   int i;
 
-  if (node == NULL)
+  if (node == NULL) {
+    fprintf(stderr, "E");
     return;
+  }
 
   if (node->type != TREE_NODE_TYPE_EXPRESSION) {
     _print_simple_tree_node(node);
@@ -91,8 +93,10 @@ static void _print_simple_tree_node(struct tree_node *node) {
 
   int i;
   
-  if (node == NULL)
+  if (node == NULL) {
+    fprintf(stderr, "E");
     return;
+  }
 
   if (node->type == TREE_NODE_TYPE_VALUE_INT)
     fprintf(stderr, "%d", node->value);
@@ -178,12 +182,13 @@ static void _print_create_variable(struct tree_node *node) {
   }
   else {
     /* an array */
-    fprintf(stderr, "[%d] = ", node->value);
+    fprintf(stderr, "[%d] = { ", node->value);
     for (i = 2; i < node->added_children; i++) {
       if (i > 2)
         fprintf(stderr, ", ");
       _print_expression(node->children[i]);
     }
+    fprintf(stderr, " }");
   }
 
   fprintf(stderr, ";\n");

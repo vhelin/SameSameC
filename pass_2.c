@@ -1010,6 +1010,8 @@ int create_statement(void) {
 
     strncpy(name, g_token_current->label, MAX_NAME_LENGTH);
 
+    fprintf(stderr, "HERE:\n");
+
     /* next token */
     _next_token();
 
@@ -1061,9 +1063,6 @@ int create_statement(void) {
 
       if (symbol == '[') {
         /* array assignment */
-
-        /* next token */
-        _next_token();
 
         /* create_expression() will put all tree_nodes it parses to g_open_expression */
         if (_open_expression_push() == FAILED)
