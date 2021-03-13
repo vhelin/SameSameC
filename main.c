@@ -23,6 +23,7 @@ DWORD __stdcall GetCurrentProcessId(void);
 #include "parse.h"
 #include "include_file.h"
 #include "definitions.h"
+#include "symbol_table.h"
 #include "pass_1.h"
 #include "pass_2.h"
 #include "pass_3.h"
@@ -329,6 +330,8 @@ void procedures_at_exit(void) {
 
   for (index = 0; index < 256; index++)
     free(g_open_expression[index]);
+
+  free_symbol_table();
   
   /* remove the tmp files */
   if (g_tmp_name != NULL)

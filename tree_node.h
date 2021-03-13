@@ -6,6 +6,7 @@ int tree_node_add_child(struct tree_node *node, struct tree_node *child);
 int tree_node_set_string(struct tree_node *node, char *string);
 void free_tree_node(struct tree_node *node);
 void free_tree_node_children(struct tree_node *node);
+struct tree_node *clone_tree_node(struct tree_node *node);
 struct tree_node *allocate_tree_node(int type);
 struct tree_node *allocate_tree_node_with_children(int type, int child_count);
 struct tree_node *allocate_tree_node_variable_type(int type);

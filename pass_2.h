@@ -10,7 +10,7 @@ struct tree_node *create_array(double pointer_depth, int variable_type, char *na
 int create_expression(void);
 int create_term(void);
 int create_factor(void);
-int create_block(void);
+int create_block(struct tree_node *open_function_definition);
 int create_condition(void);
 int create_statement(void);
 

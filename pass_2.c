@@ -15,6 +15,7 @@
 #include "stack.h"
 #include "include_file.h"
 #include "tree_node.h"
+#include "symbol_table.h"
 
 
 extern int g_input_float_mode, g_parsed_int;
@@ -45,6 +46,7 @@ struct tree_node *g_open_block[256];
 int g_open_block_current_id = -1;
 
 static char g_token_in_simple_form[MAX_NAME_LENGTH + 1];
+static int g_block_level = 0;
 
 
 char *_get_token_simple(struct token *t) {
@@ -310,6 +312,26 @@ int pass_2(void) {
       node = create_variable_or_function();
       if (node == NULL)
         return FAILED;
+
+      if (g_block_level != 0) {
+        snprintf(g_error_message, sizeof(g_error_message), "g_block_level should be 0 here, but it's %d instead! Please submit a bug report!\n", g_block_level);
+        print_error(g_error_message, ERROR_ERR);
+        return FAILED;
+      }
+      
+      if (node->type == TREE_NODE_TYPE_CREATE_VARIABLE) {
+        if (symbol_table_add_symbol(node, node->children[1]->label, g_block_level) == FAILED) {
+          free_tree_node(node);
+          return FAILED;
+        }
+      }
+      else {
+        if (symbol_table_add_symbol(node, node->children[1]->label, g_block_level) == FAILED) {
+          free_tree_node(node);
+          return FAILED;
+        }
+      }
+      
       if (tree_node_add_child(g_global_nodes, node) == FAILED)
         return FAILED;
     }
@@ -337,12 +359,27 @@ int pass_2(void) {
     }
   }
 
-  if (g_open_expression_current_id != -1)
-    fprintf(stderr, "WARNING: We have an open expression even though parsing has ended. Please submit a bug report!\n");
-  if (g_open_function_definition != NULL)
-    fprintf(stderr, "WARNING: We have an open function definition even though parsing has ended. Please submit a bug report!\n");
-  if (g_open_block_current_id != -1)
-    fprintf(stderr, "WARNING: We have an open block even though parsing has ended. Please submit a bug report!\n");
+  free_symbol_table_items(0);
+  
+  if (g_open_expression_current_id != -1) {
+    fprintf(stderr, "ERROR: We have an open expression even though parsing has ended. Please submit a bug report!\n");
+    return FAILED;
+  }
+  
+  if (g_open_function_definition != NULL) {
+    fprintf(stderr, "ERROR: We have an open function definition even though parsing has ended. Please submit a bug report!\n");
+    return FAILED;
+  }
+  
+  if (g_open_block_current_id != -1) {
+    fprintf(stderr, "ERROR: We have an open block even though parsing has ended. Please submit a bug report!\n");
+    return FAILED;
+  }
+
+  if (is_symbol_table_empty() == NO) {
+    fprintf(stderr, "ERROR: The symbol table is not empty even though parsing has ended! Please submit a bug report!\n");
+    return FAILED;
+  }
   
   return SUCCEEDED;
 }
@@ -961,6 +998,10 @@ int create_statement(void) {
         return FAILED;
       }
 
+      /* add to symbol table */
+      if (symbol_table_add_symbol(node, name, g_block_level) == FAILED)
+        return FAILED;
+
       /* next token */
       _next_token();
     
@@ -993,6 +1034,10 @@ int create_statement(void) {
     
     tree_node_add_child(_get_current_open_block(), node);
 
+    /* add to symbol table */
+    if (symbol_table_add_symbol(node, name, g_block_level) == FAILED)
+      return FAILED;
+    
     if (!(g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == ';')) {
       snprintf(g_error_message, sizeof(g_error_message), "Expected ';', but got %s.\n", _get_token_simple(g_token_current));
       print_error(g_error_message, ERROR_ERR);
@@ -1009,8 +1054,6 @@ int create_statement(void) {
     char name[MAX_NAME_LENGTH + 1];
 
     strncpy(name, g_token_current->label, MAX_NAME_LENGTH);
-
-    fprintf(stderr, "HERE:\n");
 
     /* next token */
     _next_token();
@@ -1032,6 +1075,7 @@ int create_statement(void) {
 
     if (symbol == SYMBOL_INCREMENT || symbol == SYMBOL_DECREMENT) {
       /* increment / decrement */
+      struct symbol_table_item *item;
 
       if (!(g_token_current->id == TOKEN_ID_SYMBOL && (g_token_current->value == ';' || g_token_current->value == ')')))  {
         snprintf(g_error_message, sizeof(g_error_message), "Expected ')' / ';', but got %s.\n", _get_token_simple(g_token_current));
@@ -1054,13 +1098,22 @@ int create_statement(void) {
       node->value_double = 1.0;
       
       tree_node_add_child(_get_current_open_block(), node);
+
+      item = symbol_table_find_symbol(name);
+      if (item == NULL) {
+        snprintf(g_error_message, sizeof(g_error_message), "Unknown variable name \"%s\".\n", name);
+        print_error(g_error_message, ERROR_ERR);
+        return FAILED;
+      }
+      node->definition = item->node;
       
       return SUCCEEDED;
     }
     else if (symbol == '=' || symbol == '[') {
       /* assignment */
       struct tree_node *node_index = NULL;
-
+      struct symbol_table_item *item;
+    
       if (symbol == '[') {
         /* array assignment */
 
@@ -1128,6 +1181,14 @@ int create_statement(void) {
       }
 
       tree_node_add_child(_get_current_open_block(), node);
+
+      item = symbol_table_find_symbol(name);
+      if (item == NULL) {
+        snprintf(g_error_message, sizeof(g_error_message), "Unknown variable name \"%s\".\n", name);
+        print_error(g_error_message, ERROR_ERR);
+        return FAILED;
+      }
+      node->definition = item->node;
     }
     else {
       /* function call */
@@ -1261,7 +1322,7 @@ int create_statement(void) {
 
       fprintf(stderr, "create_statement(): IF\n");
       
-      if (create_block() == FAILED) {
+      if (create_block(NULL) == FAILED) {
         free_tree_node(node);
         return FAILED;
       }
@@ -1290,8 +1351,8 @@ int create_statement(void) {
         }
 
         fprintf(stderr, "create_statement(): ELSE\n");
-              
-        if (create_block() == FAILED) {
+
+        if (create_block(NULL) == FAILED) {
           free_tree_node(node);
           return FAILED;
         }
@@ -1320,6 +1381,7 @@ int create_statement(void) {
   }
   else if (g_token_current->id == TOKEN_ID_SYMBOL && (g_token_current->value == SYMBOL_INCREMENT || g_token_current->value == SYMBOL_DECREMENT)) {
     /* increment / decrement */
+    struct symbol_table_item *item;
     char name[MAX_NAME_LENGTH + 1];
     int symbol = g_token_current->value;
 
@@ -1358,7 +1420,15 @@ int create_statement(void) {
     node->value_double = -1.0;
       
     tree_node_add_child(_get_current_open_block(), node);
-      
+
+    item = symbol_table_find_symbol(name);
+    if (item == NULL) {
+      snprintf(g_error_message, sizeof(g_error_message), "Unknown variable name \"%s\".\n", name);
+      print_error(g_error_message, ERROR_ERR);
+      return FAILED;
+    }
+    node->definition = item->node;
+    
     return SUCCEEDED;
   }
   else if (g_token_current->id == TOKEN_ID_WHILE) {
@@ -1425,8 +1495,8 @@ int create_statement(void) {
     }
 
     fprintf(stderr, "create_statement(): WHILE\n");
-      
-    if (create_block() == FAILED) {
+
+    if (create_block(NULL) == FAILED) {
       free_tree_node(node);
       return FAILED;
     }
@@ -1578,8 +1648,8 @@ int create_statement(void) {
     }
 
     fprintf(stderr, "create_statement(): IF\n");
-      
-    if (create_block() == FAILED) {
+
+    if (create_block(NULL) == FAILED) {
       free_tree_node(node);
       return FAILED;
     }
@@ -1665,15 +1735,74 @@ int create_statement(void) {
 }
 
 
-int create_block(void) {
+int create_block(struct tree_node *open_function_definition) {
 
-  int result;
+  int result, i;
 
   fprintf(stderr, "+ create_block()\n");
 
+  g_block_level++;
+
+  if (open_function_definition != NULL) {
+    /* clone the arguments right here */
+    for (i = 2; i < open_function_definition->added_children; i += 2) {
+      struct tree_node *argument = allocate_tree_node_with_children(TREE_NODE_TYPE_CREATE_VARIABLE, 3);
+        
+      if (argument == NULL) {
+        free_symbol_table_items(g_block_level);
+        g_block_level--;
+        return FAILED;
+      }
+
+      /* variable type */
+      tree_node_add_child(argument, clone_tree_node(open_function_definition->children[i+0]));
+      /* name */
+      tree_node_add_child(argument, clone_tree_node(open_function_definition->children[i+1]));
+      /* value */
+      /*
+      if (_open_expression_push() == FAILED) {
+        free_tree_node(argument);
+        free_symbol_table_items(g_block_level);
+        g_block_level--;
+        return FAILED;
+      }
+      tree_node_add_child(_get_current_open_expression(), allocate_tree_node_value_int(0));
+      if (_get_current_open_expression()->children[0] == NULL) {
+        free_tree_node(argument);
+        free_symbol_table_items(g_block_level);
+        g_block_level--;
+        return FAILED;
+      }
+      tree_node_add_child(argument, _get_current_open_expression());
+      _open_expression_pop();
+
+      if (argument->children[0] == NULL || argument->children[1] == NULL || argument->children[2] == NULL) {
+        free_tree_node(argument);
+        free_symbol_table_items(g_block_level);
+        g_block_level--;
+        return FAILED;
+      }
+      */
+      
+      tree_node_add_child(_get_current_open_block(), argument);
+
+      /* make the argument point to its creation */
+      open_function_definition->children[i+1]->definition = argument;      
+      
+      /* add to symbol table */
+      if (symbol_table_add_symbol(argument, argument->children[1]->label, g_block_level) == FAILED) {
+        free_symbol_table_items(g_block_level);
+        g_block_level--;
+        return FAILED;
+      }
+    }
+  }
+  
   if (g_token_current->id != TOKEN_ID_SYMBOL || g_token_current->value != '{') {
     snprintf(g_error_message, sizeof(g_error_message), "Expected '{', but got %s.\n", _get_token_simple(g_token_current));
     print_error(g_error_message, ERROR_ERR);
+    free_symbol_table_items(g_block_level);
+    g_block_level--;
     return FAILED;
   }
 
@@ -1687,8 +1816,11 @@ int create_block(void) {
 
     fprintf(stderr, "- create_statement() - create_block()\n");
 
-    if (result == FAILED)
+    if (result == FAILED) {
+      free_symbol_table_items(g_block_level);
+      g_block_level--;
       return result;
+    }
     if (result == FINISHED)
       break;
   }
@@ -1696,12 +1828,17 @@ int create_block(void) {
   if (g_token_current->id != TOKEN_ID_SYMBOL || g_token_current->value != '}') {
     snprintf(g_error_message, sizeof(g_error_message), "Expected '}', but got %s.\n", _get_token_simple(g_token_current));
     print_error(g_error_message, ERROR_ERR);
+    free_symbol_table_items(g_block_level);
+    g_block_level--;
     return FAILED;
   }
 
   /* next token */
   _next_token();
   
+  free_symbol_table_items(g_block_level);
+  g_block_level--;
+
   return FINISHED;
 }
 
@@ -2049,7 +2186,7 @@ struct tree_node *create_variable_or_function(void) {
         }
 
         /* parse the function */
-        if (create_block() == FAILED) {
+        if (create_block(g_open_function_definition) == FAILED) {
           free_tree_node(_get_current_open_block());
           _open_block_pop();
           return NULL;

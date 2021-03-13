@@ -261,6 +261,7 @@ struct tree_node {
   int line_number;
   int added_children;
   int children_max;
+  struct tree_node *definition;
   struct tree_node **children;
 };
 
@@ -285,5 +286,12 @@ struct tree_node {
 #define TREE_NODE_TYPE_WHILE               18
 #define TREE_NODE_TYPE_FOR                 19
 #define TREE_NODE_TYPE_ARRAY_ITEM          20
+
+struct symbol_table_item {
+  int level;
+  char *label;
+  struct tree_node *node;
+  struct symbol_table_item *next;
+};
 
 #endif /* _DEFINES_H */

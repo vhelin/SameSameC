@@ -103,8 +103,41 @@ struct tree_node *allocate_tree_node(int type) {
   node->added_children = 0;
   node->file_id = g_current_filename_id;
   node->line_number = g_current_line_number;
+  node->definition = NULL;
 
   return node;
+}
+
+
+struct tree_node *clone_tree_node(struct tree_node *node) {
+
+  struct tree_node *clone;
+  int i;
+  
+  if (node == NULL)
+    return NULL;
+
+  clone = allocate_tree_node_with_children(node->type, node->children_max);
+  if (clone == NULL)
+    return NULL;
+
+  if (tree_node_set_string(clone, node->label) == FAILED) {
+    free_tree_node(clone);
+    return NULL;
+  }
+  
+  clone->type = node->type;
+  clone->value = node->value;
+  clone->value_double = node->value_double;
+  clone->added_children = node->added_children;
+  clone->file_id = node->file_id;
+  clone->line_number = node->line_number;
+  clone->definition = node->definition;
+
+  for (i = 0; i < node->added_children; i++)
+    clone->children[i] = clone_tree_node(node->children[i]);
+
+  return clone;
 }
 
 
@@ -116,6 +149,9 @@ struct tree_node *allocate_tree_node_with_children(int type, int children_max) {
   if (node == NULL)
     return NULL;
 
+  if (children_max <= 0)
+    return allocate_tree_node(type);
+  
   node->children = calloc(sizeof(struct tree_node *) * children_max, 1);
   if (node->children == NULL) {
     print_error("Out of memory while allocating a new tree node.\n", ERROR_DIR);
@@ -189,8 +225,14 @@ struct tree_node *allocate_tree_node_value_string(char *string) {
 
 int tree_node_set_string(struct tree_node *node, char *string) {
 
-  if (string == NULL)
+  if (node == NULL)
     return FAILED;
+  
+  if (string == NULL) {
+    free(node->label);
+    node->label = NULL;
+    return SUCCEEDED;
+  }
   
   node->label = calloc(strlen(string) + 1, 1);
   if (node->label == NULL) {

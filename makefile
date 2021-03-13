@@ -5,9 +5,9 @@ LD = gcc
 LDFLAGS = -lm
 WLAFLAGS = $(CFLAGS)
 
-CFILES = main.c parse.c include_file.c stack.c printf.c definitions.c pass_1.c pass_2.c pass_3.c tree_node.c
-HFILES = main.h parse.h include_file.h stack.h printf.h definitions.h pass_1.h pass_2.h pass_3.h tree_node.h
-OFILES = main.o parse.o include_file.o stack.o printf.o definitions.o pass_1.o pass_2.o pass_3.o tree_node.o
+CFILES = main.c parse.c include_file.c stack.c printf.c definitions.c pass_1.c pass_2.c pass_3.c tree_node.c symbol_table.c
+HFILES = main.h parse.h include_file.h stack.h printf.h definitions.h pass_1.h pass_2.h pass_3.h tree_node.h symbol_table.h
+OFILES = main.o parse.o include_file.o stack.o printf.o definitions.o pass_1.o pass_2.o pass_3.o tree_node.o symbol_table.o
 
 
 all: $(OFILES) makefile
@@ -42,6 +42,9 @@ pass_2.o: pass_2.c defines.h pass_2.h makefile
 
 pass_3.o: pass_3.c defines.h pass_3.h makefile
 	$(CC) $(CFLAGS) pass_3.c
+
+symbol_table.o: symbol_table.c defines.h symbol_table.h makefile
+	$(CC) $(CFLAGS) symbol_table.c
 
 $(OFILES): $(HFILES)
 
