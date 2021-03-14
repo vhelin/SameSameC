@@ -13,5 +13,6 @@ int create_factor(void);
 int create_block(struct tree_node *open_function_definition);
 int create_condition(void);
 int create_statement(void);
+void check_ast(void);
 
 #endif

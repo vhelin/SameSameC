@@ -35,11 +35,16 @@ int is_symbol_table_empty(void) {
 struct symbol_table_item *symbol_table_find_symbol(char *name) {
 
   int i;
+
+  if (name == NULL) {
+    print_error("Trying to find a symbol from symbol table with name NULL! Please submit a bug report!\n", ERROR_DIR);
+    return NULL;
+  }
   
   for (i = 0; i < g_symbol_table_size; i++) {
     if (g_symbol_table[i] == NULL)
       continue;
-    
+
     if (strcmp(g_symbol_table[i]->label, name) == 0)
       return g_symbol_table[i];
   }

@@ -9,6 +9,9 @@ int8 array_2[16];
 int8 array_3[8] = { 1, 2, 3 };
 int8 zero;
 
+void do_nothing() {
+}
+
 void main() {
 
   int8 value = 8 >> 1;
@@ -19,6 +22,8 @@ void main() {
   array_3[0] = 1;
   array_3[1] = array_2[0];
   array_3[2] = array_1[1] + 1;
+
+  do_nothing();
 
   if (value > 7+2-1-1) {
      int8 k = 10;

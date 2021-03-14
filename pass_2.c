@@ -48,6 +48,12 @@ int g_open_block_current_id = -1;
 static char g_token_in_simple_form[MAX_NAME_LENGTH + 1];
 static int g_block_level = 0;
 
+static int g_check_ast_failed = NO;
+
+
+static void _check_ast_block(struct tree_node *node);
+static void _check_ast_function_call(struct tree_node *node);
+
 
 char *_get_token_simple(struct token *t) {
 
@@ -359,6 +365,10 @@ int pass_2(void) {
     }
   }
 
+  check_ast();
+  if (g_check_ast_failed == YES)
+    return FAILED;
+  
   free_symbol_table_items(0);
   
   if (g_open_expression_current_id != -1) {
@@ -398,6 +408,7 @@ static void _next_token() {
 
 int create_factor(void) {
 
+  struct symbol_table_item *item;
   struct tree_node *node = NULL;
   int result;
   
@@ -434,7 +445,6 @@ int create_factor(void) {
       while (1) {
         if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == ')') {
           fprintf(stderr, "create_factor(): GOT ')' - 1!\n");
-          
           break;
         }
       
@@ -464,6 +474,10 @@ int create_factor(void) {
         }
       }
 
+      item = symbol_table_find_symbol(node->children[0]->label);
+      if (item != NULL)
+        node->definition = item->node;
+      
       fprintf(stderr, "ABC: FUNCTION CALL: %s %d\n", node->children[0]->label, node->added_children);
     }
     else if (g_token_current->id == TOKEN_ID_SYMBOL && (g_token_current->value == SYMBOL_INCREMENT || g_token_current->value == SYMBOL_DECREMENT)) {
@@ -480,6 +494,10 @@ int create_factor(void) {
       /* post */
       node->value_double = 1.0;
 
+      item = symbol_table_find_symbol(node->label);
+      if (item != NULL)
+        node->definition = item->node;
+      
       if (tree_node_add_child(_get_current_open_expression(), node) == FAILED)
         return FAILED;
 
@@ -523,6 +541,10 @@ int create_factor(void) {
        /* next token */
       _next_token();
 
+      item = symbol_table_find_symbol(node->label);
+      if (item != NULL)
+        node->definition = item->node;
+
       if (tree_node_add_child(_get_current_open_expression(), node) == FAILED)
         return FAILED;
 
@@ -556,6 +578,12 @@ int create_factor(void) {
           node = NULL;
       }
 
+      if (node->type == TREE_NODE_TYPE_VALUE_STRING) {
+        item = symbol_table_find_symbol(node->label);
+        if (item != NULL)
+          node->definition = item->node;
+      }
+      
       if (tree_node_add_child(_get_current_open_expression(), node) == FAILED)
         return FAILED;
 
@@ -593,6 +621,10 @@ int create_factor(void) {
     /* pre */
     node->value_double = -1.0;
 
+    item = symbol_table_find_symbol(node->label);
+    if (item != NULL)
+      node->definition = item->node;
+    
     if (tree_node_add_child(_get_current_open_expression(), node) == FAILED)
       return FAILED;
 
@@ -1100,12 +1132,8 @@ int create_statement(void) {
       tree_node_add_child(_get_current_open_block(), node);
 
       item = symbol_table_find_symbol(name);
-      if (item == NULL) {
-        snprintf(g_error_message, sizeof(g_error_message), "Unknown variable name \"%s\".\n", name);
-        print_error(g_error_message, ERROR_ERR);
-        return FAILED;
-      }
-      node->definition = item->node;
+      if (item != NULL)
+        node->definition = item->node;
       
       return SUCCEEDED;
     }
@@ -1183,15 +1211,12 @@ int create_statement(void) {
       tree_node_add_child(_get_current_open_block(), node);
 
       item = symbol_table_find_symbol(name);
-      if (item == NULL) {
-        snprintf(g_error_message, sizeof(g_error_message), "Unknown variable name \"%s\".\n", name);
-        print_error(g_error_message, ERROR_ERR);
-        return FAILED;
-      }
-      node->definition = item->node;
+      if (item != NULL)
+        node->children[0]->definition = item->node;
     }
     else {
       /* function call */
+      struct symbol_table_item *item;
 
       node = allocate_tree_node_with_children(TREE_NODE_TYPE_FUNCTION_CALL, 32);
       if (node == NULL)
@@ -1234,6 +1259,10 @@ int create_statement(void) {
 
       fprintf(stderr, "XYZ: FUNCTION CALL %s %d\n", node->children[0]->label, node->added_children);
 
+      item = symbol_table_find_symbol(name);
+      if (item != NULL)
+        node->definition = item->node;
+      
       tree_node_add_child(_get_current_open_block(), node);
     }
 
@@ -1422,12 +1451,8 @@ int create_statement(void) {
     tree_node_add_child(_get_current_open_block(), node);
 
     item = symbol_table_find_symbol(name);
-    if (item == NULL) {
-      snprintf(g_error_message, sizeof(g_error_message), "Unknown variable name \"%s\".\n", name);
-      print_error(g_error_message, ERROR_ERR);
-      return FAILED;
-    }
-    node->definition = item->node;
+    if (item != NULL)
+      node->definition = item->node;
     
     return SUCCEEDED;
   }
@@ -1747,7 +1772,7 @@ int create_block(struct tree_node *open_function_definition) {
     /* clone the arguments right here */
     for (i = 2; i < open_function_definition->added_children; i += 2) {
       struct tree_node *argument = allocate_tree_node_with_children(TREE_NODE_TYPE_CREATE_VARIABLE, 3);
-        
+
       if (argument == NULL) {
         free_symbol_table_items(g_block_level);
         g_block_level--;
@@ -2256,4 +2281,423 @@ int create_definition() {
     q = add_a_new_definition(name, 0.0, NULL, DEFINITION_TYPE_VALUE, 0);
 
   return q;
+}
+
+
+static void _check_ast_check_definition(struct tree_node *node) {
+
+  if (node == NULL)
+    return;
+
+  g_current_filename_id = node->file_id;
+  g_current_line_number = node->line_number;
+
+  if (node->definition == NULL) {
+    snprintf(g_error_message, sizeof(g_error_message), "_check_ast_check_definition(): Node is missing its definition! Please submit a bug report!\n");
+    print_error(g_error_message, ERROR_ERR);
+    g_check_ast_failed = YES;
+    return;
+  }
+
+  if (node->type == TREE_NODE_TYPE_FUNCTION_CALL) {
+    int args_caller, args_callee;
+    
+    if (node->definition->type != TREE_NODE_TYPE_FUNCTION_DEFINITION) {
+      snprintf(g_error_message, sizeof(g_error_message), "%s is not a function!\n", node->children[0]->label);
+      print_error(g_error_message, ERROR_ERR);
+      g_check_ast_failed = YES;
+      return;
+    }
+
+    args_caller = node->added_children - 1;
+    args_callee = (node->definition->added_children - 2) / 2;
+
+    if (args_caller != args_callee) {
+      snprintf(g_error_message, sizeof(g_error_message), "Calling %s with %d arguments, but it takes %d!\n", node->children[0]->label, args_caller, args_callee);
+      print_error(g_error_message, ERROR_ERR);
+      g_check_ast_failed = YES;
+      return;
+    }
+  }
+  else if (node->type == TREE_NODE_TYPE_VALUE_STRING) {
+    /* this will be checked later when turning the AST into IL */
+  }
+  else if (node->type == TREE_NODE_TYPE_ARRAY_ITEM) {
+    int is_ok = YES;
+
+    if (node->definition->type != TREE_NODE_TYPE_CREATE_VARIABLE)
+      is_ok = NO;
+    else {
+      if (node->definition->children[0]->value_double > 0)
+        is_ok = YES;
+      else {
+        if (node->definition->value > 0)
+          is_ok = YES;
+        else
+          is_ok = NO;
+      }
+    }
+    
+    if (is_ok == NO) {
+      snprintf(g_error_message, sizeof(g_error_message), "%s is not a pointer / an array!\n", node->label);
+      print_error(g_error_message, ERROR_ERR);
+      g_check_ast_failed = YES;
+      return;
+    }
+  }
+  else if (node->type == TREE_NODE_TYPE_INCREMENT_DECREMENT) {
+    int is_ok = YES;
+
+    if (node->definition->type != TREE_NODE_TYPE_CREATE_VARIABLE)
+      is_ok = NO;
+    else {
+      if (node->definition->children[0]->value_double > 0)
+        is_ok = YES;
+      else {
+        if (node->definition->value > 0)
+          is_ok = NO;
+        else
+          is_ok = YES;
+      }
+    }
+    
+    if (is_ok == NO) {
+      snprintf(g_error_message, sizeof(g_error_message), "%s cannot be incremented / decremented!\n", node->label);
+      print_error(g_error_message, ERROR_ERR);
+      g_check_ast_failed = YES;
+      return;
+    }
+  }
+  else {
+    snprintf(g_error_message, sizeof(g_error_message), "_check_ast_check_definition(): Unhandled node type %d! Please submit a bug report!\n", node->type);
+    print_error(g_error_message, ERROR_ERR);
+    g_check_ast_failed = YES;
+  }
+}
+
+
+static void _check_ast_simple_tree_node(struct tree_node *node) {
+
+  struct symbol_table_item *item;
+  
+  if (node == NULL)
+    return;
+
+  if (node->type == TREE_NODE_TYPE_VALUE_STRING) {
+  }
+  else if (node->type == TREE_NODE_TYPE_FUNCTION_CALL) {
+    _check_ast_function_call(node);
+    return;
+  }
+  else if (node->type == TREE_NODE_TYPE_ARRAY_ITEM) {
+  }
+  else if (node->type == TREE_NODE_TYPE_INCREMENT_DECREMENT) {
+  }
+  else
+    return;
+
+  if (node->definition == NULL) {
+    g_current_filename_id = node->file_id;
+    g_current_line_number = node->line_number;
+    
+    item = symbol_table_find_symbol(node->label);
+    if (item == NULL) {
+      snprintf(g_error_message, sizeof(g_error_message), "Cannot find variable \"%s\".\n", node->label);
+      print_error(g_error_message, ERROR_ERR);
+      g_check_ast_failed = YES;
+      return;
+    }
+    node->definition = item->node;
+  }
+  
+  _check_ast_check_definition(node);
+}
+
+
+static void _check_ast_expression(struct tree_node *node) {
+
+  int i;
+  
+  if (node == NULL)
+    return;
+
+  if (node->type != TREE_NODE_TYPE_EXPRESSION) {
+    _check_ast_simple_tree_node(node);
+    return;
+  }
+  
+  for (i = 0; i < node->added_children; i++) {
+    if (node->children[i]->type == TREE_NODE_TYPE_EXPRESSION)
+      _check_ast_expression(node->children[i]);
+    else
+      _check_ast_simple_tree_node(node->children[i]);
+  }
+}
+
+
+static void _check_ast_create_variable(struct tree_node *node) {
+
+  int i;
+  
+  if (node == NULL)
+    return;
+
+  for (i = 2; i < node->added_children; i++)
+    _check_ast_expression(node->children[i]);
+}
+
+
+static void _check_ast_assignment(struct tree_node *node) {
+
+  struct symbol_table_item *item;
+  struct tree_node *definition;
+  
+  if (node == NULL)
+    return;
+
+  _check_ast_expression(node->children[1]);
+
+  /* array assignment? */
+  if (node->added_children > 2)
+    _check_ast_expression(node->children[2]);
+
+  if (node->children[0]->definition == NULL) {
+    g_current_filename_id = node->file_id;
+    g_current_line_number = node->line_number;
+
+    item = symbol_table_find_symbol(node->children[0]->label);
+    if (item == NULL) {
+      snprintf(g_error_message, sizeof(g_error_message), "Cannot find variable \"%s\".\n", node->children[0]->label);
+      print_error(g_error_message, ERROR_ERR);
+      g_check_ast_failed = YES;
+      return;
+    }
+    node->children[0]->definition = item->node;
+  }
+
+  definition = node->children[0]->definition;
+  
+  if (node->added_children <= 2) {
+    /* assignment to a variable */
+    int is_ok = YES;
+    
+    if (definition->type != TREE_NODE_TYPE_CREATE_VARIABLE)
+      is_ok = NO;
+    else {
+      if (definition->value > 0)
+        is_ok = NO;
+      else
+        is_ok = YES;
+    }
+
+    if (is_ok == NO) {
+      snprintf(g_error_message, sizeof(g_error_message), "This assignment to %s doesn't work!\n", node->children[0]->label);
+      print_error(g_error_message, ERROR_ERR);
+      g_check_ast_failed = YES;
+      return;
+    }
+  }
+  else {
+    /* assignment to an array */
+    int is_ok = YES;
+    
+    if (definition->type != TREE_NODE_TYPE_CREATE_VARIABLE)
+      is_ok = NO;
+    else {
+      if (definition->children[0]->value_double > 0)
+        is_ok = YES;
+      else {
+        if (definition->value > 0)
+          is_ok = YES;
+        else
+          is_ok = NO;
+      }
+    }
+
+    if (is_ok == NO) {
+      snprintf(g_error_message, sizeof(g_error_message), "%s is not a pointer / an array!\n", node->children[0]->label);
+      print_error(g_error_message, ERROR_ERR);
+      g_check_ast_failed = YES;
+      return;
+    }
+  }
+}
+
+
+static void _check_ast_return(struct tree_node *node) {
+
+  if (node == NULL)
+    return;
+
+  if (node->added_children > 0)
+    _check_ast_expression(node->children[0]);
+}
+
+
+static void _check_ast_function_call(struct tree_node *node) {
+
+  struct symbol_table_item *item;
+  int i;
+  
+  if (node == NULL)
+    return;
+
+  for (i = 1; i < node->added_children; i++)
+    _check_ast_expression(node->children[i]);
+
+  if (node->definition == NULL) {
+    g_current_filename_id = node->file_id;
+    g_current_line_number = node->line_number;
+
+    item = symbol_table_find_symbol(node->children[0]->label);
+    if (item == NULL) {
+      snprintf(g_error_message, sizeof(g_error_message), "Cannot find function \"%s\".\n", node->children[0]->label);
+      print_error(g_error_message, ERROR_ERR);
+      g_check_ast_failed = YES;
+      return;
+    }
+    node->definition = item->node;
+  }
+
+  _check_ast_check_definition(node);
+}
+
+
+static void _check_ast_condition(struct tree_node *node) {
+
+  int i;
+  
+  if (node == NULL)
+    return;
+
+  for (i = 0; i < node->added_children; i++) {
+    if (node->children[i]->type == TREE_NODE_TYPE_CONDITION)
+      _check_ast_condition(node->children[i]);
+    else if (node->children[i]->type == TREE_NODE_TYPE_EXPRESSION)
+      _check_ast_expression(node->children[i]);
+  }
+}
+
+
+static void _check_ast_if(struct tree_node *node) {
+
+  int i;
+  
+  if (node == NULL)
+    return;
+
+  for (i = 0; i < node->added_children; i++) {
+    if (node->children[i]->type == TREE_NODE_TYPE_CONDITION)
+      _check_ast_condition(node->children[i]);
+    else if (node->children[i]->type == TREE_NODE_TYPE_BLOCK)
+      _check_ast_block(node->children[i]);
+  }
+}
+
+
+static void _check_ast_while(struct tree_node *node) {
+
+  int i;
+  
+  if (node == NULL)
+    return;
+
+  for (i = 0; i < node->added_children; i++) {
+    if (node->children[i]->type == TREE_NODE_TYPE_CONDITION)
+      _check_ast_condition(node->children[i]);
+    else if (node->children[i]->type == TREE_NODE_TYPE_BLOCK)
+      _check_ast_block(node->children[i]);
+  }
+}
+
+
+static void _check_ast_for(struct tree_node *node) {
+
+  int i;
+  
+  if (node == NULL)
+    return;
+
+  for (i = 0; i < node->added_children; i++) {
+    if (node->children[i]->type == TREE_NODE_TYPE_CONDITION)
+      _check_ast_condition(node->children[i]);
+    else if (node->children[i]->type == TREE_NODE_TYPE_BLOCK)
+      _check_ast_block(node->children[i]);
+  }
+}
+
+
+static void _check_ast_statement(struct tree_node *node) {
+
+  if (node == NULL)
+    return;
+
+  if (node->type == TREE_NODE_TYPE_CREATE_VARIABLE)
+    _check_ast_create_variable(node);
+  else if (node->type == TREE_NODE_TYPE_ASSIGNMENT)
+    _check_ast_assignment(node);
+  else if (node->type == TREE_NODE_TYPE_FUNCTION_CALL)
+    _check_ast_function_call(node);
+  else if (node->type == TREE_NODE_TYPE_RETURN)
+    _check_ast_return(node);
+  else if (node->type == TREE_NODE_TYPE_IF)
+    _check_ast_if(node);
+  else if (node->type == TREE_NODE_TYPE_WHILE)
+    _check_ast_while(node);
+  else if (node->type == TREE_NODE_TYPE_FOR)
+    _check_ast_for(node);
+  else if (node->type == TREE_NODE_TYPE_INCREMENT_DECREMENT)
+    _check_ast_simple_tree_node(node);
+}
+
+
+static void _check_ast_block(struct tree_node *node) {
+
+  int i;
+  
+  if (node == NULL)
+    return;
+
+  if (node->type != TREE_NODE_TYPE_BLOCK) {
+    fprintf(stderr, "_check_ast_block(): Was expecting TREE_NODE_TYPE_BLOCK, got %d instead! Please submit a bug report!\n", node->type);
+    g_check_ast_failed = YES;
+    return;
+  }
+
+  for (i = 0; i < node->added_children; i++)
+    _check_ast_statement(node->children[i]);
+}
+
+
+static void _check_ast_function_definition(struct tree_node *node) {
+
+  if (node == NULL)
+    return;
+
+  _check_ast_block(node->children[node->added_children-1]);
+}
+
+
+static void _check_ast_global_node(struct tree_node *node) {
+
+  if (node == NULL)
+    return;
+  
+  if (node->type == TREE_NODE_TYPE_CREATE_VARIABLE)
+    _check_ast_create_variable(node);
+  else if (node->type == TREE_NODE_TYPE_FUNCTION_DEFINITION)
+    _check_ast_function_definition(node);
+  else {
+    fprintf(stderr, "_check_ast_global_node(): Unknown global node type %d! Please submit a bug report!\n", node->type);
+    g_check_ast_failed = YES;
+  }
+}
+
+
+void check_ast(void) {
+
+  int i;
+
+  for (i = 0; i < g_global_nodes->added_children; i++)
+    _check_ast_global_node(g_global_nodes->children[i]);
 }
