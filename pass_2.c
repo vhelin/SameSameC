@@ -325,17 +325,16 @@ int pass_2(void) {
         return FAILED;
       }
       
-      if (node->type == TREE_NODE_TYPE_CREATE_VARIABLE) {
+      if (node->type == TREE_NODE_TYPE_CREATE_VARIABLE || node->type == TREE_NODE_TYPE_FUNCTION_DEFINITION || node->type == TREE_NODE_TYPE_FUNCTION_PROTOTYPE) {
         if (symbol_table_add_symbol(node, node->children[1]->label, g_block_level) == FAILED) {
           free_tree_node(node);
           return FAILED;
         }
       }
       else {
-        if (symbol_table_add_symbol(node, node->children[1]->label, g_block_level) == FAILED) {
-          free_tree_node(node);
-          return FAILED;
-        }
+        snprintf(g_error_message, sizeof(g_error_message), "Unknown top level node type %d! Please submit a bug report!\n", node->type);
+        print_error(g_error_message, ERROR_ERR);
+        return FAILED;
       }
       
       if (tree_node_add_child(g_global_nodes, node) == FAILED)
@@ -2202,6 +2201,19 @@ struct tree_node *create_variable_or_function(void) {
         /* this token is ')' */
         _next_token();
 
+        /* is it actually a function prototype? */
+        if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == ';') {
+          node = g_open_function_definition;
+          g_open_function_definition = NULL;
+
+          node->type = TREE_NODE_TYPE_FUNCTION_PROTOTYPE;
+
+          /* this token is ';' */
+          _next_token();
+          
+          return node;
+        }
+        
         /* start parsing the function */
 
         if (_open_block_push() == FAILED) {
@@ -2302,7 +2314,7 @@ static void _check_ast_check_definition(struct tree_node *node) {
   if (node->type == TREE_NODE_TYPE_FUNCTION_CALL) {
     int args_caller, args_callee;
     
-    if (node->definition->type != TREE_NODE_TYPE_FUNCTION_DEFINITION) {
+    if (node->definition->type != TREE_NODE_TYPE_FUNCTION_DEFINITION && node->definition->type != TREE_NODE_TYPE_FUNCTION_PROTOTYPE) {
       snprintf(g_error_message, sizeof(g_error_message), "%s is not a function!\n", node->children[0]->label);
       print_error(g_error_message, ERROR_ERR);
       g_check_ast_failed = YES;
@@ -2691,6 +2703,9 @@ static void _check_ast_global_node(struct tree_node *node) {
     _check_ast_create_variable(node);
   else if (node->type == TREE_NODE_TYPE_FUNCTION_DEFINITION)
     _check_ast_function_definition(node);
+  else if (node->type == TREE_NODE_TYPE_FUNCTION_PROTOTYPE) {
+    /* function prototypes are assumed to be ok */
+  }
   else {
     fprintf(stderr, "_check_ast_global_node(): Unknown global node type %d! Please submit a bug report!\n", node->type);
     g_check_ast_failed = YES;

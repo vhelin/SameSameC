@@ -286,6 +286,7 @@ struct tree_node {
 #define TREE_NODE_TYPE_WHILE               18
 #define TREE_NODE_TYPE_FOR                 19
 #define TREE_NODE_TYPE_ARRAY_ITEM          20
+#define TREE_NODE_TYPE_FUNCTION_PROTOTYPE  21
 
 struct symbol_table_item {
   int level;

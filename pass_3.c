@@ -415,7 +415,14 @@ static void _print_function_definition(struct tree_node *node) {
     fprintf(stderr, "%s %s%s", g_variable_types[node->children[i]->value], _get_pointer_stars(node->children[i]), node->children[i+1]->label);
   }
   
-  fprintf(stderr, ") {\n");
+  fprintf(stderr, ")");
+
+  if (node->type == TREE_NODE_TYPE_FUNCTION_PROTOTYPE) {
+    fprintf(stderr, ";\n");
+    return;
+  }
+  
+  fprintf(stderr, " {\n");
 
   _print_block(node->children[node->added_children-1]);
 
@@ -431,6 +438,8 @@ static void _print_global_node(struct tree_node *node) {
   if (node->type == TREE_NODE_TYPE_CREATE_VARIABLE)
     _print_create_variable(node);
   else if (node->type == TREE_NODE_TYPE_FUNCTION_DEFINITION)
+    _print_function_definition(node);
+  else if (node->type == TREE_NODE_TYPE_FUNCTION_PROTOTYPE)
     _print_function_definition(node);
   else
     fprintf(stderr, "_print_global_node(): Unknown global node type %d! Please submit a bug report!\n", node->type);
@@ -706,6 +715,9 @@ static void _simplify_expressions_global_node(struct tree_node *node) {
     _simplify_expressions_create_variable(node);
   else if (node->type == TREE_NODE_TYPE_FUNCTION_DEFINITION)
     _simplify_expressions_function_definition(node);
+  else if (node->type == TREE_NODE_TYPE_FUNCTION_PROTOTYPE) {
+    /* nothing to simplify here */
+  }
   else
     fprintf(stderr, "_simplify_expressions_global_node(): Unknown global node type %d! Please submit a bug report!\n", node->type);
 }

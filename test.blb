@@ -12,6 +12,8 @@ int8 zero;
 void do_nothing() {
 }
 
+int8 sum_3(int8 value1, int8 value2, int8 value3);
+
 void main() {
 
   int8 value = 8 >> 1;
@@ -66,7 +68,10 @@ void main() {
 
   value = sum_2(value + 1, 1+1);
   value = sum_2(1+2+3, 4+5) + (1+2);
+  value = sum_3(1, 2, 3);
+  
   sum_1((TWO+1)*(TWO+TWO));
+
   global_var = global_var + 1;
 }
 
