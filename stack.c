@@ -19,7 +19,6 @@ extern int g_input_number_error_msg, g_bankheader_status, g_input_float_mode;
 extern int g_source_pointer, g_size, g_parsed_int, g_string_size, g_parse_floats;
 extern char g_xyz[512], *g_buffer, g_tmp[4096], g_label[MAX_NAME_LENGTH + 1];
 extern struct definition *g_tmp_def;
-extern struct map_t *g_defines_map;
 extern double g_parsed_double;
 extern int g_current_filename_id, g_current_line_number;
 struct stack *g_stacks_first = NULL, *g_stacks_tmp = NULL, *g_stacks_last = NULL;

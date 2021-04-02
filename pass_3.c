@@ -460,7 +460,7 @@ int pass_3(void) {
 
 static int _simplify_expression(struct tree_node *node) {
 
-  int i, subexpressions = 0, result;
+  int i, j, subexpressions = 0, result;
   
   if (node == NULL)
     return FAILED;
@@ -476,6 +476,13 @@ static int _simplify_expression(struct tree_node *node) {
         return SUCCEEDED;
       else
         subexpressions++;
+    }
+    if (node->children[i]->type == TREE_NODE_TYPE_FUNCTION_CALL) {
+      for (j = 1; j < node->children[i]->added_children; j++) {
+        if (_simplify_expression(node->children[i]->children[j]) == SUCCEEDED)
+          return SUCCEEDED;
+        subexpressions++;
+      }
     }
   }
 

@@ -2648,6 +2648,10 @@ static void _check_ast_statement(struct tree_node *node) {
     _check_ast_for(node);
   else if (node->type == TREE_NODE_TYPE_INCREMENT_DECREMENT)
     _check_ast_simple_tree_node(node);
+  else {
+    fprintf(stderr, "_check_ast_statement(): Unhandled statemet type %d! Please submit a bug report!\n", node->type);
+    g_check_ast_failed = YES;
+  }
 }
 
 

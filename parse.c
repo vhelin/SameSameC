@@ -14,6 +14,7 @@
 #include "definitions.h"
 
 
+
 int g_input_number_error_msg = YES, g_ss, g_string_size, g_input_float_mode = OFF, g_parse_floats = YES, g_expect_calculations = YES;
 int g_newline_beginning = ON, g_parsed_double_decimal_numbers = 0, g_operand_hint, g_operand_hint_type, g_parsed_int;
 char g_label[MAX_NAME_LENGTH + 1], g_xyz[512];

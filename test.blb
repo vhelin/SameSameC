@@ -64,7 +64,8 @@ void main() {
       }
   }
 
-  value = sum_2(value, 1);
+  value = sum_2(value + 1, 1+1);
+  value = sum_2(1+2+3, 4+5) + (1+2);
   sum_1((TWO+1)*(TWO+TWO));
   global_var = global_var + 1;
 }
