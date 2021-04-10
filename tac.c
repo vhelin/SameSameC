@@ -106,6 +106,24 @@ void print_tacs(void) {
       _print_tac_arg(t->arg2_type, t->arg2_d, t->arg2_s);
       fprintf(stderr, "\n");
     }
+    else if (t->op == TAC_OP_LOGICAL_AND) {
+      fprintf(stderr, "    ");
+      _print_tac_arg(t->result_type, t->result_d, t->result_s);
+      fprintf(stderr, " := ");
+      _print_tac_arg(t->arg1_type, t->arg1_d, t->arg1_s);
+      fprintf(stderr, " && ");
+      _print_tac_arg(t->arg2_type, t->arg2_d, t->arg2_s);
+      fprintf(stderr, "\n");
+    }
+    else if (t->op == TAC_OP_LOGICAL_OR) {
+      fprintf(stderr, "    ");
+      _print_tac_arg(t->result_type, t->result_d, t->result_s);
+      fprintf(stderr, " := ");
+      _print_tac_arg(t->arg1_type, t->arg1_d, t->arg1_s);
+      fprintf(stderr, " || ");
+      _print_tac_arg(t->arg2_type, t->arg2_d, t->arg2_s);
+      fprintf(stderr, "\n");
+    }
     else if (t->op == TAC_OP_SHIFT_LEFT) {
       fprintf(stderr, "    ");
       _print_tac_arg(t->result_type, t->result_d, t->result_s);

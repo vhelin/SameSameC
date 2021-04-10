@@ -78,6 +78,16 @@ int il_stack_calculate_expression(struct tree_node *node) {
       si[z].value = SI_OP_MODULO;
       fprintf(stderr, "GOT STACK ITEM %%\n");
     }
+    else if (child->type == TREE_NODE_TYPE_SYMBOL && child->value == SYMBOL_LOGICAL_OR) {
+      si[z].type = STACK_ITEM_TYPE_OPERATOR;
+      si[z].value = SI_OP_LOGICAL_OR;
+      fprintf(stderr, "GOT STACK ITEM ||\n");
+    }
+    else if (child->type == TREE_NODE_TYPE_SYMBOL && child->value == SYMBOL_LOGICAL_AND) {
+      si[z].type = STACK_ITEM_TYPE_OPERATOR;
+      si[z].value = SI_OP_LOGICAL_AND;
+      fprintf(stderr, "GOT STACK ITEM &&\n");
+    }
     else if (child->type == TREE_NODE_TYPE_SYMBOL && child->value == SYMBOL_SHIFT_LEFT) {
       si[z].type = STACK_ITEM_TYPE_OPERATOR;
       si[z].value = SI_OP_SHIFT_LEFT;
@@ -771,6 +781,20 @@ int il_compute_stack(struct stack *sta, int count, int rresult) {
         r1 = _load_to_register(si, v, t-2);
         r2 = _load_to_register(si, v, t-1);
         ta = add_tac_calculation(TAC_OP_COMPARE_NEQ, r1, r2, g_temp_r++);
+        _turn_stack_item_into_a_register(si, sit, t-2, (int)ta->result_d);
+        t--;
+        break;
+      case SI_OP_LOGICAL_OR:
+        r1 = _load_to_register(si, v, t-2);
+        r2 = _load_to_register(si, v, t-1);
+        ta = add_tac_calculation(TAC_OP_LOGICAL_OR, r1, r2, g_temp_r++);
+        _turn_stack_item_into_a_register(si, sit, t-2, (int)ta->result_d);
+        t--;
+        break;
+      case SI_OP_LOGICAL_AND:
+        r1 = _load_to_register(si, v, t-2);
+        r2 = _load_to_register(si, v, t-1);
+        ta = add_tac_calculation(TAC_OP_LOGICAL_AND, r1, r2, g_temp_r++);
         _turn_stack_item_into_a_register(si, sit, t-2, (int)ta->result_d);
         t--;
         break;

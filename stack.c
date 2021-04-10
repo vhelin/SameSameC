@@ -1053,7 +1053,6 @@ int compute_stack(struct stack *sta, int x, double *result) {
         t--;
         break;
       case SI_OP_LOGICAL_AND:
-        fprintf(stderr, "%f %f\n", v[t-1], v[t-2]);
         if (v[t-1] != 0 && v[t-2] != 0)
           v[t-2] = 1;
         else
