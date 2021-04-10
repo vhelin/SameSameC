@@ -222,7 +222,7 @@ static int _open_condition_push() {
     return FAILED;
 
   g_open_condition_current_id++;
-  g_open_condition[g_open_condition_current_id] = allocate_tree_node_with_children(TREE_NODE_TYPE_CONDITION, 256);
+  g_open_condition[g_open_condition_current_id] = allocate_tree_node_with_children(TREE_NODE_TYPE_CONDITION, 1);
 
   if (g_open_condition[g_open_condition_current_id] == NULL)
     return FAILED;
@@ -825,125 +825,30 @@ int create_expression(void) {
 }
 
 
+/* TODO: remove TREE_NODE_TYPE_CONDITION as it now contains just one TREE_NODE_TYPE_EXPRESSION */
 int create_condition(void) {
 
   struct tree_node *node;
 
-  while (1) {
-    if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == '(') {
-      /* next token */
-      _next_token();
-
-      /* create_condition() will put all tree_nodes it parses to g_open_condition */
-      if (_open_condition_push() == FAILED) {
-        return FAILED;
-      }
-
-      fprintf(stderr, "create_condition(): IF\n");
-      
-      if (create_condition() == FAILED) {
-        _open_condition_pop();
-        return FAILED;
-      }
-
-      fprintf(stderr, "- create_condition() - create_condition()\n");
-
-      node = _get_current_open_condition();
-      _open_condition_pop();
-
-      tree_node_add_child(_get_current_open_condition(), node);
-
-      if (g_token_current->id != TOKEN_ID_SYMBOL || g_token_current->value != ')') {
-        snprintf(g_error_message, sizeof(g_error_message), "Expected ')', but got %s.\n", _get_token_simple(g_token_current));
-        print_error(g_error_message, ERROR_ERR);
-        free_tree_node(node);
-        _open_condition_pop();      
-        return FAILED;
-      }
-    
-      /* next token */
-      _next_token();
-    }
-    else {
-      /* create_expression() will put all tree_nodes it parses to g_open_expression */
-      if (_open_expression_push() == FAILED) {
-        return FAILED;
-      }
-
-      fprintf(stderr, "create_condition():\n");
-
-      /* possibly parse a calculation */
-      if (create_expression() == FAILED) {
-        return FAILED;
-      }
-
-      fprintf(stderr, "- create_expression() - create_condition()\n");
-
-      node = _get_current_open_expression();
-      _open_expression_pop();
-    
-      tree_node_add_child(_get_current_open_condition(), node);
-
-      /* expect a comparison */
-    
-      if (g_token_current->id != TOKEN_ID_SYMBOL || (g_token_current->value != SYMBOL_LTE &&
-                                                     g_token_current->value != SYMBOL_GTE &&
-                                                     g_token_current->value != SYMBOL_EQUAL &&
-                                                     g_token_current->value != SYMBOL_UNEQUAL &&
-                                                     g_token_current->value != '<' &&
-                                                     g_token_current->value != '>')) {
-        snprintf(g_error_message, sizeof(g_error_message), "Expected '<=' / '>=' / '==' / '!=' / '<' / '>', but got %s.\n", _get_token_simple(g_token_current));
-        print_error(g_error_message, ERROR_ERR);
-        return FAILED;      
-      }
-
-      node = allocate_tree_node_symbol(g_token_current->value);
-      if (node == NULL)
-        return FAILED;
-      
-      tree_node_add_child(_get_current_open_condition(), node);
-
-      /* next token */
-      _next_token();
-
-      /* create_expression() will put all tree_nodes it parses to g_open_expression */
-      if (_open_expression_push() == FAILED) {
-        return FAILED;
-      }
-
-      fprintf(stderr, "create_condition():\n");
-
-      /* possibly parse a calculation */
-      if (create_expression() == FAILED) {
-        return FAILED;
-      }
-
-      fprintf(stderr, "- create_expression() - create_condition()\n");
-
-      node = _get_current_open_expression();
-      _open_expression_pop();
-      
-      tree_node_add_child(_get_current_open_condition(), node);    
-    }
-
-    /* && or || ? */
-    
-    if (g_token_current->id != TOKEN_ID_SYMBOL || (g_token_current->value != SYMBOL_LOGICAL_OR &&
-                                                   g_token_current->value != SYMBOL_LOGICAL_AND))
-      break;
-
-    /* yes -> continue */
-    
-    node = allocate_tree_node_symbol(g_token_current->value);
-    if (node == NULL)
-      return FAILED;
-      
-    tree_node_add_child(_get_current_open_condition(), node);
-
-    /* next token */
-    _next_token();
+  /* create_expression() will put all tree_nodes it parses to g_open_expression */
+  if (_open_expression_push() == FAILED) {
+    return FAILED;
   }
-  
+
+  fprintf(stderr, "create_condition():\n");
+
+  /* possibly parse a calculation */
+  if (create_expression() == FAILED) {
+    return FAILED;
+  }
+
+  fprintf(stderr, "- create_expression() - create_condition()\n");
+
+  node = _get_current_open_expression();
+  _open_expression_pop();
+    
+  tree_node_add_child(_get_current_open_condition(), node);
+
   return SUCCEEDED;
 }
 

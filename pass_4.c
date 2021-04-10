@@ -79,8 +79,10 @@ static void _generate_il_create_expression(struct tree_node *node) {
 
   struct tac *t;
   
-  if (node->type == TREE_NODE_TYPE_EXPRESSION || node->type == TREE_NODE_TYPE_CONDITION)
+  if (node->type == TREE_NODE_TYPE_EXPRESSION)
     il_stack_calculate_expression(node);
+  else if (node->type == TREE_NODE_TYPE_CONDITION)
+    il_stack_calculate_expression(node->children[0]);
   else if (node->type == TREE_NODE_TYPE_VALUE_STRING) {
     t = add_tac();
     if (t == NULL)
@@ -248,7 +250,7 @@ static void _generate_il_create_condition(struct tree_node *node, int false_labe
 
   r1 = g_temp_r;
 
-  _generate_il_create_expression(node);
+  _generate_il_create_expression(node->children[0]);
 
   /* compare with 0 */
   t = add_tac();
