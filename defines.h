@@ -83,24 +83,39 @@
 #define STACK_ITEM_TYPE_STRING   2
 #define STACK_ITEM_TYPE_DELETED  3
 #define STACK_ITEM_TYPE_STACK    4
+#define STACK_ITEM_TYPE_REGISTER 5
+#define STACK_ITEM_TYPE_INC_DEC  6
 
-#define SI_OP_PLUS         0
-#define SI_OP_MINUS        1
-#define SI_OP_MULTIPLY     2
-#define SI_OP_LEFT         3
-#define SI_OP_RIGHT        4
-#define SI_OP_OR           5
-#define SI_OP_AND          6
-#define SI_OP_DIVIDE       7
-#define SI_OP_POWER        8
-#define SI_OP_SHIFT_LEFT   9
-#define SI_OP_SHIFT_RIGHT 10
-#define SI_OP_MODULO      11
-#define SI_OP_XOR         12
-#define SI_OP_LOW_BYTE    13
-#define SI_OP_HIGH_BYTE   14
-#define SI_OP_NOT         15
-#define SI_OP_BANK        16
+#define SI_OP_PLUS          0
+#define SI_OP_MINUS         1
+#define SI_OP_MULTIPLY      2
+#define SI_OP_LEFT          3
+#define SI_OP_RIGHT         4
+#define SI_OP_OR            5
+#define SI_OP_AND           6
+#define SI_OP_DIVIDE        7
+#define SI_OP_POWER         8
+#define SI_OP_SHIFT_LEFT    9
+#define SI_OP_SHIFT_RIGHT  10
+#define SI_OP_MODULO       11
+#define SI_OP_XOR          12
+#define SI_OP_LOW_BYTE     13
+#define SI_OP_HIGH_BYTE    14
+#define SI_OP_NOT          15
+#define SI_OP_BANK         16
+#define SI_OP_COMPARE_LT   17
+#define SI_OP_COMPARE_GT   18
+#define SI_OP_COMPARE_EQ   19
+#define SI_OP_COMPARE_NEQ  20
+#define SI_OP_COMPARE_LTE  21
+#define SI_OP_COMPARE_GTE  22
+#define SI_OP_PRE_INC      23
+#define SI_OP_PRE_DEC      24
+#define SI_OP_POST_INC     25
+#define SI_OP_POST_DEC     26
+#define SI_OP_USE_REGISTER 27
+#define SI_OP_LOGICAL_OR   28
+#define SI_OP_LOGICAL_AND  29
 
 #define SI_SIGN_POSITIVE 0
 #define SI_SIGN_NEGATIVE 1
@@ -294,5 +309,51 @@ struct symbol_table_item {
   struct tree_node *node;
   struct symbol_table_item *next;
 };
+
+struct tac {
+  unsigned char op;
+
+  unsigned char arg1_type;
+  double arg1_d;
+  char *arg1_s;
+
+  unsigned char arg2_type;
+  double arg2_d;
+  char *arg2_s;
+
+  unsigned char result_type;
+  double result_d;
+  char *result_s;
+
+  struct tree_node *node;
+};
+
+#define TAC_OP_DEAD              0
+#define TAC_OP_LABEL             1
+#define TAC_OP_ADD               2
+#define TAC_OP_SUB               3
+#define TAC_OP_ASSIGNMENT        4
+#define TAC_OP_ARRAY_ASSIGNMENT  5
+#define TAC_OP_CREATE_VARIABLE   6
+#define TAC_OP_MUL               7
+#define TAC_OP_JUMP              8
+#define TAC_OP_JUMP_EQ           9
+#define TAC_OP_COMPARE_LT       10
+#define TAC_OP_COMPARE_GT       11
+#define TAC_OP_COMPARE_EQ       12
+#define TAC_OP_COMPARE_NEQ      13
+#define TAC_OP_COMPARE_LTE      14
+#define TAC_OP_COMPARE_GTE      15
+#define TAC_OP_ARRAY_READ       16
+#define TAC_OP_DIV              17
+#define TAC_OP_MOD              18
+#define TAC_OP_AND              19
+#define TAC_OP_OR               20
+#define TAC_OP_SHIFT_LEFT       21
+#define TAC_OP_SHIFT_RIGHT      22
+
+#define TAC_ARG_TYPE_CONSTANT 0
+#define TAC_ARG_TYPE_LABEL    1
+#define TAC_ARG_TYPE_TEMP     2
 
 #endif /* _DEFINES_H */

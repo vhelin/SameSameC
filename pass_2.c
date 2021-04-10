@@ -53,6 +53,7 @@ static int g_check_ast_failed = NO;
 
 static void _check_ast_block(struct tree_node *node);
 static void _check_ast_function_call(struct tree_node *node);
+static void _check_ast_expression(struct tree_node *node);
 
 
 char *_get_token_simple(struct token *t) {
@@ -723,7 +724,21 @@ int create_term(void) {
 
   fprintf(stderr, "- create_factor() - create_term()\n");
 
-  while (g_token_current->id == TOKEN_ID_SYMBOL && (g_token_current->value == '*' || g_token_current->value == '/' || g_token_current->value == SYMBOL_SHIFT_LEFT || g_token_current->value == SYMBOL_SHIFT_RIGHT)) {
+  while (g_token_current->id == TOKEN_ID_SYMBOL && (g_token_current->value == '*' ||
+                                                    g_token_current->value == '/' ||
+                                                    g_token_current->value == SYMBOL_SHIFT_LEFT ||
+                                                    g_token_current->value == SYMBOL_SHIFT_RIGHT ||
+                                                    g_token_current->value == '%' ||
+                                                    g_token_current->value == '&' ||
+                                                    g_token_current->value == '|' ||
+                                                    g_token_current->value == '<' ||
+                                                    g_token_current->value == '>' ||
+                                                    g_token_current->value == SYMBOL_EQUAL ||
+                                                    g_token_current->value == SYMBOL_UNEQUAL ||
+                                                    g_token_current->value == SYMBOL_LTE ||
+                                                    g_token_current->value == SYMBOL_GTE ||
+                                                    g_token_current->value == SYMBOL_LOGICAL_OR ||
+                                                    g_token_current->value == SYMBOL_LOGICAL_AND)) {
     node = allocate_tree_node_symbol(g_token_current->value);
     if (node == NULL)
       return FAILED;
@@ -1772,11 +1787,18 @@ int create_block(struct tree_node *open_function_definition) {
     for (i = 2; i < open_function_definition->added_children; i += 2) {
       struct tree_node *argument = allocate_tree_node_with_children(TREE_NODE_TYPE_CREATE_VARIABLE, 3);
 
+      /* NOTE: we leave the expression slot empty and use that later to detect that this
+         variable is actually a function argument. we save the function argument number
+         in tree_node's 'value_double' field */
+      
       if (argument == NULL) {
         free_symbol_table_items(g_block_level);
         g_block_level--;
         return FAILED;
       }
+
+      /* argument number */
+      argument->value_double = (i / 2) - 1;
 
       /* variable type */
       tree_node_add_child(argument, clone_tree_node(open_function_definition->children[i+0]));
@@ -2402,6 +2424,7 @@ static void _check_ast_simple_tree_node(struct tree_node *node) {
     return;
   }
   else if (node->type == TREE_NODE_TYPE_ARRAY_ITEM) {
+    _check_ast_expression(node->children[0]);
   }
   else if (node->type == TREE_NODE_TYPE_INCREMENT_DECREMENT) {
   }

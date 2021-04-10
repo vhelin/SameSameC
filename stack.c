@@ -188,7 +188,7 @@ int stack_calculate_tree_node(struct tree_node *node, int *value) {
       si[q].value = SI_OP_POWER;
       fprintf(stderr, "GOT STACK ITEM ^\n");
     }
-    else if (child->type == TREE_NODE_TYPE_SYMBOL && child->value == '#') {
+    else if (child->type == TREE_NODE_TYPE_SYMBOL && child->value == '%') {
       if (q == 0) {
         if (g_input_number_error_msg == YES)
           print_error("Syntax error. Invalid use of modulo.\n", ERROR_STC);
@@ -196,7 +196,22 @@ int stack_calculate_tree_node(struct tree_node *node, int *value) {
       }
       si[q].type = STACK_ITEM_TYPE_OPERATOR;
       si[q].value = SI_OP_MODULO;
-      fprintf(stderr, "GOT STACK ITEM #\n");
+      fprintf(stderr, "GOT STACK ITEM %%\n");
+    }
+    else if (child->type == TREE_NODE_TYPE_SYMBOL && child->value == SYMBOL_LOGICAL_OR) {
+      si[q].type = STACK_ITEM_TYPE_OPERATOR;
+      si[q].value = SI_OP_LOGICAL_OR;
+      fprintf(stderr, "GOT STACK ITEM ||\n");
+    }
+    else if (child->type == TREE_NODE_TYPE_SYMBOL && child->value == SYMBOL_LOGICAL_AND) {
+      si[q].type = STACK_ITEM_TYPE_OPERATOR;
+      si[q].value = SI_OP_LOGICAL_AND;
+      fprintf(stderr, "GOT STACK ITEM &&\n");
+    }
+    else if (child->type == TREE_NODE_TYPE_SYMBOL && child->value == SYMBOL_LOGICAL_AND) {
+      si[q].type = STACK_ITEM_TYPE_OPERATOR;
+      si[q].value = SI_OP_LOGICAL_AND;
+      fprintf(stderr, "GOT STACK ITEM &&\n");
     }
     else if (child->type == TREE_NODE_TYPE_SYMBOL && child->value == SYMBOL_SHIFT_LEFT) {
       si[q].type = STACK_ITEM_TYPE_OPERATOR;
@@ -266,6 +281,36 @@ int stack_calculate_tree_node(struct tree_node *node, int *value) {
         break;
       b--;
       fprintf(stderr, "GOT STACK ITEM )\n");
+    }
+    else if (child->type == TREE_NODE_TYPE_SYMBOL && child->value == '<') {
+      si[q].type = STACK_ITEM_TYPE_OPERATOR;
+      si[q].value = SI_OP_COMPARE_LT;
+      fprintf(stderr, "GOT STACK ITEM <\n");
+    }
+    else if (child->type == TREE_NODE_TYPE_SYMBOL && child->value == '>') {
+      si[q].type = STACK_ITEM_TYPE_OPERATOR;
+      si[q].value = SI_OP_COMPARE_GT;
+      fprintf(stderr, "GOT STACK ITEM >\n");
+    }
+    else if (child->type == TREE_NODE_TYPE_SYMBOL && child->value == SYMBOL_EQUAL) {
+      si[q].type = STACK_ITEM_TYPE_OPERATOR;
+      si[q].value = SI_OP_COMPARE_EQ;
+      fprintf(stderr, "GOT STACK ITEM ==\n");
+    }
+    else if (child->type == TREE_NODE_TYPE_SYMBOL && child->value == SYMBOL_UNEQUAL) {
+      si[q].type = STACK_ITEM_TYPE_OPERATOR;
+      si[q].value = SI_OP_COMPARE_NEQ;
+      fprintf(stderr, "GOT STACK ITEM !=\n");
+    }
+    else if (child->type == TREE_NODE_TYPE_SYMBOL && child->value == SYMBOL_LTE) {
+      si[q].type = STACK_ITEM_TYPE_OPERATOR;
+      si[q].value = SI_OP_COMPARE_LTE;
+      fprintf(stderr, "GOT STACK ITEM <=\n");
+    }
+    else if (child->type == TREE_NODE_TYPE_SYMBOL && child->value == SYMBOL_GTE) {
+      si[q].type = STACK_ITEM_TYPE_OPERATOR;
+      si[q].value = SI_OP_COMPARE_GTE;
+      fprintf(stderr, "GOT STACK ITEM >=\n");
     }
     else if (child->type == TREE_NODE_TYPE_SYMBOL && child->value == ',')
       break;
@@ -381,7 +426,7 @@ int stack_calculate_tokens(int *value) {
       si[q].value = SI_OP_POWER;
       fprintf(stderr, "GOT STACK ITEM ^\n");
     }
-    else if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == '#') {
+    else if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == '%') {
       if (q == 0) {
         if (g_input_number_error_msg == YES)
           print_error("Syntax error. Invalid use of modulo.\n", ERROR_STC);
@@ -389,7 +434,17 @@ int stack_calculate_tokens(int *value) {
       }
       si[q].type = STACK_ITEM_TYPE_OPERATOR;
       si[q].value = SI_OP_MODULO;
-      fprintf(stderr, "GOT STACK ITEM #\n");
+      fprintf(stderr, "GOT STACK ITEM %%\n");
+    }
+    else if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == SYMBOL_LOGICAL_OR) {
+      si[q].type = STACK_ITEM_TYPE_OPERATOR;
+      si[q].value = SI_OP_LOGICAL_OR;
+      fprintf(stderr, "GOT STACK ITEM ||\n");
+    }
+    else if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == SYMBOL_LOGICAL_AND) {
+      si[q].type = STACK_ITEM_TYPE_OPERATOR;
+      si[q].value = SI_OP_LOGICAL_AND;
+      fprintf(stderr, "GOT STACK ITEM &&\n");
     }
     else if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == SYMBOL_SHIFT_LEFT) {
       si[q].type = STACK_ITEM_TYPE_OPERATOR;
@@ -459,6 +514,36 @@ int stack_calculate_tokens(int *value) {
         break;
       b--;
       fprintf(stderr, "GOT STACK ITEM )\n");
+    }
+    else if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == '<') {
+      si[q].type = STACK_ITEM_TYPE_OPERATOR;
+      si[q].value = SI_OP_COMPARE_LT;
+      fprintf(stderr, "GOT STACK ITEM <\n");
+    }
+    else if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == '>') {
+      si[q].type = STACK_ITEM_TYPE_OPERATOR;
+      si[q].value = SI_OP_COMPARE_GT;
+      fprintf(stderr, "GOT STACK ITEM >\n");
+    }
+    else if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == SYMBOL_EQUAL) {
+      si[q].type = STACK_ITEM_TYPE_OPERATOR;
+      si[q].value = SI_OP_COMPARE_EQ;
+      fprintf(stderr, "GOT STACK ITEM ==\n");
+    }
+    else if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == SYMBOL_UNEQUAL) {
+      si[q].type = STACK_ITEM_TYPE_OPERATOR;
+      si[q].value = SI_OP_COMPARE_NEQ;
+      fprintf(stderr, "GOT STACK ITEM !=\n");
+    }
+    else if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == SYMBOL_LTE) {
+      si[q].type = STACK_ITEM_TYPE_OPERATOR;
+      si[q].value = SI_OP_COMPARE_LTE;
+      fprintf(stderr, "GOT STACK ITEM <=\n");
+    }
+    else if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == SYMBOL_GTE) {
+      si[q].type = STACK_ITEM_TYPE_OPERATOR;
+      si[q].value = SI_OP_COMPARE_GTE;
+      fprintf(stderr, "GOT STACK ITEM >=\n");
     }
     else if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == ',')
       break;
@@ -641,10 +726,44 @@ int stack_calculate(int *value, struct stack_item *si, int q, int save_if_cannot
         b++;
       }
       else {
-        if (si[k].value == SI_OP_PLUS ||
-            si[k].value == SI_OP_MINUS) {
+        if (si[k].value == SI_OP_LOGICAL_OR ||
+            si[k].value == SI_OP_LOGICAL_AND) {
+          /* these operators have the lowest priority */
           b--;
           while (b != -1 && op[b] != SI_OP_LEFT) {
+            ta[d].type = STACK_ITEM_TYPE_OPERATOR;
+            ta[d].value = op[b];
+            b--;
+            d++;
+          }
+          b++;
+          op[b] = (int)si[k].value;
+          b++;
+        }
+        else if (si[k].value == SI_OP_COMPARE_LT ||
+                 si[k].value == SI_OP_COMPARE_GT ||
+                 si[k].value == SI_OP_COMPARE_GTE ||
+                 si[k].value == SI_OP_COMPARE_LTE ||
+                 si[k].value == SI_OP_COMPARE_NEQ ||
+                 si[k].value == SI_OP_COMPARE_EQ) {            
+          /* these operators have almost the lowest priority */
+          b--;
+          while (b != -1 && op[b] != SI_OP_LEFT && op[b] != SI_OP_LOGICAL_OR && op[b] != SI_OP_LOGICAL_AND) {
+            ta[d].type = STACK_ITEM_TYPE_OPERATOR;
+            ta[d].value = op[b];
+            b--;
+            d++;
+          }
+          b++;
+          op[b] = (int)si[k].value;
+          b++;
+        }
+        else if (si[k].value == SI_OP_PLUS ||
+                 si[k].value == SI_OP_MINUS) {
+          b--;
+          while (b != -1 && op[b] != SI_OP_LEFT && op[b] != SI_OP_LOGICAL_OR && op[b] != SI_OP_LOGICAL_AND &&
+                 op[b] != SI_OP_COMPARE_LT && op[b] != SI_OP_COMPARE_GT && op[b] != SI_OP_COMPARE_GTE &&
+                 op[b] != SI_OP_COMPARE_LTE && op[b] != SI_OP_COMPARE_NEQ && op[b] != SI_OP_COMPARE_EQ) {
             ta[d].type = STACK_ITEM_TYPE_OPERATOR;
             ta[d].value = op[b];
             b--;
@@ -670,9 +789,12 @@ int stack_calculate(int *value, struct stack_item *si, int q, int save_if_cannot
                  si[k].value == SI_OP_POWER ||
                  si[k].value == SI_OP_SHIFT_LEFT ||
                  si[k].value == SI_OP_SHIFT_RIGHT) {
-          /* these operators have priority over + and - */
+          /* these operators have priority over quite a few items */
           b--;
-          while (b != -1 && op[b] != SI_OP_LEFT && op[b] != SI_OP_PLUS && op[b] != SI_OP_MINUS) {
+          while (b != -1 && op[b] != SI_OP_LEFT && op[b] != SI_OP_PLUS && op[b] != SI_OP_MINUS && op[b] != SI_OP_LOGICAL_OR &&
+                 op[b] != SI_OP_LOGICAL_AND &&
+                 op[b] != SI_OP_COMPARE_LT && op[b] != SI_OP_COMPARE_GT && op[b] != SI_OP_COMPARE_GTE &&
+                 op[b] != SI_OP_COMPARE_LTE && op[b] != SI_OP_COMPARE_NEQ && op[b] != SI_OP_COMPARE_EQ) {
             ta[d].type = STACK_ITEM_TYPE_OPERATOR;
             ta[d].value = op[b];
             b--;
@@ -922,6 +1044,63 @@ int compute_stack(struct stack *sta, int x, double *result) {
       case SI_OP_HIGH_BYTE:
         z = (int)v[t - 1];
         v[t - 1] = (z>>8) & 0xFF;
+        break;
+      case SI_OP_LOGICAL_OR:
+        if (v[t-1] != 0 || v[t-2] != 0)
+          v[t-2] = 1;
+        else
+          v[t-2] = 0;
+        t--;
+        break;
+      case SI_OP_LOGICAL_AND:
+        fprintf(stderr, "%f %f\n", v[t-1], v[t-2]);
+        if (v[t-1] != 0 && v[t-2] != 0)
+          v[t-2] = 1;
+        else
+          v[t-2] = 0;
+        t--;
+        break;
+      case SI_OP_COMPARE_LT:
+        if (v[t-2] < v[t-1])
+          v[t-2] = 1;
+        else
+          v[t-2] = 0;
+        t--;
+        break;
+      case SI_OP_COMPARE_GT:
+        if (v[t-2] > v[t-1])
+          v[t-2] = 1;
+        else
+          v[t-2] = 0;
+        t--;
+        break;
+      case SI_OP_COMPARE_EQ:
+        if (v[t-2] == v[t-1])
+          v[t-2] = 1;
+        else
+          v[t-2] = 0;
+        t--;
+        break;
+      case SI_OP_COMPARE_NEQ:
+        if (v[t-2] != v[t-1])
+          v[t-2] = 1;
+        else
+          v[t-2] = 0;
+        t--;
+        break;
+      case SI_OP_COMPARE_LTE:
+        if (v[t-2] <= v[t-1])
+          v[t-2] = 1;
+        else
+          v[t-2] = 0;
+        t--;
+        break;
+      case SI_OP_COMPARE_GTE:
+        if (v[t-2] >= v[t-1])
+          v[t-2] = 1;
+        else
+          v[t-2] = 0;
+        t--;
         break;
       case SI_OP_NOT:
         fprintf(stderr, "%s:%d: COMPUTE_STACK: NOT cannot determine the output size.\n", get_file_name(sta->filename_id), sta->linenumber);

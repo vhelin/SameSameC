@@ -27,6 +27,7 @@ DWORD __stdcall GetCurrentProcessId(void);
 #include "pass_1.h"
 #include "pass_2.h"
 #include "pass_3.h"
+#include "pass_4.h"
 
 
 /* amiga specific definitions */
@@ -60,6 +61,9 @@ extern int g_include_in_tmp_size, g_tmp_a_size, g_newline_beginning;
 extern int g_current_filename_id, g_current_line_number;
 
 extern struct tree_node *g_open_expression[256];
+
+extern struct tac *g_tacs;
+extern int g_tacs_count;
 
 int g_line_count_status = ON;
 int g_output_format = OUTPUT_NONE, g_verbose_mode = OFF, g_test_mode = OFF;
@@ -147,7 +151,9 @@ int main(int argc, char *argv[]) {
 
   if (pass_3() == FAILED)
     return 1;
-
+  if (pass_4() == FAILED)
+    return 1;
+  
   /*
   if (g_listfile_data == YES) {
     if (listfile_collect() == FAILED)
@@ -332,6 +338,13 @@ void procedures_at_exit(void) {
     free(g_open_expression[index]);
 
   free_symbol_table();
+
+  for (index = 0; index < g_tacs_count; index++) {
+    free(g_tacs[index].arg1_s);
+    free(g_tacs[index].arg2_s);
+    free(g_tacs[index].result_s);
+  }
+  free(g_tacs);
   
   /* remove the tmp files */
   if (g_tmp_name != NULL)

@@ -186,3 +186,21 @@ void free_symbol_table_items(int level) {
     g_symbol_table[i] = item;
   }
 }
+
+
+void print_symbol_table_items(void) {
+
+  struct symbol_table_item *item;
+  int i;
+
+  for (i = 0; i < g_symbol_table_size; i++) {
+    if (g_symbol_table[i] == NULL)
+      continue;
+
+    item = g_symbol_table[i];
+    while (item != NULL) {
+      fprintf(stderr, "LEVEL %d: %s\n", item->level, item->label);
+      item = item->next;
+    }
+  }
+}
