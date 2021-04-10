@@ -301,6 +301,41 @@ static void _print_if(struct tree_node *node) {
 }
 
 
+static void _print_switch(struct tree_node *node) {
+
+  int i;
+  
+  if (node == NULL)
+    return;
+
+  fprintf(stderr, "%sswitch (", _get_current_indentation());
+  _print_expression(node->children[0]);
+  fprintf(stderr, ") {\n");
+
+  g_current_indentation_depth += 2;
+  
+  for (i = 1; i < node->added_children; i += 2) {
+    if (i <= node->added_children - 2) {
+      /* case */
+      fprintf(stderr, "%scase ", _get_current_indentation());
+      _print_expression(node->children[i]);
+      fprintf(stderr, ":\n");
+
+      _print_block(node->children[i+1]);
+    }
+    else {
+      /* default */
+      fprintf(stderr, "%sdefault:\n", _get_current_indentation());
+      _print_block(node->children[i]);
+    }
+  }
+
+  g_current_indentation_depth -= 2;
+
+  fprintf(stderr, "%s}\n", _get_current_indentation());
+}
+
+
 static void _print_while(struct tree_node *node) {
 
   if (node == NULL)
@@ -365,6 +400,8 @@ static void _print_statement(struct tree_node *node, int line) {
     _print_return(node);
   else if (node->type == TREE_NODE_TYPE_IF)
     _print_if(node);
+  else if (node->type == TREE_NODE_TYPE_SWITCH)
+    _print_switch(node);
   else if (node->type == TREE_NODE_TYPE_WHILE)
     _print_while(node);
   else if (node->type == TREE_NODE_TYPE_FOR)
@@ -630,6 +667,22 @@ static void _simplify_expressions_if(struct tree_node *node) {
 }
 
 
+static void _simplify_expressions_switch(struct tree_node *node) {
+
+  int i;
+  
+  if (node == NULL)
+    return;
+
+  for (i = 0; i < node->added_children; i++) {
+    if (node->children[i]->type == TREE_NODE_TYPE_EXPRESSION)
+      _simplify_expressions(node->children[i]);
+    else if (node->children[i]->type == TREE_NODE_TYPE_BLOCK)
+      _simplify_expressions_block(node->children[i]);
+  }
+}
+
+
 static void _simplify_expressions_while(struct tree_node *node) {
 
   int i;
@@ -681,6 +734,8 @@ static void _simplify_expressions_statement(struct tree_node *node) {
     _simplify_expressions_while(node);
   else if (node->type == TREE_NODE_TYPE_FOR)
     _simplify_expressions_for(node);
+  else if (node->type == TREE_NODE_TYPE_SWITCH)
+    _simplify_expressions_switch(node);
 }
 
 

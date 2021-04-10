@@ -294,6 +294,110 @@ static void _generate_il_create_condition(struct tree_node *node, int false_labe
 }
 
 
+static void _generate_il_create_switch(struct tree_node *node) {
+
+  int label_exit, i, j = 0, blocks = 0, *labels, r1, r2, got_default = NO;
+  struct tac *t;
+
+  label_exit = ++g_temp_label_id;
+
+  blocks = (node->added_children) >> 1;
+
+  labels = (int *)calloc(sizeof(int) * node->added_children, 1);
+  if (labels == NULL) {
+    g_current_filename_id = node->file_id;
+    g_current_line_number = node->line_number;
+    snprintf(g_error_message, sizeof(g_error_message), "_generate_il_create_switch(): Out of memory error.\n");
+    print_error(g_error_message, ERROR_ERR);
+    return;
+  }
+  
+  /* reserve labels */
+  for (i = 0; i < blocks + 1; i++)
+    labels[i] = ++g_temp_label_id;
+
+  /* create (switch) expression */
+
+  r1 = g_temp_r;
+
+  _generate_il_create_expression(node->children[0]);
+  
+  /* create tests */
+
+  for (i = 1; i < node->added_children; i += 2) {
+    if (i <= node->added_children - 2) {
+      /* case */
+
+      /* create (case) expression */
+
+      r2 = g_temp_r;
+
+      _generate_il_create_expression(node->children[i]);
+
+      /* compare with r1 */
+      t = add_tac();
+      if (t == NULL) {
+        free(labels);
+        return;
+      }
+  
+      t->op = TAC_OP_JUMP_EQ;
+      tac_set_arg1(t, TAC_ARG_TYPE_TEMP, r1, NULL);
+      tac_set_arg2(t, TAC_ARG_TYPE_TEMP, r2, NULL);
+      tac_set_result(t, TAC_ARG_TYPE_LABEL, 0, _generate_temp_label(labels[j]));
+      j++;
+    }
+    else {
+      /* default */
+      got_default = YES;
+
+      /* jump to default */
+      add_tac_jump(_generate_temp_label(labels[j]));
+    }
+  }
+
+  if (got_default == NO) {
+    /* jump to exit */
+    add_tac_jump(_generate_temp_label(label_exit));
+  }
+
+  /* create blocks */
+  j = 0;
+
+  /* continue inside switch takes you to the exit */
+  _enter_breakable(label_exit, label_exit);
+  
+  for (i = 1; i < node->added_children; i += 2) {
+    if (i <= node->added_children - 2) {
+      /* case */
+
+      /* label */
+      add_tac_label(_generate_temp_label(labels[j]));
+      j++;
+
+      /* block */
+      _generate_il_create_block(node->children[i+1]);
+    }
+    else {
+      /* default */
+
+      /* label */
+      add_tac_label(_generate_temp_label(labels[j]));
+
+      /* block */
+      _generate_il_create_block(node->children[i]);
+    }
+  }
+  
+  _exit_breakable();
+  
+  /* label of exit */
+  add_tac_label(_generate_temp_label(label_exit));
+
+  free(labels);
+}
+
+
 static void _generate_il_create_if(struct tree_node *node) {
 
   int label_exit, i;
@@ -477,6 +581,8 @@ static void _generate_il_create_statement(struct tree_node *node) {
     _generate_il_create_return(node);
   else if (node->type == TREE_NODE_TYPE_IF)
     _generate_il_create_if(node);
+  else if (node->type == TREE_NODE_TYPE_SWITCH)
+    _generate_il_create_switch(node);
   else if (node->type == TREE_NODE_TYPE_WHILE)
     _generate_il_create_while(node);
   else if (node->type == TREE_NODE_TYPE_FOR)

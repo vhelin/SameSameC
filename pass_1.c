@@ -220,6 +220,18 @@ int evaluate_token(int type) {
     if (strcaselesscmp(g_tmp, "continue") == 0)
       return add_token(TOKEN_ID_CONTINUE, 0, 0.0, NULL);
     
+    /* switch */
+    if (strcaselesscmp(g_tmp, "switch") == 0)
+      return add_token(TOKEN_ID_SWITCH, 0, 0.0, NULL);
+
+    /* case */
+    if (strcaselesscmp(g_tmp, "case") == 0)
+      return add_token(TOKEN_ID_CASE, 0, 0.0, NULL);
+
+    /* default */
+    if (strcaselesscmp(g_tmp, "default") == 0)
+      return add_token(TOKEN_ID_DEFAULT, 0, 0.0, NULL);
+    
     /* .DEFINE/.DEF/.EQU */
     if (strcaselesscmp(g_tmp, ".DEFINE") == 0 || strcaselesscmp(g_tmp, ".DEF") == 0 || strcaselesscmp(g_tmp, ".EQU") == 0)
       return add_token(TOKEN_ID_DEFINE, 0, 0.0, g_tmp);

@@ -250,6 +250,9 @@ struct token {
 #define TOKEN_ID_BREAK         12
 #define TOKEN_ID_CONTINUE      13
 #define TOKEN_ID_COMPARE       14
+#define TOKEN_ID_SWITCH        15
+#define TOKEN_ID_CASE          16
+#define TOKEN_ID_DEFAULT       17
 
 #define SYMBOL_LOGICAL_OR  0
 #define SYMBOL_LOGICAL_AND 1
@@ -303,6 +306,7 @@ struct tree_node {
 #define TREE_NODE_TYPE_ARRAY_ITEM          20
 #define TREE_NODE_TYPE_FUNCTION_PROTOTYPE  21
 #define TREE_NODE_TYPE_CONTINUE            22
+#define TREE_NODE_TYPE_SWITCH              23
 
 struct symbol_table_item {
   int level;
