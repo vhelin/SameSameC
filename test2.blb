@@ -2,8 +2,22 @@
 void main() {
 
   int8 i = 0;
+  int8 j = 0;
 
-  while (i < 10) {
-    i++;
+  if (i == 0) {
+     i++;
   }
+  else if (i == 1) {
+     i--;
+  }
+  else {
+    if (j == 0) {
+      j = 2;
+    }
+    else {
+      j = 3;
+    }
+  }
+
+  j = 1;
 }

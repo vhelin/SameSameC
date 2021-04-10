@@ -296,8 +296,38 @@ static void _generate_il_create_condition(struct tree_node *node, int false_labe
 
 static void _generate_il_create_if(struct tree_node *node) {
 
-  /* reset the temp register counter */
-  g_temp_r = 0;
+  int label_exit, i;
+
+  label_exit = ++g_temp_label_id;
+
+  for (i = 0; i < node->added_children; i += 2) {
+    int label_next_condition = ++g_temp_label_id;
+    
+    if (i <= node->added_children - 2) {
+      /* if/elseif */
+
+      /* condition */
+      _generate_il_create_condition(node->children[i], label_next_condition);
+
+      /* main block */
+      _generate_il_create_block(node->children[i+1]);
+
+      /* jump to exit */
+      add_tac_jump(_generate_temp_label(label_exit));
+  
+      /* label of next condition */
+      add_tac_label(_generate_temp_label(label_next_condition));
+    }
+    else {
+      /* else */
+      
+      /* main block */
+      _generate_il_create_block(node->children[i]);
+    }
+  }
+
+  /* label of exit */
+  add_tac_label(_generate_temp_label(label_exit));
 }
 
 
