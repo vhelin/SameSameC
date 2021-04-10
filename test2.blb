@@ -2,6 +2,7 @@
 void main() {
 
   int8 i;
+  int8 j;
 
   for (i = 0; i < 10 && i >= 0; i++) {
     int8 j = 0;

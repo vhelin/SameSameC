@@ -302,6 +302,7 @@ struct tree_node {
 #define TREE_NODE_TYPE_FOR                 19
 #define TREE_NODE_TYPE_ARRAY_ITEM          20
 #define TREE_NODE_TYPE_FUNCTION_PROTOTYPE  21
+#define TREE_NODE_TYPE_CONTINUE            22
 
 struct symbol_table_item {
   int level;
@@ -357,5 +358,10 @@ struct tac {
 #define TAC_ARG_TYPE_CONSTANT 0
 #define TAC_ARG_TYPE_LABEL    1
 #define TAC_ARG_TYPE_TEMP     2
+
+struct breakable_stack_item {
+  int label_break;
+  int label_continue;
+};
 
 #endif /* _DEFINES_H */

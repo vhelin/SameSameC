@@ -1671,7 +1671,49 @@ int create_statement(void) {
       return SUCCEEDED;
     }
   }
+  else if (g_token_current->id == TOKEN_ID_BREAK) {
+    node = allocate_tree_node_with_children(TREE_NODE_TYPE_BREAK, 1);
+    if (node == NULL)
+      return FAILED;
 
+    tree_node_add_child(_get_current_open_block(), node);
+
+    /* next token */
+    _next_token();
+    
+    if (g_token_current->id != TOKEN_ID_SYMBOL || g_token_current->value != ';') {
+      snprintf(g_error_message, sizeof(g_error_message), "Expected ';', but got %s.\n", _get_token_simple(g_token_current));
+      print_error(g_error_message, ERROR_ERR);
+      return FAILED;
+    }
+
+    /* next token */
+    _next_token();
+
+    return SUCCEEDED;
+  }
+  else if (g_token_current->id == TOKEN_ID_CONTINUE) {
+    node = allocate_tree_node_with_children(TREE_NODE_TYPE_CONTINUE, 1);
+    if (node == NULL)
+      return FAILED;
+
+    tree_node_add_child(_get_current_open_block(), node);
+
+    /* next token */
+    _next_token();
+    
+    if (g_token_current->id != TOKEN_ID_SYMBOL || g_token_current->value != ';') {
+      snprintf(g_error_message, sizeof(g_error_message), "Expected ';', but got %s.\n", _get_token_simple(g_token_current));
+      print_error(g_error_message, ERROR_ERR);
+      return FAILED;
+    }
+
+    /* next token */
+    _next_token();
+
+    return SUCCEEDED;
+  }
+  
   snprintf(g_error_message, sizeof(g_error_message), "Expected a statement, but got %s.\n", _get_token_simple(g_token_current));
   print_error(g_error_message, ERROR_ERR);
   
@@ -2588,6 +2630,8 @@ static void _check_ast_statement(struct tree_node *node) {
     _check_ast_for(node);
   else if (node->type == TREE_NODE_TYPE_INCREMENT_DECREMENT)
     _check_ast_simple_tree_node(node);
+  else if (node->type == TREE_NODE_TYPE_BREAK || node->type == TREE_NODE_TYPE_CONTINUE)
+    return;
   else {
     fprintf(stderr, "_check_ast_statement(): Unhandled statemet type %d! Please submit a bug report!\n", node->type);
     g_check_ast_failed = YES;

@@ -21,13 +21,15 @@
 
 
 extern struct tree_node *g_global_nodes;
-extern int g_verbose_mode, g_input_float_mode;
+extern int g_verbose_mode, g_input_float_mode, g_current_filename_id, g_current_line_number;
 extern char *g_variable_types[4], *g_two_char_symbols[10], g_label[MAX_NAME_LENGTH + 1];
 extern double g_parsed_double;
 extern struct tac *g_tacs;
 extern int g_tacs_count, g_tacs_max;
+extern char g_tmp[4096], g_error_message[sizeof(g_tmp) + MAX_NAME_LENGTH + 1 + 1024];
 
-static int g_block_level = 0;
+static struct breakable_stack_item g_breakable_stack_items[256];
+static int g_block_level = 0, g_breakable_stack_items_level = -1;
 
 int g_temp_r = 0, g_temp_label_id = 0;
 
@@ -36,6 +38,29 @@ char g_temp_label[32];
 
 static void _generate_il_create_block(struct tree_node *node);
 static void _generate_il_create_increment_decrement(struct tree_node *node);
+
+
+static int _enter_breakable(int label_break, int label_continue) {
+
+  if (g_breakable_stack_items_level >= 255)
+    return FAILED;
+
+  g_breakable_stack_items_level++;
+  
+  g_breakable_stack_items[g_breakable_stack_items_level].label_break = label_break;
+  g_breakable_stack_items[g_breakable_stack_items_level].label_continue = label_continue;
+  
+  return SUCCEEDED;
+}
+
+
+static void _exit_breakable(void) {
+
+  if (g_breakable_stack_items_level < 0)
+    fprintf(stderr, "_exit_breakable(): Breakable stack is already empty! Please submit a bug report!\n");
+  else
+    g_breakable_stack_items_level--;
+}
 
 
 static char *_generate_temp_label(int id) {
@@ -176,8 +201,12 @@ static void _generate_il_create_expression(struct tree_node *node) {
       tac_set_arg1(t, TAC_ARG_TYPE_LABEL, 0, node->label);
     }
   }
-  else
-    fprintf(stderr, "_generate_il_create_expression(): Unsupported tree node %d!\n", node->type);
+  else {
+    g_current_filename_id = node->file_id;
+    g_current_line_number = node->line_number;
+    snprintf(g_error_message, sizeof(g_error_message), "_generate_il_create_expression(): Unsupported tree node %d!\n", node->type);
+    print_error(g_error_message, ERROR_ERR);
+  }
 }
 
 
@@ -244,7 +273,10 @@ static void _generate_il_create_condition(struct tree_node *node, int false_labe
   int r1;
 
   if (node->type != TREE_NODE_TYPE_CONDITION) {
-    fprintf(stderr, "_generate_il_create_condition(): Was expecting TREE_NODE_TYPE_CONDITION, but got %d instead.\n", node->type);
+    g_current_filename_id = node->file_id;
+    g_current_line_number = node->line_number;
+    snprintf(g_error_message, sizeof(g_error_message), "_generate_il_create_condition(): Was expecting TREE_NODE_TYPE_CONDITION, but got %d instead.\n", node->type);
+    print_error(g_error_message, ERROR_ERR);
     return;
   }
 
@@ -274,15 +306,17 @@ static void _generate_il_create_condition(struct tree_node *node, int false_labe
 
 static void _generate_il_create_for(struct tree_node *node) {
 
-  int label_condition, label_exit;
+  int label_condition, label_increments, label_exit;
+  
+  label_condition = ++g_temp_label_id;
+  label_increments = ++g_temp_label_id;
+  label_exit = ++g_temp_label_id;
   
   /* initialization of for() */
   _generate_il_create_block(node->children[0]);
 
   /* label of condition */
-  label_condition = ++g_temp_label_id;
   add_tac_label(_generate_temp_label(label_condition));
-  label_exit = ++g_temp_label_id;
 
   /* reset the temp register counter */
   g_temp_r = 0;
@@ -290,10 +324,15 @@ static void _generate_il_create_for(struct tree_node *node) {
   /* condition */
   _generate_il_create_condition(node->children[1], label_exit);
 
+  _enter_breakable(label_exit, label_increments);
+  
   /* main block */
   _generate_il_create_block(node->children[3]);
 
+  _exit_breakable();
+  
   /* increments of for() */
+  add_tac_label(_generate_temp_label(label_increments));
   _generate_il_create_block(node->children[2]);
   
   /* jump back to condition */
@@ -338,6 +377,36 @@ static void _generate_il_create_increment_decrement(struct tree_node *node) {
 }
 
 
+static void _generate_il_create_break(struct tree_node *node) {
+
+  if (g_breakable_stack_items_level < 0) {
+    g_current_filename_id = node->file_id;
+    g_current_line_number = node->line_number;
+    snprintf(g_error_message, sizeof(g_error_message), "_generate_il_create_break(): break does nothing here, nothing to break from.\n");
+    print_error(g_error_message, ERROR_ERR);
+  }
+  else {
+    /* jump out */
+    add_tac_jump(_generate_temp_label(g_breakable_stack_items[g_breakable_stack_items_level].label_break));
+  }
+}
+
+
+static void _generate_il_create_continue(struct tree_node *node) {
+
+  if (g_breakable_stack_items_level < 0) {
+    g_current_filename_id = node->file_id;
+    g_current_line_number = node->line_number;
+    snprintf(g_error_message, sizeof(g_error_message), "_generate_il_create_break(): continue does nothing here, nothing to continue.\n");
+    print_error(g_error_message, ERROR_ERR);
+  }
+  else {
+    /* jump to the next iteration */
+    add_tac_jump(_generate_temp_label(g_breakable_stack_items[g_breakable_stack_items_level].label_continue));
+  }
+}
+
+
 static void _generate_il_create_statement(struct tree_node *node) {
 
   if (node->type == TREE_NODE_TYPE_CREATE_VARIABLE)
@@ -356,8 +425,16 @@ static void _generate_il_create_statement(struct tree_node *node) {
     _generate_il_create_for(node);
   else if (node->type == TREE_NODE_TYPE_INCREMENT_DECREMENT)
     _generate_il_create_increment_decrement(node);
-  else
-    fprintf(stderr, "_generate_il_create_statement(): Unsupported node type %d! Please send a bug report!\n", node->type);
+  else if (node->type == TREE_NODE_TYPE_BREAK)
+    _generate_il_create_break(node);
+  else if (node->type == TREE_NODE_TYPE_CONTINUE)
+    _generate_il_create_continue(node);
+  else {
+    g_current_filename_id = node->file_id;
+    g_current_line_number = node->line_number;
+    snprintf(g_error_message, sizeof(g_error_message), "_generate_il_create_statement(): Unsupported node type %d! Please send a bug report!\n", node->type);
+    print_error(g_error_message, ERROR_ERR);
+  }
 }
 
 

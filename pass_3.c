@@ -374,6 +374,10 @@ static void _print_statement(struct tree_node *node, int line) {
     _print_simple_tree_node(node);
     fprintf(stderr, "%s%s", _get_current_end_of_statement(), _get_current_end_of_line());
   }
+  else if (node->type == TREE_NODE_TYPE_BREAK)
+    fprintf(stderr, "%sbreak%s%s", _get_current_indentation(), _get_current_end_of_statement(), _get_current_end_of_line());
+  else if (node->type == TREE_NODE_TYPE_CONTINUE)
+    fprintf(stderr, "%scontinue%s%s", _get_current_indentation(), _get_current_end_of_statement(), _get_current_end_of_line());
   else
     fprintf(stderr, "%s?%s%s", _get_current_indentation(), _get_current_end_of_statement(), _get_current_end_of_line());
 }
