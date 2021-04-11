@@ -11,6 +11,7 @@ void main() {
       i = i - 2;
       break;
     default:
+      return 1+i;
       break;
   }
 

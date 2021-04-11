@@ -231,6 +231,16 @@ void print_tacs(void) {
       _print_tac_arg(t->result_type, t->result_d, t->result_s);
       fprintf(stderr, "\n");
     }
+    else if (t->op == TAC_OP_RETURN) {
+      fprintf(stderr, "    ");
+      fprintf(stderr, "return;\n");
+    }
+    else if (t->op == TAC_OP_RETURN_VALUE) {
+      fprintf(stderr, "    ");
+      fprintf(stderr, "return ");
+      _print_tac_arg(t->arg1_type, t->arg1_d, t->arg1_s);
+      fprintf(stderr, "\n");
+    }
     else if (t->op == TAC_OP_CREATE_VARIABLE) {
       fprintf(stderr, "    ");
       fprintf(stderr, "variable %s TODO\n", t->node->children[1]->label);

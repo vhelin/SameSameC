@@ -253,7 +253,38 @@ static void _generate_il_create_assignment(struct tree_node *node) {
 
 static void _generate_il_create_function_call(struct tree_node *node) {
 }
+
+
 static void _generate_il_create_return(struct tree_node *node) {
+
+  struct tac *t;
+  int r1;
+  
+  if (node->added_children == 0) {
+    /* return */
+
+    t = add_tac();
+    if (t == NULL)
+      return;
+  
+    t->op = TAC_OP_RETURN;
+  }
+  else {
+    /* return {expression} */
+
+    /* create expression */
+
+    r1 = g_temp_r;
+
+    _generate_il_create_expression(node->children[0]);
+
+    t = add_tac();
+    if (t == NULL)
+      return;
+  
+    t->op = TAC_OP_RETURN_VALUE;
+    tac_set_arg1(t, TAC_ARG_TYPE_TEMP, r1, NULL);
+  }
 }
 
 

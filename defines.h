@@ -358,6 +358,8 @@ struct tac {
 #define TAC_OP_SHIFT_RIGHT      22
 #define TAC_OP_LOGICAL_OR       23
 #define TAC_OP_LOGICAL_AND      24
+#define TAC_OP_RETURN           25
+#define TAC_OP_RETURN_VALUE     26
 
 #define TAC_ARG_TYPE_CONSTANT 0
 #define TAC_ARG_TYPE_LABEL    1
