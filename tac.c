@@ -30,7 +30,7 @@ static void _print_tac_arg(int type, double d, char *s) {
 void print_tacs(void) {
 
   struct tac *t;
-  int i;
+  int i, j;
 
   for (i = 0; i < g_tacs_count; i++) {
     t = &g_tacs[i];
@@ -241,6 +241,30 @@ void print_tacs(void) {
       _print_tac_arg(t->arg1_type, t->arg1_d, t->arg1_s);
       fprintf(stderr, "\n");
     }
+    else if (t->op == TAC_OP_FUNCTION_CALL) {
+      fprintf(stderr, "    ");
+      _print_tac_arg(t->arg1_type, t->arg1_d, t->arg1_s);
+      fprintf(stderr, "(");
+      for (j = 0; j < (int)t->arg2_d; j++) {
+        _print_tac_arg(TAC_ARG_TYPE_TEMP, t->registers[j], NULL);
+        if (j < (int)t->arg2_d - 1)
+          fprintf(stderr, ", ");
+      }
+      fprintf(stderr, ")\n");
+    }
+    else if (t->op == TAC_OP_FUNCTION_CALL_USE_RETURN_VALUE) {
+      fprintf(stderr, "    ");
+      _print_tac_arg(t->result_type, t->result_d, t->result_s);
+      fprintf(stderr, " := ");
+      _print_tac_arg(t->arg1_type, t->arg1_d, t->arg1_s);
+      fprintf(stderr, "(");
+      for (j = 0; j < (int)t->arg2_d; j++) {
+        _print_tac_arg(TAC_ARG_TYPE_TEMP, t->registers[j], NULL);
+        if (j < (int)t->arg2_d - 1)
+          fprintf(stderr, ", ");
+      }
+      fprintf(stderr, ")\n");
+    }
     else if (t->op == TAC_OP_CREATE_VARIABLE) {
       fprintf(stderr, "    ");
       fprintf(stderr, "variable %s TODO\n", t->node->children[1]->label);
@@ -258,9 +282,14 @@ int tac_set_arg1(struct tac *t, int arg_type, double d, char *s) {
   else {
     free(t->arg1_s);
 
+    if (s == NULL) {
+      fprintf(stderr, "tac_set_arg1(): The label for TAC is NULL! Please submit a bug report!\n");
+      return FAILED;
+    }
+    
     t->arg1_s = calloc(strlen(s) + 1, 1);
     if (t->arg1_s == NULL) {
-      fprintf(stderr, "Out of memory while allocating a label for TACs.\n");
+      fprintf(stderr, "tac_set_arg1(): Out of memory while allocating a label for TACs.\n");
       return FAILED;
     }
 
@@ -280,9 +309,14 @@ int tac_set_arg2(struct tac *t, int arg_type, double d, char *s) {
   else {
     free(t->arg2_s);
 
+    if (s == NULL) {
+      fprintf(stderr, "tac_set_arg2(): The label for TAC is NULL! Please submit a bug report!\n");
+      return FAILED;
+    }
+    
     t->arg2_s = calloc(strlen(s) + 1, 1);
     if (t->arg2_s == NULL) {
-      fprintf(stderr, "Out of memory while allocating a label for TACs.\n");
+      fprintf(stderr, "tac_set_arg2(): Out of memory while allocating a label for TACs.\n");
       return FAILED;
     }
 
@@ -302,6 +336,11 @@ int tac_set_result(struct tac *t, int arg_type, double d, char *s) {
   else {
     free(t->result_s);
 
+    if (s == NULL) {
+      fprintf(stderr, "tac_set_result(): The label for TAC is NULL! Please submit a bug report!\n");
+      return FAILED;
+    }
+    
     t->result_s = calloc(strlen(s) + 1, 1);
     if (t->result_s == NULL) {
       fprintf(stderr, "Out of memory while allocating a label for TACs.\n");
@@ -342,8 +381,15 @@ struct tac *add_tac(void) {
   t->result_d = 0;
   t->result_s = NULL;
   t->node = NULL;
+  t->registers = NULL;
   
   return t;
+}
+
+
+int is_last_tac(int op) {
+  
+  return g_tacs[g_tacs_count - 1].op == op;
 }
 
 

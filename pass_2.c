@@ -1789,14 +1789,14 @@ int create_statement(void) {
     if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == ';') {
       /* return; */
       
-      /* next token */
-      _next_token();
-
       node = allocate_tree_node(TREE_NODE_TYPE_RETURN);
       if (node == NULL)
         return FAILED;
 
       tree_node_add_child(_get_current_open_block(), node);
+
+      /* next token */
+      _next_token();
 
       return SUCCEEDED;
     }

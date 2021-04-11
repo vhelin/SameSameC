@@ -30,13 +30,14 @@ extern char g_tmp[4096], g_error_message[sizeof(g_tmp) + MAX_NAME_LENGTH + 1 + 1
 
 static struct breakable_stack_item g_breakable_stack_items[256];
 static int g_block_level = 0, g_breakable_stack_items_level = -1;
+static struct tree_node *g_current_function = NULL;
 
 int g_temp_r = 0, g_temp_label_id = 0;
 
 char g_temp_label[32];
 
 
-static void _generate_il_create_block(struct tree_node *node);
+static int _generate_il_create_block(struct tree_node *node);
 static void _generate_il_create_increment_decrement(struct tree_node *node);
 
 
@@ -251,11 +252,54 @@ static void _generate_il_create_assignment(struct tree_node *node) {
 }
 
 
-static void _generate_il_create_function_call(struct tree_node *node) {
+struct tac *generate_il_create_function_call(struct tree_node *node) {
+
+  struct symbol_table_item *item;
+  int *registers = NULL, i;
+  struct tac *t;
+
+  if (node->added_children - 1 > 0) {
+    registers = (int *)calloc(sizeof(int) * node->added_children - 1, 1);
+    if (registers == NULL) {
+      g_current_filename_id = node->file_id;
+      g_current_line_number = node->line_number;
+      snprintf(g_error_message, sizeof(g_error_message), "_generate_il_create_function_call(): Out of memory error.\n");
+      print_error(g_error_message, ERROR_ERR);
+      return NULL;
+    }
+  }
+
+  for (i = 1; i < node->added_children; i++) {
+    registers[i-1] = g_temp_r;
+    _generate_il_create_expression(node->children[i]);
+  }
+
+  t = add_tac();
+  if (t == NULL)
+    return NULL;
+
+  t->op = TAC_OP_FUNCTION_CALL;
+  t->registers = registers;
+  tac_set_arg1(t, TAC_ARG_TYPE_LABEL, 0, node->children[0]->label);
+  tac_set_arg2(t, TAC_ARG_TYPE_CONSTANT, node->added_children - 1, NULL);
+
+  /* find the function */
+  item = symbol_table_find_symbol(node->children[0]->label);
+  if (item != NULL)
+    t->node = item->node;
+  else {
+    g_current_filename_id = node->file_id;
+    g_current_line_number = node->line_number;
+    snprintf(g_error_message, sizeof(g_error_message), "_generate_il_create_function_call(): Cannot find function %s! Please submit a bug report!\n", node->label);
+    print_error(g_error_message, ERROR_ERR);
+    return NULL;
+  }
+
+  return t;
 }
 
 
-static void _generate_il_create_return(struct tree_node *node) {
+static int _generate_il_create_return(struct tree_node *node) {
 
   struct tac *t;
   int r1;
@@ -263,14 +307,30 @@ static void _generate_il_create_return(struct tree_node *node) {
   if (node->added_children == 0) {
     /* return */
 
+    if (g_current_function->children[0]->value != VARIABLE_TYPE_VOID) {
+      g_current_filename_id = node->file_id;
+      g_current_line_number = node->line_number;
+      snprintf(g_error_message, sizeof(g_error_message), "_generate_il_create_return(): The function \"%s\" needs to return a value.\n", g_current_function->children[1]->label);
+      print_error(g_error_message, ERROR_ERR);
+      return FAILED;
+    }
+    
     t = add_tac();
     if (t == NULL)
-      return;
+      return FAILED;
   
     t->op = TAC_OP_RETURN;
   }
   else {
     /* return {expression} */
+
+    if (g_current_function->children[0]->value == VARIABLE_TYPE_VOID) {
+      g_current_filename_id = node->file_id;
+      g_current_line_number = node->line_number;
+      snprintf(g_error_message, sizeof(g_error_message), "_generate_il_create_return(): The function \"%s\" doesn't return anything.\n", g_current_function->children[1]->label);
+      print_error(g_error_message, ERROR_ERR);
+      return FAILED;
+    }
 
     /* create expression */
 
@@ -280,11 +340,13 @@ static void _generate_il_create_return(struct tree_node *node) {
 
     t = add_tac();
     if (t == NULL)
-      return;
+      return FAILED;
   
     t->op = TAC_OP_RETURN_VALUE;
-    tac_set_arg1(t, TAC_ARG_TYPE_TEMP, r1, NULL);
+    tac_set_arg1(t, TAC_ARG_TYPE_TEMP, r1, NULL);    
   }
+
+  return SUCCEEDED;
 }
 
 
@@ -600,16 +662,18 @@ static void _generate_il_create_continue(struct tree_node *node) {
 }
 
 
-static void _generate_il_create_statement(struct tree_node *node) {
+static int _generate_il_create_statement(struct tree_node *node) {
 
+  int r = SUCCEEDED;
+  
   if (node->type == TREE_NODE_TYPE_CREATE_VARIABLE)
     _generate_il_create_variable(node);
   else if (node->type == TREE_NODE_TYPE_ASSIGNMENT)
     _generate_il_create_assignment(node);
   else if (node->type == TREE_NODE_TYPE_FUNCTION_CALL)
-    _generate_il_create_function_call(node);
+    generate_il_create_function_call(node);
   else if (node->type == TREE_NODE_TYPE_RETURN)
-    _generate_il_create_return(node);
+    r = _generate_il_create_return(node);
   else if (node->type == TREE_NODE_TYPE_IF)
     _generate_il_create_if(node);
   else if (node->type == TREE_NODE_TYPE_SWITCH)
@@ -630,33 +694,65 @@ static void _generate_il_create_statement(struct tree_node *node) {
     snprintf(g_error_message, sizeof(g_error_message), "_generate_il_create_statement(): Unsupported node type %d! Please send a bug report!\n", node->type);
     print_error(g_error_message, ERROR_ERR);
   }
+
+  return r;
 }
 
 
-static void _generate_il_create_block(struct tree_node *node) {
+static int _generate_il_create_block(struct tree_node *node) {
 
   int i;
   
   g_block_level++;
   
-  for (i = 0; i < node->added_children; i++)
-    _generate_il_create_statement(node->children[i]);
+  for (i = 0; i < node->added_children; i++) {
+    if (_generate_il_create_statement(node->children[i]) == FAILED)
+      return FAILED;
+  }
 
   free_symbol_table_items(g_block_level);
   
   g_block_level--;
+
+  return SUCCEEDED;
 }
 
 
-static void _generate_il_create_function(struct tree_node *node) {
+static int _generate_il_create_function(struct tree_node *node) {
 
+  struct tac *t;
+
+  g_current_function = node;
+  
   if (add_tac_label(node->children[1]->label) == NULL)
-    return;  
+    return FAILED;  
 
   /* reset the temp register counter */
   g_temp_r = 0;
   
-  _generate_il_create_block(node->children[node->added_children-1]);
+  if (_generate_il_create_block(node->children[node->added_children-1]) == FAILED)
+    return FAILED;
+
+  if (is_last_tac(TAC_OP_RETURN) || is_last_tac(TAC_OP_RETURN_VALUE))
+    return SUCCEEDED;
+
+  /* HACK: the block has eneded without a return, so we'll add one here */
+
+  if (node->children[0]->value != VARIABLE_TYPE_VOID) {
+    g_current_filename_id = node->file_id;
+    g_current_line_number = node->line_number;
+    snprintf(g_error_message, sizeof(g_error_message), "_generate_il_create_function(): The function \"%s\" doesn't end to a return, but its return type is not void!\n", node->children[1]->label);
+    print_error(g_error_message, ERROR_ERR);
+    return FAILED;
+  }
+  
+  t = add_tac();
+  if (t == NULL)
+    return FAILED;
+  
+  t->op = TAC_OP_RETURN;
+
+  return SUCCEEDED;
 }
 
 
@@ -699,8 +795,10 @@ int generate_il(void) {
 
   for (i = 0; i < g_global_nodes->added_children; i++) {
     struct tree_node *node = g_global_nodes->children[i];
-    if (node != NULL && node->type == TREE_NODE_TYPE_FUNCTION_DEFINITION)
-      _generate_il_create_function(node);
+    if (node != NULL && node->type == TREE_NODE_TYPE_FUNCTION_DEFINITION) {
+      if (_generate_il_create_function(node) == FAILED)
+        return FAILED;
+    }
   }
   
   return SUCCEEDED;

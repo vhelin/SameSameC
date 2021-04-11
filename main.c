@@ -343,6 +343,7 @@ void procedures_at_exit(void) {
     free(g_tacs[index].arg1_s);
     free(g_tacs[index].arg2_s);
     free(g_tacs[index].result_s);
+    free(g_tacs[index].registers);
   }
   free(g_tacs);
   

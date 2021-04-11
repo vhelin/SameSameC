@@ -12,6 +12,7 @@
 #include "main.h"
 #include "il.h"
 #include "tac.h"
+#include "pass_4.h"
 
 
 extern int g_current_line_number, g_current_filename_id;
@@ -210,9 +211,23 @@ int il_stack_calculate_expression(struct tree_node *node) {
       si[z].value = 0;
     }
     else if (child->type == TREE_NODE_TYPE_FUNCTION_CALL) {
-      /* function calls cannot be calculated here, only on the target machine... */
-      fprintf(stderr, "FIXME!\n");
-      return FAILED;
+      struct tac *t = generate_il_create_function_call(child);
+
+      if (t == NULL)
+        return FAILED;
+
+      t->op = TAC_OP_FUNCTION_CALL_USE_RETURN_VALUE;
+
+      tac_set_result(t, TAC_ARG_TYPE_TEMP, g_temp_r++, NULL);
+
+      si[z].type = STACK_ITEM_TYPE_OPERATOR;
+      si[z].value = SI_OP_USE_REGISTER;
+
+      z++;
+
+      si[z].type = STACK_ITEM_TYPE_VALUE;
+      si[z].value = g_temp_r - 1;
+      si[z].sign = SI_SIGN_POSITIVE;
     }
     else if (child->type == TREE_NODE_TYPE_ARRAY_ITEM) {
       int rindex = g_temp_r;

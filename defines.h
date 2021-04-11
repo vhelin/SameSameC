@@ -331,6 +331,7 @@ struct tac {
   char *result_s;
 
   struct tree_node *node;
+  int *registers;
 };
 
 #define TAC_OP_DEAD              0
@@ -360,6 +361,8 @@ struct tac {
 #define TAC_OP_LOGICAL_AND      24
 #define TAC_OP_RETURN           25
 #define TAC_OP_RETURN_VALUE     26
+#define TAC_OP_FUNCTION_CALL    27
+#define TAC_OP_FUNCTION_CALL_USE_RETURN_VALUE 28
 
 #define TAC_ARG_TYPE_CONSTANT 0
 #define TAC_ARG_TYPE_LABEL    1
