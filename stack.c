@@ -82,7 +82,7 @@ static void _debug_print_stack(int line_number, int stack_id, struct stack_item 
   printf("LINE %5d: ID = %d (STACK) CALCULATION ID = %d (c%d): ", line_number, id, stack_id, stack_id);
 
   for (k = 0; k < count; k++) {
-    char ar[] = "+-*()|&/^01%~<>";
+    char ar[] = "+-*()|&/^01%~<>!:";
 
     if (ta[k].type == STACK_ITEM_TYPE_OPERATOR) {
       int value = (int)ta[k].value;
@@ -251,6 +251,11 @@ int stack_calculate_tree_node(struct tree_node *node, int *value) {
       in++;
     }
     */
+    else if (child->type == TREE_NODE_TYPE_SYMBOL && child->value == '!') {
+      si[q].type = STACK_ITEM_TYPE_OPERATOR;
+      si[q].value = SI_OP_NOT;
+      fprintf(stderr, "GOT STACK ITEM !\n");
+    }
     else if (child->type == TREE_NODE_TYPE_SYMBOL && child->value == '~') {
       si[q].type = STACK_ITEM_TYPE_OPERATOR;
       si[q].value = SI_OP_XOR;
@@ -261,12 +266,6 @@ int stack_calculate_tree_node(struct tree_node *node, int *value) {
       si[q].value = SI_OP_BANK;
       fprintf(stderr, "GOT STACK ITEM :\n");
     }
-    /*
-    else if (*in == '=' && *(in + 1) == '=')
-      break;
-    else if (*in == '!' && *(in + 1) == '=')
-      break;
-    */
     else if (child->type == TREE_NODE_TYPE_SYMBOL && child->value == '(') {
       si[q].type = STACK_ITEM_TYPE_OPERATOR;
       si[q].value = SI_OP_LEFT;
@@ -484,6 +483,11 @@ int stack_calculate_tokens(int *value) {
       in++;
     }
     */
+    else if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == '!') {
+      si[q].type = STACK_ITEM_TYPE_OPERATOR;
+      si[q].value = SI_OP_NOT;
+      fprintf(stderr, "GOT STACK ITEM !\n");
+    }
     else if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == '~') {
       si[q].type = STACK_ITEM_TYPE_OPERATOR;
       si[q].value = SI_OP_XOR;
@@ -494,12 +498,6 @@ int stack_calculate_tokens(int *value) {
       si[q].value = SI_OP_BANK;
       fprintf(stderr, "GOT STACK ITEM :\n");
     }
-    /*
-    else if (*in == '=' && *(in + 1) == '=')
-      break;
-    else if (*in == '!' && *(in + 1) == '=')
-      break;
-    */
     else if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == '(') {
       si[q].type = STACK_ITEM_TYPE_OPERATOR;
       si[q].value = SI_OP_LEFT;
@@ -638,6 +636,7 @@ int stack_calculate(int *value, struct stack_item *si, int q, int save_if_cannot
 
   /* fix the sign in every operand */
   for (b = 1, k = 0; k < q; k++) {
+    /* NOT VERY USEFUL IN BILIBALI
     if ((q - k) != 1 && si[k].type == STACK_ITEM_TYPE_OPERATOR && si[k + 1].type == STACK_ITEM_TYPE_OPERATOR && si[k + 1].value != SI_OP_BANK
         && si[k + 1].value != SI_OP_HIGH_BYTE && si[k + 1].value != SI_OP_LOW_BYTE) {
       if (si[k].value != SI_OP_LEFT && si[k].value != SI_OP_RIGHT && si[k + 1].value != SI_OP_LEFT && si[k + 1].value != SI_OP_RIGHT) {
@@ -645,6 +644,7 @@ int stack_calculate(int *value, struct stack_item *si, int q, int save_if_cannot
         return FAILED;
       }
     }
+    */
     if (si[k].type == STACK_ITEM_TYPE_OPERATOR && si[k].value == SI_OP_MINUS && b == 1) {
       if (si[k + 1].type == STACK_ITEM_TYPE_VALUE || si[k + 1].type == STACK_ITEM_TYPE_STRING) {
         if (si[k + 1].sign == SI_SIGN_POSITIVE)
@@ -806,7 +806,7 @@ int stack_calculate(int *value, struct stack_item *si, int q, int save_if_cannot
         }
         else if (si[k].value == SI_OP_NOT) {
           b--;
-          while (b != -1 && op[b] != SI_OP_LEFT) {
+          while (b != -1 && op[b] != SI_OP_LEFT && op[b] != SI_OP_LOGICAL_OR && op[b] != SI_OP_LOGICAL_AND) {
             ta[d].type = STACK_ITEM_TYPE_OPERATOR;
             ta[d].value = op[b];
             b--;
@@ -989,9 +989,9 @@ int resolve_stack(struct stack_item s[], int x) {
   if (cannot_resolve != 0)
     return FAILED;
 
-  /* find a string, a stack, bank, or a NOT and fail */
+  /* find a string, a stack or a bank and fail */
   while (q > 0) {
-    if (st->type == STACK_ITEM_TYPE_STRING || st->type == STACK_ITEM_TYPE_STACK || (st->type == STACK_ITEM_TYPE_OPERATOR && st->value == SI_OP_NOT) || (st->type == STACK_ITEM_TYPE_OPERATOR && st->value == SI_OP_BANK))
+    if (st->type == STACK_ITEM_TYPE_STRING || st->type == STACK_ITEM_TYPE_STACK || (st->type == STACK_ITEM_TYPE_OPERATOR && st->value == SI_OP_BANK))
       return FAILED;
     q--;
     st++;
@@ -1051,6 +1051,7 @@ int compute_stack(struct stack *sta, int x, double *result) {
         else
           v[t-2] = 0;
         t--;
+        fprintf(stderr, "DO: ||\n");
         break;
       case SI_OP_LOGICAL_AND:
         if (v[t-1] != 0 && v[t-2] != 0)
@@ -1102,8 +1103,15 @@ int compute_stack(struct stack *sta, int x, double *result) {
         t--;
         break;
       case SI_OP_NOT:
+        /*
         fprintf(stderr, "%s:%d: COMPUTE_STACK: NOT cannot determine the output size.\n", get_file_name(sta->filename_id), sta->linenumber);
         return FAILED;
+        */
+        if ((int)v[t - 1] == 0)
+          v[t - 1] = 1;
+        else
+          v[t - 1] = 0;
+        fprintf(stderr, "DO: !\n");
         break;
       case SI_OP_XOR:
         if (t <= 1) {

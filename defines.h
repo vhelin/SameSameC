@@ -363,6 +363,7 @@ struct tac {
 #define TAC_OP_RETURN_VALUE     26
 #define TAC_OP_FUNCTION_CALL    27
 #define TAC_OP_FUNCTION_CALL_USE_RETURN_VALUE 28
+#define TAC_OP_NOT              29
 
 #define TAC_ARG_TYPE_CONSTANT 0
 #define TAC_ARG_TYPE_LABEL    1

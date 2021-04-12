@@ -733,7 +733,19 @@ int create_term(void) {
   int result;
 
   fprintf(stderr, "+ create_term()\n");
-    
+
+  if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == '!') {
+    node = allocate_tree_node_symbol(g_token_current->value);
+    if (node == NULL)
+      return FAILED;
+
+    if (tree_node_add_child(_get_current_open_expression(), node) == FAILED)
+      return FAILED;
+
+    /* next token */
+    _next_token();
+  }
+  
   result = create_factor();
   if (result != SUCCEEDED)
     return result;
@@ -765,6 +777,18 @@ int create_term(void) {
     /* next token */
     _next_token();
 
+    if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == '!') {
+      node = allocate_tree_node_symbol(g_token_current->value);
+      if (node == NULL)
+        return FAILED;
+
+      if (tree_node_add_child(_get_current_open_expression(), node) == FAILED)
+        return FAILED;
+
+      /* next token */
+      _next_token();
+    }
+    
     result = create_factor();
     if (result != SUCCEEDED)
       return result;

@@ -104,6 +104,11 @@ int il_stack_calculate_expression(struct tree_node *node) {
       si[z].value = SI_OP_XOR;
       fprintf(stderr, "GOT STACK ITEM ~\n");
     }
+    else if (child->type == TREE_NODE_TYPE_SYMBOL && child->value == '!') {
+      si[z].type = STACK_ITEM_TYPE_OPERATOR;
+      si[z].value = SI_OP_NOT;
+      fprintf(stderr, "GOT STACK ITEM !\n");
+    }
     else if (child->type == TREE_NODE_TYPE_SYMBOL && child->value == ':') {
       si[z].type = STACK_ITEM_TYPE_OPERATOR;
       si[z].value = SI_OP_BANK;
@@ -306,6 +311,7 @@ int il_stack_calculate(struct stack_item *si, int q, int rresult) {
 
   /* fix the sign in every operand */
   for (b = 1, k = 0; k < q; k++) {
+    /* NOT VERY USEFUL IN BILIBALI
     if ((q - k) != 1 && si[k].type == STACK_ITEM_TYPE_OPERATOR && si[k + 1].type == STACK_ITEM_TYPE_OPERATOR && si[k + 1].value != SI_OP_BANK
         && si[k + 1].value != SI_OP_HIGH_BYTE && si[k + 1].value != SI_OP_LOW_BYTE) {
       if (si[k].value != SI_OP_LEFT && si[k].value != SI_OP_RIGHT && si[k + 1].value != SI_OP_LEFT && si[k + 1].value != SI_OP_RIGHT) {
@@ -313,6 +319,7 @@ int il_stack_calculate(struct stack_item *si, int q, int rresult) {
         return FAILED;
       }
     }
+    */
     if (si[k].type == STACK_ITEM_TYPE_OPERATOR && si[k].value == SI_OP_MINUS && b == 1) {
       if (si[k + 1].type == STACK_ITEM_TYPE_VALUE || si[k + 1].type == STACK_ITEM_TYPE_STRING) {
         if (si[k + 1].sign == SI_SIGN_POSITIVE)
@@ -487,7 +494,7 @@ int il_stack_calculate(struct stack_item *si, int q, int rresult) {
         }
         else if (si[k].value == SI_OP_NOT) {
           b--;
-          while (b != -1 && op[b] != SI_OP_LEFT) {
+          while (b != -1 && op[b] != SI_OP_LEFT && op[b] != SI_OP_LOGICAL_OR && op[b] != SI_OP_LOGICAL_AND) {
             ta[d].type = STACK_ITEM_TYPE_OPERATOR;
             ta[d].value = op[b];
             b--;
@@ -828,11 +835,19 @@ int il_compute_stack(struct stack *sta, int count, int rresult) {
         */
         break;
       case SI_OP_NOT:
-        fprintf(stderr, "IMPLEMENT ME!\n");
-        /*
-        fprintf(stderr, "%s:%d: IL_COMPUTE_STACK: NOT cannot determine the output size.\n", get_file_name(sta->filename_id), sta->linenumber);
-        return FAILED;
-        */
+        r1 = _load_to_register(si, v, t-1);
+
+        ta = add_tac();
+
+        if (ta == NULL)
+          return FAILED;
+
+        ta->op = TAC_OP_NOT;
+        tac_set_result(ta, TAC_ARG_TYPE_TEMP, g_temp_r++, NULL);
+        tac_set_arg1(ta, TAC_ARG_TYPE_TEMP, r1, NULL);
+
+        _turn_stack_item_into_a_register(si, sit, t-1, (int)ta->result_d);
+
         break;
       case SI_OP_XOR:
         fprintf(stderr, "IMPLEMENT ME!\n");

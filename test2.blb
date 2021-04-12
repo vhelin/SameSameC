@@ -22,3 +22,8 @@ int8 multiply(int8 a, int8 b) {
 
   return a * b;
 }
+
+int8 test(int8 a, int8 b) {
+
+  return !a || !b;
+}
