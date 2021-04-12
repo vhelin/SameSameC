@@ -2,6 +2,8 @@
 #ifndef _TREE_NODE_H
 #define _TREE_NODE_H
 
+int tree_node_flatten(struct tree_node *node);
+int tree_node_does_contain_expressions(struct tree_node *node);
 int tree_node_add_child(struct tree_node *node, struct tree_node *child);
 int tree_node_set_string(struct tree_node *node, char *string);
 void free_tree_node(struct tree_node *node);

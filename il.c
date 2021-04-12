@@ -13,6 +13,7 @@
 #include "il.h"
 #include "tac.h"
 #include "pass_4.h"
+#include "tree_node.h"
 
 
 extern int g_current_line_number, g_current_filename_id;
@@ -25,6 +26,10 @@ int il_stack_calculate_expression(struct tree_node *node) {
   struct tree_node *child;
   int q, b = 0, z, rresult = g_temp_r++;
 
+  /* do we need to flatten the expression? (i.e., does it contain other expressions? */
+  if (tree_node_does_contain_expressions(node) == YES)
+    tree_node_flatten(node);
+  
   /* slice the data into infix format */
   for (q = 0, z = 0; q < node->added_children; q++, z++) {
     /* init the stack item */

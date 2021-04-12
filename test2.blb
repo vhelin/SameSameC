@@ -25,5 +25,5 @@ int8 multiply(int8 a, int8 b) {
 
 int8 test(int8 a, int8 b) {
 
-  return !a || !b;
+  return !(!a || !b);
 }

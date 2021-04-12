@@ -14,6 +14,69 @@
 extern int g_current_filename_id, g_current_line_number;
 
 
+int tree_node_flatten(struct tree_node *node) {
+
+  int i, j, k, items = 0, got_expression = NO;
+  struct tree_node **children, *child;
+
+  /* calculate the total number of items */
+  for (i = 0; i < node->added_children; i++) {
+    if (node->children[i]->type == TREE_NODE_TYPE_EXPRESSION) {
+      items += node->children[i]->added_children;
+      got_expression = YES;
+    }
+    else
+      items++;
+  }
+
+  /* no sub-expressions? */
+  if (got_expression == NO)
+    return SUCCEEDED;
+
+  children = calloc(sizeof(struct tree_node *) * items, 1);
+  if (children == NULL) {
+    print_error("Out of memory while flattening an expression tree node.\n", ERROR_DIR);
+    return FAILED;
+  }
+
+  /* copy the items */
+  for (i = 0, j = 0; i < node->added_children; i++) {
+    if (node->children[i]->type == TREE_NODE_TYPE_EXPRESSION) {
+      child = node->children[i];
+      for (k = 0; k < child->added_children; k++)
+        children[j++] = child->children[k];
+    }
+    else
+      children[j++] = node->children[i];
+  }
+  
+  /* replace the children array */
+  free(node->children);
+  node->children = children;
+  node->added_children = items;
+  node->children_max = items;
+
+  /* flatten again? */
+  if (tree_node_does_contain_expressions(node) == YES)
+    return tree_node_flatten(node);
+  
+  return SUCCEEDED;
+}
+
+
+int tree_node_does_contain_expressions(struct tree_node *node) {
+
+  int i;
+
+  for (i = 0; i < node->added_children; i++) {
+    if (node->children[i]->type == TREE_NODE_TYPE_EXPRESSION)
+      return YES;
+  }
+
+  return NO;
+}
+
+
 int tree_node_add_child(struct tree_node *node, struct tree_node *child) {
 
   if (child == NULL) {
