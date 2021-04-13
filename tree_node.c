@@ -43,8 +43,12 @@ int tree_node_flatten(struct tree_node *node) {
   for (i = 0, j = 0; i < node->added_children; i++) {
     if (node->children[i]->type == TREE_NODE_TYPE_EXPRESSION) {
       child = node->children[i];
-      for (k = 0; k < child->added_children; k++)
+      for (k = 0; k < child->added_children; k++) {
         children[j++] = child->children[k];
+        child->children[k] = NULL;
+      }
+      free_tree_node(child);
+      node->children[i] = NULL;
     }
     else
       children[j++] = node->children[i];
@@ -72,7 +76,7 @@ int tree_node_does_contain_expressions(struct tree_node *node) {
     if (node->children[i]->type == TREE_NODE_TYPE_EXPRESSION)
       return YES;
   }
-
+    
   return NO;
 }
 
