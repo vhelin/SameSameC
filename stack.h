@@ -3,6 +3,7 @@
 #define _STACK_H
 
 int get_label_length(char *l);
+int get_op_priority(int op);
 int stack_calculate_tree_node(struct tree_node *node, int *value);
 int stack_calculate_tokens(int *value);
 int stack_calculate(int *value, struct stack_item *si, int q, int save_if_cannot_resolve);

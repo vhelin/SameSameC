@@ -605,6 +605,55 @@ int stack_calculate_tokens(int *value) {
 }
 
 
+struct stack_item_priority_item g_stack_item_priority_items[] = {
+  { SI_OP_LOGICAL_OR, 10 },
+  { SI_OP_LOGICAL_AND, 20 },
+  { SI_OP_OR, 30 },
+  { SI_OP_XOR, 40 },
+  { SI_OP_AND, 50 },
+  { SI_OP_COMPARE_EQ, 60 },
+  { SI_OP_COMPARE_NEQ, 60 },
+  { SI_OP_COMPARE_LT, 70 },
+  { SI_OP_COMPARE_GT, 70 },
+  { SI_OP_COMPARE_LTE, 70 },
+  { SI_OP_COMPARE_GTE, 70 },
+  { SI_OP_SHIFT_LEFT, 80 },
+  { SI_OP_SHIFT_RIGHT, 80 },
+  { SI_OP_PLUS, 90 },
+  { SI_OP_MINUS, 90 },
+  { SI_OP_MULTIPLY, 100 },
+  { SI_OP_DIVIDE, 100 },
+  { SI_OP_MODULO, 100 },
+  { SI_OP_POWER, 100 },
+  { SI_OP_PRE_INC, 110 },
+  { SI_OP_PRE_DEC, 110 },
+  { SI_OP_POST_INC, 110 },
+  { SI_OP_POST_DEC, 110 },
+  { SI_OP_LOW_BYTE, 110 },
+  { SI_OP_HIGH_BYTE, 110 },
+  { SI_OP_BANK, 110 },
+  { SI_OP_NOT, 110 },
+  { SI_OP_USE_REGISTER, 200 },
+  { 999, 999 }
+};
+
+
+int get_op_priority(int op) {
+
+  int i = 0;
+
+  while (g_stack_item_priority_items[i].op < 999) {
+    if (g_stack_item_priority_items[i].op == op)
+      return g_stack_item_priority_items[i].priority;
+    i++;
+  }
+
+  fprintf(stderr, "get_op_priority(): No priority for OP %d! Please submit a bug report\n", op);
+
+  return 0;
+}
+
+
 int stack_calculate(int *value, struct stack_item *si, int q, int save_if_cannot_resolve) {
 
   int b, d, k, op[256], o, l;
@@ -726,97 +775,7 @@ int stack_calculate(int *value, struct stack_item *si, int q, int save_if_cannot
         b++;
       }
       else {
-        if (si[k].value == SI_OP_LOGICAL_OR ||
-            si[k].value == SI_OP_LOGICAL_AND) {
-          /* these operators have the lowest priority */
-          b--;
-          while (b != -1 && op[b] != SI_OP_LEFT) {
-            ta[d].type = STACK_ITEM_TYPE_OPERATOR;
-            ta[d].value = op[b];
-            b--;
-            d++;
-          }
-          b++;
-          op[b] = (int)si[k].value;
-          b++;
-        }
-        else if (si[k].value == SI_OP_COMPARE_LT ||
-                 si[k].value == SI_OP_COMPARE_GT ||
-                 si[k].value == SI_OP_COMPARE_GTE ||
-                 si[k].value == SI_OP_COMPARE_LTE ||
-                 si[k].value == SI_OP_COMPARE_NEQ ||
-                 si[k].value == SI_OP_COMPARE_EQ) {            
-          /* these operators have almost the lowest priority */
-          b--;
-          while (b != -1 && op[b] != SI_OP_LEFT && op[b] != SI_OP_LOGICAL_OR && op[b] != SI_OP_LOGICAL_AND) {
-            ta[d].type = STACK_ITEM_TYPE_OPERATOR;
-            ta[d].value = op[b];
-            b--;
-            d++;
-          }
-          b++;
-          op[b] = (int)si[k].value;
-          b++;
-        }
-        else if (si[k].value == SI_OP_PLUS ||
-                 si[k].value == SI_OP_MINUS) {
-          b--;
-          while (b != -1 && op[b] != SI_OP_LEFT && op[b] != SI_OP_LOGICAL_OR && op[b] != SI_OP_LOGICAL_AND &&
-                 op[b] != SI_OP_COMPARE_LT && op[b] != SI_OP_COMPARE_GT && op[b] != SI_OP_COMPARE_GTE &&
-                 op[b] != SI_OP_COMPARE_LTE && op[b] != SI_OP_COMPARE_NEQ && op[b] != SI_OP_COMPARE_EQ) {
-            ta[d].type = STACK_ITEM_TYPE_OPERATOR;
-            ta[d].value = op[b];
-            b--;
-            d++;
-          }
-          b++;
-          op[b] = (int)si[k].value;
-          b++;
-        }
-        else if (si[k].value == SI_OP_LOW_BYTE ||
-                 si[k].value == SI_OP_HIGH_BYTE ||
-                 si[k].value == SI_OP_BANK) {
-          /* unary operator, priority over everything else */
-          op[b] = (int)si[k].value;
-          b++;
-        }
-        else if (si[k].value == SI_OP_XOR ||
-                 si[k].value == SI_OP_AND ||
-                 si[k].value == SI_OP_OR ||
-                 si[k].value == SI_OP_MULTIPLY ||
-                 si[k].value == SI_OP_DIVIDE ||
-                 si[k].value == SI_OP_MODULO ||
-                 si[k].value == SI_OP_POWER ||
-                 si[k].value == SI_OP_SHIFT_LEFT ||
-                 si[k].value == SI_OP_SHIFT_RIGHT) {
-          /* these operators have priority over quite a few items */
-          b--;
-          while (b != -1 && op[b] != SI_OP_LEFT && op[b] != SI_OP_PLUS && op[b] != SI_OP_MINUS && op[b] != SI_OP_LOGICAL_OR &&
-                 op[b] != SI_OP_LOGICAL_AND &&
-                 op[b] != SI_OP_COMPARE_LT && op[b] != SI_OP_COMPARE_GT && op[b] != SI_OP_COMPARE_GTE &&
-                 op[b] != SI_OP_COMPARE_LTE && op[b] != SI_OP_COMPARE_NEQ && op[b] != SI_OP_COMPARE_EQ) {
-            ta[d].type = STACK_ITEM_TYPE_OPERATOR;
-            ta[d].value = op[b];
-            b--;
-            d++;
-          }
-          b++;
-          op[b] = (int)si[k].value;
-          b++;
-        }
-        else if (si[k].value == SI_OP_NOT) {
-          b--;
-          while (b != -1 && op[b] != SI_OP_LEFT && op[b] != SI_OP_LOGICAL_OR && op[b] != SI_OP_LOGICAL_AND) {
-            ta[d].type = STACK_ITEM_TYPE_OPERATOR;
-            ta[d].value = op[b];
-            b--;
-            d++;
-          }
-          b++;
-          op[b] = SI_OP_NOT;
-          b++;
-        }
-        else if (si[k].value == SI_OP_LEFT) {
+        if (si[k].value == SI_OP_LEFT) {
           op[b] = SI_OP_LEFT;
           b++;
         }
@@ -828,6 +787,25 @@ int stack_calculate(int *value, struct stack_item *si, int q, int save_if_cannot
             b--;
             d++;
           }
+        }
+        else if (si[k].value == SI_OP_USE_REGISTER) {
+          /* use register, priority over everything else */
+          op[b] = (int)si[k].value;
+          b++;
+        }
+        else {
+          int priority = get_op_priority(si[k].value);
+          
+          b--;
+          while (b != -1 && op[b] != SI_OP_LEFT && get_op_priority(op[b]) > priority) {
+            ta[d].type = STACK_ITEM_TYPE_OPERATOR;
+            ta[d].value = op[b];
+            b--;
+            d++;
+          }
+          b++;
+          op[b] = (int)si[k].value;
+          b++;
         }
       }
     }

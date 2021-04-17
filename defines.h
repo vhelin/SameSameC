@@ -374,4 +374,9 @@ struct breakable_stack_item {
   int label_continue;
 };
 
+struct stack_item_priority_item {
+  int op;
+  int priority;
+};
+
 #endif /* _DEFINES_H */
