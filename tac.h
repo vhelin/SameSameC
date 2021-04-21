@@ -2,6 +2,7 @@
 #ifndef _TAC_H
 #define _TAC_H
 
+char *generate_temp_label(int id);
 void print_tacs(void);
 int tac_set_arg1(struct tac *t, int arg_type, double d, char *s);
 int tac_set_arg2(struct tac *t, int arg_type, double d, char *s);

@@ -18,7 +18,7 @@
 
 
 extern int g_current_line_number, g_current_filename_id;
-extern int g_temp_r;
+extern int g_temp_r, g_temp_label_id;
 
 
 int il_stack_calculate_expression(struct tree_node *node) {
@@ -429,7 +429,7 @@ int il_stack_calculate(struct stack_item *si, int q, int rresult) {
           int priority = get_op_priority(si[k].value);
           
           b--;
-          while (b != -1 && op[b] != SI_OP_LEFT && get_op_priority(op[b]) > priority) {
+          while (b != -1 && op[b] != SI_OP_LEFT && get_op_priority(op[b]) >= priority) {
             ta[d].type = STACK_ITEM_TYPE_OPERATOR;
             ta[d].value = op[b];
             b--;
@@ -528,6 +528,73 @@ static void _turn_stack_item_into_a_register(struct stack_item *si[256], struct 
 
   s->type = STACK_ITEM_TYPE_REGISTER;
   s->value = reg;
+}
+
+
+static int _add_comparison(struct stack_item *si[256], struct stack_item sit[256], double v[256], int index, int op) {
+
+  int label_true = ++g_temp_label_id, label_false = ++g_temp_label_id;
+  int tresult, r1, r2;
+  struct tac *ta;
+          
+  tresult = g_temp_r++;
+
+  ta = add_tac();
+  if (ta == NULL)
+    return FAILED;
+
+  /* load 0 - false */
+  ta->op = TAC_OP_ASSIGNMENT;
+  tac_set_result(ta, TAC_ARG_TYPE_TEMP, tresult, NULL);
+  tac_set_arg1(ta, TAC_ARG_TYPE_CONSTANT, 0, NULL);
+
+  /* comparison + jump if true, to label true */
+  r1 = _load_to_register(si, v, index-2);
+  r2 = _load_to_register(si, v, index-1);
+
+  ta = add_tac();
+  if (ta == NULL)
+    return FAILED;
+        
+  ta->op = TAC_OP_JUMP_LT;
+  tac_set_arg1(ta, TAC_ARG_TYPE_TEMP, r1, NULL);
+  tac_set_arg2(ta, TAC_ARG_TYPE_TEMP, r2, NULL);
+  tac_set_result(ta, TAC_ARG_TYPE_LABEL, 0, generate_temp_label(label_true));
+
+  /* jump to label false */
+  ta = add_tac();
+  if (ta == NULL)
+    return FAILED;
+
+  add_tac_jump(generate_temp_label(label_false));
+
+  /* label true */
+  add_tac_label(generate_temp_label(label_true));
+
+  /* load 1 - true */
+  ta = add_tac();
+  if (ta == NULL)
+    return FAILED;
+
+  ta->op = TAC_OP_ASSIGNMENT;
+  tac_set_result(ta, TAC_ARG_TYPE_TEMP, tresult, NULL);
+  tac_set_arg1(ta, TAC_ARG_TYPE_CONSTANT, 1, NULL);
+
+  /* label false */
+  add_tac_label(generate_temp_label(label_false));
+
+  /* use the result */
+  ta = add_tac();
+  if (ta == NULL)
+    return FAILED;
+        
+  ta->op = TAC_OP_ASSIGNMENT;
+  tac_set_arg1(ta, TAC_ARG_TYPE_TEMP, tresult, NULL);
+  tac_set_result(ta, TAC_ARG_TYPE_TEMP, g_temp_r++, NULL);
+          
+  _turn_stack_item_into_a_register(si, sit, index-2, (int)ta->result_d);
+
+  return SUCCEEDED;
 }
 
 
@@ -656,7 +723,7 @@ int il_compute_stack(struct stack *sta, int count, int rresult) {
 
         ta->op = TAC_OP_ASSIGNMENT;
         tac_set_result(ta, TAC_ARG_TYPE_TEMP, g_temp_r++, NULL);
-        tac_set_arg1(ta, TAC_ARG_TYPE_TEMP, tresult, 0);
+        tac_set_arg1(ta, TAC_ARG_TYPE_TEMP, tresult, NULL);
         
         _turn_stack_item_into_a_register(si, sit, t-1, g_temp_r-1);
         t--;
@@ -669,7 +736,7 @@ int il_compute_stack(struct stack *sta, int count, int rresult) {
 
         ta->op = TAC_OP_ASSIGNMENT;
         tac_set_result(ta, TAC_ARG_TYPE_TEMP, g_temp_r++, NULL);
-        tac_set_arg1(ta, TAC_ARG_TYPE_TEMP, (int)v[t-1], 0);
+        tac_set_arg1(ta, TAC_ARG_TYPE_TEMP, (int)v[t-1], NULL);
         
         _turn_stack_item_into_a_register(si, sit, t-1, g_temp_r-1);
         t--;
@@ -687,45 +754,33 @@ int il_compute_stack(struct stack *sta, int count, int rresult) {
         t--;
         break;
       case SI_OP_COMPARE_LT:
-        r1 = _load_to_register(si, v, t-2);
-        r2 = _load_to_register(si, v, t-1);
-        ta = add_tac_calculation(TAC_OP_COMPARE_LT, r1, r2, g_temp_r++);
-        _turn_stack_item_into_a_register(si, sit, t-2, (int)ta->result_d);
+        if (_add_comparison(si, sit, v, t, TAC_OP_JUMP_LT) == FAILED)
+          return FAILED;
         t--;
         break;
       case SI_OP_COMPARE_GT:
-        r1 = _load_to_register(si, v, t-2);
-        r2 = _load_to_register(si, v, t-1);
-        ta = add_tac_calculation(TAC_OP_COMPARE_GT, r1, r2, g_temp_r++);
-        _turn_stack_item_into_a_register(si, sit, t-2, (int)ta->result_d);
+        if (_add_comparison(si, sit, v, t, TAC_OP_JUMP_GT) == FAILED)
+          return FAILED;
         t--;
         break;
       case SI_OP_COMPARE_LTE:
-        r1 = _load_to_register(si, v, t-2);
-        r2 = _load_to_register(si, v, t-1);
-        ta = add_tac_calculation(TAC_OP_COMPARE_LTE, r1, r2, g_temp_r++);
-        _turn_stack_item_into_a_register(si, sit, t-2, (int)ta->result_d);
+        if (_add_comparison(si, sit, v, t, TAC_OP_JUMP_LTE) == FAILED)
+          return FAILED;
         t--;
         break;
       case SI_OP_COMPARE_GTE:
-        r1 = _load_to_register(si, v, t-2);
-        r2 = _load_to_register(si, v, t-1);
-        ta = add_tac_calculation(TAC_OP_COMPARE_GTE, r1, r2, g_temp_r++);
-        _turn_stack_item_into_a_register(si, sit, t-2, (int)ta->result_d);
+        if (_add_comparison(si, sit, v, t, TAC_OP_JUMP_GTE) == FAILED)
+          return FAILED;
         t--;
         break;
       case SI_OP_COMPARE_EQ:
-        r1 = _load_to_register(si, v, t-2);
-        r2 = _load_to_register(si, v, t-1);
-        ta = add_tac_calculation(TAC_OP_COMPARE_EQ, r1, r2, g_temp_r++);
-        _turn_stack_item_into_a_register(si, sit, t-2, (int)ta->result_d);
+        if (_add_comparison(si, sit, v, t, TAC_OP_JUMP_EQ) == FAILED)
+          return FAILED;
         t--;
         break;
       case SI_OP_COMPARE_NEQ:
-        r1 = _load_to_register(si, v, t-2);
-        r2 = _load_to_register(si, v, t-1);
-        ta = add_tac_calculation(TAC_OP_COMPARE_NEQ, r1, r2, g_temp_r++);
-        _turn_stack_item_into_a_register(si, sit, t-2, (int)ta->result_d);
+        if (_add_comparison(si, sit, v, t, TAC_OP_JUMP_NEQ) == FAILED)
+          return FAILED;
         t--;
         break;
       case SI_OP_LOGICAL_OR:

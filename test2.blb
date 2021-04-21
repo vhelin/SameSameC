@@ -23,7 +23,20 @@ int8 multiply(int8 a, int8 b) {
   return a * b;
 }
 
-int8 test(int8 a, int8 b) {
+int8 long_sum(int8 a) {
 
-  return !(!a || !b);
+  return a+1+1+1-1-1;
 }
+
+int8 test(int8 a, int8 b, int8 c) {
+
+  if (a < 9) {
+    return 111;
+  }
+  else {
+    return 222;
+  }
+
+  return 0;
+}
+

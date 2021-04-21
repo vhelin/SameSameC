@@ -34,8 +34,6 @@ static struct tree_node *g_current_function = NULL;
 
 int g_temp_r = 0, g_temp_label_id = 0;
 
-char g_temp_label[32];
-
 
 static int _generate_il_create_block(struct tree_node *node);
 static void _generate_il_create_increment_decrement(struct tree_node *node);
@@ -61,14 +59,6 @@ static void _exit_breakable(void) {
     fprintf(stderr, "_exit_breakable(): Breakable stack is already empty! Please submit a bug report!\n");
   else
     g_breakable_stack_items_level--;
-}
-
-
-static char *_generate_temp_label(int id) {
-
-  snprintf(g_temp_label, sizeof(g_temp_label), "label_%d", id);
-
-  return g_temp_label;
 }
 
 
@@ -383,7 +373,7 @@ static void _generate_il_create_condition(struct tree_node *node, int false_labe
   t->op = TAC_OP_JUMP_EQ;
   tac_set_arg1(t, TAC_ARG_TYPE_TEMP, r1, NULL);
   tac_set_arg2(t, TAC_ARG_TYPE_TEMP, g_temp_r - 1, NULL);
-  tac_set_result(t, TAC_ARG_TYPE_LABEL, 0, _generate_temp_label(false_label_id));
+  tac_set_result(t, TAC_ARG_TYPE_LABEL, 0, generate_temp_label(false_label_id));
 }
 
 
@@ -437,7 +427,7 @@ static void _generate_il_create_switch(struct tree_node *node) {
       t->op = TAC_OP_JUMP_EQ;
       tac_set_arg1(t, TAC_ARG_TYPE_TEMP, r1, NULL);
       tac_set_arg2(t, TAC_ARG_TYPE_TEMP, r2, NULL);
-      tac_set_result(t, TAC_ARG_TYPE_LABEL, 0, _generate_temp_label(labels[j]));
+      tac_set_result(t, TAC_ARG_TYPE_LABEL, 0, generate_temp_label(labels[j]));
       j++;
     }
     else {
@@ -445,13 +435,13 @@ static void _generate_il_create_switch(struct tree_node *node) {
       got_default = YES;
 
       /* jump to default */
-      add_tac_jump(_generate_temp_label(labels[j]));
+      add_tac_jump(generate_temp_label(labels[j]));
     }
   }
 
   if (got_default == NO) {
     /* jump to exit */
-    add_tac_jump(_generate_temp_label(label_exit));
+    add_tac_jump(generate_temp_label(label_exit));
   }
 
   /* create blocks */
@@ -465,7 +455,7 @@ static void _generate_il_create_switch(struct tree_node *node) {
       /* case */
 
       /* label */
-      add_tac_label(_generate_temp_label(labels[j]));
+      add_tac_label(generate_temp_label(labels[j]));
       j++;
 
       /* block */
@@ -475,7 +465,7 @@ static void _generate_il_create_switch(struct tree_node *node) {
       /* default */
 
       /* label */
-      add_tac_label(_generate_temp_label(labels[j]));
+      add_tac_label(generate_temp_label(labels[j]));
 
       /* block */
       _generate_il_create_block(node->children[i]);
@@ -485,7 +475,7 @@ static void _generate_il_create_switch(struct tree_node *node) {
   _exit_breakable();
   
   /* label of exit */
-  add_tac_label(_generate_temp_label(label_exit));
+  add_tac_label(generate_temp_label(label_exit));
 
   free(labels);
 }
@@ -510,10 +500,10 @@ static void _generate_il_create_if(struct tree_node *node) {
       _generate_il_create_block(node->children[i+1]);
 
       /* jump to exit */
-      add_tac_jump(_generate_temp_label(label_exit));
+      add_tac_jump(generate_temp_label(label_exit));
   
       /* label of next condition */
-      add_tac_label(_generate_temp_label(label_next_condition));
+      add_tac_label(generate_temp_label(label_next_condition));
     }
     else {
       /* else */
@@ -524,7 +514,7 @@ static void _generate_il_create_if(struct tree_node *node) {
   }
 
   /* label of exit */
-  add_tac_label(_generate_temp_label(label_exit));
+  add_tac_label(generate_temp_label(label_exit));
 }
 
 
@@ -536,7 +526,7 @@ static void _generate_il_create_while(struct tree_node *node) {
   label_exit = ++g_temp_label_id;
   
   /* label of condition */
-  add_tac_label(_generate_temp_label(label_condition));
+  add_tac_label(generate_temp_label(label_condition));
 
   /* reset the temp register counter */
   g_temp_r = 0;
@@ -552,10 +542,10 @@ static void _generate_il_create_while(struct tree_node *node) {
   _exit_breakable();
   
   /* jump back to condition */
-  add_tac_jump(_generate_temp_label(label_condition));
+  add_tac_jump(generate_temp_label(label_condition));
   
   /* label of exit */
-  add_tac_label(_generate_temp_label(label_exit));
+  add_tac_label(generate_temp_label(label_exit));
 }
 
 
@@ -571,7 +561,7 @@ static void _generate_il_create_for(struct tree_node *node) {
   _generate_il_create_block(node->children[0]);
 
   /* label of condition */
-  add_tac_label(_generate_temp_label(label_condition));
+  add_tac_label(generate_temp_label(label_condition));
 
   /* reset the temp register counter */
   g_temp_r = 0;
@@ -587,14 +577,14 @@ static void _generate_il_create_for(struct tree_node *node) {
   _exit_breakable();
   
   /* increments of for() */
-  add_tac_label(_generate_temp_label(label_increments));
+  add_tac_label(generate_temp_label(label_increments));
   _generate_il_create_block(node->children[2]);
   
   /* jump back to condition */
-  add_tac_jump(_generate_temp_label(label_condition));
+  add_tac_jump(generate_temp_label(label_condition));
   
   /* label of exit */
-  add_tac_label(_generate_temp_label(label_exit));
+  add_tac_label(generate_temp_label(label_exit));
 }
 
 
@@ -642,7 +632,7 @@ static void _generate_il_create_break(struct tree_node *node) {
   }
   else {
     /* jump out */
-    add_tac_jump(_generate_temp_label(g_breakable_stack_items[g_breakable_stack_items_level].label_break));
+    add_tac_jump(generate_temp_label(g_breakable_stack_items[g_breakable_stack_items_level].label_break));
   }
 }
 
@@ -657,7 +647,7 @@ static void _generate_il_create_continue(struct tree_node *node) {
   }
   else {
     /* jump to the next iteration */
-    add_tac_jump(_generate_temp_label(g_breakable_stack_items[g_breakable_stack_items_level].label_continue));
+    add_tac_jump(generate_temp_label(g_breakable_stack_items[g_breakable_stack_items_level].label_continue));
   }
 }
 

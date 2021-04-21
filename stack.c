@@ -605,7 +605,7 @@ int stack_calculate_tokens(int *value) {
 }
 
 
-struct stack_item_priority_item g_stack_item_priority_items[] = {
+static struct stack_item_priority_item g_stack_item_priority_items[] = {
   { SI_OP_LOGICAL_OR, 10 },
   { SI_OP_LOGICAL_AND, 20 },
   { SI_OP_OR, 30 },
@@ -797,7 +797,7 @@ int stack_calculate(int *value, struct stack_item *si, int q, int save_if_cannot
           int priority = get_op_priority(si[k].value);
           
           b--;
-          while (b != -1 && op[b] != SI_OP_LEFT && get_op_priority(op[b]) > priority) {
+          while (b != -1 && op[b] != SI_OP_LEFT && get_op_priority(op[b]) >= priority) {
             ta[d].type = STACK_ITEM_TYPE_OPERATOR;
             ta[d].value = op[b];
             b--;
@@ -1029,7 +1029,6 @@ int compute_stack(struct stack *sta, int x, double *result) {
         else
           v[t-2] = 0;
         t--;
-        fprintf(stderr, "DO: ||\n");
         break;
       case SI_OP_LOGICAL_AND:
         if (v[t-1] != 0 && v[t-2] != 0)
@@ -1089,7 +1088,6 @@ int compute_stack(struct stack *sta, int x, double *result) {
           v[t - 1] = 1;
         else
           v[t - 1] = 0;
-        fprintf(stderr, "DO: !\n");
         break;
       case SI_OP_XOR:
         if (t <= 1) {
