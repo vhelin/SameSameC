@@ -790,11 +790,70 @@ int il_compute_stack(struct stack *sta, int count, int rresult) {
         t--;
         break;
       case SI_OP_LOGICAL_AND:
-        r1 = _load_to_register(si, v, t-2);
-        r2 = _load_to_register(si, v, t-1);
-        ta = add_tac_calculation(TAC_OP_LOGICAL_AND, r1, r2, g_temp_r++);
-        _turn_stack_item_into_a_register(si, sit, t-2, (int)ta->result_d);
-        t--;
+        {
+          int label_fail = ++g_temp_label_id;
+          int tresult;
+
+          /* load r1 */
+          r1 = _load_to_register(si, v, t-1);
+
+          tresult = g_temp_r++;
+          
+          /* load 0 */
+          ta = add_tac();
+          if (ta == NULL)
+            return FAILED;
+
+          ta->op = TAC_OP_ASSIGNMENT;
+          tac_set_result(ta, TAC_ARG_TYPE_TEMP, tresult, NULL);
+          tac_set_arg1(ta, TAC_ARG_TYPE_CONSTANT, 0, NULL);
+
+          ta = add_tac();
+          if (ta == NULL)
+            return FAILED;
+
+          ta->op = TAC_OP_JUMP_EQ;
+          tac_set_arg1(ta, TAC_ARG_TYPE_TEMP, r1, NULL);
+          tac_set_arg2(ta, TAC_ARG_TYPE_TEMP, tresult, NULL);
+          tac_set_result(ta, TAC_ARG_TYPE_LABEL, 0, generate_temp_label(label_fail));
+
+          /* load r2 */
+          r2 = _load_to_register(si, v, t-2);
+
+          ta = add_tac();
+          if (ta == NULL)
+            return FAILED;
+          
+          ta->op = TAC_OP_JUMP_EQ;
+          tac_set_arg1(ta, TAC_ARG_TYPE_TEMP, r2, NULL);
+          tac_set_arg2(ta, TAC_ARG_TYPE_TEMP, tresult, NULL);
+          tac_set_result(ta, TAC_ARG_TYPE_LABEL, 0, generate_temp_label(label_fail));
+
+          /* load 1 */
+          ta = add_tac();
+          if (ta == NULL)
+            return FAILED;
+
+          ta->op = TAC_OP_ASSIGNMENT;
+          tac_set_result(ta, TAC_ARG_TYPE_TEMP, tresult, NULL);
+          tac_set_arg1(ta, TAC_ARG_TYPE_CONSTANT, 1, NULL);
+          
+          /* label fail */
+          add_tac_label(generate_temp_label(label_fail));
+
+          /* load tresult to a new register */
+          ta = add_tac();
+          if (ta == NULL)
+            return FAILED;
+
+          ta->op = TAC_OP_ASSIGNMENT;
+          tac_set_result(ta, TAC_ARG_TYPE_TEMP, g_temp_r++, NULL);
+          tac_set_arg1(ta, TAC_ARG_TYPE_TEMP, tresult, NULL);
+          
+          _turn_stack_item_into_a_register(si, sit, t-1, (int)ta->result_d);
+
+          t--;
+        }
         break;
       case SI_OP_LOW_BYTE:
         fprintf(stderr, "IMPLEMENT ME!\n");
