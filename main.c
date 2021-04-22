@@ -28,6 +28,7 @@ DWORD __stdcall GetCurrentProcessId(void);
 #include "pass_2.h"
 #include "pass_3.h"
 #include "pass_4.h"
+#include "pass_5.h"
 
 
 /* amiga specific definitions */
@@ -36,7 +37,7 @@ DWORD __stdcall GetCurrentProcessId(void);
 __near long __stack = 200000;
 #endif
 
-char g_version_string[] = "$VER: bilibali-compiler 1.0a (7.2.2021)";
+char g_version_string[] = "$VER: bilibali-compiler 1.0a (22.4.2021)";
 char g_bilibali_version[] = "1.0";
 
 char *g_tmp_name = NULL;
@@ -153,16 +154,9 @@ int main(int argc, char *argv[]) {
     return 1;
   if (pass_4() == FAILED)
     return 1;
-  
-  /*
-  if (g_listfile_data == YES) {
-    if (listfile_collect() == FAILED)
-      return 1;
-  }
-  if (pass_4() == FAILED)
+  if (pass_5() == FAILED)
     return 1;
-  */
-
+  
   return 0;
 }
 

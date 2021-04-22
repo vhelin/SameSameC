@@ -42,6 +42,10 @@ void print_tacs(void) {
   struct tac *t;
   int i, j;
 
+  fprintf(stderr, "///////////////////////////////////////////////////////////////////////\n");
+  fprintf(stderr, "// TACS\n");
+  fprintf(stderr, "///////////////////////////////////////////////////////////////////////\n");
+  
   for (i = 0; i < g_tacs_count; i++) {
     t = &g_tacs[i];
 
