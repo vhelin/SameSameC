@@ -534,11 +534,9 @@ static void _turn_stack_item_into_a_register(struct stack_item *si[256], struct 
 static int _add_comparison(struct stack_item *si[256], struct stack_item sit[256], double v[256], int index, int op) {
 
   int label_true = ++g_temp_label_id, label_false = ++g_temp_label_id;
-  int tresult, r1, r2;
+  int tresult = g_temp_r++, r1, r2;
   struct tac *ta;
           
-  tresult = g_temp_r++;
-
   ta = add_tac();
   if (ta == NULL)
     return FAILED;
@@ -555,8 +553,9 @@ static int _add_comparison(struct stack_item *si[256], struct stack_item sit[256
   ta = add_tac();
   if (ta == NULL)
     return FAILED;
-        
-  ta->op = TAC_OP_JUMP_LT;
+
+  /* TAC_OP_JUMP_* */
+  ta->op = op;
   tac_set_arg1(ta, TAC_ARG_TYPE_TEMP, r1, NULL);
   tac_set_arg2(ta, TAC_ARG_TYPE_TEMP, r2, NULL);
   tac_set_result(ta, TAC_ARG_TYPE_LABEL, 0, generate_temp_label(label_true));
@@ -812,19 +811,49 @@ int il_compute_stack(struct stack *sta, int count, int rresult) {
         */
         break;
       case SI_OP_NOT:
-        r1 = _load_to_register(si, v, t-1);
+        {
+          int label_zero = ++g_temp_label_id, label_non_zero = ++g_temp_label_id;
+          int tresult;
+          
+          r1 = _load_to_register(si, v, t-1);
 
-        ta = add_tac();
+          tresult = g_temp_r++;
+          
+          /* load 0 */
+          ta = add_tac();
+          if (ta == NULL)
+            return FAILED;
 
-        if (ta == NULL)
-          return FAILED;
+          ta->op = TAC_OP_ASSIGNMENT;
+          tac_set_result(ta, TAC_ARG_TYPE_TEMP, tresult, NULL);
+          tac_set_arg1(ta, TAC_ARG_TYPE_CONSTANT, 0, NULL);
 
-        ta->op = TAC_OP_NOT;
-        tac_set_result(ta, TAC_ARG_TYPE_TEMP, g_temp_r++, NULL);
-        tac_set_arg1(ta, TAC_ARG_TYPE_TEMP, r1, NULL);
+          ta = add_tac();
+          if (ta == NULL)
+            return FAILED;
 
-        _turn_stack_item_into_a_register(si, sit, t-1, (int)ta->result_d);
+          ta->op = TAC_OP_JUMP_NEQ;
+          tac_set_arg1(ta, TAC_ARG_TYPE_TEMP, r1, NULL);
+          tac_set_arg2(ta, TAC_ARG_TYPE_TEMP, tresult, NULL);
+          tac_set_result(ta, TAC_ARG_TYPE_LABEL, 0, generate_temp_label(label_non_zero));
 
+          /* label zero */
+          add_tac_label(generate_temp_label(label_zero));
+
+          /* load 1 */
+          ta = add_tac();
+          if (ta == NULL)
+            return FAILED;
+
+          ta->op = TAC_OP_ASSIGNMENT;
+          tac_set_result(ta, TAC_ARG_TYPE_TEMP, tresult, NULL);
+          tac_set_arg1(ta, TAC_ARG_TYPE_CONSTANT, 1, NULL);
+
+          /* label non-zero */
+          add_tac_label(generate_temp_label(label_non_zero));
+
+          _turn_stack_item_into_a_register(si, sit, t-1, tresult);
+        }
         break;
       case SI_OP_XOR:
         fprintf(stderr, "IMPLEMENT ME!\n");
