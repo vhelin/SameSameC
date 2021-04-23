@@ -99,10 +99,25 @@ static int _count_and_allocate_register_usage(int start, int end) {
   /* find the biggest register this IL block uses */
   while (i <= end) {
     if (g_tacs[i].op == TAC_OP_FUNCTION_CALL) {
+      int j;
 
+      for (j = 0; j < (int)g_tacs[i].arg2_d; j++) {
+        if (g_tacs[i].registers[j] > max)
+          max = g_tacs[i].registers[j];
+      }
     }
     else if (g_tacs[i].op == TAC_OP_FUNCTION_CALL_USE_RETURN_VALUE) {
+      int j;
 
+      for (j = 0; j < (int)g_tacs[i].arg2_d; j++) {
+        if (g_tacs[i].registers[j] > max)
+          max = g_tacs[i].registers[j];
+      }
+
+      if (g_tacs[i].result_type == TAC_ARG_TYPE_TEMP) {
+        if ((int)g_tacs[i].result_d > max)
+          max = (int)g_tacs[i].result_d;
+      }
     }
     else if (g_tacs[i].op == TAC_OP_CREATE_VARIABLE) {
     }
@@ -154,10 +169,19 @@ static int _count_and_allocate_register_usage(int start, int end) {
   i = start;
   while (i <= end) {
     if (g_tacs[i].op == TAC_OP_FUNCTION_CALL) {
+      int j;
 
+      for (j = 0; j < (int)g_tacs[i].arg2_d; j++)
+        g_register_reads[g_tacs[i].registers[j]]++;
     }
     else if (g_tacs[i].op == TAC_OP_FUNCTION_CALL_USE_RETURN_VALUE) {
+      int j;
 
+      for (j = 0; j < (int)g_tacs[i].arg2_d; j++)
+        g_register_reads[g_tacs[i].registers[j]]++;
+
+      if (g_tacs[i].result_type == TAC_ARG_TYPE_TEMP)
+        g_register_writes[(int)g_tacs[i].result_d]++;
     }
     else if (g_tacs[i].op == TAC_OP_CREATE_VARIABLE) {
     }
@@ -282,6 +306,55 @@ int optimize_il(void) {
     if (is_last_block == YES)
       break;
   }
-  
+
+  /*
+    rX = rA * rB <--- REMOVE rX if rX doesn't appear elsewhere
+    rC = rX      <--- REMOVE rX if rX doesn't appear elsewhere
+  */
+
+  i = 0;
+  while (1) {
+    int is_last_block = NO;
+    int end = _find_end_of_il_block(i, &is_last_block);
+    if (end < 0)
+      return FAILED;
+    
+    if (_count_and_allocate_register_usage(i, end) == FAILED)
+      return FAILED;
+
+    while (i < end) {
+      int current, next;
+
+      current = _find_next_living_tac(i);
+      next = _find_next_living_tac(current + 1);
+
+      if (current < 0 || next < 0)
+        break;
+
+      if ((g_tacs[current].op == TAC_OP_SHIFT_RIGHT ||
+           g_tacs[current].op == TAC_OP_SHIFT_LEFT ||
+           g_tacs[current].op == TAC_OP_OR ||
+           g_tacs[current].op == TAC_OP_AND ||
+           g_tacs[current].op == TAC_OP_MOD ||
+           g_tacs[current].op == TAC_OP_MUL ||
+           g_tacs[current].op == TAC_OP_DIV ||
+           g_tacs[current].op == TAC_OP_SUB ||
+           g_tacs[current].op == TAC_OP_ADD) &&
+          g_tacs[next].op == TAC_OP_ASSIGNMENT &&
+          g_tacs[current].result_type == TAC_ARG_TYPE_TEMP && g_tacs[next].arg1_type == TAC_ARG_TYPE_TEMP &&
+          (int)g_tacs[current].result_d == (int)g_tacs[next].arg1_d &&
+          g_register_reads[(int)g_tacs[current].result_d] == 1 && g_register_writes[(int)g_tacs[current].result_d] == 1) {
+        /* found match! rX can be skipped! */
+        g_tacs[current].result_d = g_tacs[next].result_d;
+        g_tacs[next].op = TAC_OP_DEAD;
+      }
+          
+      i = next;
+    }
+
+    if (is_last_block == YES)
+      break;
+  }
+
   return SUCCEEDED;
 }

@@ -357,13 +357,11 @@ struct tac {
 #define TAC_OP_OR               19
 #define TAC_OP_SHIFT_LEFT       20
 #define TAC_OP_SHIFT_RIGHT      21
-#define TAC_OP_LOGICAL_OR       22
-#define TAC_OP_LOGICAL_AND      23
-#define TAC_OP_RETURN           24
-#define TAC_OP_RETURN_VALUE     25
-#define TAC_OP_FUNCTION_CALL    26
-#define TAC_OP_FUNCTION_CALL_USE_RETURN_VALUE 27
-#define TAC_OP_NOT              28
+#define TAC_OP_RETURN           22
+#define TAC_OP_RETURN_VALUE     23
+#define TAC_OP_FUNCTION_CALL    24
+#define TAC_OP_FUNCTION_CALL_USE_RETURN_VALUE 25
+#define TAC_OP_NOT              26
 
 #define TAC_ARG_TYPE_CONSTANT 0
 #define TAC_ARG_TYPE_LABEL    1
