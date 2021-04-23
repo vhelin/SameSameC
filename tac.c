@@ -394,11 +394,12 @@ struct tac *add_tac(void) {
   t->arg2_type = TAC_ARG_TYPE_CONSTANT;
   t->arg2_d = 0;
   t->arg2_s = NULL;
-  t->result_type = TAC_ARG_TYPE_TEMP;
+  t->result_type = TAC_ARG_TYPE_CONSTANT;
   t->result_d = 0;
   t->result_s = NULL;
   t->node = NULL;
   t->registers = NULL;
+  t->is_function_start = NO;
   
   return t;
 }

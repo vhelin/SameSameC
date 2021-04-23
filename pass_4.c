@@ -714,8 +714,10 @@ static int _generate_il_create_function(struct tree_node *node) {
 
   g_current_function = node;
   
-  if (add_tac_label(node->children[1]->label) == NULL)
-    return FAILED;  
+  t = add_tac_label(node->children[1]->label);
+  if (t == NULL)
+    return FAILED;
+  t->is_function_start = YES;
 
   /* reset the temp register counter */
   g_temp_r = 0;

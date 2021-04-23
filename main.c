@@ -60,6 +60,7 @@ extern char *g_include_in_tmp, *g_tmp_a;
 extern char *g_include_dir, *g_buffer, *g_full_name;
 extern int g_include_in_tmp_size, g_tmp_a_size, g_newline_beginning;
 extern int g_current_filename_id, g_current_line_number;
+extern int *g_register_reads, *g_register_writes;
 
 extern struct tree_node *g_open_expression[256];
 
@@ -340,6 +341,9 @@ void procedures_at_exit(void) {
     free(g_tacs[index].registers);
   }
   free(g_tacs);
+
+  free(g_register_reads);
+  free(g_register_writes);
   
   /* remove the tmp files */
   if (g_tmp_name != NULL)

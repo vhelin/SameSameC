@@ -332,6 +332,7 @@ struct tac {
 
   struct tree_node *node;
   int *registers;
+  char is_function_start;
 };
 
 #define TAC_OP_DEAD              0
