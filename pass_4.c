@@ -62,12 +62,62 @@ static void _exit_breakable(void) {
 }
 
 
+int make_sure_all_tacs_have_definition_nodes(void) {
+
+  int i, ret = SUCCEEDED;
+
+  for (i = 0; i < g_tacs_count; i++) {
+    struct tac *t = &g_tacs[i];
+    int skip_arg1 = NO, skip_arg2 = NO, skip_result = NO;
+    
+    if (t->op == TAC_OP_DEAD)
+      continue;
+
+    /* jump labels don't have definition nodes as they were generated when IL was generated */
+    if (t->op == TAC_OP_JUMP ||
+        t->op == TAC_OP_JUMP_EQ ||
+        t->op == TAC_OP_JUMP_NEQ ||
+        t->op == TAC_OP_JUMP_LT ||
+        t->op == TAC_OP_JUMP_GT ||
+        t->op == TAC_OP_JUMP_LTE ||
+        t->op == TAC_OP_JUMP_GTE)
+      skip_result = YES;
+    
+    if (skip_arg1 == NO && t->arg1_type == TAC_ARG_TYPE_LABEL && t->arg1_node == NULL) {
+      g_current_filename_id = -1;
+      g_current_line_number = -1;
+      snprintf(g_error_message, sizeof(g_error_message), "make_sure_all_tacs_have_definition_nodes(): Missing variable \"%s\"'s node! Please submit a bug report!\n", t->arg1_s);
+      print_error(g_error_message, ERROR_ERR);
+      ret = FAILED;
+    }
+    if (skip_arg2 == NO && t->arg2_type == TAC_ARG_TYPE_LABEL && t->arg2_node == NULL) {
+      g_current_filename_id = -1;
+      g_current_line_number = -1;
+      snprintf(g_error_message, sizeof(g_error_message), "make_sure_all_tacs_have_definition_nodes(): Missing variable \"%s\"'s node! Please submit a bug report!\n", t->arg2_s);
+      print_error(g_error_message, ERROR_ERR);
+      ret = FAILED;
+    }
+    if (skip_result == NO && t->result_type == TAC_ARG_TYPE_LABEL && t->result_node == NULL) {
+      g_current_filename_id = -1;
+      g_current_line_number = -1;
+      snprintf(g_error_message, sizeof(g_error_message), "make_sure_all_tacs_have_definition_nodes(): Missing variable \"%s\"'s node! Please submit a bug report!\n", t->result_s);
+      print_error(g_error_message, ERROR_ERR);
+      ret = FAILED;
+    }
+  }
+
+  return ret;
+}
+
+
 int pass_4(void) {
 
   if (g_verbose_mode == ON)
     printf("Pass 4...\n");
 
   if (generate_il() == FAILED)
+    return FAILED;
+  if (make_sure_all_tacs_have_definition_nodes() == FAILED)
     return FAILED;
 
   print_tacs();
@@ -79,7 +129,8 @@ int pass_4(void) {
 static void _generate_il_create_variable(struct tree_node *node) {
 
   struct tac *t;
-  
+
+  fprintf(stderr, "ADDED SYMBOL %s\n", node->children[1]->label);
   symbol_table_add_symbol(node, node->children[1]->label, g_block_level);
 
   t = add_tac();
@@ -203,7 +254,6 @@ static void _generate_il_create_expression(struct tree_node *node) {
 
 static int _generate_il_create_assignment(struct tree_node *node) {
 
-  struct symbol_table_item *sti;
   struct tac *t;
   int r1;
 
@@ -241,16 +291,9 @@ static int _generate_il_create_assignment(struct tree_node *node) {
     tac_set_arg1(t, TAC_ARG_TYPE_TEMP, r1, NULL);
   }
 
-  sti = symbol_table_find_symbol(node->children[0]->label);
-  if (sti == NULL) {
-    g_current_filename_id = node->file_id;
-    g_current_line_number = node->line_number;
-    snprintf(g_error_message, sizeof(g_error_message), "_generate_il_create_assignment(): Cannot find variable \"%s\"!\n", node->children[0]->label);
-    print_error(g_error_message, ERROR_ERR);
+  /* find the definition */
+  if (tac_try_find_definition(t, node->children[0]->label, node, TAC_USE_RESULT) == FAILED)
     return FAILED;
-  }
-
-  node->definition = sti->node;
 
   return SUCCEEDED;
 }
@@ -756,6 +799,7 @@ int generate_il(void) {
   for (i = 0; i < g_global_nodes->added_children; i++) {
     struct tree_node *node = g_global_nodes->children[i];
     if (node->type == TREE_NODE_TYPE_FUNCTION_PROTOTYPE) {
+      fprintf(stderr, "ADDED SYMBOL %s\n", node->children[1]->label);
       if (symbol_table_add_symbol(node, node->children[1]->label, g_block_level) == FAILED)
         return FAILED;
     }
@@ -764,6 +808,7 @@ int generate_il(void) {
   for (i = 0; i < g_global_nodes->added_children; i++) {
     struct tree_node *node = g_global_nodes->children[i];
     if (node != NULL && node->type == TREE_NODE_TYPE_CREATE_VARIABLE) {
+      fprintf(stderr, "ADDED SYMBOL %s\n", node->children[1]->label);
       if (symbol_table_add_symbol(node, node->children[1]->label, g_block_level) == FAILED)
         return FAILED;
     }
@@ -772,6 +817,7 @@ int generate_il(void) {
   for (i = 0; i < g_global_nodes->added_children; i++) {
     struct tree_node *node = g_global_nodes->children[i];
     if (node != NULL && node->type == TREE_NODE_TYPE_FUNCTION_DEFINITION) {
+      fprintf(stderr, "ADDED SYMBOL %s\n", node->children[1]->label);
       if (symbol_table_add_symbol(node, node->children[1]->label, g_block_level) == FAILED)
         return FAILED;
     }

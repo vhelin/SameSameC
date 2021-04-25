@@ -13,6 +13,7 @@
 #include "definitions.h"
 #include "stack.h"
 #include "include_file.h"
+#include "pass_4.h"
 #include "pass_5.h"
 #include "tree_node.h"
 #include "symbol_table.h"
@@ -41,6 +42,10 @@ int pass_5(void) {
   if (optimize_il() == FAILED)
     return FAILED;
   if (compress_register_names() == FAILED)
+    return FAILED;
+
+  /* double check that this is still true */
+  if (make_sure_all_tacs_have_definition_nodes() == FAILED)
     return FAILED;
 
   print_tacs();
@@ -326,7 +331,7 @@ int optimize_il(void) {
   }
 
   /*
-    rX = rA   <--- REMOVE rX if rX doesn't appear elsewhere
+    rX = ?    <--- REMOVE rX if rX doesn't appear elsewhere
     return rX <--- REMOVE rX if rX doesn't appear elsewhere
   */
 
@@ -354,7 +359,9 @@ int optimize_il(void) {
           (int)g_tacs[current].result_d == (int)g_tacs[next].arg1_d &&
           g_register_reads[(int)g_tacs[current].result_d] == 1 && g_register_writes[(int)g_tacs[current].result_d] == 1) {
         /* found match! rX can be skipped! */
-        g_tacs[next].arg1_d = g_tacs[current].arg1_d;
+        if (tac_set_arg1(&g_tacs[next], g_tacs[current].arg1_type, g_tacs[current].arg1_d, g_tacs[current].arg1_s) == FAILED)
+          return FAILED;
+        g_tacs[next].arg1_node = g_tacs[current].arg1_node;
         g_tacs[current].op = TAC_OP_DEAD;
       }
           
@@ -367,7 +374,7 @@ int optimize_il(void) {
 
   /*
     rX = rA * rB <--- REMOVE rX if rX doesn't appear elsewhere
-    rC = rX      <--- REMOVE rX if rX doesn't appear elsewhere
+     ? = rX      <--- REMOVE rX if rX doesn't appear elsewhere
   */
 
   i = 0;
@@ -405,6 +412,7 @@ int optimize_il(void) {
         /* found match! rX can be skipped! */
         if (tac_set_result(&g_tacs[current], g_tacs[next].result_type, g_tacs[next].result_d, g_tacs[next].result_s) == FAILED)
           return FAILED;
+        g_tacs[current].result_node = g_tacs[next].result_node;
         g_tacs[next].op = TAC_OP_DEAD;
       }
           

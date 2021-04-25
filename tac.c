@@ -50,10 +50,6 @@ void print_tac(struct tac *t) {
     return;
   else if (t->op == TAC_OP_LABEL)
     fprintf(stderr, "%s:\n", t->result_s);
-  else if (t->op == TAC_OP_JUMP) {
-    fprintf(stderr, "    ");
-    fprintf(stderr, "jmp %s\n", t->result_s);
-  }
   else if (t->op == TAC_OP_ADD) {
     fprintf(stderr, "    ");
     _print_tac_arg(t->result_type, t->result_d, t->result_s);
@@ -159,6 +155,10 @@ void print_tac(struct tac *t) {
     fprintf(stderr, "[");
     _print_tac_arg(t->arg2_type, t->arg2_d, t->arg2_s);
     fprintf(stderr, "]\n");
+  }
+  else if (t->op == TAC_OP_JUMP) {
+    fprintf(stderr, "    ");
+    fprintf(stderr, "jmp %s\n", t->result_s);
   }
   else if (t->op == TAC_OP_JUMP_EQ) {
     fprintf(stderr, "    ");

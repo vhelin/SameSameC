@@ -10,5 +10,14 @@ void main() {
 
 int8 multiply(int8 a, int8 b) {
 
+  if (a > b)
+  {
+    a = a + b + 1;
+  }
+  else
+  {
+    b = a - b - 111;
+  }
+
   return a * b;
 }
