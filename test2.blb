@@ -30,5 +30,5 @@ int8 long_sum(int8 a) {
 
 int8 test(int8 a, int8 b, int8 c) {
 
-  return a || b+1;
+  return a > b+1;
 }

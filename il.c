@@ -469,30 +469,47 @@ static void _increment_decrement(char *label, int increment) {
   if (t == NULL)
     return;
 
-  t->op = TAC_OP_ASSIGNMENT;
-  tac_set_result(t, TAC_ARG_TYPE_TEMP, g_temp_r++, NULL);
-  tac_set_arg1(t, TAC_ARG_TYPE_LABEL, 0, label);
-
-  t = add_tac();
-  if (t == NULL)
-    return;
-
-  t->op = TAC_OP_ASSIGNMENT;
-  tac_set_result(t, TAC_ARG_TYPE_TEMP, g_temp_r++, NULL);
-  tac_set_arg1(t, TAC_ARG_TYPE_CONSTANT, 1, NULL);
-
-  t = add_tac();
-  if (t == NULL)
-    return;
-
   if (increment == YES)
     t->op = TAC_OP_ADD;
   else
     t->op = TAC_OP_SUB;
 
-  tac_set_arg1(t, TAC_ARG_TYPE_TEMP, g_temp_r - 2, NULL);
-  tac_set_arg2(t, TAC_ARG_TYPE_TEMP, g_temp_r - 1, NULL);
+  tac_set_arg1(t, TAC_ARG_TYPE_LABEL, 0, label);
+  tac_set_arg2(t, TAC_ARG_TYPE_CONSTANT, 1, NULL);
   tac_set_result(t, TAC_ARG_TYPE_LABEL, 0, label);
+}
+
+
+static struct tac *_add_tac_calculation(int op, int r1, int r2, int rresult, struct stack_item *si[256], double v[256]) {
+
+  struct tac *t = add_tac();
+
+  if (t == NULL)
+    return NULL;
+
+  t->op = op;
+
+  tac_set_result(t, TAC_ARG_TYPE_TEMP, rresult, NULL);
+
+  if (si[r1] != NULL) {
+    if (si[r1]->type == STACK_ITEM_TYPE_REGISTER)
+      tac_set_arg1(t, TAC_ARG_TYPE_TEMP, (int)si[r1]->value, NULL);
+    else
+      tac_set_arg1(t, TAC_ARG_TYPE_LABEL, 0, si[r1]->string);
+  }
+  else
+    tac_set_arg1(t, TAC_ARG_TYPE_CONSTANT, (int)v[r1], NULL);
+
+  if (si[r2] != NULL) {
+    if (si[r2]->type == STACK_ITEM_TYPE_REGISTER)
+      tac_set_arg2(t, TAC_ARG_TYPE_TEMP, (int)si[r2]->value, NULL);
+    else
+      tac_set_arg2(t, TAC_ARG_TYPE_LABEL, 0, si[r2]->string);
+  }
+  else
+    tac_set_arg2(t, TAC_ARG_TYPE_CONSTANT, (int)v[r2], NULL);
+
+  return t;
 }
 
 
@@ -625,16 +642,12 @@ int il_compute_stack(struct stack *sta, int count, int rresult) {
     else {
       switch ((int)s->value) {
       case SI_OP_PLUS:
-        r1 = _load_to_register(si, v, t-2);
-        r2 = _load_to_register(si, v, t-1);
-        ta = add_tac_calculation(TAC_OP_ADD, r1, r2, g_temp_r++);
+        ta = _add_tac_calculation(TAC_OP_ADD, t-2, t-1, g_temp_r++, si, v);
         _turn_stack_item_into_a_register(si, sit, t-2, (int)ta->result_d);
         t--;
         break;
       case SI_OP_MINUS:
-        r1 = _load_to_register(si, v, t-2);
-        r2 = _load_to_register(si, v, t-1);
-        ta = add_tac_calculation(TAC_OP_SUB, r1, r2, g_temp_r++);
+        ta = _add_tac_calculation(TAC_OP_SUB, t-2, t-1, g_temp_r++, si, v);
         _turn_stack_item_into_a_register(si, sit, t-2, (int)ta->result_d);
         t--;
         break;
@@ -746,9 +759,7 @@ int il_compute_stack(struct stack *sta, int count, int rresult) {
           return FAILED;
         }
 
-        r1 = _load_to_register(si, v, t-2);
-        r2 = _load_to_register(si, v, t-1);
-        ta = add_tac_calculation(TAC_OP_MUL, r1, r2, g_temp_r++);
+        ta = _add_tac_calculation(TAC_OP_MUL, t-2, t-1, g_temp_r++, si, v);
         _turn_stack_item_into_a_register(si, sit, t-2, (int)ta->result_d);
         t--;
         break;
@@ -996,9 +1007,7 @@ int il_compute_stack(struct stack *sta, int count, int rresult) {
           return FAILED;
         }
 
-        r1 = _load_to_register(si, v, t-2);
-        r2 = _load_to_register(si, v, t-1);
-        ta = add_tac_calculation(TAC_OP_OR, r1, r2, g_temp_r++);
+        ta = _add_tac_calculation(TAC_OP_OR, t-2, t-1, g_temp_r++, si, v);
         _turn_stack_item_into_a_register(si, sit, t-2, (int)ta->result_d);
         t--;
         break;
@@ -1008,9 +1017,7 @@ int il_compute_stack(struct stack *sta, int count, int rresult) {
           return FAILED;
         }
 
-        r1 = _load_to_register(si, v, t-2);
-        r2 = _load_to_register(si, v, t-1);
-        ta = add_tac_calculation(TAC_OP_AND, r1, r2, g_temp_r++);
+        ta = _add_tac_calculation(TAC_OP_AND, t-2, t-1, g_temp_r++, si, v);
         _turn_stack_item_into_a_register(si, sit, t-2, (int)ta->result_d);
         t--;
         break;
@@ -1024,9 +1031,7 @@ int il_compute_stack(struct stack *sta, int count, int rresult) {
           return FAILED;
         }
 
-        r1 = _load_to_register(si, v, t-2);
-        r2 = _load_to_register(si, v, t-1);
-        ta = add_tac_calculation(TAC_OP_MOD, r1, r2, g_temp_r++);
+        ta = _add_tac_calculation(TAC_OP_MOD, t-2, t-1, g_temp_r++, si, v);
         _turn_stack_item_into_a_register(si, sit, t-2, (int)ta->result_d);
         t--;
         break;
@@ -1040,9 +1045,7 @@ int il_compute_stack(struct stack *sta, int count, int rresult) {
           return FAILED;
         }
 
-        r1 = _load_to_register(si, v, t-2);
-        r2 = _load_to_register(si, v, t-1);
-        ta = add_tac_calculation(TAC_OP_DIV, r1, r2, g_temp_r++);
+        ta = _add_tac_calculation(TAC_OP_DIV, t-2, t-1, g_temp_r++, si, v);
         _turn_stack_item_into_a_register(si, sit, t-2, (int)ta->result_d);
         t--;
         break;
@@ -1063,9 +1066,7 @@ int il_compute_stack(struct stack *sta, int count, int rresult) {
           return FAILED;
         }
 
-        r1 = _load_to_register(si, v, t-2);
-        r2 = _load_to_register(si, v, t-1);
-        ta = add_tac_calculation(TAC_OP_SHIFT_LEFT, r1, r2, g_temp_r++);
+        ta = _add_tac_calculation(TAC_OP_SHIFT_LEFT, t-2, t-1, g_temp_r++, si, v);
         _turn_stack_item_into_a_register(si, sit, t-2, (int)ta->result_d);
         t--;
         break;
@@ -1075,9 +1076,7 @@ int il_compute_stack(struct stack *sta, int count, int rresult) {
           return FAILED;
         }
 
-        r1 = _load_to_register(si, v, t-2);
-        r2 = _load_to_register(si, v, t-1);
-        ta = add_tac_calculation(TAC_OP_SHIFT_RIGHT, r1, r2, g_temp_r++);
+        ta = _add_tac_calculation(TAC_OP_SHIFT_RIGHT, t-2, t-1, g_temp_r++, si, v);
         _turn_stack_item_into_a_register(si, sit, t-2, (int)ta->result_d);
         t--;
         break;

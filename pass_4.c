@@ -595,29 +595,13 @@ static void _generate_il_create_increment_decrement(struct tree_node *node) {
   if (t == NULL)
     return;
 
-  t->op = TAC_OP_ASSIGNMENT;
-  tac_set_result(t, TAC_ARG_TYPE_TEMP, g_temp_r++, NULL);
-  tac_set_arg1(t, TAC_ARG_TYPE_LABEL, 0, node->label);
-
-  t = add_tac();
-  if (t == NULL)
-    return;
-
-  t->op = TAC_OP_ASSIGNMENT;
-  tac_set_result(t, TAC_ARG_TYPE_TEMP, g_temp_r++, NULL);
-  tac_set_arg1(t, TAC_ARG_TYPE_CONSTANT, 1, NULL);
-
-  t = add_tac();
-  if (t == NULL)
-    return;
-
   if ((int)node->value == SYMBOL_INCREMENT)
     t->op = TAC_OP_ADD;
   else
     t->op = TAC_OP_SUB;
 
-  tac_set_arg1(t, TAC_ARG_TYPE_TEMP, g_temp_r - 2, NULL);
-  tac_set_arg2(t, TAC_ARG_TYPE_TEMP, g_temp_r - 1, NULL);
+  tac_set_arg1(t, TAC_ARG_TYPE_LABEL, 0, node->label);
+  tac_set_arg2(t, TAC_ARG_TYPE_CONSTANT, 1, NULL);
   tac_set_result(t, TAC_ARG_TYPE_LABEL, 0, node->label);
 }
 
