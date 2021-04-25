@@ -2,18 +2,8 @@
 void main() {
 
   int8 i = 0;
-  int8 j = 0;
 
-  switch (i+1) {
-    case 1-1:
-      i++;
-    case 1:
-      i = i - 2;
-      break;
-    default:
-      return;
-      break;
-  }
+  i = 1+2+3;
 
   i = multiply(i + 1, 3);
 }
@@ -21,14 +11,4 @@ void main() {
 int8 multiply(int8 a, int8 b) {
 
   return a * b;
-}
-
-int8 long_sum(int8 a) {
-
-  return a+1+1+1-1-1;
-}
-
-int8 test(int8 a, int8 b, int8 c) {
-
-  return a > b+1;
 }
