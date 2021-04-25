@@ -87,7 +87,7 @@ static void _generate_il_create_variable(struct tree_node *node) {
     return;
 
   t->op = TAC_OP_CREATE_VARIABLE;
-  t->node = node;
+  t->result_node = node;
 }
 
 
@@ -201,8 +201,9 @@ static void _generate_il_create_expression(struct tree_node *node) {
 }
 
 
-static void _generate_il_create_assignment(struct tree_node *node) {
+static int _generate_il_create_assignment(struct tree_node *node) {
 
+  struct symbol_table_item *sti;
   struct tac *t;
   int r1;
 
@@ -217,7 +218,7 @@ static void _generate_il_create_assignment(struct tree_node *node) {
 
     t = add_tac();
     if (t == NULL)
-      return;
+      return FAILED;
 
     /* r1 is the array index, r2 is the result */
 
@@ -230,7 +231,7 @@ static void _generate_il_create_assignment(struct tree_node *node) {
   else {
     t = add_tac();
     if (t == NULL)
-      return;
+      return FAILED;
 
     /* r1 is the result */
     
@@ -239,12 +240,25 @@ static void _generate_il_create_assignment(struct tree_node *node) {
     tac_set_result(t, TAC_ARG_TYPE_LABEL, 0, node->children[0]->label);
     tac_set_arg1(t, TAC_ARG_TYPE_TEMP, r1, NULL);
   }
+
+  sti = symbol_table_find_symbol(node->children[0]->label);
+  if (sti == NULL) {
+    g_current_filename_id = node->file_id;
+    g_current_line_number = node->line_number;
+    snprintf(g_error_message, sizeof(g_error_message), "_generate_il_create_assignment(): Cannot find variable \"%s\"!\n", node->children[0]->label);
+    print_error(g_error_message, ERROR_ERR);
+    return FAILED;
+  }
+
+  node->definition = sti->node;
+
+  return SUCCEEDED;
 }
 
 
 struct tac *generate_il_create_function_call(struct tree_node *node) {
 
-  struct symbol_table_item *item;
+  struct symbol_table_item *sti;
   int *registers = NULL, i;
   struct tac *t;
 
@@ -274,13 +288,13 @@ struct tac *generate_il_create_function_call(struct tree_node *node) {
   tac_set_arg2(t, TAC_ARG_TYPE_CONSTANT, node->added_children - 1, NULL);
 
   /* find the function */
-  item = symbol_table_find_symbol(node->children[0]->label);
-  if (item != NULL)
-    t->node = item->node;
+  sti = symbol_table_find_symbol(node->children[0]->label);
+  if (sti != NULL)
+    t->arg1_node = sti->node;
   else {
     g_current_filename_id = node->file_id;
     g_current_line_number = node->line_number;
-    snprintf(g_error_message, sizeof(g_error_message), "_generate_il_create_function_call(): Cannot find function %s! Please submit a bug report!\n", node->label);
+    snprintf(g_error_message, sizeof(g_error_message), "_generate_il_create_function_call(): Cannot find function \"%s\"! Please submit a bug report!\n", node->label);
     print_error(g_error_message, ERROR_ERR);
     return NULL;
   }
@@ -643,7 +657,7 @@ static int _generate_il_create_statement(struct tree_node *node) {
   if (node->type == TREE_NODE_TYPE_CREATE_VARIABLE)
     _generate_il_create_variable(node);
   else if (node->type == TREE_NODE_TYPE_ASSIGNMENT)
-    _generate_il_create_assignment(node);
+    r = _generate_il_create_assignment(node);
   else if (node->type == TREE_NODE_TYPE_FUNCTION_CALL)
     generate_il_create_function_call(node);
   else if (node->type == TREE_NODE_TYPE_RETURN)

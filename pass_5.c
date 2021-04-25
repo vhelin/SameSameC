@@ -314,6 +314,7 @@ int optimize_il(void) {
         /* found match! rX can be skipped! */
         if (tac_set_arg1(&g_tacs[next], g_tacs[current].arg1_type, g_tacs[current].arg1_d, g_tacs[current].arg1_s) == FAILED)
           return FAILED;
+        g_tacs[next].arg1_node = g_tacs[current].arg1_node;
         g_tacs[current].op = TAC_OP_DEAD;
       }
           
@@ -445,6 +446,7 @@ int optimize_il(void) {
         /* found match! rX can be skipped! */
         if (tac_set_result(&g_tacs[current], g_tacs[next].result_type, g_tacs[next].result_d, g_tacs[next].result_s) == FAILED)
           return FAILED;
+        g_tacs[current].result_node = g_tacs[next].result_node;
         g_tacs[next].op = TAC_OP_DEAD;
       }
           

@@ -227,10 +227,15 @@ int il_stack_calculate_expression(struct tree_node *node) {
       if (t == NULL)
         return FAILED;
 
+      /* we'll actually use the returned value as this happens inside a calculation */
       t->op = TAC_OP_FUNCTION_CALL_USE_RETURN_VALUE;
 
       tac_set_result(t, TAC_ARG_TYPE_TEMP, g_temp_r++, NULL);
 
+      /* find the definition */
+      if (tac_try_find_definition(t, child->children[0]->label, child, TAC_USE_ARG1) == FAILED)
+        return FAILED;
+      
       si[z].type = STACK_ITEM_TYPE_OPERATOR;
       si[z].value = SI_OP_USE_REGISTER;
 
@@ -258,6 +263,10 @@ int il_stack_calculate_expression(struct tree_node *node) {
       tac_set_arg1(t, TAC_ARG_TYPE_LABEL, 0, child->label);
       tac_set_arg2(t, TAC_ARG_TYPE_TEMP, rindex, NULL);
 
+      /* find the definition */
+      if (tac_try_find_definition(t, child->label, child, TAC_USE_ARG1) == FAILED)
+        return FAILED;
+      
       si[z].type = STACK_ITEM_TYPE_OPERATOR;
       si[z].value = SI_OP_USE_REGISTER;
 
@@ -494,8 +503,12 @@ static struct tac *_add_tac_calculation(int op, int r1, int r2, int rresult, str
   if (si[r1] != NULL) {
     if (si[r1]->type == STACK_ITEM_TYPE_REGISTER)
       tac_set_arg1(t, TAC_ARG_TYPE_TEMP, (int)si[r1]->value, NULL);
-    else
+    else {
       tac_set_arg1(t, TAC_ARG_TYPE_LABEL, 0, si[r1]->string);
+
+      /* find the definition */
+      tac_try_find_definition(t, si[r1]->string, NULL, TAC_USE_ARG1);
+    }
   }
   else
     tac_set_arg1(t, TAC_ARG_TYPE_CONSTANT, (int)v[r1], NULL);
@@ -503,8 +516,12 @@ static struct tac *_add_tac_calculation(int op, int r1, int r2, int rresult, str
   if (si[r2] != NULL) {
     if (si[r2]->type == STACK_ITEM_TYPE_REGISTER)
       tac_set_arg2(t, TAC_ARG_TYPE_TEMP, (int)si[r2]->value, NULL);
-    else
+    else {
       tac_set_arg2(t, TAC_ARG_TYPE_LABEL, 0, si[r2]->string);
+
+      /* find the definition */
+      tac_try_find_definition(t, si[r2]->string, NULL, TAC_USE_ARG2);
+    }
   }
   else
     tac_set_arg2(t, TAC_ARG_TYPE_CONSTANT, (int)v[r2], NULL);
@@ -526,8 +543,12 @@ static int _load_to_register(struct stack_item *si[256], double v[256], int inde
   if (si[index] != NULL) {
     if (si[index]->type == STACK_ITEM_TYPE_REGISTER)
       tac_set_arg1(t, TAC_ARG_TYPE_TEMP, (int)si[index]->value, NULL);
-    else
+    else {
       tac_set_arg1(t, TAC_ARG_TYPE_LABEL, 0, si[index]->string);
+
+      /* find the definition */
+      tac_try_find_definition(t, si[index]->string, NULL, TAC_USE_ARG1);
+    }
   }
   else
     tac_set_arg1(t, TAC_ARG_TYPE_CONSTANT, (int)v[index], NULL);
@@ -664,6 +685,10 @@ int il_compute_stack(struct stack *sta, int count, int rresult) {
         tac_set_result(ta, TAC_ARG_TYPE_TEMP, g_temp_r++, NULL);
         tac_set_arg1(ta, TAC_ARG_TYPE_LABEL, 0, si[t-1]->string);
 
+        /* find the definition */
+        if (tac_try_find_definition(ta, si[t-1]->string, NULL, TAC_USE_ARG1) == FAILED)
+          return FAILED;
+
         _turn_stack_item_into_a_register(si, sit, t-1, g_temp_r-1);
         t--;
         
@@ -681,6 +706,10 @@ int il_compute_stack(struct stack *sta, int count, int rresult) {
         tac_set_result(ta, TAC_ARG_TYPE_TEMP, g_temp_r++, NULL);
         tac_set_arg1(ta, TAC_ARG_TYPE_LABEL, 0, si[t-1]->string);
 
+        /* find the definition */
+        if (tac_try_find_definition(ta, si[t-1]->string, NULL, TAC_USE_ARG1) == FAILED)
+          return FAILED;
+        
         _turn_stack_item_into_a_register(si, sit, t-1, g_temp_r-1);
         t--;
         
@@ -697,6 +726,10 @@ int il_compute_stack(struct stack *sta, int count, int rresult) {
         tac_set_result(ta, TAC_ARG_TYPE_TEMP, tresult, NULL);
         tac_set_arg1(ta, TAC_ARG_TYPE_LABEL, 0, si[t-1]->string);
 
+        /* find the definition */
+        if (tac_try_find_definition(ta, si[t-1]->string, NULL, TAC_USE_ARG1) == FAILED)
+          return FAILED;
+        
         /* increment */
         _increment_decrement(si[t-1]->string, YES);
 
@@ -725,6 +758,10 @@ int il_compute_stack(struct stack *sta, int count, int rresult) {
         tac_set_result(ta, TAC_ARG_TYPE_TEMP, tresult, NULL);
         tac_set_arg1(ta, TAC_ARG_TYPE_LABEL, 0, si[t-1]->string);
 
+        /* find the definition */
+        if (tac_try_find_definition(ta, si[t-1]->string, NULL, TAC_USE_ARG1) == FAILED)
+          return FAILED;
+        
         /* decrement */
         _increment_decrement(si[t-1]->string, NO);
 

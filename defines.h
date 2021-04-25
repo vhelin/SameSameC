@@ -321,16 +321,18 @@ struct tac {
   unsigned char arg1_type;
   double arg1_d;
   char *arg1_s;
+  struct tree_node *arg1_node;
 
   unsigned char arg2_type;
   double arg2_d;
   char *arg2_s;
-
+  struct tree_node *arg2_node;
+  
   unsigned char result_type;
   double result_d;
   char *result_s;
+  struct tree_node *result_node;
 
-  struct tree_node *node;
   int *registers;
   char is_function_start;
 };
@@ -366,6 +368,10 @@ struct tac {
 #define TAC_ARG_TYPE_CONSTANT 0
 #define TAC_ARG_TYPE_LABEL    1
 #define TAC_ARG_TYPE_TEMP     2
+
+#define TAC_USE_RESULT 0
+#define TAC_USE_ARG1   1
+#define TAC_USE_ARG2   2
 
 struct breakable_stack_item {
   int label_break;

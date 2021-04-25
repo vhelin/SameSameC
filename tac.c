@@ -9,8 +9,13 @@
 #include "defines.h"
 #include "printf.h"
 #include "definitions.h"
+#include "symbol_table.h"
+#include "main.h"
 #include "tac.h"
 
+
+extern int g_verbose_mode, g_input_float_mode, g_current_filename_id, g_current_line_number;
+extern char g_tmp[4096], g_error_message[sizeof(g_tmp) + MAX_NAME_LENGTH + 1 + 1024];
 
 struct tac *g_tacs = NULL;
 int g_tacs_count = 0, g_tacs_max = 0;
@@ -258,7 +263,7 @@ void print_tac(struct tac *t) {
   }
   else if (t->op == TAC_OP_CREATE_VARIABLE) {
     fprintf(stderr, "    ");
-    fprintf(stderr, "variable %s TODO\n", t->node->children[1]->label);
+    fprintf(stderr, "variable %s TODO\n", t->result_node->children[1]->label);
   }
 }
 
@@ -383,7 +388,9 @@ struct tac *add_tac(void) {
   t->result_type = TAC_ARG_TYPE_CONSTANT;
   t->result_d = 0;
   t->result_s = NULL;
-  t->node = NULL;
+  t->arg1_node = NULL;
+  t->arg2_node = NULL;
+  t->result_node = NULL;
   t->registers = NULL;
   t->is_function_start = NO;
   
@@ -451,4 +458,32 @@ struct tac *add_tac_calculation(int op, int r1, int r2, int rresult) {
   tac_set_arg2(t, TAC_ARG_TYPE_TEMP, r2, NULL);
 
   return t;
+}
+
+
+int tac_try_find_definition(struct tac *t, char *label, struct tree_node *node, int tac_use) {
+
+  struct symbol_table_item *sti;
+
+  sti = symbol_table_find_symbol(label);
+  if (sti == NULL) {
+    if (node != NULL) {
+      g_current_filename_id = node->file_id;
+      g_current_line_number = node->line_number;
+    }
+    else
+      fprintf(stderr, "tac_try_find_definition(): Filename and line number can be wrong...\n");
+    snprintf(g_error_message, sizeof(g_error_message), "tac_try_find_definition(): Cannot find \"%s\"! Please submit a bug report!\n", label);
+    print_error(g_error_message, ERROR_ERR);
+    return FAILED;
+  }
+
+  if (tac_use == TAC_USE_RESULT)
+    t->result_node = sti->node;
+  else if (tac_use == TAC_USE_ARG1)
+    t->arg1_node = sti->node;
+  else
+    t->arg2_node = sti->node;
+  
+  return SUCCEEDED;
 }
