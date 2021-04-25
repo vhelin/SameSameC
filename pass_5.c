@@ -30,7 +30,7 @@ extern char g_tmp[4096], g_error_message[sizeof(g_tmp) + MAX_NAME_LENGTH + 1 + 1
 
 int *g_register_reads = NULL, *g_register_writes = NULL;
 
-static int g_register_reads_count = 0, g_register_writes_count = 0;
+static int g_register_reads_and_writes_count = 0;
 
 
 int pass_5(void) {
@@ -39,6 +39,8 @@ int pass_5(void) {
     printf("Pass 5...\n");
 
   if (optimize_il() == FAILED)
+    return FAILED;
+  if (compress_register_names() == FAILED)
     return FAILED;
 
   print_tacs();
@@ -62,6 +64,23 @@ static int _find_next_living_tac(int i) {
 }
 
 
+/*
+static int _is_il_block_end(struct tac *t) {
+
+  if (t->op == TAC_OP_LABEL ||
+      t->op == TAC_OP_JUMP ||
+      t->op == TAC_OP_JUMP_EQ ||
+      t->op == TAC_OP_JUMP_LT ||
+      t->op == TAC_OP_JUMP_GT ||
+      t->op == TAC_OP_JUMP_NEQ ||
+      t->op == TAC_OP_JUMP_LTE ||
+      t->op == TAC_OP_JUMP_GTE)
+    return YES;
+
+  return NO;      
+}
+
+
 static int _find_end_of_il_block(int start, int *is_last_block) {
 
   int j = start;
@@ -73,20 +92,59 @@ static int _find_end_of_il_block(int start, int *is_last_block) {
     return start;
   }
 
-  if (g_tacs[j].op != TAC_OP_LABEL) {
-    fprintf(stderr, "_find_end_of_il_block(): Expected to find a start label! Please submit a bug report!\n");
-    return -1;
-  }
+  fprintf(stderr, "BLOCK\n%.3d: ", j);
+  print_tac(&g_tacs[j]);
 
   j++;
   
   while (j < g_tacs_count) {
-    if (g_tacs[j].op == TAC_OP_LABEL)
+    if (_is_il_block_end(&g_tacs[j]) == YES) {
+      fprintf(stderr, "%.3d: ", j);
+      print_tac(&g_tacs[j]);
       return j;
+    }
     j++;
   }
 
   *is_last_block = YES;
+
+  fprintf(stderr, "%.3d: ", j);
+  print_tac(&g_tacs[j]);
+  
+  return j;
+}
+*/
+
+
+static int _find_end_of_il_function(int start, int *is_last_function) {
+
+  int j = start;
+
+  *is_last_function = NO;
+
+  if (start >= g_tacs_count - 1) {
+    *is_last_function = YES;
+    return start;
+  }
+
+  fprintf(stderr, "FUNCTION %s %d\n%.3d: ", g_tacs[j].result_s, g_tacs[j].is_function_start, j);
+  print_tac(&g_tacs[j]);
+
+  j++;
+  
+  while (j < g_tacs_count) {
+    if (g_tacs[j].op == TAC_OP_LABEL && g_tacs[j].is_function_start == YES) {
+      fprintf(stderr, "%.3d: ", j);
+      print_tac(&g_tacs[j]);
+      return j;
+    }
+    j++;
+  }
+
+  *is_last_function = YES;
+
+  fprintf(stderr, "%.3d: ", j-1);
+  print_tac(&g_tacs[j-1]);
   
   return j;
 }
@@ -140,27 +198,25 @@ static int _count_and_allocate_register_usage(int start, int end) {
 
   max++;
 
-  if (g_register_reads_count < max) {
+  if (g_register_reads_and_writes_count < max) {
     free(g_register_reads);
     g_register_reads = (int *)calloc(sizeof(int) * max, 1);
     if (g_register_reads == NULL) {
       fprintf(stderr, "_count_and_allocate_register_usage(): Out of memory error!\n");
       return FAILED;
     }
-    g_register_reads_count = max;
-  }
 
-  if (g_register_writes_count < max) {
     free(g_register_writes);
     g_register_writes = (int *)calloc(sizeof(int) * max, 1);
     if (g_register_writes == NULL) {
       fprintf(stderr, "_count_and_allocate_register_usage(): Out of memory error!\n");
       return FAILED;
     }
-    g_register_writes_count = max;
+
+    g_register_reads_and_writes_count = max;
   }
 
-  for (i = 0; i < max; i++) {
+  for (i = 0; i < g_register_reads_and_writes_count; i++) {
     g_register_reads[i] = 0;
     g_register_writes[i] = 0;
   }
@@ -234,8 +290,8 @@ int optimize_il(void) {
 
   i = 0;
   while (1) {
-    int is_last_block = NO;
-    int end = _find_end_of_il_block(i, &is_last_block);
+    int is_last_function = NO;
+    int end = _find_end_of_il_function(i, &is_last_function);
     if (end < 0)
       return FAILED;
 
@@ -263,7 +319,7 @@ int optimize_il(void) {
       i = next;
     }
 
-    if (is_last_block == YES)
+    if (is_last_function == YES)
       break;
   }
 
@@ -274,8 +330,8 @@ int optimize_il(void) {
 
   i = 0;
   while (1) {
-    int is_last_block = NO;
-    int end = _find_end_of_il_block(i, &is_last_block);
+    int is_last_function = NO;
+    int end = _find_end_of_il_function(i, &is_last_function);
     if (end < 0)
       return FAILED;
     
@@ -303,7 +359,7 @@ int optimize_il(void) {
       i = next;
     }
 
-    if (is_last_block == YES)
+    if (is_last_function == YES)
       break;
   }
 
@@ -314,8 +370,8 @@ int optimize_il(void) {
 
   i = 0;
   while (1) {
-    int is_last_block = NO;
-    int end = _find_end_of_il_block(i, &is_last_block);
+    int is_last_function = NO;
+    int end = _find_end_of_il_function(i, &is_last_function);
     if (end < 0)
       return FAILED;
     
@@ -345,14 +401,119 @@ int optimize_il(void) {
           (int)g_tacs[current].result_d == (int)g_tacs[next].arg1_d &&
           g_register_reads[(int)g_tacs[current].result_d] == 1 && g_register_writes[(int)g_tacs[current].result_d] == 1) {
         /* found match! rX can be skipped! */
-        g_tacs[current].result_d = g_tacs[next].result_d;
+        if (tac_set_result(&g_tacs[current], g_tacs[next].result_type, g_tacs[next].result_d, g_tacs[next].result_s) == FAILED)
+          return FAILED;
         g_tacs[next].op = TAC_OP_DEAD;
       }
           
       i = next;
     }
 
-    if (is_last_block == YES)
+    if (is_last_function == YES)
+      break;
+  }
+
+  return SUCCEEDED;
+}
+
+
+static int _rename_registers(struct tac *t, int* new_names) {
+
+  if (t->op == TAC_OP_FUNCTION_CALL) {
+    int j;
+
+    for (j = 0; j < (int)t->arg2_d; j++) {
+      if (new_names[t->registers[j]] < 0)
+        return FAILED;
+      t->registers[j] = new_names[t->registers[j]];
+    }
+  }
+  else if (t->op == TAC_OP_FUNCTION_CALL_USE_RETURN_VALUE) {
+    int j;
+
+    for (j = 0; j < (int)t->arg2_d; j++) {
+      if (new_names[t->registers[j]] < 0)
+        return FAILED;
+      t->registers[j] = new_names[t->registers[j]];
+    }
+    
+    if (t->result_type == TAC_ARG_TYPE_TEMP) {
+      if (new_names[(int)t->result_d] < 0)
+        return FAILED;
+      t->result_d = new_names[(int)t->result_d];
+    }
+  }
+  else if (t->op == TAC_OP_CREATE_VARIABLE) {
+  }
+  else if (t->op != TAC_OP_DEAD) {
+    if (t->arg1_type == TAC_ARG_TYPE_TEMP) {
+      if (new_names[(int)t->arg1_d] < 0)
+        return FAILED;
+      t->arg1_d = new_names[(int)t->arg1_d];
+    }
+    if (t->arg2_type == TAC_ARG_TYPE_TEMP) {
+      if (new_names[(int)t->arg2_d] < 0)
+        return FAILED;
+      t->arg2_d = new_names[(int)t->arg2_d];
+    }
+    if (t->result_type == TAC_ARG_TYPE_TEMP) {
+      if (new_names[(int)t->result_d] < 0)
+        return FAILED;
+      t->result_d = new_names[(int)t->result_d];
+    }
+  }
+
+  return SUCCEEDED;
+}
+
+
+int compress_register_names(void) {
+
+  int *register_usage, *register_new_names;
+  int i, j, new_name;
+
+  i = 0;
+  while (1) {
+    int is_last_function = NO;
+    int end = _find_end_of_il_function(i, &is_last_function);
+    if (end < 0)
+      return FAILED;
+
+    if (_count_and_allocate_register_usage(i, end) == FAILED)
+      return FAILED;
+
+    /* sum reads and writes */
+    for (j = 0; j < g_register_reads_and_writes_count; j++)
+      g_register_reads[j] += g_register_writes[j];
+
+    /* reuse the arrays! */
+    register_usage = g_register_reads;
+    register_new_names = g_register_writes;
+
+    /* find new names for the registers */
+    new_name = 0;
+    for (j = 0; j < g_register_reads_and_writes_count; j++) {
+      if (register_usage[j] > 0)
+        register_new_names[j] = new_name++;
+      else
+        register_new_names[j] = -1;
+    }
+
+    /* rename the registers */
+    while (i < end) {
+      int current = _find_next_living_tac(i);
+      if (current < 0)
+        break;
+
+      if (_rename_registers(&g_tacs[current], register_new_names) == FAILED) {
+        fprintf(stderr, "compress_register_names(): Register renaming failed! Please submit a bug report!\n");
+        return FAILED;
+      }
+          
+      i = current + 1;
+    }
+
+    if (is_last_function == YES)
       break;
   }
 

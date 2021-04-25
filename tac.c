@@ -37,238 +37,242 @@ char *generate_temp_label(int id) {
 }
 
 
+void print_tac(struct tac *t) {
+
+  int j;
+  
+  if (t->op == TAC_OP_DEAD)
+    return;
+  else if (t->op == TAC_OP_LABEL)
+    fprintf(stderr, "%s:\n", t->result_s);
+  else if (t->op == TAC_OP_JUMP) {
+    fprintf(stderr, "    ");
+    fprintf(stderr, "jmp %s\n", t->result_s);
+  }
+  else if (t->op == TAC_OP_ADD) {
+    fprintf(stderr, "    ");
+    _print_tac_arg(t->result_type, t->result_d, t->result_s);
+    fprintf(stderr, " := ");
+    _print_tac_arg(t->arg1_type, t->arg1_d, t->arg1_s);
+    fprintf(stderr, " + ");
+    _print_tac_arg(t->arg2_type, t->arg2_d, t->arg2_s);
+    fprintf(stderr, "\n");
+  }
+  else if (t->op == TAC_OP_SUB) {
+    fprintf(stderr, "    ");
+    _print_tac_arg(t->result_type, t->result_d, t->result_s);
+    fprintf(stderr, " := ");
+    _print_tac_arg(t->arg1_type, t->arg1_d, t->arg1_s);
+    fprintf(stderr, " - ");
+    _print_tac_arg(t->arg2_type, t->arg2_d, t->arg2_s);
+    fprintf(stderr, "\n");
+  }
+  else if (t->op == TAC_OP_MUL) {
+    fprintf(stderr, "    ");
+    _print_tac_arg(t->result_type, t->result_d, t->result_s);
+    fprintf(stderr, " := ");
+    _print_tac_arg(t->arg1_type, t->arg1_d, t->arg1_s);
+    fprintf(stderr, " * ");
+    _print_tac_arg(t->arg2_type, t->arg2_d, t->arg2_s);
+    fprintf(stderr, "\n");
+  }
+  else if (t->op == TAC_OP_DIV) {
+    fprintf(stderr, "    ");
+    _print_tac_arg(t->result_type, t->result_d, t->result_s);
+    fprintf(stderr, " := ");
+    _print_tac_arg(t->arg1_type, t->arg1_d, t->arg1_s);
+    fprintf(stderr, " / ");
+    _print_tac_arg(t->arg2_type, t->arg2_d, t->arg2_s);
+    fprintf(stderr, "\n");
+  }
+  else if (t->op == TAC_OP_MOD) {
+    fprintf(stderr, "    ");
+    _print_tac_arg(t->result_type, t->result_d, t->result_s);
+    fprintf(stderr, " := ");
+    _print_tac_arg(t->arg1_type, t->arg1_d, t->arg1_s);
+    fprintf(stderr, " %% ");
+    _print_tac_arg(t->arg2_type, t->arg2_d, t->arg2_s);
+    fprintf(stderr, "\n");
+  }
+  else if (t->op == TAC_OP_AND) {
+    fprintf(stderr, "    ");
+    _print_tac_arg(t->result_type, t->result_d, t->result_s);
+    fprintf(stderr, " := ");
+    _print_tac_arg(t->arg1_type, t->arg1_d, t->arg1_s);
+    fprintf(stderr, " & ");
+    _print_tac_arg(t->arg2_type, t->arg2_d, t->arg2_s);
+    fprintf(stderr, "\n");
+  }
+  else if (t->op == TAC_OP_OR) {
+    fprintf(stderr, "    ");
+    _print_tac_arg(t->result_type, t->result_d, t->result_s);
+    fprintf(stderr, " := ");
+    _print_tac_arg(t->arg1_type, t->arg1_d, t->arg1_s);
+    fprintf(stderr, " | ");
+    _print_tac_arg(t->arg2_type, t->arg2_d, t->arg2_s);
+    fprintf(stderr, "\n");
+  }
+  else if (t->op == TAC_OP_SHIFT_LEFT) {
+    fprintf(stderr, "    ");
+    _print_tac_arg(t->result_type, t->result_d, t->result_s);
+    fprintf(stderr, " := ");
+    _print_tac_arg(t->arg1_type, t->arg1_d, t->arg1_s);
+    fprintf(stderr, " << ");
+    _print_tac_arg(t->arg2_type, t->arg2_d, t->arg2_s);
+    fprintf(stderr, "\n");
+  }
+  else if (t->op == TAC_OP_SHIFT_RIGHT) {
+    fprintf(stderr, "    ");
+    _print_tac_arg(t->result_type, t->result_d, t->result_s);
+    fprintf(stderr, " := ");
+    _print_tac_arg(t->arg1_type, t->arg1_d, t->arg1_s);
+    fprintf(stderr, " >> ");
+    _print_tac_arg(t->arg2_type, t->arg2_d, t->arg2_s);
+    fprintf(stderr, "\n");
+  }
+  else if (t->op == TAC_OP_ASSIGNMENT) {
+    fprintf(stderr, "    ");
+    _print_tac_arg(t->result_type, t->result_d, t->result_s);
+    fprintf(stderr, " := ");      
+    _print_tac_arg(t->arg1_type, t->arg1_d, t->arg1_s);
+    fprintf(stderr, "\n");
+  }
+  else if (t->op == TAC_OP_ARRAY_ASSIGNMENT) {
+    fprintf(stderr, "    ");
+    _print_tac_arg(t->result_type, t->result_d, t->result_s);
+    fprintf(stderr, "[");
+    _print_tac_arg(t->arg2_type, t->arg2_d, t->arg2_s);
+    fprintf(stderr, "] := ");
+    _print_tac_arg(t->arg1_type, t->arg1_d, t->arg1_s);
+    fprintf(stderr, "\n");
+  }
+  else if (t->op == TAC_OP_ARRAY_READ) {
+    fprintf(stderr, "    ");
+    _print_tac_arg(t->result_type, t->result_d, t->result_s);
+    fprintf(stderr, " := ");
+    _print_tac_arg(t->arg1_type, t->arg1_d, t->arg1_s);
+    fprintf(stderr, "[");
+    _print_tac_arg(t->arg2_type, t->arg2_d, t->arg2_s);
+    fprintf(stderr, "]\n");
+  }
+  else if (t->op == TAC_OP_JUMP_EQ) {
+    fprintf(stderr, "    ");
+    fprintf(stderr, "if ");
+    _print_tac_arg(t->arg1_type, t->arg1_d, t->arg1_s);
+    fprintf(stderr, " == ");
+    _print_tac_arg(t->arg2_type, t->arg2_d, t->arg2_s);
+    fprintf(stderr, " jmp ");
+    _print_tac_arg(t->result_type, t->result_d, t->result_s);
+    fprintf(stderr, "\n");
+  }
+  else if (t->op == TAC_OP_JUMP_NEQ) {
+    fprintf(stderr, "    ");
+    fprintf(stderr, "if ");
+    _print_tac_arg(t->arg1_type, t->arg1_d, t->arg1_s);
+    fprintf(stderr, " != ");
+    _print_tac_arg(t->arg2_type, t->arg2_d, t->arg2_s);
+    fprintf(stderr, " jmp ");
+    _print_tac_arg(t->result_type, t->result_d, t->result_s);
+    fprintf(stderr, "\n");
+  }
+  else if (t->op == TAC_OP_JUMP_LT) {
+    fprintf(stderr, "    ");
+    fprintf(stderr, "if ");
+    _print_tac_arg(t->arg1_type, t->arg1_d, t->arg1_s);
+    fprintf(stderr, " < ");
+    _print_tac_arg(t->arg2_type, t->arg2_d, t->arg2_s);
+    fprintf(stderr, " jmp ");
+    _print_tac_arg(t->result_type, t->result_d, t->result_s);
+    fprintf(stderr, "\n");
+  }
+  else if (t->op == TAC_OP_JUMP_GT) {
+    fprintf(stderr, "    ");
+    fprintf(stderr, "if ");
+    _print_tac_arg(t->arg1_type, t->arg1_d, t->arg1_s);
+    fprintf(stderr, " > ");
+    _print_tac_arg(t->arg2_type, t->arg2_d, t->arg2_s);
+    fprintf(stderr, " jmp ");
+    _print_tac_arg(t->result_type, t->result_d, t->result_s);
+    fprintf(stderr, "\n");
+  }
+  else if (t->op == TAC_OP_JUMP_LTE) {
+    fprintf(stderr, "    ");
+    fprintf(stderr, "if ");
+    _print_tac_arg(t->arg1_type, t->arg1_d, t->arg1_s);
+    fprintf(stderr, " <= ");
+    _print_tac_arg(t->arg2_type, t->arg2_d, t->arg2_s);
+    fprintf(stderr, " jmp ");
+    _print_tac_arg(t->result_type, t->result_d, t->result_s);
+    fprintf(stderr, "\n");
+  }
+  else if (t->op == TAC_OP_JUMP_GTE) {
+    fprintf(stderr, "    ");
+    fprintf(stderr, "if ");
+    _print_tac_arg(t->arg1_type, t->arg1_d, t->arg1_s);
+    fprintf(stderr, " >= ");
+    _print_tac_arg(t->arg2_type, t->arg2_d, t->arg2_s);
+    fprintf(stderr, " jmp ");
+    _print_tac_arg(t->result_type, t->result_d, t->result_s);
+    fprintf(stderr, "\n");
+  }
+  else if (t->op == TAC_OP_RETURN) {
+    fprintf(stderr, "    ");
+    fprintf(stderr, "return;\n");
+  }
+  else if (t->op == TAC_OP_RETURN_VALUE) {
+    fprintf(stderr, "    ");
+    fprintf(stderr, "return ");
+    _print_tac_arg(t->arg1_type, t->arg1_d, t->arg1_s);
+    fprintf(stderr, "\n");
+  }
+  else if (t->op == TAC_OP_NOT) {
+    fprintf(stderr, "    ");
+    _print_tac_arg(t->result_type, t->result_d, t->result_s);
+    fprintf(stderr, " := !");      
+    _print_tac_arg(t->arg1_type, t->arg1_d, t->arg1_s);
+    fprintf(stderr, "\n");
+  }
+  else if (t->op == TAC_OP_FUNCTION_CALL) {
+    fprintf(stderr, "    ");
+    _print_tac_arg(t->arg1_type, t->arg1_d, t->arg1_s);
+    fprintf(stderr, "(");
+    for (j = 0; j < (int)t->arg2_d; j++) {
+      _print_tac_arg(TAC_ARG_TYPE_TEMP, t->registers[j], NULL);
+      if (j < (int)t->arg2_d - 1)
+        fprintf(stderr, ", ");
+    }
+    fprintf(stderr, ")\n");
+  }
+  else if (t->op == TAC_OP_FUNCTION_CALL_USE_RETURN_VALUE) {
+    fprintf(stderr, "    ");
+    _print_tac_arg(t->result_type, t->result_d, t->result_s);
+    fprintf(stderr, " := ");
+    _print_tac_arg(t->arg1_type, t->arg1_d, t->arg1_s);
+    fprintf(stderr, "(");
+    for (j = 0; j < (int)t->arg2_d; j++) {
+      _print_tac_arg(TAC_ARG_TYPE_TEMP, t->registers[j], NULL);
+      if (j < (int)t->arg2_d - 1)
+        fprintf(stderr, ", ");
+    }
+    fprintf(stderr, ")\n");
+  }
+  else if (t->op == TAC_OP_CREATE_VARIABLE) {
+    fprintf(stderr, "    ");
+    fprintf(stderr, "variable %s TODO\n", t->node->children[1]->label);
+  }
+}
+
+
 void print_tacs(void) {
 
-  struct tac *t;
-  int i, j;
+  int i;
 
   fprintf(stderr, "///////////////////////////////////////////////////////////////////////\n");
   fprintf(stderr, "// TACS\n");
   fprintf(stderr, "///////////////////////////////////////////////////////////////////////\n");
   
-  for (i = 0; i < g_tacs_count; i++) {
-    t = &g_tacs[i];
-
-    if (t->op == TAC_OP_DEAD)
-      continue;
-    else if (t->op == TAC_OP_LABEL)
-      fprintf(stderr, "%s:\n", t->result_s);
-    else if (t->op == TAC_OP_JUMP) {
-      fprintf(stderr, "    ");
-      fprintf(stderr, "jmp %s\n", t->result_s);
-    }
-    else if (t->op == TAC_OP_ADD) {
-      fprintf(stderr, "    ");
-      _print_tac_arg(t->result_type, t->result_d, t->result_s);
-      fprintf(stderr, " := ");
-      _print_tac_arg(t->arg1_type, t->arg1_d, t->arg1_s);
-      fprintf(stderr, " + ");
-      _print_tac_arg(t->arg2_type, t->arg2_d, t->arg2_s);
-      fprintf(stderr, "\n");
-    }
-    else if (t->op == TAC_OP_SUB) {
-      fprintf(stderr, "    ");
-      _print_tac_arg(t->result_type, t->result_d, t->result_s);
-      fprintf(stderr, " := ");
-      _print_tac_arg(t->arg1_type, t->arg1_d, t->arg1_s);
-      fprintf(stderr, " - ");
-      _print_tac_arg(t->arg2_type, t->arg2_d, t->arg2_s);
-      fprintf(stderr, "\n");
-    }
-    else if (t->op == TAC_OP_MUL) {
-      fprintf(stderr, "    ");
-      _print_tac_arg(t->result_type, t->result_d, t->result_s);
-      fprintf(stderr, " := ");
-      _print_tac_arg(t->arg1_type, t->arg1_d, t->arg1_s);
-      fprintf(stderr, " * ");
-      _print_tac_arg(t->arg2_type, t->arg2_d, t->arg2_s);
-      fprintf(stderr, "\n");
-    }
-    else if (t->op == TAC_OP_DIV) {
-      fprintf(stderr, "    ");
-      _print_tac_arg(t->result_type, t->result_d, t->result_s);
-      fprintf(stderr, " := ");
-      _print_tac_arg(t->arg1_type, t->arg1_d, t->arg1_s);
-      fprintf(stderr, " / ");
-      _print_tac_arg(t->arg2_type, t->arg2_d, t->arg2_s);
-      fprintf(stderr, "\n");
-    }
-    else if (t->op == TAC_OP_MOD) {
-      fprintf(stderr, "    ");
-      _print_tac_arg(t->result_type, t->result_d, t->result_s);
-      fprintf(stderr, " := ");
-      _print_tac_arg(t->arg1_type, t->arg1_d, t->arg1_s);
-      fprintf(stderr, " %% ");
-      _print_tac_arg(t->arg2_type, t->arg2_d, t->arg2_s);
-      fprintf(stderr, "\n");
-    }
-    else if (t->op == TAC_OP_AND) {
-      fprintf(stderr, "    ");
-      _print_tac_arg(t->result_type, t->result_d, t->result_s);
-      fprintf(stderr, " := ");
-      _print_tac_arg(t->arg1_type, t->arg1_d, t->arg1_s);
-      fprintf(stderr, " & ");
-      _print_tac_arg(t->arg2_type, t->arg2_d, t->arg2_s);
-      fprintf(stderr, "\n");
-    }
-    else if (t->op == TAC_OP_OR) {
-      fprintf(stderr, "    ");
-      _print_tac_arg(t->result_type, t->result_d, t->result_s);
-      fprintf(stderr, " := ");
-      _print_tac_arg(t->arg1_type, t->arg1_d, t->arg1_s);
-      fprintf(stderr, " | ");
-      _print_tac_arg(t->arg2_type, t->arg2_d, t->arg2_s);
-      fprintf(stderr, "\n");
-    }
-    else if (t->op == TAC_OP_SHIFT_LEFT) {
-      fprintf(stderr, "    ");
-      _print_tac_arg(t->result_type, t->result_d, t->result_s);
-      fprintf(stderr, " := ");
-      _print_tac_arg(t->arg1_type, t->arg1_d, t->arg1_s);
-      fprintf(stderr, " << ");
-      _print_tac_arg(t->arg2_type, t->arg2_d, t->arg2_s);
-      fprintf(stderr, "\n");
-    }
-    else if (t->op == TAC_OP_SHIFT_RIGHT) {
-      fprintf(stderr, "    ");
-      _print_tac_arg(t->result_type, t->result_d, t->result_s);
-      fprintf(stderr, " := ");
-      _print_tac_arg(t->arg1_type, t->arg1_d, t->arg1_s);
-      fprintf(stderr, " >> ");
-      _print_tac_arg(t->arg2_type, t->arg2_d, t->arg2_s);
-      fprintf(stderr, "\n");
-    }
-    else if (t->op == TAC_OP_ASSIGNMENT) {
-      fprintf(stderr, "    ");
-      _print_tac_arg(t->result_type, t->result_d, t->result_s);
-      fprintf(stderr, " := ");      
-      _print_tac_arg(t->arg1_type, t->arg1_d, t->arg1_s);
-      fprintf(stderr, "\n");
-    }
-    else if (t->op == TAC_OP_ARRAY_ASSIGNMENT) {
-      fprintf(stderr, "    ");
-      _print_tac_arg(t->result_type, t->result_d, t->result_s);
-      fprintf(stderr, "[");
-      _print_tac_arg(t->arg2_type, t->arg2_d, t->arg2_s);
-      fprintf(stderr, "] := ");
-      _print_tac_arg(t->arg1_type, t->arg1_d, t->arg1_s);
-      fprintf(stderr, "\n");
-    }
-    else if (t->op == TAC_OP_ARRAY_READ) {
-      fprintf(stderr, "    ");
-      _print_tac_arg(t->result_type, t->result_d, t->result_s);
-      fprintf(stderr, " := ");
-      _print_tac_arg(t->arg1_type, t->arg1_d, t->arg1_s);
-      fprintf(stderr, "[");
-      _print_tac_arg(t->arg2_type, t->arg2_d, t->arg2_s);
-      fprintf(stderr, "]\n");
-    }
-    else if (t->op == TAC_OP_JUMP_EQ) {
-      fprintf(stderr, "    ");
-      fprintf(stderr, "if ");
-      _print_tac_arg(t->arg1_type, t->arg1_d, t->arg1_s);
-      fprintf(stderr, " == ");
-      _print_tac_arg(t->arg2_type, t->arg2_d, t->arg2_s);
-      fprintf(stderr, " jmp ");
-      _print_tac_arg(t->result_type, t->result_d, t->result_s);
-      fprintf(stderr, "\n");
-    }
-    else if (t->op == TAC_OP_JUMP_NEQ) {
-      fprintf(stderr, "    ");
-      fprintf(stderr, "if ");
-      _print_tac_arg(t->arg1_type, t->arg1_d, t->arg1_s);
-      fprintf(stderr, " != ");
-      _print_tac_arg(t->arg2_type, t->arg2_d, t->arg2_s);
-      fprintf(stderr, " jmp ");
-      _print_tac_arg(t->result_type, t->result_d, t->result_s);
-      fprintf(stderr, "\n");
-    }
-    else if (t->op == TAC_OP_JUMP_LT) {
-      fprintf(stderr, "    ");
-      fprintf(stderr, "if ");
-      _print_tac_arg(t->arg1_type, t->arg1_d, t->arg1_s);
-      fprintf(stderr, " < ");
-      _print_tac_arg(t->arg2_type, t->arg2_d, t->arg2_s);
-      fprintf(stderr, " jmp ");
-      _print_tac_arg(t->result_type, t->result_d, t->result_s);
-      fprintf(stderr, "\n");
-    }
-    else if (t->op == TAC_OP_JUMP_GT) {
-      fprintf(stderr, "    ");
-      fprintf(stderr, "if ");
-      _print_tac_arg(t->arg1_type, t->arg1_d, t->arg1_s);
-      fprintf(stderr, " > ");
-      _print_tac_arg(t->arg2_type, t->arg2_d, t->arg2_s);
-      fprintf(stderr, " jmp ");
-      _print_tac_arg(t->result_type, t->result_d, t->result_s);
-      fprintf(stderr, "\n");
-    }
-    else if (t->op == TAC_OP_JUMP_LTE) {
-      fprintf(stderr, "    ");
-      fprintf(stderr, "if ");
-      _print_tac_arg(t->arg1_type, t->arg1_d, t->arg1_s);
-      fprintf(stderr, " <= ");
-      _print_tac_arg(t->arg2_type, t->arg2_d, t->arg2_s);
-      fprintf(stderr, " jmp ");
-      _print_tac_arg(t->result_type, t->result_d, t->result_s);
-      fprintf(stderr, "\n");
-    }
-    else if (t->op == TAC_OP_JUMP_GTE) {
-      fprintf(stderr, "    ");
-      fprintf(stderr, "if ");
-      _print_tac_arg(t->arg1_type, t->arg1_d, t->arg1_s);
-      fprintf(stderr, " >= ");
-      _print_tac_arg(t->arg2_type, t->arg2_d, t->arg2_s);
-      fprintf(stderr, " jmp ");
-      _print_tac_arg(t->result_type, t->result_d, t->result_s);
-      fprintf(stderr, "\n");
-    }
-    else if (t->op == TAC_OP_RETURN) {
-      fprintf(stderr, "    ");
-      fprintf(stderr, "return;\n");
-    }
-    else if (t->op == TAC_OP_RETURN_VALUE) {
-      fprintf(stderr, "    ");
-      fprintf(stderr, "return ");
-      _print_tac_arg(t->arg1_type, t->arg1_d, t->arg1_s);
-      fprintf(stderr, "\n");
-    }
-    else if (t->op == TAC_OP_NOT) {
-      fprintf(stderr, "    ");
-      _print_tac_arg(t->result_type, t->result_d, t->result_s);
-      fprintf(stderr, " := !");      
-      _print_tac_arg(t->arg1_type, t->arg1_d, t->arg1_s);
-      fprintf(stderr, "\n");
-    }
-    else if (t->op == TAC_OP_FUNCTION_CALL) {
-      fprintf(stderr, "    ");
-      _print_tac_arg(t->arg1_type, t->arg1_d, t->arg1_s);
-      fprintf(stderr, "(");
-      for (j = 0; j < (int)t->arg2_d; j++) {
-        _print_tac_arg(TAC_ARG_TYPE_TEMP, t->registers[j], NULL);
-        if (j < (int)t->arg2_d - 1)
-          fprintf(stderr, ", ");
-      }
-      fprintf(stderr, ")\n");
-    }
-    else if (t->op == TAC_OP_FUNCTION_CALL_USE_RETURN_VALUE) {
-      fprintf(stderr, "    ");
-      _print_tac_arg(t->result_type, t->result_d, t->result_s);
-      fprintf(stderr, " := ");
-      _print_tac_arg(t->arg1_type, t->arg1_d, t->arg1_s);
-      fprintf(stderr, "(");
-      for (j = 0; j < (int)t->arg2_d; j++) {
-        _print_tac_arg(TAC_ARG_TYPE_TEMP, t->registers[j], NULL);
-        if (j < (int)t->arg2_d - 1)
-          fprintf(stderr, ", ");
-      }
-      fprintf(stderr, ")\n");
-    }
-    else if (t->op == TAC_OP_CREATE_VARIABLE) {
-      fprintf(stderr, "    ");
-      fprintf(stderr, "variable %s TODO\n", t->node->children[1]->label);
-    }
-  }
+  for (i = 0; i < g_tacs_count; i++)
+    print_tac(&g_tacs[i]);
 }
 
 
