@@ -36,7 +36,7 @@ int g_temp_r = 0, g_temp_label_id = 0;
 
 
 static int _generate_il_create_block(struct tree_node *node);
-static void _generate_il_create_increment_decrement(struct tree_node *node);
+static int _generate_il_create_increment_decrement(struct tree_node *node);
 
 
 static int _enter_breakable(int label_break, int label_continue) {
@@ -126,7 +126,7 @@ int pass_4(void) {
 }
 
 
-static void _generate_il_create_variable(struct tree_node *node) {
+static int _generate_il_create_variable(struct tree_node *node) {
 
   struct tac *t;
 
@@ -135,14 +135,17 @@ static void _generate_il_create_variable(struct tree_node *node) {
 
   t = add_tac();
   if (t == NULL)
-    return;
+    return FAILED;
 
   t->op = TAC_OP_CREATE_VARIABLE;
+  tac_set_result(t, TAC_ARG_TYPE_LABEL, 0, node->children[1]->label);
   t->result_node = node;
+
+  return SUCCEEDED;
 }
 
 
-static void _generate_il_create_expression(struct tree_node *node) {
+static int _generate_il_create_expression(struct tree_node *node) {
 
   struct tac *t;
   
@@ -153,17 +156,21 @@ static void _generate_il_create_expression(struct tree_node *node) {
   else if (node->type == TREE_NODE_TYPE_VALUE_STRING) {
     t = add_tac();
     if (t == NULL)
-      return;
+      return FAILED;
 
     t->op = TAC_OP_ASSIGNMENT;
 
     tac_set_result(t, TAC_ARG_TYPE_TEMP, g_temp_r++, NULL);
     tac_set_arg1(t, TAC_ARG_TYPE_LABEL, 0, node->label);
+
+    /* find the definition */
+    if (tac_try_find_definition(t, node->label, node, TAC_USE_ARG1) == FAILED)
+      return FAILED;
   }
   else if (node->type == TREE_NODE_TYPE_VALUE_INT) {
     t = add_tac();
     if (t == NULL)
-      return;
+      return FAILED;
 
     t->op = TAC_OP_ASSIGNMENT;
 
@@ -173,7 +180,7 @@ static void _generate_il_create_expression(struct tree_node *node) {
   else if (node->type == TREE_NODE_TYPE_VALUE_DOUBLE) {
     t = add_tac();
     if (t == NULL)
-      return;
+      return FAILED;
 
     t->op = TAC_OP_ASSIGNMENT;
 
@@ -186,17 +193,22 @@ static void _generate_il_create_expression(struct tree_node *node) {
   else if (node->type == TREE_NODE_TYPE_ARRAY_ITEM) {
     int rindex = g_temp_r;
 
-    _generate_il_create_expression(node->children[0]);
+    if (_generate_il_create_expression(node->children[0]) == FAILED)
+      return FAILED;
 
     t = add_tac();
     if (t == NULL)
-      return;
+      return FAILED;
 
     t->op = TAC_OP_ARRAY_READ;
 
     tac_set_result(t, TAC_ARG_TYPE_TEMP, g_temp_r++, NULL);
     tac_set_arg1(t, TAC_ARG_TYPE_LABEL, 0, node->label);
     tac_set_arg2(t, TAC_ARG_TYPE_TEMP, rindex, NULL);
+
+    /* find the definition */
+    if (tac_try_find_definition(t, node->label, node, TAC_USE_ARG1) == FAILED)
+      return FAILED;
   }
   else if (node->type == TREE_NODE_TYPE_INCREMENT_DECREMENT) {
     int rresult;
@@ -207,7 +219,7 @@ static void _generate_il_create_expression(struct tree_node *node) {
       /* get the value before increment/decrement */
       t = add_tac();
       if (t == NULL)
-        return;
+        return FAILED;
 
       rresult = g_temp_r++;
       
@@ -215,13 +227,18 @@ static void _generate_il_create_expression(struct tree_node *node) {
       tac_set_result(t, TAC_ARG_TYPE_TEMP, rresult, NULL);
       tac_set_arg1(t, TAC_ARG_TYPE_LABEL, 0, node->label);
 
+      /* find the definition */
+      if (tac_try_find_definition(t, node->label, node, TAC_USE_ARG1) == FAILED)
+        return FAILED;
+      
       /* increment/decrement */
-      _generate_il_create_increment_decrement(node);
+      if (_generate_il_create_increment_decrement(node) == FAILED)
+        return FAILED;
 
       /* have the result in the latest register */
       t = add_tac();
       if (t == NULL)
-        return;
+        return FAILED;
 
       t->op = TAC_OP_ASSIGNMENT;
       tac_set_result(t, TAC_ARG_TYPE_TEMP, g_temp_r++, NULL);
@@ -231,16 +248,21 @@ static void _generate_il_create_expression(struct tree_node *node) {
       /* pre */
 
       /* increment/decrement */
-      _generate_il_create_increment_decrement(node);
+      if (_generate_il_create_increment_decrement(node) == FAILED)
+        return FAILED;
 
       /* have the result in the latest register */
       t = add_tac();
       if (t == NULL)
-        return;
+        return FAILED;
 
       t->op = TAC_OP_ASSIGNMENT;
       tac_set_result(t, TAC_ARG_TYPE_TEMP, g_temp_r++, NULL);
       tac_set_arg1(t, TAC_ARG_TYPE_LABEL, 0, node->label);
+
+      /* find the definition */
+      if (tac_try_find_definition(t, node->label, node, TAC_USE_ARG1) == FAILED)
+        return FAILED;
     }
   }
   else {
@@ -248,7 +270,11 @@ static void _generate_il_create_expression(struct tree_node *node) {
     g_current_line_number = node->line_number;
     snprintf(g_error_message, sizeof(g_error_message), "_generate_il_create_expression(): Unsupported tree node %d!\n", node->type);
     print_error(g_error_message, ERROR_ERR);
+
+    return FAILED;
   }
+
+  return SUCCEEDED;
 }
 
 
@@ -259,12 +285,14 @@ static int _generate_il_create_assignment(struct tree_node *node) {
 
   r1 = g_temp_r;
 
-  _generate_il_create_expression(node->children[1]);
+  if (_generate_il_create_expression(node->children[1]) == FAILED)
+    return FAILED;
 
   if (node->added_children == 3) {
     int r2 = g_temp_r;
 
-    _generate_il_create_expression(node->children[2]);
+    if (_generate_il_create_expression(node->children[2]) == FAILED)
+      return FAILED;
 
     t = add_tac();
     if (t == NULL)
@@ -318,7 +346,8 @@ struct tac *generate_il_create_function_call(struct tree_node *node) {
 
   for (i = 1; i < node->added_children; i++) {
     registers[i-1] = g_temp_r;
-    _generate_il_create_expression(node->children[i]);
+    if (_generate_il_create_expression(node->children[i]) == FAILED)
+      return NULL;
   }
 
   t = add_tac();
@@ -383,7 +412,8 @@ static int _generate_il_create_return(struct tree_node *node) {
 
     r1 = g_temp_r;
 
-    _generate_il_create_expression(node->children[0]);
+    if (_generate_il_create_expression(node->children[0]) == FAILED)
+      return FAILED;
 
     t = add_tac();
     if (t == NULL)
@@ -397,7 +427,7 @@ static int _generate_il_create_return(struct tree_node *node) {
 }
 
 
-static void _generate_il_create_condition(struct tree_node *node, int false_label_id) {
+static int _generate_il_create_condition(struct tree_node *node, int false_label_id) {
 
   struct tac *t;
   int r1;
@@ -407,17 +437,18 @@ static void _generate_il_create_condition(struct tree_node *node, int false_labe
     g_current_line_number = node->line_number;
     snprintf(g_error_message, sizeof(g_error_message), "_generate_il_create_condition(): Was expecting TREE_NODE_TYPE_CONDITION, but got %d instead.\n", node->type);
     print_error(g_error_message, ERROR_ERR);
-    return;
+    return FAILED;
   }
 
   r1 = g_temp_r;
 
-  _generate_il_create_expression(node->children[0]);
+  if (_generate_il_create_expression(node->children[0]) == FAILED)
+    return FAILED;
 
   /* compare with 0 */
   t = add_tac();
   if (t == NULL)
-    return;
+    return FAILED;
 
   t->op = TAC_OP_ASSIGNMENT;
   tac_set_result(t, TAC_ARG_TYPE_TEMP, g_temp_r++, NULL);
@@ -425,16 +456,18 @@ static void _generate_il_create_condition(struct tree_node *node, int false_labe
 
   t = add_tac();
   if (t == NULL)
-    return;
+    return FAILED;
   
   t->op = TAC_OP_JUMP_EQ;
   tac_set_arg1(t, TAC_ARG_TYPE_TEMP, r1, NULL);
   tac_set_arg2(t, TAC_ARG_TYPE_TEMP, g_temp_r - 1, NULL);
   tac_set_result(t, TAC_ARG_TYPE_LABEL, 0, generate_temp_label(false_label_id));
+
+  return SUCCEEDED;
 }
 
 
-static void _generate_il_create_switch(struct tree_node *node) {
+static int _generate_il_create_switch(struct tree_node *node) {
 
   int label_exit, i, j = 0, blocks = 0, *labels, r1, r2, got_default = NO;
   struct tac *t;
@@ -449,7 +482,7 @@ static void _generate_il_create_switch(struct tree_node *node) {
     g_current_line_number = node->line_number;
     snprintf(g_error_message, sizeof(g_error_message), "_generate_il_create_switch(): Out of memory error.\n");
     print_error(g_error_message, ERROR_ERR);
-    return;
+    return FAILED;
   }
   
   /* reserve labels */
@@ -460,7 +493,8 @@ static void _generate_il_create_switch(struct tree_node *node) {
 
   r1 = g_temp_r;
 
-  _generate_il_create_expression(node->children[0]);
+  if (_generate_il_create_expression(node->children[0]) == FAILED)
+    return FAILED;
   
   /* create tests */
 
@@ -472,13 +506,14 @@ static void _generate_il_create_switch(struct tree_node *node) {
 
       r2 = g_temp_r;
 
-      _generate_il_create_expression(node->children[i]);
+      if (_generate_il_create_expression(node->children[i]) == FAILED)
+        return FAILED;
 
       /* compare with r1 */
       t = add_tac();
       if (t == NULL) {
         free(labels);
-        return;
+        return FAILED;
       }
   
       t->op = TAC_OP_JUMP_EQ;
@@ -535,10 +570,12 @@ static void _generate_il_create_switch(struct tree_node *node) {
   add_tac_label(generate_temp_label(label_exit));
 
   free(labels);
+
+  return SUCCEEDED;
 }
 
 
-static void _generate_il_create_if(struct tree_node *node) {
+static int _generate_il_create_if(struct tree_node *node) {
 
   int label_exit, i;
 
@@ -551,7 +588,8 @@ static void _generate_il_create_if(struct tree_node *node) {
       /* if/elseif */
 
       /* condition */
-      _generate_il_create_condition(node->children[i], label_next_condition);
+      if (_generate_il_create_condition(node->children[i], label_next_condition) == FAILED)
+        return FAILED;
 
       /* main block */
       _generate_il_create_block(node->children[i+1]);
@@ -572,10 +610,12 @@ static void _generate_il_create_if(struct tree_node *node) {
 
   /* label of exit */
   add_tac_label(generate_temp_label(label_exit));
+
+  return SUCCEEDED;
 }
 
 
-static void _generate_il_create_while(struct tree_node *node) {
+static int _generate_il_create_while(struct tree_node *node) {
 
   int label_condition, label_exit;
   
@@ -589,7 +629,8 @@ static void _generate_il_create_while(struct tree_node *node) {
   g_temp_r = 0;
   
   /* condition */
-  _generate_il_create_condition(node->children[0], label_exit);
+  if (_generate_il_create_condition(node->children[0], label_exit) == FAILED)
+    return FAILED;
 
   _enter_breakable(label_exit, label_condition);
   
@@ -603,10 +644,12 @@ static void _generate_il_create_while(struct tree_node *node) {
   
   /* label of exit */
   add_tac_label(generate_temp_label(label_exit));
+
+  return SUCCEEDED;
 }
 
 
-static void _generate_il_create_for(struct tree_node *node) {
+static int _generate_il_create_for(struct tree_node *node) {
 
   int label_condition, label_increments, label_exit;
   
@@ -624,7 +667,8 @@ static void _generate_il_create_for(struct tree_node *node) {
   g_temp_r = 0;
   
   /* condition */
-  _generate_il_create_condition(node->children[1], label_exit);
+  if (_generate_il_create_condition(node->children[1], label_exit) == FAILED)
+    return FAILED;
 
   _enter_breakable(label_exit, label_increments);
   
@@ -642,15 +686,17 @@ static void _generate_il_create_for(struct tree_node *node) {
   
   /* label of exit */
   add_tac_label(generate_temp_label(label_exit));
+
+  return SUCCEEDED;
 }
 
 
-static void _generate_il_create_increment_decrement(struct tree_node *node) {
+static int _generate_il_create_increment_decrement(struct tree_node *node) {
 
   struct tac *t = add_tac();
 
   if (t == NULL)
-    return;
+    return FAILED;
 
   if ((int)node->value == SYMBOL_INCREMENT)
     t->op = TAC_OP_ADD;
@@ -660,36 +706,44 @@ static void _generate_il_create_increment_decrement(struct tree_node *node) {
   tac_set_arg1(t, TAC_ARG_TYPE_LABEL, 0, node->label);
   tac_set_arg2(t, TAC_ARG_TYPE_CONSTANT, 1, NULL);
   tac_set_result(t, TAC_ARG_TYPE_LABEL, 0, node->label);
+
+  return SUCCEEDED;
 }
 
 
-static void _generate_il_create_break(struct tree_node *node) {
+static int _generate_il_create_break(struct tree_node *node) {
 
   if (g_breakable_stack_items_level < 0) {
     g_current_filename_id = node->file_id;
     g_current_line_number = node->line_number;
     snprintf(g_error_message, sizeof(g_error_message), "_generate_il_create_break(): break does nothing here, nothing to break from.\n");
     print_error(g_error_message, ERROR_ERR);
+
+    return FAILED;
   }
-  else {
-    /* jump out */
-    add_tac_jump(generate_temp_label(g_breakable_stack_items[g_breakable_stack_items_level].label_break));
-  }
+  
+  /* jump out */
+  add_tac_jump(generate_temp_label(g_breakable_stack_items[g_breakable_stack_items_level].label_break));
+
+  return SUCCEEDED;
 }
 
 
-static void _generate_il_create_continue(struct tree_node *node) {
+static int _generate_il_create_continue(struct tree_node *node) {
 
   if (g_breakable_stack_items_level < 0) {
     g_current_filename_id = node->file_id;
     g_current_line_number = node->line_number;
-    snprintf(g_error_message, sizeof(g_error_message), "_generate_il_create_break(): continue does nothing here, nothing to continue.\n");
+    snprintf(g_error_message, sizeof(g_error_message), "_generate_il_create_continue(): continue does nothing here, nothing to continue.\n");
     print_error(g_error_message, ERROR_ERR);
+
+    return FAILED;
   }
-  else {
-    /* jump to the next iteration */
-    add_tac_jump(generate_temp_label(g_breakable_stack_items[g_breakable_stack_items_level].label_continue));
-  }
+
+  /* jump to the next iteration */
+  add_tac_jump(generate_temp_label(g_breakable_stack_items[g_breakable_stack_items_level].label_continue));
+
+  return SUCCEEDED;
 }
 
 
@@ -698,32 +752,38 @@ static int _generate_il_create_statement(struct tree_node *node) {
   int r = SUCCEEDED;
   
   if (node->type == TREE_NODE_TYPE_CREATE_VARIABLE)
-    _generate_il_create_variable(node);
+    r = _generate_il_create_variable(node);
   else if (node->type == TREE_NODE_TYPE_ASSIGNMENT)
     r = _generate_il_create_assignment(node);
-  else if (node->type == TREE_NODE_TYPE_FUNCTION_CALL)
-    generate_il_create_function_call(node);
+  else if (node->type == TREE_NODE_TYPE_FUNCTION_CALL) {
+    if (generate_il_create_function_call(node) == NULL)
+      r = FAILED;
+    else
+      r = SUCCEEDED;
+  }
   else if (node->type == TREE_NODE_TYPE_RETURN)
     r = _generate_il_create_return(node);
   else if (node->type == TREE_NODE_TYPE_IF)
-    _generate_il_create_if(node);
+    r = _generate_il_create_if(node);
   else if (node->type == TREE_NODE_TYPE_SWITCH)
-    _generate_il_create_switch(node);
+    r = _generate_il_create_switch(node);
   else if (node->type == TREE_NODE_TYPE_WHILE)
-    _generate_il_create_while(node);
+    r = _generate_il_create_while(node);
   else if (node->type == TREE_NODE_TYPE_FOR)
-    _generate_il_create_for(node);
+    r = _generate_il_create_for(node);
   else if (node->type == TREE_NODE_TYPE_INCREMENT_DECREMENT)
-    _generate_il_create_increment_decrement(node);
+    r = _generate_il_create_increment_decrement(node);
   else if (node->type == TREE_NODE_TYPE_BREAK)
-    _generate_il_create_break(node);
+    r = _generate_il_create_break(node);
   else if (node->type == TREE_NODE_TYPE_CONTINUE)
-    _generate_il_create_continue(node);
+    r = _generate_il_create_continue(node);
   else {
     g_current_filename_id = node->file_id;
     g_current_line_number = node->line_number;
     snprintf(g_error_message, sizeof(g_error_message), "_generate_il_create_statement(): Unsupported node type %d! Please send a bug report!\n", node->type);
     print_error(g_error_message, ERROR_ERR);
+
+    r = FAILED;
   }
 
   return r;
