@@ -230,13 +230,6 @@ void print_tac(struct tac *t) {
     _print_tac_arg(t->arg1_type, t->arg1_d, t->arg1_s);
     fprintf(stderr, "\n");
   }
-  else if (t->op == TAC_OP_NOT) {
-    fprintf(stderr, "    ");
-    _print_tac_arg(t->result_type, t->result_d, t->result_s);
-    fprintf(stderr, " := !");      
-    _print_tac_arg(t->arg1_type, t->arg1_d, t->arg1_s);
-    fprintf(stderr, "\n");
-  }
   else if (t->op == TAC_OP_FUNCTION_CALL) {
     fprintf(stderr, "    ");
     _print_tac_arg(t->arg1_type, t->arg1_d, t->arg1_s);
@@ -265,6 +258,8 @@ void print_tac(struct tac *t) {
     fprintf(stderr, "    ");
     fprintf(stderr, "variable %s TODO\n", t->result_node->children[1]->label);
   }
+  else
+    fprintf(stderr, "print_tac(): Unknown TAC op %d!\n", t->op);
 }
 
 
@@ -379,19 +374,23 @@ struct tac *add_tac(void) {
 
   /* reset the TAC */
   t->op = TAC_OP_DEAD;
-  t->arg1_type = TAC_ARG_TYPE_CONSTANT;
+  t->arg1_type = TAC_ARG_TYPE_NONE;
   t->arg1_d = 0;
   t->arg1_s = NULL;
-  t->arg2_type = TAC_ARG_TYPE_CONSTANT;
+  t->arg1_size = 0;
+  t->arg2_type = TAC_ARG_TYPE_NONE;
   t->arg2_d = 0;
   t->arg2_s = NULL;
-  t->result_type = TAC_ARG_TYPE_CONSTANT;
+  t->arg2_size = 0;
+  t->result_type = TAC_ARG_TYPE_NONE;
   t->result_d = 0;
   t->result_s = NULL;
+  t->result_size = 0;
   t->arg1_node = NULL;
   t->arg2_node = NULL;
   t->result_node = NULL;
   t->registers = NULL;
+  t->registers_sizes = NULL;
   t->is_function_start = NO;
   
   return t;

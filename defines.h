@@ -321,19 +321,24 @@ struct tac {
   unsigned char arg1_type;
   double arg1_d;
   char *arg1_s;
+  char arg1_size;
   struct tree_node *arg1_node;
 
   unsigned char arg2_type;
   double arg2_d;
   char *arg2_s;
+  char arg2_size;
   struct tree_node *arg2_node;
   
   unsigned char result_type;
   double result_d;
   char *result_s;
+  char result_size;
   struct tree_node *result_node;
 
   int *registers;
+  int *registers_sizes;
+  
   char is_function_start;
 };
 
@@ -363,11 +368,11 @@ struct tac {
 #define TAC_OP_RETURN_VALUE     23
 #define TAC_OP_FUNCTION_CALL    24
 #define TAC_OP_FUNCTION_CALL_USE_RETURN_VALUE 25
-#define TAC_OP_NOT              26
 
-#define TAC_ARG_TYPE_CONSTANT 0
-#define TAC_ARG_TYPE_LABEL    1
-#define TAC_ARG_TYPE_TEMP     2
+#define TAC_ARG_TYPE_NONE     0
+#define TAC_ARG_TYPE_CONSTANT 1
+#define TAC_ARG_TYPE_LABEL    2
+#define TAC_ARG_TYPE_TEMP     3
 
 #define TAC_USE_RESULT 0
 #define TAC_USE_ARG1   1

@@ -43,6 +43,8 @@ int pass_5(void) {
     return FAILED;
   if (compress_register_names() == FAILED)
     return FAILED;
+  if (propagate_operand_sizes() == FAILED)
+    return FAILED;
 
   /* double check that this is still true */
   if (make_sure_all_tacs_have_definition_nodes() == FAILED)
@@ -567,6 +569,309 @@ int compress_register_names(void) {
 
     if (is_last_function == YES)
       break;
+  }
+
+  return SUCCEEDED;
+}
+
+
+static char *g_temp_register_sizes = NULL;
+static int g_temp_register_sizes_count = 0;
+
+
+static int _set_temp_register_size(int r, int size) {
+
+  while (r >= g_temp_register_sizes_count) {
+    int i;
+    
+    g_temp_register_sizes = realloc(g_temp_register_sizes, g_temp_register_sizes_count + 256);
+    if (g_temp_register_sizes == NULL) {
+      fprintf(stderr, "_set_temp_register_size(): Out of memory error.\n");
+      return FAILED;
+    }
+
+    for (i = g_temp_register_sizes_count; i < g_temp_register_sizes_count + 256; i++)
+      g_temp_register_sizes[i] = 0;
+    
+    g_temp_register_sizes_count += 256;
+  }
+
+  g_temp_register_sizes[r] = size;
+
+  return SUCCEEDED;
+}
+
+
+static int _get_temp_register_size(int r) {
+
+  if (r >= g_temp_register_sizes_count)
+    return -1;
+
+  return g_temp_register_sizes[r];
+}
+
+
+static void _clear_temp_register_sizes(void) {
+
+  int i;
+
+  for (i = 0; i < g_temp_register_sizes_count; i++)
+    g_temp_register_sizes[i] = 0;
+}
+
+
+static int _find_operand_size(char *size, unsigned char type, int value, char *label, struct tree_node *node, int allow_register_errors) {
+
+  if (type == TAC_ARG_TYPE_CONSTANT) {
+    if (value < -128 || value > 127)
+      *size = 16;
+    else
+      *size = 8;
+  }
+  else if (type == TAC_ARG_TYPE_TEMP) {
+    *size = _get_temp_register_size(value);
+
+    if (*size < 0) {
+      if (allow_register_errors == YES)
+        *size = 0;
+      else {
+        fprintf(stderr, "_find_operand_size(): Register %d has no size! Please submit a bug report!\n", value);
+        return FAILED;
+      }
+    }
+  }
+  else if (type == TAC_ARG_TYPE_LABEL) {
+    int variable_type;
+    
+    if (node == NULL) {
+      fprintf(stderr, "_find_operand_size(): We are missing a node in a TAC for \"%s\"! Internal error. Please submit a bug report!\n", label);
+      return FAILED;
+    }
+
+    variable_type = node->children[0]->value;
+
+    /* int8 and not a pointer? */
+    if (variable_type == VARIABLE_TYPE_INT8 && node->children[0]->value_double == 0.0)
+      *size = 8;
+    /* int8 and a pointer? */
+    else if (variable_type == VARIABLE_TYPE_INT8 && node->children[0]->value_double >= 1.0)
+      *size = 16;
+    /* int16 and not a pointer? */
+    else if (variable_type == VARIABLE_TYPE_INT16 && node->children[0]->value_double == 0.0)
+      *size = 16;
+    /* int16 and a pointer? */
+    else if (variable_type == VARIABLE_TYPE_INT16 && node->children[0]->value_double >= 1.0)
+      *size = 16;
+    /* void and a pointer? */
+    else if (variable_type == VARIABLE_TYPE_VOID && node->children[0]->value_double >= 1.0)
+      *size = 16;
+    else {
+      fprintf(stderr, "_find_operand_size(): Variable \"%s\" is of type %d -> It doesn't have a size!\n", node->children[1]->label, variable_type);
+      return FAILED;
+    }
+  }
+  
+  return SUCCEEDED;
+}
+
+
+static int _get_set_max_registers_size(struct tac *t) {
+
+  int j, args, size_max = 8;
+
+  /* the number of arguments */
+  args = (int)t->arg2_d;
+
+  t->registers_sizes = (int *)calloc(sizeof(int) * args, 1);
+  if (t->registers_sizes == NULL) {
+    fprintf(stderr, "_get_set_max_register_size(): Out of memory error.\n");
+    return -1;
+  }
+  
+  for (j = 0; j < args; j++) {
+    int size = _get_temp_register_size(t->registers[j]);
+
+    if (size <= 0) {
+      fprintf(stderr, "_get_set_max_register_size(): A function argument size cannot be found!\n");
+      return -1;
+    }
+
+    t->registers_sizes[j] = size;
+
+    if (size > size_max)
+      size_max = size;
+  }
+
+  return size_max;
+}
+
+
+int propagate_operand_sizes(void) {
+  
+  int i;
+  
+  for (i = 0; i < g_tacs_count; i++) {
+    struct tac *t = &g_tacs[i];
+    int op = t->op;
+
+    if (op == TAC_OP_DEAD) {
+    }
+    else if (op == TAC_OP_LABEL) {
+      /* function start? */
+      if (t->is_function_start == YES)
+        _clear_temp_register_sizes();
+    }
+    else if (op == TAC_OP_ADD ||
+             op == TAC_OP_SUB ||
+             op == TAC_OP_MUL ||
+             op == TAC_OP_DIV ||
+             op == TAC_OP_MOD ||
+             op == TAC_OP_AND ||
+             op == TAC_OP_OR ||
+             op == TAC_OP_SHIFT_LEFT ||
+             op == TAC_OP_SHIFT_RIGHT) {
+      if (_find_operand_size(&t->arg1_size, t->arg1_type, (int)t->arg1_d, t->arg1_s, t->arg1_node, NO) == FAILED)
+        return FAILED;
+      if (_find_operand_size(&t->arg2_size, t->arg2_type, (int)t->arg2_d, t->arg2_s, t->arg2_node, NO) == FAILED)
+        return FAILED;
+      if (_find_operand_size(&t->result_size, t->result_type, (int)t->result_d, t->result_s, t->result_node, YES) == FAILED)
+        return FAILED;
+
+      /* RESULT from ARG1 and ARG2? */
+      if (t->result_type == TAC_ARG_TYPE_TEMP) {
+        int size_max = 8;
+        
+        if (t->arg1_size == 16 || t->arg2_size == 16)
+          size_max = 16;
+
+        if (t->result_size == 0) {
+          /* get the size from the operands */
+          t->result_size = size_max;
+        }
+
+        _set_temp_register_size((int)t->result_d, t->result_size);
+      }
+
+      if (t->arg1_size == 0)
+        fprintf(stderr, "propagate_operand_sizes(): Couldn't find size for ARG1!\n");
+      if (t->arg2_size == 0)
+        fprintf(stderr, "propagate_operand_sizes(): Couldn't find size for ARG2!\n");
+      if (t->result_size == 0)
+        fprintf(stderr, "propagate_operand_sizes(): Couldn't find size for RESULT!\n");
+    }
+    else if (op == TAC_OP_ASSIGNMENT) {
+      if (_find_operand_size(&t->arg1_size, t->arg1_type, (int)t->arg1_d, t->arg1_s, t->arg1_node, NO) == FAILED)
+        return FAILED;
+      if (_find_operand_size(&t->result_size, t->result_type, (int)t->result_d, t->result_s, t->result_node, YES) == FAILED)
+        return FAILED;
+
+      /* RESULT from ARG1? */
+      if (t->result_type == TAC_ARG_TYPE_TEMP) {
+        int size_max = 8;
+        
+        if (t->arg1_size == 16)
+          size_max = 16;
+
+        if (t->result_size == 0) {
+          /* get the size from ARG1 */
+          t->result_size = size_max;
+        }
+
+        _set_temp_register_size((int)t->result_d, t->result_size);
+      }
+
+      if (t->arg1_size == 0)
+        fprintf(stderr, "propagate_operand_sizes(): Couldn't find size for ARG1!\n");
+      if (t->result_size == 0)
+        fprintf(stderr, "propagate_operand_sizes(): Couldn't find size for RESULT!\n");
+    }
+    else if (op == TAC_OP_ARRAY_ASSIGNMENT) {
+      if (_find_operand_size(&t->arg1_size, t->arg1_type, (int)t->arg1_d, t->arg1_s, t->arg1_node, NO) == FAILED)
+        return FAILED;
+      if (_find_operand_size(&t->arg2_size, t->arg2_type, (int)t->arg2_d, t->arg2_s, t->arg2_node, NO) == FAILED)
+        return FAILED;
+      if (_find_operand_size(&t->result_size, t->result_type, (int)t->result_d, t->result_s, t->result_node, YES) == FAILED)
+        return FAILED;
+
+      if (t->arg1_size == 0)
+        fprintf(stderr, "propagate_operand_sizes(): Couldn't find size for ARG1!\n");
+      if (t->arg2_size == 0)
+        fprintf(stderr, "propagate_operand_sizes(): Couldn't find size for ARG2!\n");
+      if (t->result_size == 0)
+        fprintf(stderr, "propagate_operand_sizes(): Couldn't find size for RESULT!\n");
+    }
+    else if (op == TAC_OP_ARRAY_READ) {
+      if (_find_operand_size(&t->arg1_size, t->arg1_type, (int)t->arg1_d, t->arg1_s, t->arg1_node, NO) == FAILED)
+        return FAILED;
+      if (_find_operand_size(&t->arg2_size, t->arg2_type, (int)t->arg2_d, t->arg2_s, t->arg2_node, NO) == FAILED)
+        return FAILED;
+      if (_find_operand_size(&t->result_size, t->result_type, (int)t->result_d, t->result_s, t->result_node, YES) == FAILED)
+        return FAILED;
+
+      /* RESULT from ARG1 and ARG2? */
+      if (t->result_type == TAC_ARG_TYPE_TEMP) {
+        int size_max = 8;
+        
+        if (t->arg1_size == 16 || t->arg2_size == 16)
+          size_max = 16;
+
+        if (t->result_size == 0) {
+          /* get the size from the operands */
+          t->result_size = size_max;
+        }
+
+        _set_temp_register_size((int)t->result_d, t->result_size);
+      }
+
+      if (t->arg1_size == 0)
+        fprintf(stderr, "propagate_operand_sizes(): Couldn't find size for ARG1!\n");
+      if (t->arg2_size == 0)
+        fprintf(stderr, "propagate_operand_sizes(): Couldn't find size for ARG2!\n");
+      if (t->result_size == 0)
+        fprintf(stderr, "propagate_operand_sizes(): Couldn't find size for RESULT!\n");
+    }
+    else if (op == TAC_OP_JUMP) {
+    }
+    else if (op == TAC_OP_JUMP_EQ ||
+             op == TAC_OP_JUMP_NEQ ||
+             op == TAC_OP_JUMP_LT ||
+             op == TAC_OP_JUMP_GT ||
+             op == TAC_OP_JUMP_LTE ||
+             op == TAC_OP_JUMP_GTE) {
+    }
+    else if (op == TAC_OP_RETURN) {
+    }
+    else if (op == TAC_OP_RETURN_VALUE) {
+      if (_find_operand_size(&t->arg1_size, t->arg1_type, (int)t->arg1_d, t->arg1_s, t->arg1_node, NO) == FAILED)
+        return FAILED;
+
+      if (t->arg1_size == 0)
+        fprintf(stderr, "propagate_operand_sizes(): Couldn't find size for ARG1!\n");
+    }
+    else if (op == TAC_OP_FUNCTION_CALL) {
+      int size_max = _get_set_max_registers_size(t);
+
+      if (size_max < 0)
+        return FAILED;
+    }
+    else if (op == TAC_OP_FUNCTION_CALL_USE_RETURN_VALUE) {
+      int size_max = _get_set_max_registers_size(t);
+
+      if (size_max < 0)
+        return FAILED;
+
+      if (_find_operand_size(&t->result_size, t->result_type, (int)t->result_d, t->result_s, t->result_node, YES) == FAILED)
+        return FAILED;
+
+      if (t->result_size <= 0)
+        t->result_size = size_max;
+    }
+    else if (op == TAC_OP_CREATE_VARIABLE) {
+    }
+    else {
+      fprintf(stderr, "propagate_operand_sizes(): Unknown TAC op %d!\n", op);
+      return FAILED;
+    }
   }
 
   return SUCCEEDED;

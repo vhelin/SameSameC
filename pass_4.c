@@ -298,7 +298,7 @@ static int _generate_il_create_assignment(struct tree_node *node) {
     if (t == NULL)
       return FAILED;
 
-    /* r1 is the array index, r2 is the result */
+    /* r1 is the array index, r2 is the value */
 
     t->op = TAC_OP_ARRAY_ASSIGNMENT;
 
