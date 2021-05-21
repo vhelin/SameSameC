@@ -32,6 +32,8 @@ static void _print_tac_arg(int type, double d, char *s, int size) {
   else
     fprintf(stderr, "%s", s);
 
+  /* print size information if that's available */
+  
   if (size == 8)
     fprintf(stderr, ".b");
   else if (size == 16)
@@ -267,7 +269,28 @@ void print_tac(struct tac *t) {
   }
   else if (t->op == TAC_OP_CREATE_VARIABLE) {
     fprintf(stderr, "    ");
-    fprintf(stderr, "variable %s TODO\n", t->result_node->children[1]->label);
+    if (t->function_node != NULL) {
+      struct local_variables *local_variables = t->function_node->local_variables;
+      int size = 0, offset = 0, k;
+      char type = '?';
+
+      for (k = 0; k < local_variables->count; k++) {
+        if (local_variables->local_variables[k].node == t->result_node) {
+          size = local_variables->local_variables[k].size;
+          offset = local_variables->local_variables[k].offset_to_fp;
+          break;
+        }
+      }
+
+      if (t->result_node->type == TREE_NODE_TYPE_CREATE_VARIABLE_FUNCTION_ARGUMENT)
+        type = 'a';
+      else
+        type = 'n';
+      
+      fprintf(stderr, "variable %s size %d offset %d type %c\n", t->result_node->children[1]->label, size, offset, type);
+    }
+    else
+      fprintf(stderr, "variable %s size ? offset ? type ?\n", t->result_node->children[1]->label);
   }
   else
     fprintf(stderr, "print_tac(): Unknown TAC op %d!\n", t->op);
@@ -402,7 +425,8 @@ struct tac *add_tac(void) {
   t->result_node = NULL;
   t->registers = NULL;
   t->registers_sizes = NULL;
-  t->is_function_start = NO;
+  t->function_node = NULL;
+  t->is_function = NO;
   
   return t;
 }

@@ -138,8 +138,10 @@ int main(int argc, char *argv[]) {
   if (include_file(g_asm_name, &include_size, NULL) == FAILED)
     return 1;
 
+  /* tokenize */
   if (pass_1() == FAILED)
     return 1;
+  /* parse assembly code */
   if (pass_2() == FAILED)
     return 1;
 
@@ -151,12 +153,19 @@ int main(int argc, char *argv[]) {
     g_token_first = t;
   }
 
+  /* simplify expressions */
   if (pass_3() == FAILED)
     return 1;
+  /* generate IL */
   if (pass_4() == FAILED)
     return 1;
+  /* optimize IL, make IL ready to be turned into ASM */
   if (pass_5() == FAILED)
     return 1;
+
+  /* generate ASM */
+  if (pass_6_z80() == FAILED)
+    return FAILED;  
   
   return 0;
 }

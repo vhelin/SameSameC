@@ -270,6 +270,17 @@ struct token {
 #define VARIABLE_TYPE_INT8  2
 #define VARIABLE_TYPE_INT16 3
 
+struct local_variable {
+  struct tree_node *node;
+  int offset_to_fp;
+  int size;
+};
+
+struct local_variables {
+  int count;
+  struct local_variable *local_variables;
+};
+
 struct tree_node {
   int type;
   int value;
@@ -277,10 +288,11 @@ struct tree_node {
   char *label;
   int file_id;
   int line_number;
+  struct tree_node *definition;
   int added_children;
   int children_max;
-  struct tree_node *definition;
   struct tree_node **children;
+  struct local_variables *local_variables;
 };
 
 #define TREE_NODE_TYPE_CREATE_VARIABLE      0
@@ -307,6 +319,7 @@ struct tree_node {
 #define TREE_NODE_TYPE_FUNCTION_PROTOTYPE  21
 #define TREE_NODE_TYPE_CONTINUE            22
 #define TREE_NODE_TYPE_SWITCH              23
+#define TREE_NODE_TYPE_CREATE_VARIABLE_FUNCTION_ARGUMENT 24
 
 struct symbol_table_item {
   int level;
@@ -339,7 +352,8 @@ struct tac {
   int *registers;
   int *registers_sizes;
   
-  char is_function_start;
+  struct tree_node *function_node;
+  char is_function;
 };
 
 #define TAC_OP_DEAD              0

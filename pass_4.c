@@ -751,7 +751,7 @@ static int _generate_il_create_statement(struct tree_node *node) {
 
   int r = SUCCEEDED;
   
-  if (node->type == TREE_NODE_TYPE_CREATE_VARIABLE)
+  if (node->type == TREE_NODE_TYPE_CREATE_VARIABLE || node->type == TREE_NODE_TYPE_CREATE_VARIABLE_FUNCTION_ARGUMENT)
     r = _generate_il_create_variable(node);
   else if (node->type == TREE_NODE_TYPE_ASSIGNMENT)
     r = _generate_il_create_assignment(node);
@@ -818,7 +818,8 @@ static int _generate_il_create_function(struct tree_node *node) {
   t = add_tac_label(node->children[1]->label);
   if (t == NULL)
     return FAILED;
-  t->is_function_start = YES;
+  t->function_node = node;
+  t->is_function = YES;
 
   /* reset the temp register counter */
   g_temp_r = 0;
@@ -867,7 +868,7 @@ int generate_il(void) {
 
   for (i = 0; i < g_global_nodes->added_children; i++) {
     struct tree_node *node = g_global_nodes->children[i];
-    if (node != NULL && node->type == TREE_NODE_TYPE_CREATE_VARIABLE) {
+    if (node != NULL && (node->type == TREE_NODE_TYPE_CREATE_VARIABLE || node->type == TREE_NODE_TYPE_CREATE_VARIABLE_FUNCTION_ARGUMENT)) {
       fprintf(stderr, "ADDED SYMBOL %s\n", node->children[1]->label);
       if (symbol_table_add_symbol(node, node->children[1]->label, g_block_level) == FAILED)
         return FAILED;

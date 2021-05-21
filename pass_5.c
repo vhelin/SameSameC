@@ -45,6 +45,8 @@ int pass_5(void) {
     return FAILED;
   if (propagate_operand_sizes() == FAILED)
     return FAILED;
+  if (collect_and_preprocess_local_variables_inside_functions() == FAILED)
+    return FAILED;
 
   /* double check that this is still true */
   if (make_sure_all_tacs_have_definition_nodes() == FAILED)
@@ -134,13 +136,13 @@ static int _find_end_of_il_function(int start, int *is_last_function) {
     return start;
   }
 
-  fprintf(stderr, "FUNCTION %s %d\n%.3d: ", g_tacs[j].result_s, g_tacs[j].is_function_start, j);
+  fprintf(stderr, "FUNCTION %s %d\n%.3d: ", g_tacs[j].result_s, g_tacs[j].is_function == YES, j);
   print_tac(&g_tacs[j]);
 
   j++;
   
   while (j < g_tacs_count) {
-    if (g_tacs[j].op == TAC_OP_LABEL && g_tacs[j].is_function_start == YES) {
+    if (g_tacs[j].op == TAC_OP_LABEL && g_tacs[j].is_function == YES) {
       fprintf(stderr, "%.3d: ", j);
       print_tac(&g_tacs[j]);
       return j;
@@ -718,7 +720,7 @@ int propagate_operand_sizes(void) {
     }
     else if (op == TAC_OP_LABEL) {
       /* function start? */
-      if (t->is_function_start == YES)
+      if (t->is_function == YES)
         _clear_temp_register_sizes();
     }
     else if (op == TAC_OP_ADD ||
@@ -874,5 +876,120 @@ int propagate_operand_sizes(void) {
     }
   }
 
+  return SUCCEEDED;
+}
+
+
+static int _get_variable_size(struct tree_node *node) {
+
+  int size = 0;
+
+  /* value_double - pointer_depth (0 - not a pointer, 1+ is a pointer)
+     value - is_array (0 - not an array, 1+ array size) */
+
+  fprintf(stderr, "VAR: %s: ", node->children[1]->label);
+  
+  if (node->children[0]->value_double >= 1.0) {
+    /* all pointers are two bytes in size */
+    size = 2;
+    fprintf(stderr, "2 (POINTER)\n");
+  }
+  else {
+    int type = node->children[0]->value;
+
+    if (type == VARIABLE_TYPE_INT8) {
+      size = 1;
+      fprintf(stderr, "1 (8BIT)\n");
+    }
+    else if (type == VARIABLE_TYPE_INT16) {
+      size = 2;
+      fprintf(stderr, "2 (16BIT)\n");
+    }
+    else {
+      fprintf(stderr, "_get_variable_size(): Cannot determine the variable size of variable \"%s\".\n", node->children[1]->label);
+      return -1;
+    }
+  }
+
+  /* is it an array? */
+  if (node->value > 0) {
+    /* yes */
+    size *= node->value;
+  }
+  
+  return size;
+}
+
+
+int collect_and_preprocess_local_variables_inside_functions(void) {
+
+  int i, j;
+
+  for (i = 0; i < g_tacs_count; i++) {
+    struct tac *t = &g_tacs[i];
+    int op = t->op;
+
+    if (op == TAC_OP_LABEL && t->is_function == YES) {
+      /* function start! */
+      struct tree_node *function_node = t->function_node;
+      struct tree_node *local_variables[1024];
+      int local_variables_count = 0;
+      int offset = 0;
+      
+      /* collect all local variables inside this function */
+      for (i = i + 1; i < g_tacs_count; i++) {
+        t = &g_tacs[i];
+        op = t->op;
+
+        if (op == TAC_OP_LABEL && t->is_function == YES) {
+          i--;
+          break;
+        }
+        else if (op == TAC_OP_CREATE_VARIABLE) {
+          if (local_variables_count >= 1024) {
+            fprintf(stderr, "collect_local_variables_inside_functions(): Out of space! Make variables array bigger and recompile!\n");
+            return FAILED;
+          }
+
+          local_variables[local_variables_count++] = t->result_node;
+        }
+
+        /* also propagate function_node to all TACs point to their function */
+        t->function_node = function_node;
+      }
+
+      /* store local variables for ASM generation */
+      function_node->local_variables = (struct local_variables *)calloc(sizeof(struct local_variables), 1);
+      if (function_node->local_variables == NULL) {
+        fprintf(stderr, "collect_local_variables_inside_functions(): Out of memory error.\n");
+        return FAILED;
+      }
+
+      function_node->local_variables->count = 0;
+      function_node->local_variables->local_variables = NULL;
+      
+      function_node->local_variables->local_variables = (struct local_variable *)calloc(sizeof(struct local_variable) * local_variables_count, 1);
+      if (function_node->local_variables->local_variables == NULL) {
+        fprintf(stderr, "collect_local_variables_inside_functions(): Out of memory error.\n");
+        return FAILED;
+      }
+      function_node->local_variables->count = local_variables_count;
+
+      /* calculate the offsets */
+      for (j = 0; j < local_variables_count; j++) {
+        int size = _get_variable_size(local_variables[j]);
+
+        if (size < 0)
+          return FAILED;
+        
+        function_node->local_variables->local_variables[j].node = local_variables[j];
+        function_node->local_variables->local_variables[j].offset_to_fp = offset;
+        function_node->local_variables->local_variables[j].size = size;
+
+        offset -= size;
+      }
+    }
+  }
+  
   return SUCCEEDED;
 }

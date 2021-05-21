@@ -1925,7 +1925,7 @@ int create_block(struct tree_node *open_function_definition, int expect_curly_br
   if (open_function_definition != NULL) {
     /* clone the arguments right here */
     for (i = 2; i < open_function_definition->added_children; i += 2) {
-      struct tree_node *argument = allocate_tree_node_with_children(TREE_NODE_TYPE_CREATE_VARIABLE, 3);
+      struct tree_node *argument = allocate_tree_node_with_children(TREE_NODE_TYPE_CREATE_VARIABLE_FUNCTION_ARGUMENT, 3);
 
       /* NOTE: we leave the expression slot empty and use that later to detect that this
          variable is actually a function argument. we save the function argument number
@@ -1973,7 +1973,7 @@ int create_block(struct tree_node *open_function_definition, int expect_curly_br
       tree_node_add_child(_get_current_open_block(), argument);
 
       /* make the argument point to its creation */
-      open_function_definition->children[i+1]->definition = argument;      
+      open_function_definition->children[i+1]->definition = argument;
       
       /* add to symbol table */
       if (symbol_table_add_symbol(argument, argument->children[1]->label, g_block_level) == FAILED) {
@@ -2506,7 +2506,7 @@ static void _check_ast_check_definition(struct tree_node *node) {
   else if (node->type == TREE_NODE_TYPE_ARRAY_ITEM) {
     int is_ok = YES;
 
-    if (node->definition->type != TREE_NODE_TYPE_CREATE_VARIABLE)
+    if (node->definition->type != TREE_NODE_TYPE_CREATE_VARIABLE && node->definition->type != TREE_NODE_TYPE_CREATE_VARIABLE_FUNCTION_ARGUMENT)
       is_ok = NO;
     else {
       if (node->definition->children[0]->value_double > 0)
@@ -2529,7 +2529,7 @@ static void _check_ast_check_definition(struct tree_node *node) {
   else if (node->type == TREE_NODE_TYPE_INCREMENT_DECREMENT) {
     int is_ok = YES;
 
-    if (node->definition->type != TREE_NODE_TYPE_CREATE_VARIABLE)
+    if (node->definition->type != TREE_NODE_TYPE_CREATE_VARIABLE && node->definition->type != TREE_NODE_TYPE_CREATE_VARIABLE_FUNCTION_ARGUMENT)
       is_ok = NO;
     else {
       if (node->definition->children[0]->value_double > 0)
@@ -2663,7 +2663,7 @@ static void _check_ast_assignment(struct tree_node *node) {
     /* assignment to a variable */
     int is_ok = YES;
     
-    if (definition->type != TREE_NODE_TYPE_CREATE_VARIABLE)
+    if (definition->type != TREE_NODE_TYPE_CREATE_VARIABLE && definition->type != TREE_NODE_TYPE_CREATE_VARIABLE_FUNCTION_ARGUMENT)
       is_ok = NO;
     else {
       if (definition->value > 0)
@@ -2683,7 +2683,7 @@ static void _check_ast_assignment(struct tree_node *node) {
     /* assignment to an array */
     int is_ok = YES;
     
-    if (definition->type != TREE_NODE_TYPE_CREATE_VARIABLE)
+    if (definition->type != TREE_NODE_TYPE_CREATE_VARIABLE && definition->type != TREE_NODE_TYPE_CREATE_VARIABLE_FUNCTION_ARGUMENT)
       is_ok = NO;
     else {
       if (definition->children[0]->value_double > 0)
@@ -2832,7 +2832,7 @@ static void _check_ast_statement(struct tree_node *node) {
   if (node == NULL)
     return;
 
-  if (node->type == TREE_NODE_TYPE_CREATE_VARIABLE)
+  if (node->type == TREE_NODE_TYPE_CREATE_VARIABLE || node->type == TREE_NODE_TYPE_CREATE_VARIABLE_FUNCTION_ARGUMENT)
     _check_ast_create_variable(node);
   else if (node->type == TREE_NODE_TYPE_ASSIGNMENT)
     _check_ast_assignment(node);
@@ -2891,7 +2891,7 @@ static void _check_ast_global_node(struct tree_node *node) {
   if (node == NULL)
     return;
   
-  if (node->type == TREE_NODE_TYPE_CREATE_VARIABLE)
+  if (node->type == TREE_NODE_TYPE_CREATE_VARIABLE || node->type == TREE_NODE_TYPE_CREATE_VARIABLE_FUNCTION_ARGUMENT)
     _check_ast_create_variable(node);
   else if (node->type == TREE_NODE_TYPE_FUNCTION_DEFINITION)
     _check_ast_function_definition(node);

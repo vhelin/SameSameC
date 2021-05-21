@@ -11,6 +11,8 @@ void main() {
 int16 multiply(int8 a, int8 b) {
 
   int16 c;
+  int8 d[16];
+  int16 e;
 
   c = a + b;
 

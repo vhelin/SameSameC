@@ -390,7 +390,7 @@ static void _print_statement(struct tree_node *node, int line) {
   if (g_print_is_inside_for == YES && line > 0)
     fprintf(stderr, ",");
   
-  if (node->type == TREE_NODE_TYPE_CREATE_VARIABLE)
+  if (node->type == TREE_NODE_TYPE_CREATE_VARIABLE || node->type == TREE_NODE_TYPE_CREATE_VARIABLE_FUNCTION_ARGUMENT)
     _print_create_variable(node);
   else if (node->type == TREE_NODE_TYPE_ASSIGNMENT)
     _print_assignment(node);
@@ -476,7 +476,7 @@ static void _print_global_node(struct tree_node *node) {
   if (node == NULL)
     return;
   
-  if (node->type == TREE_NODE_TYPE_CREATE_VARIABLE)
+  if (node->type == TREE_NODE_TYPE_CREATE_VARIABLE || node->type == TREE_NODE_TYPE_CREATE_VARIABLE_FUNCTION_ARGUMENT)
     _print_create_variable(node);
   else if (node->type == TREE_NODE_TYPE_FUNCTION_DEFINITION)
     _print_function_definition(node);
@@ -720,7 +720,7 @@ static void _simplify_expressions_statement(struct tree_node *node) {
   if (node == NULL)
     return;
 
-  if (node->type == TREE_NODE_TYPE_CREATE_VARIABLE)
+  if (node->type == TREE_NODE_TYPE_CREATE_VARIABLE || node->type == TREE_NODE_TYPE_CREATE_VARIABLE_FUNCTION_ARGUMENT)
     _simplify_expressions_create_variable(node);
   else if (node->type == TREE_NODE_TYPE_ASSIGNMENT)
     _simplify_expressions_assignment(node);
@@ -770,7 +770,7 @@ static void _simplify_expressions_global_node(struct tree_node *node) {
   if (node == NULL)
     return;
   
-  if (node->type == TREE_NODE_TYPE_CREATE_VARIABLE)
+  if (node->type == TREE_NODE_TYPE_CREATE_VARIABLE || node->type == TREE_NODE_TYPE_CREATE_VARIABLE_FUNCTION_ARGUMENT)
     _simplify_expressions_create_variable(node);
   else if (node->type == TREE_NODE_TYPE_FUNCTION_DEFINITION)
     _simplify_expressions_function_definition(node);

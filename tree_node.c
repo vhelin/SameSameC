@@ -148,6 +148,11 @@ void free_tree_node(struct tree_node *node) {
 
   free_tree_node_children(node);
 
+  if (node->local_variables != NULL) {
+    free(node->local_variables->local_variables);
+    free(node->local_variables);
+  }
+
   free(node);
 }
 
@@ -171,7 +176,8 @@ struct tree_node *allocate_tree_node(int type) {
   node->file_id = g_current_filename_id;
   node->line_number = g_current_line_number;
   node->definition = NULL;
-
+  node->local_variables = NULL;
+  
   return node;
 }
 
