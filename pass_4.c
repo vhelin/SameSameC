@@ -126,25 +126,6 @@ int pass_4(void) {
 }
 
 
-static int _generate_il_create_variable(struct tree_node *node) {
-
-  struct tac *t;
-
-  fprintf(stderr, "ADDED SYMBOL %s\n", node->children[1]->label);
-  symbol_table_add_symbol(node, node->children[1]->label, g_block_level);
-
-  t = add_tac();
-  if (t == NULL)
-    return FAILED;
-
-  t->op = TAC_OP_CREATE_VARIABLE;
-  tac_set_result(t, TAC_ARG_TYPE_LABEL, 0, node->children[1]->label);
-  t->result_node = node;
-
-  return SUCCEEDED;
-}
-
-
 static int _generate_il_create_expression(struct tree_node *node) {
 
   struct tac *t;
@@ -274,6 +255,77 @@ static int _generate_il_create_expression(struct tree_node *node) {
     return FAILED;
   }
 
+  return SUCCEEDED;
+}
+
+
+static int _generate_il_create_variable(struct tree_node *node) {
+
+  struct tac *t;
+
+  /* create variable */
+  
+  fprintf(stderr, "ADDED SYMBOL %s\n", node->children[1]->label);
+  symbol_table_add_symbol(node, node->children[1]->label, g_block_level);
+
+  t = add_tac();
+  if (t == NULL)
+    return FAILED;
+
+  t->op = TAC_OP_CREATE_VARIABLE;
+  tac_set_result(t, TAC_ARG_TYPE_LABEL, 0, node->children[1]->label);
+  t->result_node = node;
+
+  /* if function argument, no need to assign anything, it's already done */
+  if (node->type == TREE_NODE_TYPE_CREATE_VARIABLE_FUNCTION_ARGUMENT)
+    return SUCCEEDED;
+  
+  /* make assignment(s) */
+
+  if (node->value == 0) {
+    /* single value assignment, not an array */
+    int r1 = g_temp_r;
+
+    if (_generate_il_create_expression(node->children[2]) == FAILED)
+      return FAILED;
+
+    t = add_tac();
+    if (t == NULL)
+      return FAILED;
+
+    /* r1 is the value */
+
+    t->op = TAC_OP_ASSIGNMENT;
+    t->result_node = node;
+  
+    tac_set_result(t, TAC_ARG_TYPE_LABEL, 0, node->children[1]->label);
+    tac_set_arg1(t, TAC_ARG_TYPE_TEMP, r1, NULL);
+  }
+  else {
+    /* array copy */
+    int i;
+
+    for (i = 0; i < node->value; i++) {
+      int r2 = g_temp_r;
+
+      if (_generate_il_create_expression(node->children[2 + i]) == FAILED)
+        return FAILED;
+
+      t = add_tac();
+      if (t == NULL)
+        return FAILED;
+
+      /* i is the array index, r2 is the value */
+
+      t->op = TAC_OP_ARRAY_ASSIGNMENT;
+      t->result_node = node;
+    
+      tac_set_result(t, TAC_ARG_TYPE_LABEL, 0, node->children[1]->label);
+      tac_set_arg1(t, TAC_ARG_TYPE_TEMP, r2, NULL);
+      tac_set_arg2(t, TAC_ARG_TYPE_CONSTANT, i, NULL);
+    }
+  }
+  
   return SUCCEEDED;
 }
 

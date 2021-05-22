@@ -338,6 +338,87 @@ int optimize_il(void) {
   }
 
   /*
+    rX   = ?  <--- REMOVE rX if rX doesn't appear elsewhere
+    ?[?] = rX <--- REMOVE rX if rX doesn't appear elsewhere
+  */
+
+  i = 0;
+  while (1) {
+    int is_last_function = NO;
+    int end = _find_end_of_il_function(i, &is_last_function);
+    if (end < 0)
+      return FAILED;
+
+    if (_count_and_allocate_register_usage(i, end) == FAILED)
+      return FAILED;
+
+    while (i < end) {
+      int current, next;
+
+      current = _find_next_living_tac(i);
+      next = _find_next_living_tac(current + 1);
+
+      if (current < 0 || next < 0)
+        break;
+
+      if (g_tacs[current].op == TAC_OP_ASSIGNMENT && g_tacs[next].op == TAC_OP_ARRAY_ASSIGNMENT &&
+          g_tacs[current].result_type == TAC_ARG_TYPE_TEMP && g_tacs[next].arg1_type == TAC_ARG_TYPE_TEMP &&
+          (int)g_tacs[current].result_d == (int)g_tacs[next].arg1_d &&
+          g_register_reads[(int)g_tacs[current].result_d] == 1 && g_register_writes[(int)g_tacs[current].result_d] == 1) {
+        /* found match! rX can be skipped! */
+        if (tac_set_arg1(&g_tacs[next], g_tacs[current].arg1_type, g_tacs[current].arg1_d, g_tacs[current].arg1_s) == FAILED)
+          return FAILED;
+        g_tacs[next].arg1_node = g_tacs[current].arg1_node;
+        g_tacs[current].op = TAC_OP_DEAD;
+      }
+          
+      i = next;
+    }
+
+    if (is_last_function == YES)
+      break;
+  }
+
+  /*
+    X = ?  <--- REMOVE the first assignment
+    X = ?  <--- REMOVE the first assignment
+  */
+
+  /* PS. this is not a very good optimization, doesn't work that often */
+  
+  i = 0;
+  while (1) {
+    int is_last_function = NO;
+    int end = _find_end_of_il_function(i, &is_last_function);
+    if (end < 0)
+      return FAILED;
+
+    while (i < end) {
+      int current, next;
+
+      current = _find_next_living_tac(i);
+      next = _find_next_living_tac(current + 1);
+
+      if (current < 0 || next < 0)
+        break;
+
+      if (g_tacs[current].op == TAC_OP_ASSIGNMENT && g_tacs[next].op == TAC_OP_ASSIGNMENT &&
+          g_tacs[current].result_type == g_tacs[next].result_type &&
+          (int)g_tacs[current].result_d == (int)g_tacs[next].result_d &&
+          ((g_tacs[current].result_s == NULL && g_tacs[next].result_s == NULL) ||
+           (strcmp(g_tacs[current].result_s, g_tacs[next].result_s) == 0))) {
+        /* found match! the first assigment can be ignored! */
+        g_tacs[current].op = TAC_OP_DEAD;
+      }
+          
+      i = next;
+    }
+
+    if (is_last_function == YES)
+      break;
+  }
+  
+  /*
     rX = ?    <--- REMOVE rX if rX doesn't appear elsewhere
     return rX <--- REMOVE rX if rX doesn't appear elsewhere
   */
