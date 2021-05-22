@@ -1,4 +1,6 @@
 
+int8 g_i = 0;
+
 void main() {
 
   int8 i = 0;
@@ -6,6 +8,8 @@ void main() {
   i = 1+2+3;
 
   i = multiply(i + 1, 3);
+
+  g_i++;
 }
 
 int16 multiply(int8 a, int8 b) {

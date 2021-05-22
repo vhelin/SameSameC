@@ -296,9 +296,9 @@ static int _generate_il_create_variable(struct tree_node *node) {
     /* r1 is the value */
 
     t->op = TAC_OP_ASSIGNMENT;
-    t->result_node = node;
   
     tac_set_result(t, TAC_ARG_TYPE_LABEL, 0, node->children[1]->label);
+    t->result_node = node;
     tac_set_arg1(t, TAC_ARG_TYPE_TEMP, r1, NULL);
   }
   else {
@@ -318,9 +318,9 @@ static int _generate_il_create_variable(struct tree_node *node) {
       /* i is the array index, r2 is the value */
 
       t->op = TAC_OP_ARRAY_ASSIGNMENT;
-      t->result_node = node;
     
       tac_set_result(t, TAC_ARG_TYPE_LABEL, 0, node->children[1]->label);
+      t->result_node = node;
       tac_set_arg1(t, TAC_ARG_TYPE_TEMP, r2, NULL);
       tac_set_arg2(t, TAC_ARG_TYPE_CONSTANT, i, NULL);
     }
@@ -758,6 +758,10 @@ static int _generate_il_create_increment_decrement(struct tree_node *node) {
   tac_set_arg1(t, TAC_ARG_TYPE_LABEL, 0, node->label);
   tac_set_arg2(t, TAC_ARG_TYPE_CONSTANT, 1, NULL);
   tac_set_result(t, TAC_ARG_TYPE_LABEL, 0, node->label);
+  
+  /* find the definition */
+  tac_try_find_definition(t, node->label, NULL, TAC_USE_ARG1);
+  tac_try_find_definition(t, node->label, NULL, TAC_USE_RESULT);
 
   return SUCCEEDED;
 }

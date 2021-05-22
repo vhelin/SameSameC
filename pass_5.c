@@ -385,6 +385,7 @@ int optimize_il(void) {
   */
 
   /* PS. this is not a very good optimization, doesn't work that often */
+  /* PPS. make this find two assigments with n tacs between them */
   
   i = 0;
   while (1) {

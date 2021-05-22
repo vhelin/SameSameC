@@ -486,6 +486,10 @@ static void _increment_decrement(char *label, int increment) {
   tac_set_arg1(t, TAC_ARG_TYPE_LABEL, 0, label);
   tac_set_arg2(t, TAC_ARG_TYPE_CONSTANT, 1, NULL);
   tac_set_result(t, TAC_ARG_TYPE_LABEL, 0, label);
+
+  /* find the definition */
+  tac_try_find_definition(t, label, NULL, TAC_USE_ARG1);
+  tac_try_find_definition(t, label, NULL, TAC_USE_RESULT);
 }
 
 

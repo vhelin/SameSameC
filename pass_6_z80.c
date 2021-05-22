@@ -39,9 +39,17 @@ int pass_6_z80(FILE *file_out) {
 }
 
 
+static int _generate_asm_assignment_z80(struct tac *t, FILE *file_out, struct tree_node *function_node) {
+
+  
+  
+  return SUCCEEDED;
+}
+
+
 int generate_asm_z80(FILE *file_out) {
 
-  int i, j;
+  int i;
 
   for (i = 0; i < g_tacs_count; i++) {
     struct tac *t = &g_tacs[i];
@@ -69,6 +77,10 @@ int generate_asm_z80(FILE *file_out) {
         }
         else if (op == TAC_OP_LABEL)
           fprintf(file_out, "    %s:\n", t->result_s);
+        else if (op == TAC_OP_ASSIGNMENT) {
+          if (_generate_asm_assignment_z80(t, file_out, function_node) == FAILED)
+            return FAILED;
+        }
         else if (op == TAC_OP_ADD) {
 
         }
