@@ -276,9 +276,17 @@ struct local_variable {
   int size;
 };
 
+struct temp_register {
+  int register_index;
+  int offset_to_fp;
+  int size;
+};
+
 struct local_variables {
-  int count;
+  int local_variables_count;
   struct local_variable *local_variables;
+  int temp_registers_count;
+  struct temp_register *temp_registers;
 };
 
 struct tree_node {

@@ -55,8 +55,18 @@ void print_tac(struct tac *t) {
   
   if (t->op == TAC_OP_DEAD)
     return;
-  else if (t->op == TAC_OP_LABEL)
+  else if (t->op == TAC_OP_LABEL) {
     fprintf(stderr, "%s:\n", t->result_s);
+    if (t->is_function == YES && t->function_node != NULL && t->function_node->local_variables != NULL) {
+      struct local_variables *local_variables = t->function_node->local_variables;
+      int k;
+
+      for (k = 0; k < local_variables->temp_registers_count; k++) {
+        fprintf(stderr, "    register %d size %d offset %d\n", local_variables->temp_registers[k].register_index,
+                local_variables->temp_registers[k].size, local_variables->temp_registers[k].offset_to_fp);
+      }
+    }
+  }
   else if (t->op == TAC_OP_ADD) {
     fprintf(stderr, "    ");
     _print_tac_arg(t->result_type, t->result_d, t->result_s, t->result_size);
@@ -274,7 +284,7 @@ void print_tac(struct tac *t) {
       int size = 0, offset = 0, k;
       char type = '?';
 
-      for (k = 0; k < local_variables->count; k++) {
+      for (k = 0; k < local_variables->local_variables_count; k++) {
         if (local_variables->local_variables[k].node == t->result_node) {
           size = local_variables->local_variables[k].size;
           offset = local_variables->local_variables[k].offset_to_fp;

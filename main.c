@@ -29,6 +29,7 @@ DWORD __stdcall GetCurrentProcessId(void);
 #include "pass_3.h"
 #include "pass_4.h"
 #include "pass_5.h"
+#include "pass_6_z80.h"
 
 
 /* amiga specific definitions */
@@ -37,7 +38,7 @@ DWORD __stdcall GetCurrentProcessId(void);
 __near long __stack = 200000;
 #endif
 
-char g_version_string[] = "$VER: bilibali-compiler 1.0a (22.4.2021)";
+char g_version_string[] = "$VER: bilibali-compiler 1.0a (21.5.2021)";
 char g_bilibali_version[] = "1.0";
 
 char *g_tmp_name = NULL;
@@ -85,6 +86,7 @@ struct label_def *g_label_tmp = NULL, *g_labels = NULL;
 int main(int argc, char *argv[]) {
 
   int parse_flags_result, include_size = 0;
+  FILE *file_out;
   
   if (sizeof(double) != 8) {
     fprintf(stderr, "MAIN: sizeof(double) == %d != 8. BILIBALI will not work properly.\n", (int)sizeof(double));
@@ -122,13 +124,13 @@ int main(int argc, char *argv[]) {
     printf("-I <DIR>  Include directory\n");
     printf("-D <DEF>  Declare definition\n\n");
     printf("Output:\n");
-    printf("-o <FILE> Output BILIBALI object file\n\n");
-    printf("EXAMPLE: %s -D VERSION=1 -D TWO=2 -v -o main.o main.blb\n\n", argv[0]);
+    printf("-o <FILE> Output WLA DX ASM file\n\n");
+    printf("EXAMPLE: %s -D VERSION=1 -D TWO=2 -v -o main.asm main.blb\n\n", argv[0]);
     return 0;
   }
 
   if (strcmp(g_asm_name, g_final_name) == 0) {
-    fprintf(stderr, "MAIN: Input and output files share the same name!\n");
+    fprintf(stderr, "MAIN: Input and output files have the same name!\n");
     return 1;
   }
 
@@ -163,9 +165,15 @@ int main(int argc, char *argv[]) {
   if (pass_5() == FAILED)
     return 1;
 
+  file_out = fopen(g_final_name, "wb");
+  
   /* generate ASM */
-  if (pass_6_z80() == FAILED)
-    return FAILED;  
+  if (pass_6_z80(file_out) == FAILED) {
+    fclose(file_out);
+    return FAILED;
+  }
+
+  fclose(file_out);
   
   return 0;
 }

@@ -43,6 +43,9 @@ int pass_5(void) {
     return FAILED;
   if (compress_register_names() == FAILED)
     return FAILED;
+  
+  /* TODO: reuse old registers to decrease stack usage later */
+
   if (propagate_operand_sizes() == FAILED)
     return FAILED;
   if (collect_and_preprocess_local_variables_inside_functions() == FAILED)
@@ -892,21 +895,21 @@ static int _get_variable_size(struct tree_node *node) {
   if (node->children[0]->value_double >= 1.0) {
     /* all pointers are two bytes in size */
     size = 2;
-    fprintf(stderr, "2 (POINTER)\n");
+    fprintf(stderr, "2 (POINTER)");
   }
   else {
     int type = node->children[0]->value;
 
     if (type == VARIABLE_TYPE_INT8) {
       size = 1;
-      fprintf(stderr, "1 (8BIT)\n");
+      fprintf(stderr, "1 (8BIT)");
     }
     else if (type == VARIABLE_TYPE_INT16) {
       size = 2;
-      fprintf(stderr, "2 (16BIT)\n");
+      fprintf(stderr, "2 (16BIT)");
     }
     else {
-      fprintf(stderr, "_get_variable_size(): Cannot determine the variable size of variable \"%s\".\n", node->children[1]->label);
+      fprintf(stderr, "\n_get_variable_size(): Cannot determine the variable size of variable \"%s\".\n", node->children[1]->label);
       return -1;
     }
   }
@@ -915,7 +918,10 @@ static int _get_variable_size(struct tree_node *node) {
   if (node->value > 0) {
     /* yes */
     size *= node->value;
+    fprintf(stderr, " * %d", node->value);
   }
+
+  fprintf(stderr, "\n");
   
   return size;
 }
@@ -923,7 +929,7 @@ static int _get_variable_size(struct tree_node *node) {
 
 int collect_and_preprocess_local_variables_inside_functions(void) {
 
-  int i, j;
+  int i, j, k;
 
   for (i = 0; i < g_tacs_count; i++) {
     struct tac *t = &g_tacs[i];
@@ -933,8 +939,13 @@ int collect_and_preprocess_local_variables_inside_functions(void) {
       /* function start! */
       struct tree_node *function_node = t->function_node;
       struct tree_node *local_variables[1024];
-      int local_variables_count = 0;
+      int local_variables_count = 0, register_usage[1024], used_registers = 0, register_sizes[1024];
       int offset = 0;
+
+      for (j = 0; j < 1024; j++) {
+        register_usage[j] = 0;
+        register_sizes[j] = 0;
+      }
       
       /* collect all local variables inside this function */
       for (i = i + 1; i < g_tacs_count; i++) {
@@ -953,9 +964,38 @@ int collect_and_preprocess_local_variables_inside_functions(void) {
 
           local_variables[local_variables_count++] = t->result_node;
         }
+        else if (op == TAC_OP_DEAD) {
+        }
+        else {
+          /* mark the used registers */
+          if (t->arg1_type == TAC_ARG_TYPE_TEMP) {
+            int index = (int)t->arg1_d;
+            register_usage[index] = 1;
+            if (t->arg1_size > register_sizes[index])
+              register_sizes[index] = t->arg1_size;
+          }
+          if (t->arg2_type == TAC_ARG_TYPE_TEMP) {
+            int index = (int)t->arg2_d;
+            register_usage[index] = 1;
+            if (t->arg2_size > register_sizes[index])
+              register_sizes[index] = t->arg2_size;
+          }
+          if (t->result_type == TAC_ARG_TYPE_TEMP) {
+            int index = (int)t->result_d;
+            register_usage[index] = 1;
+            if (t->result_size > register_sizes[index])
+              register_sizes[index] = t->result_size;
+          }
+        }
 
         /* also propagate function_node to all TACs point to their function */
         t->function_node = function_node;
+      }
+
+      /* count the used registers */
+      for (j = 0; j < 1024; j++) {
+        if (register_usage[j] > 0)
+          used_registers++;
       }
 
       /* store local variables for ASM generation */
@@ -965,16 +1005,25 @@ int collect_and_preprocess_local_variables_inside_functions(void) {
         return FAILED;
       }
 
-      function_node->local_variables->count = 0;
+      function_node->local_variables->local_variables_count = 0;
       function_node->local_variables->local_variables = NULL;
+      function_node->local_variables->temp_registers_count = 0;
+      function_node->local_variables->temp_registers = NULL;      
       
       function_node->local_variables->local_variables = (struct local_variable *)calloc(sizeof(struct local_variable) * local_variables_count, 1);
       if (function_node->local_variables->local_variables == NULL) {
         fprintf(stderr, "collect_local_variables_inside_functions(): Out of memory error.\n");
         return FAILED;
       }
-      function_node->local_variables->count = local_variables_count;
+      function_node->local_variables->local_variables_count = local_variables_count;
 
+      function_node->local_variables->temp_registers = (struct temp_register *)calloc(sizeof(struct temp_register) * used_registers, 1);
+      if (function_node->local_variables->temp_registers == NULL) {
+        fprintf(stderr, "collect_local_variables_inside_functions(): Out of memory error.\n");
+        return FAILED;
+      }
+      function_node->local_variables->temp_registers_count = used_registers;
+      
       /* calculate the offsets */
       for (j = 0; j < local_variables_count; j++) {
         int size = _get_variable_size(local_variables[j]);
@@ -985,8 +1034,26 @@ int collect_and_preprocess_local_variables_inside_functions(void) {
         function_node->local_variables->local_variables[j].node = local_variables[j];
         function_node->local_variables->local_variables[j].offset_to_fp = offset;
         function_node->local_variables->local_variables[j].size = size;
-
+        
         offset -= size;
+      }
+
+      k = 0;
+      for (j = 0; j < used_registers; j++) {
+        while (k < 1024) {
+          if (register_usage[k] > 0)
+            break;
+          k++;
+        }
+
+        function_node->local_variables->temp_registers[j].offset_to_fp = offset;
+        /* from bits to bytes */
+        function_node->local_variables->temp_registers[j].size = register_sizes[k] / 8;
+        function_node->local_variables->temp_registers[j].register_index = k;
+        
+        offset -= register_sizes[k] / 8;
+        
+        k++;
       }
     }
   }
