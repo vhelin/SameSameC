@@ -410,4 +410,22 @@ struct stack_item_priority_item {
   int priority;
 };
 
+#define REGISTER_STATUS_UNKNOWN 0
+#define REGISTER_STATUS_VALUE   1
+#define REGISTER_STATUS_LABEL   2
+
+struct cpu_z80 {
+  int a;
+  int bc;
+  int de;
+  int hl;
+  char a_status;
+  char bc_status;
+  char de_status;
+  char hl_status;
+  char *bc_s;
+  char *hl_s;
+  char *de_s;
+};
+
 #endif /* _DEFINES_H */
