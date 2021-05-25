@@ -105,14 +105,14 @@ static int _find_end_of_il_block(int start, int *is_last_block) {
   }
 
   fprintf(stderr, "BLOCK\n%.3d: ", j);
-  print_tac(&g_tacs[j]);
+  print_tac(&g_tacs[j], NO, stderr);
 
   j++;
   
   while (j < g_tacs_count) {
     if (_is_il_block_end(&g_tacs[j]) == YES) {
       fprintf(stderr, "%.3d: ", j);
-      print_tac(&g_tacs[j]);
+      print_tac(&g_tacs[j], NO, stderr);
       return j;
     }
     j++;
@@ -121,7 +121,7 @@ static int _find_end_of_il_block(int start, int *is_last_block) {
   *is_last_block = YES;
 
   fprintf(stderr, "%.3d: ", j);
-  print_tac(&g_tacs[j]);
+  print_tac(&g_tacs[j], NO, stderr);
   
   return j;
 }
@@ -140,14 +140,14 @@ static int _find_end_of_il_function(int start, int *is_last_function) {
   }
 
   fprintf(stderr, "FUNCTION %s %d\n%.3d: ", g_tacs[j].result_s, g_tacs[j].is_function == YES, j);
-  print_tac(&g_tacs[j]);
+  print_tac(&g_tacs[j], NO, stderr);
 
   j++;
   
   while (j < g_tacs_count) {
     if (g_tacs[j].op == TAC_OP_LABEL && g_tacs[j].is_function == YES) {
       fprintf(stderr, "%.3d: ", j);
-      print_tac(&g_tacs[j]);
+      print_tac(&g_tacs[j], NO, stderr);
       return j;
     }
     j++;
@@ -156,7 +156,7 @@ static int _find_end_of_il_function(int start, int *is_last_function) {
   *is_last_function = YES;
 
   fprintf(stderr, "%.3d: ", j-1);
-  print_tac(&g_tacs[j-1]);
+  print_tac(&g_tacs[j-1], NO, stderr);
   
   return j;
 }
@@ -976,19 +976,19 @@ static int _get_variable_size(struct tree_node *node) {
   
   if (node->children[0]->value_double >= 1.0) {
     /* all pointers are two bytes in size */
-    size = 2;
-    fprintf(stderr, "2 (POINTER)");
+    size = 16;
+    fprintf(stderr, "16 (POINTER)");
   }
   else {
     int type = node->children[0]->value;
 
     if (type == VARIABLE_TYPE_INT8) {
-      size = 1;
-      fprintf(stderr, "1 (8BIT)");
+      size = 8;
+      fprintf(stderr, "8 (8BIT)");
     }
     else if (type == VARIABLE_TYPE_INT16) {
-      size = 2;
-      fprintf(stderr, "2 (16BIT)");
+      size = 16;
+      fprintf(stderr, "16 (16BIT)");
     }
     else {
       fprintf(stderr, "\n_get_variable_size(): Cannot determine the variable size of variable \"%s\".\n", node->children[1]->label);
@@ -1117,7 +1117,7 @@ int collect_and_preprocess_local_variables_inside_functions(void) {
         function_node->local_variables->local_variables[j].offset_to_fp = offset;
         function_node->local_variables->local_variables[j].size = size;
         
-        offset -= size;
+        offset -= size / 8;
       }
 
       k = 0;
@@ -1130,7 +1130,7 @@ int collect_and_preprocess_local_variables_inside_functions(void) {
 
         function_node->local_variables->temp_registers[j].offset_to_fp = offset;
         /* from bits to bytes */
-        function_node->local_variables->temp_registers[j].size = register_sizes[k] / 8;
+        function_node->local_variables->temp_registers[j].size = register_sizes[k];
         function_node->local_variables->temp_registers[j].register_index = k;
         
         offset -= register_sizes[k] / 8;

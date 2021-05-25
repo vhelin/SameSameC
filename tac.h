@@ -3,7 +3,7 @@
 #define _TAC_H
 
 char *generate_temp_label(int id);
-void print_tac(struct tac *t);
+void print_tac(struct tac *t, int is_comment, FILE *file_out);
 void print_tacs(void);
 int tac_set_arg1(struct tac *t, int arg_type, double d, char *s);
 int tac_set_arg2(struct tac *t, int arg_type, double d, char *s);

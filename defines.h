@@ -428,4 +428,9 @@ struct cpu_z80 {
   char *de_s;
 };
 
+/* bc - tmp */
+/* de - frame pointer */
+/* hl - tmp */
+/* sp - stack pointer */
+
 #endif /* _DEFINES_H */
