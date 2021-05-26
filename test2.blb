@@ -3,5 +3,6 @@ int8 g_i = 0;
 
 void main() {
 
-    int8 *var = &g_i;
+  int8 *var = &g_i; // &(g_i)
+  
 }

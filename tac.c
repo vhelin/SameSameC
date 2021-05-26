@@ -77,6 +77,13 @@ void print_tac(struct tac *t, int is_comment, FILE *file_out) {
       }
     }
   }
+  else if (t->op == TAC_OP_GET_ADDRESS) {
+    if (is_comment == NO)
+      fprintf(file_out, "  ");
+    _print_tac_arg(t->result_type, t->result_d, t->result_s, t->result_size, file_out);
+    fprintf(file_out, " := &");
+    _print_tac_arg(t->arg1_type, t->arg1_d, t->arg1_s, t->arg1_size, file_out);
+  }
   else if (t->op == TAC_OP_ADD) {
     if (is_comment == NO)
       fprintf(file_out, "  ");

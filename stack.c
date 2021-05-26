@@ -349,6 +349,10 @@ int stack_calculate_tree_node(struct tree_node *node, int *value) {
       /* increment/decrement cannot be calculated here, only on the target machine... */
       return FAILED;
     }
+    else if (child->type == TREE_NODE_TYPE_GET_ADDRESS) {
+      /* get address cannot be calculated here, only on the target machine... */
+      return FAILED;
+    }
     else if (child->type == TREE_NODE_TYPE_FUNCTION_CALL) {
       /* function calls cannot be calculated here, only on the target machine... */
       return FAILED;
@@ -633,6 +637,7 @@ static struct stack_item_priority_item g_stack_item_priority_items[] = {
   { SI_OP_HIGH_BYTE, 110 },
   { SI_OP_BANK, 110 },
   { SI_OP_NOT, 110 },
+  { SI_OP_GET_ADDRESS, 110 },
   { SI_OP_USE_REGISTER, 200 },
   { 999, 999 }
 };

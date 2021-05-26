@@ -116,6 +116,7 @@
 #define SI_OP_USE_REGISTER 27
 #define SI_OP_LOGICAL_OR   28
 #define SI_OP_LOGICAL_AND  29
+#define SI_OP_GET_ADDRESS  30
 
 #define SI_SIGN_POSITIVE 0
 #define SI_SIGN_NEGATIVE 1
@@ -328,6 +329,7 @@ struct tree_node {
 #define TREE_NODE_TYPE_CONTINUE            22
 #define TREE_NODE_TYPE_SWITCH              23
 #define TREE_NODE_TYPE_CREATE_VARIABLE_FUNCTION_ARGUMENT 24
+#define TREE_NODE_TYPE_GET_ADDRESS         25
 
 struct symbol_table_item {
   int level;
@@ -390,6 +392,7 @@ struct tac {
 #define TAC_OP_RETURN_VALUE     23
 #define TAC_OP_FUNCTION_CALL    24
 #define TAC_OP_FUNCTION_CALL_USE_RETURN_VALUE 25
+#define TAC_OP_GET_ADDRESS      26
 
 #define TAC_ARG_TYPE_NONE     0
 #define TAC_ARG_TYPE_CONSTANT 1

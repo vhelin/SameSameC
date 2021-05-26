@@ -146,6 +146,9 @@ static void _print_simple_tree_node(struct tree_node *node) {
       fprintf(stderr, "%s", node->label);
     }
   }
+  else if (node->type == TREE_NODE_TYPE_GET_ADDRESS) {
+    fprintf(stderr, "&%s", node->label);
+  }
   else
     fprintf(stderr, "?");
 }

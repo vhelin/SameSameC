@@ -643,6 +643,40 @@ int create_factor(void) {
 
     return SUCCEEDED;
   }
+  else if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == '&') {
+    /* &var */
+
+    /* next token */
+    _next_token();
+
+    if (g_token_current->id != TOKEN_ID_VALUE_STRING) {
+      snprintf(g_error_message, sizeof(g_error_message), "Expected a variable name, but got %s.\n", _get_token_simple(g_token_current));
+      print_error(g_error_message, ERROR_ERR);
+      return FAILED;
+    }
+
+    node = allocate_tree_node_value_string(g_token_current->label);
+    if (node == NULL)
+      return FAILED;
+
+    /* next token */
+    _next_token();
+
+    /* change the TREE_NODE_TYPE_VALUE_STRING to TREE_NODE_TYPE_GET_ADDRESS */
+    node->type = TREE_NODE_TYPE_GET_ADDRESS;
+
+    /* no array */
+    node->value_double = -1.0;
+
+    item = symbol_table_find_symbol(node->label);
+    if (item != NULL)
+      node->definition = item->node;
+    
+    if (tree_node_add_child(_get_current_open_expression(), node) == FAILED)
+      return FAILED;
+
+    return SUCCEEDED;    
+  }
   else if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == '(') {
     struct tree_node *expression;
     

@@ -338,6 +338,48 @@ int optimize_il(void) {
   }
 
   /*
+    rX = &? <--- REMOVE rX if rX doesn't appear elsewhere
+    ?  = rX <--- REMOVE rX if rX doesn't appear elsewhere
+  */
+
+  i = 0;
+  while (1) {
+    int is_last_function = NO;
+    int end = _find_end_of_il_function(i, &is_last_function);
+    if (end < 0)
+      return FAILED;
+
+    if (_count_and_allocate_register_usage(i, end) == FAILED)
+      return FAILED;
+
+    while (i < end) {
+      int current, next;
+
+      current = _find_next_living_tac(i);
+      next = _find_next_living_tac(current + 1);
+
+      if (current < 0 || next < 0)
+        break;
+
+      if (g_tacs[current].op == TAC_OP_GET_ADDRESS && g_tacs[next].op == TAC_OP_ASSIGNMENT &&
+          g_tacs[current].result_type == TAC_ARG_TYPE_TEMP && g_tacs[next].arg1_type == TAC_ARG_TYPE_TEMP &&
+          (int)g_tacs[current].result_d == (int)g_tacs[next].arg1_d &&
+          g_register_reads[(int)g_tacs[current].result_d] == 1 && g_register_writes[(int)g_tacs[current].result_d] == 1) {
+        /* found match! rX can be skipped! */
+        if (tac_set_result(&g_tacs[current], g_tacs[next].result_type, g_tacs[next].result_d, g_tacs[next].result_s) == FAILED)
+          return FAILED;
+        g_tacs[current].result_node = g_tacs[next].result_node;
+        g_tacs[next].op = TAC_OP_DEAD;
+      }
+          
+      i = next;
+    }
+
+    if (is_last_function == YES)
+      break;
+  }
+
+  /*
     rX   = ?  <--- REMOVE rX if rX doesn't appear elsewhere
     ?[?] = rX <--- REMOVE rX if rX doesn't appear elsewhere
   */
@@ -843,6 +885,22 @@ int propagate_operand_sizes(void) {
         fprintf(stderr, "propagate_operand_sizes(): Couldn't find size for ARG1!\n");
       if (t->arg2_size == 0)
         fprintf(stderr, "propagate_operand_sizes(): Couldn't find size for ARG2!\n");
+      if (t->result_size == 0)
+        fprintf(stderr, "propagate_operand_sizes(): Couldn't find size for RESULT!\n");
+    }
+    else if (op == TAC_OP_GET_ADDRESS) {
+      t->arg1_size = 16;
+      if (_find_operand_size(&t->result_size, t->result_type, (int)t->result_d, t->result_s, t->result_node, YES) == FAILED)
+        return FAILED;
+
+      /* RESULT from ARG1? */
+      if (t->result_type == TAC_ARG_TYPE_TEMP) {
+        t->result_size = 16;
+        _set_temp_register_size((int)t->result_d, 16);
+      }
+
+      if (t->arg1_size == 0)
+        fprintf(stderr, "propagate_operand_sizes(): Couldn't find size for ARG1!\n");
       if (t->result_size == 0)
         fprintf(stderr, "propagate_operand_sizes(): Couldn't find size for RESULT!\n");
     }

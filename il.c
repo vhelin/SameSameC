@@ -221,6 +221,18 @@ int il_stack_calculate_expression(struct tree_node *node) {
       si[z].type = STACK_ITEM_TYPE_STRING;
       si[z].value = 0;
     }
+    else if (child->type == TREE_NODE_TYPE_GET_ADDRESS) {
+      si[z].type = STACK_ITEM_TYPE_OPERATOR;
+      si[z].value = SI_OP_GET_ADDRESS;
+      fprintf(stderr, "GOT STACK ITEM &%s\n", child->label);
+
+      z++;
+
+      si[z].sign = SI_SIGN_POSITIVE;
+      strncpy(si[z].string, child->label, MAX_NAME_LENGTH);
+      si[z].type = STACK_ITEM_TYPE_STRING;
+      si[z].value = 0;
+    }
     else if (child->type == TREE_NODE_TYPE_FUNCTION_CALL) {
       struct tac *t = generate_il_create_function_call(child);
 
@@ -675,6 +687,25 @@ int il_compute_stack(struct stack *sta, int count, int rresult) {
         ta = _add_tac_calculation(TAC_OP_SUB, t-2, t-1, g_temp_r++, si, v);
         _turn_stack_item_into_a_register(si, sit, t-2, (int)ta->result_d);
         t--;
+        break;
+      case SI_OP_GET_ADDRESS:
+        /* get address */
+        ta = add_tac();
+        if (ta == NULL)
+          return FAILED;
+
+        ta->op = TAC_OP_GET_ADDRESS;
+
+        tac_set_arg1(ta, TAC_ARG_TYPE_LABEL, 0, si[t-1]->string);
+        tac_set_result(ta, TAC_ARG_TYPE_TEMP, g_temp_r++, NULL);
+
+        /* find the definition */
+        if (tac_try_find_definition(ta, si[t-1]->string, NULL, TAC_USE_ARG1) == FAILED)
+          return FAILED;
+
+        _turn_stack_item_into_a_register(si, sit, t-1, g_temp_r-1);
+        t--;
+        
         break;
       case SI_OP_PRE_INC:
         /* increment */
