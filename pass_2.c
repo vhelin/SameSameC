@@ -665,12 +665,44 @@ int create_factor(void) {
     /* change the TREE_NODE_TYPE_VALUE_STRING to TREE_NODE_TYPE_GET_ADDRESS */
     node->type = TREE_NODE_TYPE_GET_ADDRESS;
 
-    /* no array */
-    node->value_double = -1.0;
-
     item = symbol_table_find_symbol(node->label);
     if (item != NULL)
       node->definition = item->node;
+
+    if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == '[') {
+      /* array! */
+
+      /* change the TREE_NODE_TYPE_GET_ADDRESS to TREE_NODE_TYPE_GET_ADDRESS_ARRAY */
+      node->type = TREE_NODE_TYPE_GET_ADDRESS_ARRAY;
+
+      /* next token */
+      _next_token();
+
+      /* create_expression() will put all tree_nodes it parses to g_open_expression */
+      if (_open_expression_push() == FAILED)
+        return FAILED;    
+
+      fprintf(stderr, "create_factor():\n");
+
+      /* possibly parse a calculation */
+      if (create_expression() == FAILED)
+        return FAILED;
+
+      fprintf(stderr, "- create_expression() - create_factor()\n");
+
+      tree_node_add_child(node, _get_current_open_expression());
+      _open_expression_pop();
+
+      if (g_token_current->id != TOKEN_ID_SYMBOL || g_token_current->value != ']') {
+        snprintf(g_error_message, sizeof(g_error_message), "Expected ']', but got %s.\n", _get_token_simple(g_token_current));
+        print_error(g_error_message, ERROR_ERR);
+        free_tree_node(node);
+        return FAILED;
+      }
+    
+      /* next token */
+      _next_token();
+    }
     
     if (tree_node_add_child(_get_current_open_expression(), node) == FAILED)
       return FAILED;

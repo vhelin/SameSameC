@@ -149,6 +149,11 @@ static void _print_simple_tree_node(struct tree_node *node) {
   else if (node->type == TREE_NODE_TYPE_GET_ADDRESS) {
     fprintf(stderr, "&%s", node->label);
   }
+  else if (node->type == TREE_NODE_TYPE_GET_ADDRESS_ARRAY) {
+    fprintf(stderr, "&%s[", node->label);
+    _print_expression(node->children[0]);
+    fprintf(stderr, "]");
+  }
   else
     fprintf(stderr, "?");
 }
@@ -537,6 +542,11 @@ static int _simplify_expression(struct tree_node *node) {
         subexpressions++;
       }
     }
+    if (node->children[i]->type == TREE_NODE_TYPE_GET_ADDRESS_ARRAY) {
+      if (_simplify_expression(node->children[i]->children[0]) == SUCCEEDED)
+        return SUCCEEDED;
+      subexpressions++;
+    }    
   }
 
   if (subexpressions == 0) {

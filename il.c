@@ -233,6 +233,29 @@ int il_stack_calculate_expression(struct tree_node *node) {
       si[z].type = STACK_ITEM_TYPE_STRING;
       si[z].value = 0;
     }
+    else if (child->type == TREE_NODE_TYPE_GET_ADDRESS_ARRAY) {
+      struct tac *t = generate_il_create_get_address_array(child);
+
+      if (t == NULL)
+        return FAILED;
+
+      fprintf(stderr, "GOT STACK ITEM &%s[]\n", child->label);
+
+      tac_set_result(t, TAC_ARG_TYPE_TEMP, g_temp_r++, NULL);
+
+      /* find the definition */
+      if (tac_try_find_definition(t, child->label, child, TAC_USE_ARG1) == FAILED)
+        return FAILED;
+      
+      si[z].type = STACK_ITEM_TYPE_OPERATOR;
+      si[z].value = SI_OP_USE_REGISTER;
+
+      z++;
+
+      si[z].type = STACK_ITEM_TYPE_VALUE;
+      si[z].value = g_temp_r - 1;
+      si[z].sign = SI_SIGN_POSITIVE;
+    }
     else if (child->type == TREE_NODE_TYPE_FUNCTION_CALL) {
       struct tac *t = generate_il_create_function_call(child);
 

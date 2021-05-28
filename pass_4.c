@@ -379,6 +379,41 @@ static int _generate_il_create_assignment(struct tree_node *node) {
 }
 
 
+struct tac *generate_il_create_get_address_array(struct tree_node *node) {
+
+  struct symbol_table_item *sti;
+  struct tac *t;
+  int r;
+
+
+  r = g_temp_r;
+  if (_generate_il_create_expression(node->children[0]) == FAILED)
+    return NULL;
+
+  t = add_tac();
+  if (t == NULL)
+    return NULL;
+
+  t->op = TAC_OP_GET_ADDRESS_ARRAY;
+  tac_set_arg1(t, TAC_ARG_TYPE_LABEL, 0, node->label);
+  tac_set_arg2(t, TAC_ARG_TYPE_TEMP, r, NULL);
+
+  /* find the function */
+  sti = symbol_table_find_symbol(node->label);
+  if (sti != NULL)
+    t->arg1_node = sti->node;
+  else {
+    g_current_filename_id = node->file_id;
+    g_current_line_number = node->line_number;
+    snprintf(g_error_message, sizeof(g_error_message), "_generate_il_get_address_array(): Cannot find variable \"%s\"! Please submit a bug report!\n", node->label);
+    print_error(g_error_message, ERROR_ERR);
+    return NULL;
+  }
+
+  return t;
+}
+
+
 struct tac *generate_il_create_function_call(struct tree_node *node) {
 
   struct symbol_table_item *sti;

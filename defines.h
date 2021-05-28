@@ -330,6 +330,7 @@ struct tree_node {
 #define TREE_NODE_TYPE_SWITCH              23
 #define TREE_NODE_TYPE_CREATE_VARIABLE_FUNCTION_ARGUMENT 24
 #define TREE_NODE_TYPE_GET_ADDRESS         25
+#define TREE_NODE_TYPE_GET_ADDRESS_ARRAY   26
 
 struct symbol_table_item {
   int level;
@@ -366,33 +367,34 @@ struct tac {
   char is_function;
 };
 
-#define TAC_OP_DEAD              0
-#define TAC_OP_LABEL             1
-#define TAC_OP_ADD               2
-#define TAC_OP_SUB               3
-#define TAC_OP_ASSIGNMENT        4
-#define TAC_OP_ARRAY_ASSIGNMENT  5
-#define TAC_OP_CREATE_VARIABLE   6
-#define TAC_OP_MUL               7
-#define TAC_OP_JUMP              8
-#define TAC_OP_JUMP_EQ           9
-#define TAC_OP_JUMP_LT          10
-#define TAC_OP_JUMP_GT          11
-#define TAC_OP_JUMP_NEQ         12
-#define TAC_OP_JUMP_LTE         13
-#define TAC_OP_JUMP_GTE         14
-#define TAC_OP_ARRAY_READ       15
-#define TAC_OP_DIV              16
-#define TAC_OP_MOD              17
-#define TAC_OP_AND              18
-#define TAC_OP_OR               19
-#define TAC_OP_SHIFT_LEFT       20
-#define TAC_OP_SHIFT_RIGHT      21
-#define TAC_OP_RETURN           22
-#define TAC_OP_RETURN_VALUE     23
-#define TAC_OP_FUNCTION_CALL    24
+#define TAC_OP_DEAD               0
+#define TAC_OP_LABEL              1
+#define TAC_OP_ADD                2
+#define TAC_OP_SUB                3
+#define TAC_OP_ASSIGNMENT         4
+#define TAC_OP_ARRAY_ASSIGNMENT   5
+#define TAC_OP_CREATE_VARIABLE    6
+#define TAC_OP_MUL                7
+#define TAC_OP_JUMP               8
+#define TAC_OP_JUMP_EQ            9
+#define TAC_OP_JUMP_LT           10
+#define TAC_OP_JUMP_GT           11
+#define TAC_OP_JUMP_NEQ          12
+#define TAC_OP_JUMP_LTE          13
+#define TAC_OP_JUMP_GTE          14
+#define TAC_OP_ARRAY_READ        15
+#define TAC_OP_DIV               16
+#define TAC_OP_MOD               17
+#define TAC_OP_AND               18
+#define TAC_OP_OR                19
+#define TAC_OP_SHIFT_LEFT        20
+#define TAC_OP_SHIFT_RIGHT       21
+#define TAC_OP_RETURN            22
+#define TAC_OP_RETURN_VALUE      23
+#define TAC_OP_FUNCTION_CALL     24
 #define TAC_OP_FUNCTION_CALL_USE_RETURN_VALUE 25
-#define TAC_OP_GET_ADDRESS      26
+#define TAC_OP_GET_ADDRESS       26
+#define TAC_OP_GET_ADDRESS_ARRAY 27
 
 #define TAC_ARG_TYPE_NONE     0
 #define TAC_ARG_TYPE_CONSTANT 1
