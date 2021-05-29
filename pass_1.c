@@ -184,9 +184,17 @@ int evaluate_token(int type) {
     if (strcaselesscmp(g_tmp, "int8") == 0)
       return add_token(TOKEN_ID_VARIABLE_TYPE, VARIABLE_TYPE_INT8, 0.0, NULL);
 
+    /* uint8 */
+    if (strcaselesscmp(g_tmp, "uint8") == 0)
+      return add_token(TOKEN_ID_VARIABLE_TYPE, VARIABLE_TYPE_UINT8, 0.0, NULL);
+
     /* int16 */
     if (strcaselesscmp(g_tmp, "int16") == 0)
       return add_token(TOKEN_ID_VARIABLE_TYPE, VARIABLE_TYPE_INT16, 0.0, NULL);
+
+    /* uint16 */
+    if (strcaselesscmp(g_tmp, "uint16") == 0)
+      return add_token(TOKEN_ID_VARIABLE_TYPE, VARIABLE_TYPE_UINT16, 0.0, NULL);
 
     /* void */
     if (strcaselesscmp(g_tmp, "void") == 0)

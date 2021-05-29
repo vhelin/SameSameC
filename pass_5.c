@@ -455,7 +455,7 @@ int optimize_il(void) {
         g_tacs[next].arg2_node = g_tacs[current].arg1_node;
         g_tacs[current].op = TAC_OP_DEAD;
       }
-          
+
       i = next;
     }
 
@@ -869,11 +869,23 @@ static int _find_operand_size(char *size, unsigned char type, int value, char *l
     /* int8 and a pointer? */
     else if (variable_type == VARIABLE_TYPE_INT8 && node->children[0]->value_double >= 1.0)
       *size = 16;
+    /* uint8 and not a pointer? */
+    else if (variable_type == VARIABLE_TYPE_UINT8 && node->children[0]->value_double == 0.0)
+      *size = 8;
+    /* uint8 and a pointer? */
+    else if (variable_type == VARIABLE_TYPE_UINT8 && node->children[0]->value_double >= 1.0)
+      *size = 16;
     /* int16 and not a pointer? */
     else if (variable_type == VARIABLE_TYPE_INT16 && node->children[0]->value_double == 0.0)
       *size = 16;
     /* int16 and a pointer? */
     else if (variable_type == VARIABLE_TYPE_INT16 && node->children[0]->value_double >= 1.0)
+      *size = 16;
+    /* uint16 and not a pointer? */
+    else if (variable_type == VARIABLE_TYPE_UINT16 && node->children[0]->value_double == 0.0)
+      *size = 16;
+    /* uint16 and a pointer? */
+    else if (variable_type == VARIABLE_TYPE_UINT16 && node->children[0]->value_double >= 1.0)
       *size = 16;
     /* void and a pointer? */
     else if (variable_type == VARIABLE_TYPE_VOID && node->children[0]->value_double >= 1.0)
@@ -1150,7 +1162,15 @@ static int _get_variable_size(struct tree_node *node) {
       size = 8;
       fprintf(stderr, "8 (8BIT)");
     }
+    else if (type == VARIABLE_TYPE_UINT8) {
+      size = 8;
+      fprintf(stderr, "8 (8BIT)");
+    }
     else if (type == VARIABLE_TYPE_INT16) {
+      size = 16;
+      fprintf(stderr, "16 (16BIT)");
+    }
+    else if (type == VARIABLE_TYPE_UINT16) {
       size = 16;
       fprintf(stderr, "16 (16BIT)");
     }

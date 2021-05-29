@@ -57,7 +57,7 @@ void print_tac(struct tac *t, int is_comment, FILE *file_out) {
     return;
 
   if (is_comment == YES)
-    fprintf(file_out, "      // ");
+    fprintf(file_out, "      ; TAC: ");
   else
     fprintf(file_out, "  ");
   
@@ -330,10 +330,10 @@ void print_tac(struct tac *t, int is_comment, FILE *file_out) {
       else
         type = 'n';
       
-      fprintf(file_out, "variable %s size %d offset %d type %c", t->result_node->children[1]->label, size / 8, offset, type);
+      fprintf(file_out, "variable \"%s\" size %d offset %d type %c", t->result_node->children[1]->label, size / 8, offset, type);
     }
     else
-      fprintf(file_out, "variable %s size ? offset ? type ?", t->result_node->children[1]->label);
+      fprintf(file_out, "variable \"%s\" size ? offset ? type ?", t->result_node->children[1]->label);
   }
   else {
     fprintf(file_out, "print_tac(): Unknown TAC op %d! Please submit a bug report!", t->op);

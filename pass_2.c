@@ -28,7 +28,7 @@ extern struct stack *g_stacks_first, *g_stacks_tmp, *g_stacks_last, *g_stacks_he
 extern struct token *g_token_first, *g_token_last;
 
 int g_current_filename_id = -1, g_current_line_number = -1;
-char *g_variable_types[4] = { "none", "void", "int8", "int16" };
+char *g_variable_types[6] = { "none", "void", "int8", "int16", "uint8", "uint16" };
 char *g_two_char_symbols[10] = { "||", "&&", "<=", ">=", "==", "!=", "<<", ">>", "++", "--" };
 
 static struct tree_node *g_open_function_definition = NULL;
@@ -1065,7 +1065,7 @@ int create_statement(void) {
       return SUCCEEDED;      
     }
     else {
-      if (variable_type == VARIABLE_TYPE_INT8 || variable_type == VARIABLE_TYPE_INT16) {
+      if (variable_type == VARIABLE_TYPE_INT8 || variable_type == VARIABLE_TYPE_INT16 || variable_type == VARIABLE_TYPE_UINT8 || variable_type == VARIABLE_TYPE_UINT16) {
         tree_node_add_child(_get_current_open_expression(), allocate_tree_node_value_int(0));
         if (_get_current_open_expression()->children[0] == NULL)
           return FAILED;
@@ -2327,7 +2327,7 @@ struct tree_node *create_variable_or_function(void) {
       return create_array(pointer_depth, variable_type, name);
     }
     else {
-      if (variable_type == VARIABLE_TYPE_INT8 || variable_type == VARIABLE_TYPE_INT16) {
+      if (variable_type == VARIABLE_TYPE_INT8 || variable_type == VARIABLE_TYPE_INT16 || variable_type == VARIABLE_TYPE_UINT8 || variable_type == VARIABLE_TYPE_UINT16) {
         tree_node_add_child(_get_current_open_expression(), allocate_tree_node_value_int(0));
         if (_get_current_open_expression()->children[0] == NULL)
           return NULL;

@@ -266,10 +266,12 @@ struct token {
 #define SYMBOL_INCREMENT   8
 #define SYMBOL_DECREMENT   9
 
-#define VARIABLE_TYPE_NONE  0
-#define VARIABLE_TYPE_VOID  1
-#define VARIABLE_TYPE_INT8  2
-#define VARIABLE_TYPE_INT16 3
+#define VARIABLE_TYPE_NONE   0
+#define VARIABLE_TYPE_VOID   1
+#define VARIABLE_TYPE_INT8   2
+#define VARIABLE_TYPE_INT16  3
+#define VARIABLE_TYPE_UINT8  4
+#define VARIABLE_TYPE_UINT16 5
 
 struct local_variable {
   struct tree_node *node;
