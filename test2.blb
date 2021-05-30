@@ -4,6 +4,6 @@ int8 g_value = 1;
 
 void main() {
 
-  int16 var = g_value;
+  int16 var = g_value + 1;
   
 }

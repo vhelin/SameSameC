@@ -536,18 +536,10 @@ static int _generate_il_create_condition(struct tree_node *node, int false_label
   t = add_tac();
   if (t == NULL)
     return FAILED;
-
-  t->op = TAC_OP_ASSIGNMENT;
-  tac_set_result(t, TAC_ARG_TYPE_TEMP, g_temp_r++, NULL);
-  tac_set_arg1(t, TAC_ARG_TYPE_CONSTANT, 0, NULL);
-
-  t = add_tac();
-  if (t == NULL)
-    return FAILED;
   
   t->op = TAC_OP_JUMP_EQ;
   tac_set_arg1(t, TAC_ARG_TYPE_TEMP, r1, NULL);
-  tac_set_arg2(t, TAC_ARG_TYPE_TEMP, g_temp_r - 1, NULL);
+  tac_set_arg2(t, TAC_ARG_TYPE_CONSTANT, 0, NULL);
   tac_set_result(t, TAC_ARG_TYPE_LABEL, 0, generate_temp_label(false_label_id));
 
   return SUCCEEDED;
