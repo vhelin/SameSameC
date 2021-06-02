@@ -347,23 +347,26 @@ struct tac {
   unsigned char arg1_type;
   double arg1_d;
   char *arg1_s;
-  char arg1_size;
+  unsigned char arg1_var_type;
+  unsigned char arg1_var_type_promoted;
   struct tree_node *arg1_node;
 
   unsigned char arg2_type;
   double arg2_d;
   char *arg2_s;
-  char arg2_size;
+  unsigned char arg2_var_type;
+  unsigned char arg2_var_type_promoted;
   struct tree_node *arg2_node;
   
   unsigned char result_type;
   double result_d;
   char *result_s;
-  char result_size;
+  unsigned char result_var_type;
+  unsigned char result_var_type_promoted;
   struct tree_node *result_node;
 
   int *registers;
-  int *registers_sizes;
+  int *registers_types;
   
   struct tree_node *function_node;
   char is_function;

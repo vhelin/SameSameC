@@ -20,6 +20,9 @@
 extern int g_current_line_number, g_current_filename_id;
 extern int g_temp_r, g_temp_label_id;
 
+static char g_max_var_types[1024];
+static int g_max_var_type_index = 0;
+
 
 int il_stack_calculate_expression(struct tree_node *node) {
 
@@ -30,6 +33,9 @@ int il_stack_calculate_expression(struct tree_node *node) {
   /* do we need to flatten the expression? (i.e., does it contain other expressions? */
   if (tree_node_does_contain_expressions(node) == YES)
     tree_node_flatten(node);
+
+  /* calculate the promotion for all the items inside this expression */
+  g_max_var_types[g_max_var_type_index] = tree_node_get_max_var_type(node);
   
   /* slice the data into infix format */
   for (q = 0, z = 0; q < node->added_children; q++, z++) {
@@ -285,8 +291,10 @@ int il_stack_calculate_expression(struct tree_node *node) {
       struct tac *t;
       
       /* calculate the index */
+      g_max_var_type_index++;
       if (il_stack_calculate_expression(child->children[0]) == FAILED)
         return FAILED;
+      g_max_var_type_index--;
 
       t = add_tac();
       if (t == NULL)

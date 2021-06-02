@@ -23,7 +23,7 @@ int g_tacs_count = 0, g_tacs_max = 0;
 static char g_temp_label[32];
 
 
-static void _print_tac_arg(int type, double d, char *s, int size, FILE *file_out) {
+static void _print_tac_arg(int type, double d, char *s, int var_type, int var_type_promoted, FILE *file_out) {
 
   if (type == TAC_ARG_TYPE_CONSTANT)
     fprintf(file_out, "%d", (int)d);
@@ -32,12 +32,31 @@ static void _print_tac_arg(int type, double d, char *s, int size, FILE *file_out
   else
     fprintf(file_out, "%s", s);
 
-  /* print size information if that's available */
+  /* print var type information if that's available */
   
-  if (size == 8)
-    fprintf(file_out, ".b");
-  else if (size == 16)
-    fprintf(file_out, ".w");
+  if (var_type == VARIABLE_TYPE_VOID)
+    fprintf(file_out, ".void");
+  else if (var_type == VARIABLE_TYPE_INT8)
+    fprintf(file_out, ".int8");
+  else if (var_type == VARIABLE_TYPE_INT16)
+    fprintf(file_out, ".int16");
+  else if (var_type == VARIABLE_TYPE_UINT8)
+    fprintf(file_out, ".uint8");
+  else if (var_type == VARIABLE_TYPE_UINT16)
+    fprintf(file_out, ".uint16");
+
+  /* print promoted var type information if that's available */
+
+  if (var_type_promoted == VARIABLE_TYPE_VOID)
+    fprintf(file_out, " (void)");
+  else if (var_type_promoted == VARIABLE_TYPE_INT8)
+    fprintf(file_out, " (int8)");
+  else if (var_type_promoted == VARIABLE_TYPE_INT16)
+    fprintf(file_out, " (int16)");
+  else if (var_type_promoted == VARIABLE_TYPE_UINT8)
+    fprintf(file_out, " (uint8)");
+  else if (var_type_promoted == VARIABLE_TYPE_UINT16)
+    fprintf(file_out, " (uint16)");
 }
 
 
@@ -80,125 +99,125 @@ void print_tac(struct tac *t, int is_comment, FILE *file_out) {
   else if (t->op == TAC_OP_GET_ADDRESS) {
     if (is_comment == NO)
       fprintf(file_out, "  ");
-    _print_tac_arg(t->result_type, t->result_d, t->result_s, t->result_size, file_out);
+    _print_tac_arg(t->result_type, t->result_d, t->result_s, t->result_var_type, t->result_var_type_promoted, file_out);
     fprintf(file_out, " := &");
-    _print_tac_arg(t->arg1_type, t->arg1_d, t->arg1_s, t->arg1_size, file_out);
+    _print_tac_arg(t->arg1_type, t->arg1_d, t->arg1_s, t->arg1_var_type, t->arg1_var_type_promoted, file_out);
   }
   else if (t->op == TAC_OP_GET_ADDRESS_ARRAY) {
     if (is_comment == NO)
       fprintf(file_out, "  ");
-    _print_tac_arg(t->result_type, t->result_d, t->result_s, t->result_size, file_out);
+    _print_tac_arg(t->result_type, t->result_d, t->result_s, t->result_var_type, t->result_var_type_promoted, file_out);
     fprintf(file_out, " := &");
-    _print_tac_arg(t->arg1_type, t->arg1_d, t->arg1_s, t->arg1_size, file_out);
+    _print_tac_arg(t->arg1_type, t->arg1_d, t->arg1_s, t->arg1_var_type, t->arg1_var_type_promoted, file_out);
     fprintf(file_out, "[");
-    _print_tac_arg(t->arg2_type, t->arg2_d, t->arg2_s, t->arg2_size, file_out);    
+    _print_tac_arg(t->arg2_type, t->arg2_d, t->arg2_s, t->arg2_var_type, t->arg2_var_type_promoted, file_out);
     fprintf(file_out, "]");
   }
   else if (t->op == TAC_OP_ADD) {
     if (is_comment == NO)
       fprintf(file_out, "  ");
-    _print_tac_arg(t->result_type, t->result_d, t->result_s, t->result_size, file_out);
+    _print_tac_arg(t->result_type, t->result_d, t->result_s, t->result_var_type, t->result_var_type_promoted, file_out);
     fprintf(file_out, " := ");
-    _print_tac_arg(t->arg1_type, t->arg1_d, t->arg1_s, t->arg1_size, file_out);
+    _print_tac_arg(t->arg1_type, t->arg1_d, t->arg1_s, t->arg1_var_type, t->arg1_var_type_promoted, file_out);
     fprintf(file_out, " + ");
-    _print_tac_arg(t->arg2_type, t->arg2_d, t->arg2_s, t->arg2_size, file_out);
+    _print_tac_arg(t->arg2_type, t->arg2_d, t->arg2_s, t->arg2_var_type, t->arg2_var_type_promoted, file_out);
   }
   else if (t->op == TAC_OP_SUB) {
     if (is_comment == NO)
       fprintf(file_out, "  ");
-    _print_tac_arg(t->result_type, t->result_d, t->result_s, t->result_size, file_out);
+    _print_tac_arg(t->result_type, t->result_d, t->result_s, t->result_var_type, t->result_var_type_promoted, file_out);
     fprintf(file_out, " := ");
-    _print_tac_arg(t->arg1_type, t->arg1_d, t->arg1_s, t->arg1_size, file_out);
+    _print_tac_arg(t->arg1_type, t->arg1_d, t->arg1_s, t->arg1_var_type, t->arg1_var_type_promoted, file_out);
     fprintf(file_out, " - ");
-    _print_tac_arg(t->arg2_type, t->arg2_d, t->arg2_s, t->arg2_size, file_out);
+    _print_tac_arg(t->arg2_type, t->arg2_d, t->arg2_s, t->arg2_var_type, t->arg2_var_type_promoted, file_out);
   }
   else if (t->op == TAC_OP_MUL) {
     if (is_comment == NO)
       fprintf(file_out, "  ");
-    _print_tac_arg(t->result_type, t->result_d, t->result_s, t->result_size, file_out);
+    _print_tac_arg(t->result_type, t->result_d, t->result_s, t->result_var_type, t->result_var_type_promoted, file_out);
     fprintf(file_out, " := ");
-    _print_tac_arg(t->arg1_type, t->arg1_d, t->arg1_s, t->arg1_size, file_out);
+    _print_tac_arg(t->arg1_type, t->arg1_d, t->arg1_s, t->arg1_var_type, t->arg1_var_type_promoted, file_out);
     fprintf(file_out, " * ");
-    _print_tac_arg(t->arg2_type, t->arg2_d, t->arg2_s, t->arg2_size, file_out);
+    _print_tac_arg(t->arg2_type, t->arg2_d, t->arg2_s, t->arg2_var_type, t->arg2_var_type_promoted, file_out);
   }
   else if (t->op == TAC_OP_DIV) {
     if (is_comment == NO)
       fprintf(file_out, "  ");
-    _print_tac_arg(t->result_type, t->result_d, t->result_s, t->result_size, file_out);
+    _print_tac_arg(t->result_type, t->result_d, t->result_s, t->result_var_type, t->result_var_type_promoted, file_out);
     fprintf(file_out, " := ");
-    _print_tac_arg(t->arg1_type, t->arg1_d, t->arg1_s, t->arg1_size, file_out);
+    _print_tac_arg(t->arg1_type, t->arg1_d, t->arg1_s, t->arg1_var_type, t->arg1_var_type_promoted, file_out);
     fprintf(file_out, " / ");
-    _print_tac_arg(t->arg2_type, t->arg2_d, t->arg2_s, t->arg2_size, file_out);
+    _print_tac_arg(t->arg2_type, t->arg2_d, t->arg2_s, t->arg2_var_type, t->arg2_var_type_promoted, file_out);
   }
   else if (t->op == TAC_OP_MOD) {
     if (is_comment == NO)
       fprintf(file_out, "  ");
-    _print_tac_arg(t->result_type, t->result_d, t->result_s, t->result_size, file_out);
+    _print_tac_arg(t->result_type, t->result_d, t->result_s, t->result_var_type, t->result_var_type_promoted, file_out);
     fprintf(file_out, " := ");
-    _print_tac_arg(t->arg1_type, t->arg1_d, t->arg1_s, t->arg1_size, file_out);
+    _print_tac_arg(t->arg1_type, t->arg1_d, t->arg1_s, t->arg1_var_type, t->arg1_var_type_promoted, file_out);
     fprintf(file_out, " %% ");
-    _print_tac_arg(t->arg2_type, t->arg2_d, t->arg2_s, t->arg2_size, file_out);
+    _print_tac_arg(t->arg2_type, t->arg2_d, t->arg2_s, t->arg2_var_type, t->arg2_var_type_promoted, file_out);
   }
   else if (t->op == TAC_OP_AND) {
     if (is_comment == NO)
       fprintf(file_out, "  ");
-    _print_tac_arg(t->result_type, t->result_d, t->result_s, t->result_size, file_out);
+    _print_tac_arg(t->result_type, t->result_d, t->result_s, t->result_var_type, t->result_var_type_promoted, file_out);
     fprintf(file_out, " := ");
-    _print_tac_arg(t->arg1_type, t->arg1_d, t->arg1_s, t->arg1_size, file_out);
+    _print_tac_arg(t->arg1_type, t->arg1_d, t->arg1_s, t->arg1_var_type, t->arg1_var_type_promoted, file_out);
     fprintf(file_out, " & ");
-    _print_tac_arg(t->arg2_type, t->arg2_d, t->arg2_s, t->arg2_size, file_out);
+    _print_tac_arg(t->arg2_type, t->arg2_d, t->arg2_s, t->arg2_var_type, t->arg2_var_type_promoted, file_out);
   }
   else if (t->op == TAC_OP_OR) {
     if (is_comment == NO)
       fprintf(file_out, "  ");
-    _print_tac_arg(t->result_type, t->result_d, t->result_s, t->result_size, file_out);
+    _print_tac_arg(t->result_type, t->result_d, t->result_s, t->result_var_type, t->result_var_type_promoted, file_out);
     fprintf(file_out, " := ");
-    _print_tac_arg(t->arg1_type, t->arg1_d, t->arg1_s, t->arg1_size, file_out);
+    _print_tac_arg(t->arg1_type, t->arg1_d, t->arg1_s, t->arg1_var_type, t->arg1_var_type_promoted, file_out);
     fprintf(file_out, " | ");
-    _print_tac_arg(t->arg2_type, t->arg2_d, t->arg2_s, t->arg2_size, file_out);
+    _print_tac_arg(t->arg2_type, t->arg2_d, t->arg2_s, t->arg2_var_type, t->arg2_var_type_promoted, file_out);
   }
   else if (t->op == TAC_OP_SHIFT_LEFT) {
     if (is_comment == NO)
       fprintf(file_out, "  ");
-    _print_tac_arg(t->result_type, t->result_d, t->result_s, t->result_size, file_out);
+    _print_tac_arg(t->result_type, t->result_d, t->result_s, t->result_var_type, t->result_var_type_promoted, file_out);
     fprintf(file_out, " := ");
-    _print_tac_arg(t->arg1_type, t->arg1_d, t->arg1_s, t->arg1_size, file_out);
+    _print_tac_arg(t->arg1_type, t->arg1_d, t->arg1_s, t->arg1_var_type, t->arg1_var_type_promoted, file_out);
     fprintf(file_out, " << ");
-    _print_tac_arg(t->arg2_type, t->arg2_d, t->arg2_s, t->arg2_size, file_out);
+    _print_tac_arg(t->arg2_type, t->arg2_d, t->arg2_s, t->arg2_var_type, t->arg2_var_type_promoted, file_out);
   }
   else if (t->op == TAC_OP_SHIFT_RIGHT) {
     if (is_comment == NO)
       fprintf(file_out, "  ");
-    _print_tac_arg(t->result_type, t->result_d, t->result_s, t->result_size, file_out);
+    _print_tac_arg(t->result_type, t->result_d, t->result_s, t->result_var_type, t->result_var_type_promoted, file_out);
     fprintf(file_out, " := ");
-    _print_tac_arg(t->arg1_type, t->arg1_d, t->arg1_s, t->arg1_size, file_out);
+    _print_tac_arg(t->arg1_type, t->arg1_d, t->arg1_s, t->arg1_var_type, t->arg1_var_type_promoted, file_out);
     fprintf(file_out, " >> ");
-    _print_tac_arg(t->arg2_type, t->arg2_d, t->arg2_s, t->arg2_size, file_out);
+    _print_tac_arg(t->arg2_type, t->arg2_d, t->arg2_s, t->arg2_var_type, t->arg2_var_type_promoted, file_out);
   }
   else if (t->op == TAC_OP_ASSIGNMENT) {
     if (is_comment == NO)
       fprintf(file_out, "  ");
-    _print_tac_arg(t->result_type, t->result_d, t->result_s, t->result_size, file_out);
+    _print_tac_arg(t->result_type, t->result_d, t->result_s, t->result_var_type, t->result_var_type_promoted, file_out);
     fprintf(file_out, " := ");      
-    _print_tac_arg(t->arg1_type, t->arg1_d, t->arg1_s, t->arg1_size, file_out);
+    _print_tac_arg(t->arg1_type, t->arg1_d, t->arg1_s, t->arg1_var_type, t->arg1_var_type_promoted, file_out);
   }
   else if (t->op == TAC_OP_ARRAY_ASSIGNMENT) {
     if (is_comment == NO)
       fprintf(file_out, "  ");
-    _print_tac_arg(t->result_type, t->result_d, t->result_s, t->result_size, file_out);
+    _print_tac_arg(t->result_type, t->result_d, t->result_s, t->result_var_type, t->result_var_type_promoted, file_out);
     fprintf(file_out, "[");
-    _print_tac_arg(t->arg2_type, t->arg2_d, t->arg2_s, t->arg2_size, file_out);
+    _print_tac_arg(t->arg2_type, t->arg2_d, t->arg2_s, t->arg2_var_type, t->arg2_var_type_promoted, file_out);
     fprintf(file_out, "] := ");
-    _print_tac_arg(t->arg1_type, t->arg1_d, t->arg1_s, t->arg1_size, file_out);
+    _print_tac_arg(t->arg1_type, t->arg1_d, t->arg1_s, t->arg1_var_type, t->arg1_var_type_promoted, file_out);
   }
   else if (t->op == TAC_OP_ARRAY_READ) {
     if (is_comment == NO)
       fprintf(file_out, "  ");
-    _print_tac_arg(t->result_type, t->result_d, t->result_s, t->result_size, file_out);
+    _print_tac_arg(t->result_type, t->result_d, t->result_s, t->result_var_type, t->result_var_type_promoted, file_out);
     fprintf(file_out, " := ");
-    _print_tac_arg(t->arg1_type, t->arg1_d, t->arg1_s, t->arg1_size, file_out);
+    _print_tac_arg(t->arg1_type, t->arg1_d, t->arg1_s, t->arg1_var_type, t->arg1_var_type_promoted, file_out);
     fprintf(file_out, "[");
-    _print_tac_arg(t->arg2_type, t->arg2_d, t->arg2_s, t->arg2_size, file_out);
+    _print_tac_arg(t->arg2_type, t->arg2_d, t->arg2_s, t->arg2_var_type, t->arg2_var_type_promoted, file_out);
     fprintf(file_out, "]");
   }
   else if (t->op == TAC_OP_JUMP) {
@@ -210,61 +229,61 @@ void print_tac(struct tac *t, int is_comment, FILE *file_out) {
     if (is_comment == NO)
       fprintf(file_out, "  ");
     fprintf(file_out, "if ");
-    _print_tac_arg(t->arg1_type, t->arg1_d, t->arg1_s, t->arg1_size, file_out);
+    _print_tac_arg(t->arg1_type, t->arg1_d, t->arg1_s, t->arg1_var_type, t->arg1_var_type_promoted, file_out);
     fprintf(file_out, " == ");
-    _print_tac_arg(t->arg2_type, t->arg2_d, t->arg2_s, t->arg2_size, file_out);
+    _print_tac_arg(t->arg2_type, t->arg2_d, t->arg2_s, t->arg2_var_type, t->arg2_var_type_promoted, file_out);
     fprintf(file_out, " jmp ");
-    _print_tac_arg(t->result_type, t->result_d, t->result_s, t->result_size, file_out);
+    _print_tac_arg(t->result_type, t->result_d, t->result_s, t->result_var_type, t->result_var_type_promoted, file_out);
   }
   else if (t->op == TAC_OP_JUMP_NEQ) {
     if (is_comment == NO)
       fprintf(file_out, "  ");
     fprintf(file_out, "if ");
-    _print_tac_arg(t->arg1_type, t->arg1_d, t->arg1_s, t->arg1_size, file_out);
+    _print_tac_arg(t->arg1_type, t->arg1_d, t->arg1_s, t->arg1_var_type, t->arg1_var_type_promoted, file_out);
     fprintf(file_out, " != ");
-    _print_tac_arg(t->arg2_type, t->arg2_d, t->arg2_s, t->arg2_size, file_out);
+    _print_tac_arg(t->arg2_type, t->arg2_d, t->arg2_s, t->arg2_var_type, t->arg2_var_type_promoted, file_out);
     fprintf(file_out, " jmp ");
-    _print_tac_arg(t->result_type, t->result_d, t->result_s, t->result_size, file_out);
+    _print_tac_arg(t->result_type, t->result_d, t->result_s, t->result_var_type, t->result_var_type_promoted, file_out);
   }
   else if (t->op == TAC_OP_JUMP_LT) {
     if (is_comment == NO)
       fprintf(file_out, "  ");
     fprintf(file_out, "if ");
-    _print_tac_arg(t->arg1_type, t->arg1_d, t->arg1_s, t->arg1_size, file_out);
+    _print_tac_arg(t->arg1_type, t->arg1_d, t->arg1_s, t->arg1_var_type, t->arg1_var_type_promoted, file_out);
     fprintf(file_out, " < ");
-    _print_tac_arg(t->arg2_type, t->arg2_d, t->arg2_s, t->arg2_size, file_out);
+    _print_tac_arg(t->arg2_type, t->arg2_d, t->arg2_s, t->arg2_var_type, t->arg2_var_type_promoted, file_out);
     fprintf(file_out, " jmp ");
-    _print_tac_arg(t->result_type, t->result_d, t->result_s, t->result_size, file_out);
+    _print_tac_arg(t->result_type, t->result_d, t->result_s, t->result_var_type, t->result_var_type_promoted, file_out);
   }
   else if (t->op == TAC_OP_JUMP_GT) {
     if (is_comment == NO)
       fprintf(file_out, "  ");
     fprintf(file_out, "if ");
-    _print_tac_arg(t->arg1_type, t->arg1_d, t->arg1_s, t->arg1_size, file_out);
+    _print_tac_arg(t->arg1_type, t->arg1_d, t->arg1_s, t->arg1_var_type, t->arg1_var_type_promoted, file_out);
     fprintf(file_out, " > ");
-    _print_tac_arg(t->arg2_type, t->arg2_d, t->arg2_s, t->arg2_size, file_out);
+    _print_tac_arg(t->arg2_type, t->arg2_d, t->arg2_s, t->arg2_var_type, t->arg2_var_type_promoted, file_out);
     fprintf(file_out, " jmp ");
-    _print_tac_arg(t->result_type, t->result_d, t->result_s, t->result_size, file_out);
+    _print_tac_arg(t->result_type, t->result_d, t->result_s, t->result_var_type, t->result_var_type_promoted, file_out);
   }
   else if (t->op == TAC_OP_JUMP_LTE) {
     if (is_comment == NO)
       fprintf(file_out, "  ");
     fprintf(file_out, "if ");
-    _print_tac_arg(t->arg1_type, t->arg1_d, t->arg1_s, t->arg1_size, file_out);
+    _print_tac_arg(t->arg1_type, t->arg1_d, t->arg1_s, t->arg1_var_type, t->arg1_var_type_promoted, file_out);
     fprintf(file_out, " <= ");
-    _print_tac_arg(t->arg2_type, t->arg2_d, t->arg2_s, t->arg2_size, file_out);
+    _print_tac_arg(t->arg2_type, t->arg2_d, t->arg2_s, t->arg2_var_type, t->arg2_var_type_promoted, file_out);
     fprintf(file_out, " jmp ");
-    _print_tac_arg(t->result_type, t->result_d, t->result_s, t->result_size, file_out);
+    _print_tac_arg(t->result_type, t->result_d, t->result_s, t->result_var_type, t->result_var_type_promoted, file_out);
   }
   else if (t->op == TAC_OP_JUMP_GTE) {
     if (is_comment == NO)
       fprintf(file_out, "  ");
     fprintf(file_out, "if ");
-    _print_tac_arg(t->arg1_type, t->arg1_d, t->arg1_s, t->arg1_size, file_out);
+    _print_tac_arg(t->arg1_type, t->arg1_d, t->arg1_s, t->arg1_var_type, t->arg1_var_type_promoted, file_out);
     fprintf(file_out, " >= ");
-    _print_tac_arg(t->arg2_type, t->arg2_d, t->arg2_s, t->arg2_size, file_out);
+    _print_tac_arg(t->arg2_type, t->arg2_d, t->arg2_s, t->arg2_var_type, t->arg2_var_type_promoted, file_out);
     fprintf(file_out, " jmp ");
-    _print_tac_arg(t->result_type, t->result_d, t->result_s, t->result_size, file_out);
+    _print_tac_arg(t->result_type, t->result_d, t->result_s, t->result_var_type, t->result_var_type_promoted, file_out);
   }
   else if (t->op == TAC_OP_RETURN) {
     if (is_comment == NO)
@@ -275,18 +294,18 @@ void print_tac(struct tac *t, int is_comment, FILE *file_out) {
     if (is_comment == NO)
       fprintf(file_out, "  ");
     fprintf(file_out, "return ");
-    _print_tac_arg(t->arg1_type, t->arg1_d, t->arg1_s, t->arg1_size, file_out);
+    _print_tac_arg(t->arg1_type, t->arg1_d, t->arg1_s, t->arg1_var_type, t->arg1_var_type_promoted, file_out);
   }
   else if (t->op == TAC_OP_FUNCTION_CALL) {
     if (is_comment == NO)
       fprintf(file_out, "  ");
-    _print_tac_arg(t->arg1_type, t->arg1_d, t->arg1_s, t->arg1_size, file_out);
+    _print_tac_arg(t->arg1_type, t->arg1_d, t->arg1_s, t->arg1_var_type, t->arg1_var_type_promoted, file_out);
     fprintf(file_out, "(");
     for (j = 0; j < (int)t->arg2_d; j++) {
-      if (t->registers_sizes == NULL)
-        _print_tac_arg(TAC_ARG_TYPE_TEMP, t->registers[j], NULL, 0, file_out);
+      if (t->registers_types == NULL)
+        _print_tac_arg(TAC_ARG_TYPE_TEMP, t->registers[j], NULL, VARIABLE_TYPE_NONE, VARIABLE_TYPE_NONE, file_out);
       else
-        _print_tac_arg(TAC_ARG_TYPE_TEMP, t->registers[j], NULL, t->registers_sizes[j], file_out);
+        _print_tac_arg(TAC_ARG_TYPE_TEMP, t->registers[j], NULL, t->registers_types[j], t->registers_types[j], file_out);
       if (j < (int)t->arg2_d - 1)
         fprintf(file_out, ", ");
     }
@@ -295,15 +314,15 @@ void print_tac(struct tac *t, int is_comment, FILE *file_out) {
   else if (t->op == TAC_OP_FUNCTION_CALL_USE_RETURN_VALUE) {
     if (is_comment == NO)
       fprintf(file_out, "  ");
-    _print_tac_arg(t->result_type, t->result_d, t->result_s, t->result_size, file_out);
+    _print_tac_arg(t->result_type, t->result_d, t->result_s, t->result_var_type, t->result_var_type_promoted, file_out);
     fprintf(file_out, " := ");
-    _print_tac_arg(t->arg1_type, t->arg1_d, t->arg1_s, t->arg1_size, file_out);
+    _print_tac_arg(t->arg1_type, t->arg1_d, t->arg1_s, t->arg1_var_type, t->arg1_var_type_promoted, file_out);
     fprintf(file_out, "(");
     for (j = 0; j < (int)t->arg2_d; j++) {
-      if (t->registers_sizes == NULL)
-        _print_tac_arg(TAC_ARG_TYPE_TEMP, t->registers[j], NULL, 0, file_out);
+      if (t->registers_types == NULL)
+        _print_tac_arg(TAC_ARG_TYPE_TEMP, t->registers[j], NULL, VARIABLE_TYPE_NONE, VARIABLE_TYPE_NONE, file_out);
       else
-        _print_tac_arg(TAC_ARG_TYPE_TEMP, t->registers[j], NULL, t->registers_sizes[j], file_out);
+        _print_tac_arg(TAC_ARG_TYPE_TEMP, t->registers[j], NULL, t->registers_types[j], t->registers_types[j], file_out);
       if (j < (int)t->arg2_d - 1)
         fprintf(file_out, ", ");
     }
@@ -458,20 +477,23 @@ struct tac *add_tac(void) {
   t->arg1_type = TAC_ARG_TYPE_NONE;
   t->arg1_d = 0;
   t->arg1_s = NULL;
-  t->arg1_size = 0;
+  t->arg1_var_type = VARIABLE_TYPE_NONE;
+  t->arg1_var_type_promoted = VARIABLE_TYPE_NONE;
   t->arg2_type = TAC_ARG_TYPE_NONE;
   t->arg2_d = 0;
   t->arg2_s = NULL;
-  t->arg2_size = 0;
+  t->arg2_var_type = VARIABLE_TYPE_NONE;
+  t->arg2_var_type_promoted = VARIABLE_TYPE_NONE;
   t->result_type = TAC_ARG_TYPE_NONE;
   t->result_d = 0;
   t->result_s = NULL;
-  t->result_size = 0;
+  t->result_var_type = VARIABLE_TYPE_NONE;
+  t->result_var_type_promoted = VARIABLE_TYPE_NONE;
   t->arg1_node = NULL;
   t->arg2_node = NULL;
   t->result_node = NULL;
   t->registers = NULL;
-  t->registers_sizes = NULL;
+  t->registers_types = NULL;
   t->function_node = NULL;
   t->is_function = NO;
   
@@ -566,5 +588,18 @@ int tac_try_find_definition(struct tac *t, char *label, struct tree_node *node, 
   else
     t->arg2_node = sti->node;
   
+  return SUCCEEDED;
+}
+
+
+int tac_promote_argument(struct tac *t, int type, int tac_use) {
+
+  if (tac_use == TAC_USE_RESULT)
+    t->result_var_type_promoted = type;
+  else if (tac_use == TAC_USE_ARG1)
+    t->arg1_var_type_promoted = type;
+  else if (tac_use == TAC_USE_ARG2)
+    t->arg2_var_type_promoted = type;
+
   return SUCCEEDED;
 }

@@ -13,6 +13,24 @@
 
 extern int g_current_filename_id, g_current_line_number;
 
+static int g_variable_type_priorities[6] = {
+  0, /* VARIABLE_TYPE_NONE */
+  1, /* VARIABLE_TYPE_VOID */
+  2, /* VARIABLE_TYPE_INT8 */
+  4, /* VARIABLE_TYPE_INT16 */
+  3, /* VARIABLE_TYPE_UINT8 */
+  5  /* VARIABLE_TYPE_UINT16 */
+};
+
+static int g_variable_type_sizes[6] = {
+  0, /* VARIABLE_TYPE_NONE */
+  0, /* VARIABLE_TYPE_VOID */
+  1, /* VARIABLE_TYPE_INT8 */
+  2, /* VARIABLE_TYPE_INT16 */
+  1, /* VARIABLE_TYPE_UINT8 */
+  2  /* VARIABLE_TYPE_UINT16 */
+};
+
 
 int tree_node_flatten(struct tree_node *node) {
 
@@ -65,6 +83,75 @@ int tree_node_flatten(struct tree_node *node) {
     return tree_node_flatten(node);
   
   return SUCCEEDED;
+}
+
+
+int get_variable_type_size(int type) {
+
+  return g_variable_type_sizes[type];
+}
+
+
+int get_variable_type_constant(int value) {
+
+  if (value >= -128 && value <= 127)
+    return VARIABLE_TYPE_INT8;
+  else if (value >= 0 && value <= 255)
+    return VARIABLE_TYPE_UINT8;
+  else if (value >= -32768 && value <= 32767)
+    return VARIABLE_TYPE_INT16;
+  else
+    return VARIABLE_TYPE_UINT16;
+}
+
+
+int get_max_variable_type(int t1, int t2) {
+
+  if (g_variable_type_priorities[t1] > g_variable_type_priorities[t2])
+    return t1;
+  else if (g_variable_type_priorities[t1] < g_variable_type_priorities[t2])
+    return t2;
+  else
+    return t1;
+}
+
+
+int tree_node_get_max_var_type(struct tree_node *node) {
+
+  if (node->type == TREE_NODE_TYPE_VALUE_INT)
+    return get_variable_type_constant(node->value);
+  else if (node->type == TREE_NODE_TYPE_VALUE_DOUBLE)
+    return get_variable_type_constant((int)node->value_double);
+  else if (node->type == TREE_NODE_TYPE_VALUE_STRING)
+    return node->definition->children[0]->value;
+  else if (node->type == TREE_NODE_TYPE_VARIABLE_TYPE)
+    return node->value;
+  else if (node->type == TREE_NODE_TYPE_EXPRESSION) {
+    int type_max = VARIABLE_TYPE_NONE, i;
+
+    for (i = 0; i < node->added_children; i++) {
+      struct tree_node *n = node->children[i];
+
+      if (n->type == TREE_NODE_TYPE_VALUE_INT)
+        type_max = get_max_variable_type(type_max, get_variable_type_constant(n->value));
+      else if (n->type == TREE_NODE_TYPE_VALUE_DOUBLE)
+        type_max = get_max_variable_type(type_max, get_variable_type_constant((int)n->value_double));
+      else if (n->type == TREE_NODE_TYPE_SYMBOL) {
+      }
+      else if (n->type == TREE_NODE_TYPE_EXPRESSION)
+        type_max = get_max_variable_type(type_max, tree_node_get_max_var_type(n));
+      else if (n->type == TREE_NODE_TYPE_VALUE_STRING)
+        type_max = get_max_variable_type(type_max, n->definition->children[0]->value);
+      else
+        fprintf(stderr, "tree_node_get_max_var_type(): Unsupported tree_node type %d in an expression! Please submit a bug report!\n", n->type);
+    }
+
+    return type_max;
+  }
+  else {
+    fprintf(stderr, "tree_node_get_max_var_type(): Unsupported tree_node type %d! Please submit a bug report!\n", node->type);
+    return VARIABLE_TYPE_NONE;    
+  }  
 }
 
 
@@ -210,6 +297,9 @@ struct tree_node *clone_tree_node(struct tree_node *node) {
   for (i = 0; i < node->added_children; i++)
     clone->children[i] = clone_tree_node(node->children[i]);
 
+  if (node->local_variables != NULL)
+    fprintf(stderr, "clone_tree_node(): ERROR: local_variables != NULL, but cloning it is not implemented!\n");
+  
   return clone;
 }
 

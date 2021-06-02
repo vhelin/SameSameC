@@ -10,7 +10,7 @@
       ; -------------------------------------------------------
       ; TAC: variable "var" size 2 offset 0 type n
       ; -------------------------------------------------------
-      ; TAC: var.w := g_value.b + 1.b
+      ; TAC: var.int16 (int16) := g_value.int8 + 1.int8
       ; offset 0
       LD  IX,0
       ADD IX,DE

@@ -46,7 +46,7 @@ int pass_5(void) {
   
   /* TODO: reuse old registers to decrease stack usage later */
 
-  if (propagate_operand_sizes() == FAILED)
+  if (propagate_operand_types() == FAILED)
     return FAILED;
   if (collect_and_preprocess_local_variables_inside_functions() == FAILED)
     return FAILED;
@@ -327,6 +327,7 @@ int optimize_il(void) {
         if (tac_set_arg1(&g_tacs[next], g_tacs[current].arg1_type, g_tacs[current].arg1_d, g_tacs[current].arg1_s) == FAILED)
           return FAILED;
         g_tacs[next].arg1_node = g_tacs[current].arg1_node;
+        g_tacs[next].arg1_var_type_promoted = g_tacs[current].arg1_var_type_promoted;
         g_tacs[current].op = TAC_OP_DEAD;
       }
           
@@ -369,6 +370,7 @@ int optimize_il(void) {
         if (tac_set_result(&g_tacs[current], g_tacs[next].result_type, g_tacs[next].result_d, g_tacs[next].result_s) == FAILED)
           return FAILED;
         g_tacs[current].result_node = g_tacs[next].result_node;
+        g_tacs[current].result_var_type_promoted = g_tacs[next].result_var_type_promoted;
         g_tacs[next].op = TAC_OP_DEAD;
       }
           
@@ -411,6 +413,7 @@ int optimize_il(void) {
         if (tac_set_result(&g_tacs[current], g_tacs[next].result_type, g_tacs[next].result_d, g_tacs[next].result_s) == FAILED)
           return FAILED;
         g_tacs[current].result_node = g_tacs[next].result_node;
+        g_tacs[current].result_var_type_promoted = g_tacs[next].result_var_type_promoted;
         g_tacs[next].op = TAC_OP_DEAD;
       }
           
@@ -453,6 +456,7 @@ int optimize_il(void) {
         if (tac_set_arg2(&g_tacs[next], g_tacs[current].arg1_type, g_tacs[current].arg1_d, g_tacs[current].arg1_s) == FAILED)
           return FAILED;
         g_tacs[next].arg2_node = g_tacs[current].arg1_node;
+        g_tacs[next].arg2_var_type_promoted = g_tacs[current].arg1_var_type_promoted;
         g_tacs[current].op = TAC_OP_DEAD;
       }
 
@@ -495,6 +499,7 @@ int optimize_il(void) {
         if (tac_set_arg1(&g_tacs[next], g_tacs[current].arg1_type, g_tacs[current].arg1_d, g_tacs[current].arg1_s) == FAILED)
           return FAILED;
         g_tacs[next].arg1_node = g_tacs[current].arg1_node;
+        g_tacs[next].arg1_var_type_promoted = g_tacs[current].arg1_var_type_promoted;
         g_tacs[current].op = TAC_OP_DEAD;
       }
           
@@ -577,6 +582,7 @@ int optimize_il(void) {
         if (tac_set_arg1(&g_tacs[next], g_tacs[current].arg1_type, g_tacs[current].arg1_d, g_tacs[current].arg1_s) == FAILED)
           return FAILED;
         g_tacs[next].arg1_node = g_tacs[current].arg1_node;
+        g_tacs[next].arg1_var_type_promoted = g_tacs[current].arg1_var_type_promoted;
         g_tacs[current].op = TAC_OP_DEAD;
       }
           
@@ -628,6 +634,7 @@ int optimize_il(void) {
         if (tac_set_result(&g_tacs[current], g_tacs[next].result_type, g_tacs[next].result_d, g_tacs[next].result_s) == FAILED)
           return FAILED;
         g_tacs[current].result_node = g_tacs[next].result_node;
+        g_tacs[current].result_var_type_promoted = g_tacs[next].result_var_type_promoted;
         g_tacs[next].op = TAC_OP_DEAD;
       }
           
@@ -670,6 +677,7 @@ int optimize_il(void) {
         if (tac_set_result(&g_tacs[current], g_tacs[next].result_type, g_tacs[next].result_d, g_tacs[next].result_s) == FAILED)
           return FAILED;
         g_tacs[current].result_node = g_tacs[next].result_node;
+        g_tacs[current].result_var_type_promoted = g_tacs[next].result_var_type_promoted;
         g_tacs[next].op = TAC_OP_DEAD;
       }
           
@@ -788,110 +796,109 @@ int compress_register_names(void) {
 }
 
 
-static char *g_temp_register_sizes = NULL;
-static int g_temp_register_sizes_count = 0;
+static char *g_temp_register_types = NULL;
+static int g_temp_register_types_count = 0;
 
 
-static int _set_temp_register_size(int r, int size) {
+static int _set_temp_register_type(int r, int type) {
 
-  while (r >= g_temp_register_sizes_count) {
+  while (r >= g_temp_register_types_count) {
     int i;
     
-    g_temp_register_sizes = realloc(g_temp_register_sizes, g_temp_register_sizes_count + 256);
-    if (g_temp_register_sizes == NULL) {
-      fprintf(stderr, "_set_temp_register_size(): Out of memory error.\n");
+    g_temp_register_types = realloc(g_temp_register_types, g_temp_register_types_count + 256);
+    if (g_temp_register_types == NULL) {
+      fprintf(stderr, "_set_temp_register_type(): Out of memory error.\n");
       return FAILED;
     }
 
-    for (i = g_temp_register_sizes_count; i < g_temp_register_sizes_count + 256; i++)
-      g_temp_register_sizes[i] = 0;
+    for (i = g_temp_register_types_count; i < g_temp_register_types_count + 256; i++)
+      g_temp_register_types[i] = 0;
     
-    g_temp_register_sizes_count += 256;
+    g_temp_register_types_count += 256;
   }
 
-  g_temp_register_sizes[r] = size;
+  g_temp_register_types[r] = type;
 
   return SUCCEEDED;
 }
 
 
-static int _get_temp_register_size(int r) {
+static int _get_temp_register_type(int r) {
 
-  if (r >= g_temp_register_sizes_count)
+  if (r >= g_temp_register_types_count)
     return -1;
 
-  return g_temp_register_sizes[r];
+  return g_temp_register_types[r];
 }
 
 
-static void _clear_temp_register_sizes(void) {
+static void _clear_temp_register_types(void) {
 
   int i;
 
-  for (i = 0; i < g_temp_register_sizes_count; i++)
-    g_temp_register_sizes[i] = 0;
+  for (i = 0; i < g_temp_register_types_count; i++)
+    g_temp_register_types[i] = 0;
 }
 
 
-static int _find_operand_size(char *size, unsigned char type, int value, char *label, struct tree_node *node, int allow_register_errors) {
+static int _find_operand_type(unsigned char *type, unsigned char arg_type, int value, char *label, struct tree_node *node, int allow_register_errors) {
 
-  if (type == TAC_ARG_TYPE_CONSTANT) {
-    if (value < -128 || value > 127)
-      *size = 16;
-    else
-      *size = 8;
+  if (arg_type == TAC_ARG_TYPE_CONSTANT) {
+    *type = get_variable_type_constant(value);
   }
-  else if (type == TAC_ARG_TYPE_TEMP) {
-    *size = _get_temp_register_size(value);
+  else if (arg_type == TAC_ARG_TYPE_TEMP) {
+    *type = _get_temp_register_type(value);
 
-    if (*size < 0) {
+    if (*type == VARIABLE_TYPE_NONE) {
       if (allow_register_errors == YES)
-        *size = 0;
+        *type = VARIABLE_TYPE_NONE;
       else {
-        fprintf(stderr, "_find_operand_size(): Register %d has no size! Please submit a bug report!\n", value);
+        fprintf(stderr, "_find_operand_type(): Register %d has no type! Please submit a bug report!\n", value);
         return FAILED;
       }
     }
   }
-  else if (type == TAC_ARG_TYPE_LABEL) {
+  else if (arg_type == TAC_ARG_TYPE_LABEL) {
     int variable_type;
+    double pointer_level;
     
     if (node == NULL) {
-      fprintf(stderr, "_find_operand_size(): We are missing a node in a TAC for \"%s\"! Internal error. Please submit a bug report!\n", label);
+      fprintf(stderr, "_find_operand_type(): We are missing a node in a TAC for \"%s\"! Internal error. Please submit a bug report!\n", label);
       return FAILED;
     }
 
     variable_type = node->children[0]->value;
+    pointer_level = node->children[0]->value_double;
 
     /* int8 and not a pointer? */
-    if (variable_type == VARIABLE_TYPE_INT8 && node->children[0]->value_double == 0.0)
-      *size = 8;
+    if (variable_type == VARIABLE_TYPE_INT8 && pointer_level == 0.0)
+      *type = VARIABLE_TYPE_INT8;
     /* int8 and a pointer? */
-    else if (variable_type == VARIABLE_TYPE_INT8 && node->children[0]->value_double >= 1.0)
-      *size = 16;
+    else if (variable_type == VARIABLE_TYPE_INT8 && pointer_level >= 1.0)
+      *type = VARIABLE_TYPE_UINT16;
     /* uint8 and not a pointer? */
-    else if (variable_type == VARIABLE_TYPE_UINT8 && node->children[0]->value_double == 0.0)
-      *size = 8;
+    else if (variable_type == VARIABLE_TYPE_UINT8 && pointer_level == 0.0)
+      *type = VARIABLE_TYPE_UINT8;
     /* uint8 and a pointer? */
-    else if (variable_type == VARIABLE_TYPE_UINT8 && node->children[0]->value_double >= 1.0)
-      *size = 16;
+    else if (variable_type == VARIABLE_TYPE_UINT8 && pointer_level >= 1.0)
+      *type = VARIABLE_TYPE_UINT16;
     /* int16 and not a pointer? */
-    else if (variable_type == VARIABLE_TYPE_INT16 && node->children[0]->value_double == 0.0)
-      *size = 16;
+    else if (variable_type == VARIABLE_TYPE_INT16 && pointer_level == 0.0)
+      *type = VARIABLE_TYPE_INT16;
     /* int16 and a pointer? */
-    else if (variable_type == VARIABLE_TYPE_INT16 && node->children[0]->value_double >= 1.0)
-      *size = 16;
+    else if (variable_type == VARIABLE_TYPE_INT16 && pointer_level >= 1.0)
+      *type = VARIABLE_TYPE_UINT16;
     /* uint16 and not a pointer? */
-    else if (variable_type == VARIABLE_TYPE_UINT16 && node->children[0]->value_double == 0.0)
-      *size = 16;
+    else if (variable_type == VARIABLE_TYPE_UINT16 && pointer_level == 0.0)
+      *type = VARIABLE_TYPE_UINT16;
     /* uint16 and a pointer? */
-    else if (variable_type == VARIABLE_TYPE_UINT16 && node->children[0]->value_double >= 1.0)
-      *size = 16;
+    else if (variable_type == VARIABLE_TYPE_UINT16 && pointer_level >= 1.0)
+      *type = VARIABLE_TYPE_UINT16;
     /* void and a pointer? */
-    else if (variable_type == VARIABLE_TYPE_VOID && node->children[0]->value_double >= 1.0)
-      *size = 16;
+    else if (variable_type == VARIABLE_TYPE_VOID && pointer_level >= 1.0)
+      *type = VARIABLE_TYPE_UINT16;
     else {
-      fprintf(stderr, "_find_operand_size(): Variable \"%s\" is of type %d -> It doesn't have a size!\n", node->children[1]->label, variable_type);
+      fprintf(stderr, "_find_operand_type(): Variable \"%s\" is of type %d -> Not handled here! Please submit a bug report\n", node->children[1]->label, variable_type);
       return FAILED;
     }
   }
@@ -900,38 +907,37 @@ static int _find_operand_size(char *size, unsigned char type, int value, char *l
 }
 
 
-static int _get_set_max_registers_size(struct tac *t) {
+static int _get_set_max_registers_type(struct tac *t) {
 
-  int j, args, size_max = 8;
+  int j, args, type_max = VARIABLE_TYPE_NONE;
 
   /* the number of arguments */
   args = (int)t->arg2_d;
 
-  t->registers_sizes = (int *)calloc(sizeof(int) * args, 1);
-  if (t->registers_sizes == NULL) {
-    fprintf(stderr, "_get_set_max_register_size(): Out of memory error.\n");
-    return -1;
+  t->registers_types = (int *)calloc(sizeof(int) * args, 1);
+  if (t->registers_types == NULL) {
+    fprintf(stderr, "_get_set_max_register_type(): Out of memory error.\n");
+    return VARIABLE_TYPE_NONE;
   }
   
   for (j = 0; j < args; j++) {
-    int size = _get_temp_register_size(t->registers[j]);
+    int type = _get_temp_register_type(t->registers[j]);
 
-    if (size <= 0) {
-      fprintf(stderr, "_get_set_max_register_size(): A function argument size cannot be found!\n");
-      return -1;
+    if (type <= VARIABLE_TYPE_NONE) {
+      fprintf(stderr, "_get_set_max_register_type(): A function argument type cannot be found!\n");
+      return VARIABLE_TYPE_NONE;
     }
 
-    t->registers_sizes[j] = size;
+    t->registers_types[j] = type;
 
-    if (size > size_max)
-      size_max = size;
+    type_max = get_max_variable_type(type, type_max);
   }
 
-  return size_max;
+  return type_max;
 }
 
 
-int propagate_operand_sizes(void) {
+int propagate_operand_types(void) {
   
   int i;
   
@@ -944,7 +950,7 @@ int propagate_operand_sizes(void) {
     else if (op == TAC_OP_LABEL) {
       /* function start? */
       if (t->is_function == YES)
-        _clear_temp_register_sizes();
+        _clear_temp_register_types();
     }
     else if (op == TAC_OP_ADD ||
              op == TAC_OP_SUB ||
@@ -955,143 +961,134 @@ int propagate_operand_sizes(void) {
              op == TAC_OP_OR ||
              op == TAC_OP_SHIFT_LEFT ||
              op == TAC_OP_SHIFT_RIGHT) {
-      if (_find_operand_size(&t->arg1_size, t->arg1_type, (int)t->arg1_d, t->arg1_s, t->arg1_node, NO) == FAILED)
+      if (_find_operand_type(&t->arg1_var_type, t->arg1_type, (int)t->arg1_d, t->arg1_s, t->arg1_node, NO) == FAILED)
         return FAILED;
-      if (_find_operand_size(&t->arg2_size, t->arg2_type, (int)t->arg2_d, t->arg2_s, t->arg2_node, NO) == FAILED)
+      if (_find_operand_type(&t->arg2_var_type, t->arg2_type, (int)t->arg2_d, t->arg2_s, t->arg2_node, NO) == FAILED)
         return FAILED;
-      if (_find_operand_size(&t->result_size, t->result_type, (int)t->result_d, t->result_s, t->result_node, YES) == FAILED)
+      if (_find_operand_type(&t->result_var_type, t->result_type, (int)t->result_d, t->result_s, t->result_node, YES) == FAILED)
         return FAILED;
 
       /* RESULT from ARG1 and ARG2? */
       if (t->result_type == TAC_ARG_TYPE_TEMP) {
-        int size_max = 8;
+        int type_max = get_max_variable_type(t->arg1_var_type, t->arg2_var_type);
         
-        if (t->arg1_size == 16 || t->arg2_size == 16)
-          size_max = 16;
-
-        if (t->result_size == 0) {
-          /* get the size from the operands */
-          t->result_size = size_max;
+        if (t->result_var_type == VARIABLE_TYPE_NONE) {
+          /* get the type from the operands */
+          t->result_var_type = type_max;
         }
 
-        _set_temp_register_size((int)t->result_d, t->result_size);
+        _set_temp_register_type((int)t->result_d, t->result_var_type);
       }
 
-      if (t->arg1_size == 0)
-        fprintf(stderr, "propagate_operand_sizes(): Couldn't find size for ARG1!\n");
-      if (t->arg2_size == 0)
-        fprintf(stderr, "propagate_operand_sizes(): Couldn't find size for ARG2!\n");
-      if (t->result_size == 0)
-        fprintf(stderr, "propagate_operand_sizes(): Couldn't find size for RESULT!\n");
+      if (t->arg1_var_type == VARIABLE_TYPE_NONE)
+        fprintf(stderr, "propagate_operand_types(): Couldn't find type for ARG1!\n");
+      if (t->arg2_var_type == VARIABLE_TYPE_NONE)
+        fprintf(stderr, "propagate_operand_types(): Couldn't find type for ARG2!\n");
+      if (t->result_var_type == VARIABLE_TYPE_NONE)
+        fprintf(stderr, "propagate_operand_types(): Couldn't find type for RESULT!\n");
     }
     else if (op == TAC_OP_GET_ADDRESS) {
-      t->arg1_size = 16;
-      if (_find_operand_size(&t->result_size, t->result_type, (int)t->result_d, t->result_s, t->result_node, YES) == FAILED)
+      /* address is always 16-bit */
+      t->arg1_var_type = VARIABLE_TYPE_UINT16;
+
+      if (_find_operand_type(&t->result_var_type, t->result_type, (int)t->result_d, t->result_s, t->result_node, YES) == FAILED)
         return FAILED;
 
       /* RESULT from ARG1? */
       if (t->result_type == TAC_ARG_TYPE_TEMP) {
-        t->result_size = 16;
-        _set_temp_register_size((int)t->result_d, 16);
+        t->result_var_type = VARIABLE_TYPE_UINT16;
+        _set_temp_register_type((int)t->result_d, t->result_var_type);
       }
 
-      if (t->arg1_size == 0)
-        fprintf(stderr, "propagate_operand_sizes(): Couldn't find size for ARG1!\n");
-      if (t->result_size == 0)
-        fprintf(stderr, "propagate_operand_sizes(): Couldn't find size for RESULT!\n");
+      if (t->arg1_var_type == VARIABLE_TYPE_NONE)
+        fprintf(stderr, "propagate_operand_types(): Couldn't find type for ARG1!\n");
+      if (t->result_var_type == VARIABLE_TYPE_NONE)
+        fprintf(stderr, "propagate_operand_types(): Couldn't find type for RESULT!\n");
     }
     else if (op == TAC_OP_GET_ADDRESS_ARRAY) {
       /* address is always 16-bit */
-      t->arg1_size = 16;
+      t->arg1_var_type = VARIABLE_TYPE_UINT16;
 
-      if (_find_operand_size(&t->arg2_size, t->arg2_type, (int)t->arg2_d, t->arg2_s, t->arg2_node, NO) == FAILED)
+      if (_find_operand_type(&t->arg2_var_type, t->arg2_type, (int)t->arg2_d, t->arg2_s, t->arg2_node, NO) == FAILED)
         return FAILED;
-      if (_find_operand_size(&t->result_size, t->result_type, (int)t->result_d, t->result_s, t->result_node, YES) == FAILED)
+      if (_find_operand_type(&t->result_var_type, t->result_type, (int)t->result_d, t->result_s, t->result_node, YES) == FAILED)
         return FAILED;
 
       /* RESULT from ARG1? */
       if (t->result_type == TAC_ARG_TYPE_TEMP) {
-        t->result_size = 16;
-        _set_temp_register_size((int)t->result_d, 16);
+        t->result_var_type = VARIABLE_TYPE_UINT16;
+        _set_temp_register_type((int)t->result_d, t->result_var_type);
       }
 
-      if (t->arg1_size == 0)
-        fprintf(stderr, "propagate_operand_sizes(): Couldn't find size for ARG1!\n");
-      if (t->arg2_size == 0)
-        fprintf(stderr, "propagate_operand_sizes(): Couldn't find size for ARG2!\n");
-      if (t->result_size == 0)
-        fprintf(stderr, "propagate_operand_sizes(): Couldn't find size for RESULT!\n");
+      if (t->arg1_var_type == VARIABLE_TYPE_NONE)
+        fprintf(stderr, "propagate_operand_types(): Couldn't find type for ARG1!\n");
+      if (t->arg2_var_type == VARIABLE_TYPE_NONE)
+        fprintf(stderr, "propagate_operand_types(): Couldn't find type for ARG2!\n");
+      if (t->result_var_type == VARIABLE_TYPE_NONE)
+        fprintf(stderr, "propagate_operand_types(): Couldn't find type for RESULT!\n");
     }
     else if (op == TAC_OP_ASSIGNMENT) {
-      if (_find_operand_size(&t->arg1_size, t->arg1_type, (int)t->arg1_d, t->arg1_s, t->arg1_node, NO) == FAILED)
+      if (_find_operand_type(&t->arg1_var_type, t->arg1_type, (int)t->arg1_d, t->arg1_s, t->arg1_node, NO) == FAILED)
         return FAILED;
-      if (_find_operand_size(&t->result_size, t->result_type, (int)t->result_d, t->result_s, t->result_node, YES) == FAILED)
+      if (_find_operand_type(&t->result_var_type, t->result_type, (int)t->result_d, t->result_s, t->result_node, YES) == FAILED)
         return FAILED;
 
       /* RESULT from ARG1? */
       if (t->result_type == TAC_ARG_TYPE_TEMP) {
-        int size_max = 8;
-        
-        if (t->arg1_size == 16)
-          size_max = 16;
-
-        if (t->result_size == 0) {
-          /* get the size from ARG1 */
-          t->result_size = size_max;
+        if (t->result_var_type == VARIABLE_TYPE_NONE) {
+          /* get the type from the operands */
+          t->result_var_type = t->arg1_var_type;
         }
 
-        _set_temp_register_size((int)t->result_d, t->result_size);
+        _set_temp_register_type((int)t->result_d, t->result_var_type);
       }
 
-      if (t->arg1_size == 0)
-        fprintf(stderr, "propagate_operand_sizes(): Couldn't find size for ARG1!\n");
-      if (t->result_size == 0)
-        fprintf(stderr, "propagate_operand_sizes(): Couldn't find size for RESULT!\n");
+      if (t->arg1_var_type == VARIABLE_TYPE_NONE)
+        fprintf(stderr, "propagate_operand_types(): Couldn't find type for ARG1!\n");
+      if (t->result_var_type == VARIABLE_TYPE_NONE)
+        fprintf(stderr, "propagate_operand_types(): Couldn't find type for RESULT!\n");
     }
     else if (op == TAC_OP_ARRAY_ASSIGNMENT) {
-      if (_find_operand_size(&t->arg1_size, t->arg1_type, (int)t->arg1_d, t->arg1_s, t->arg1_node, NO) == FAILED)
+      if (_find_operand_type(&t->arg1_var_type, t->arg1_type, (int)t->arg1_d, t->arg1_s, t->arg1_node, NO) == FAILED)
         return FAILED;
-      if (_find_operand_size(&t->arg2_size, t->arg2_type, (int)t->arg2_d, t->arg2_s, t->arg2_node, NO) == FAILED)
+      if (_find_operand_type(&t->arg2_var_type, t->arg2_type, (int)t->arg2_d, t->arg2_s, t->arg2_node, NO) == FAILED)
         return FAILED;
-      if (_find_operand_size(&t->result_size, t->result_type, (int)t->result_d, t->result_s, t->result_node, YES) == FAILED)
+      if (_find_operand_type(&t->result_var_type, t->result_type, (int)t->result_d, t->result_s, t->result_node, YES) == FAILED)
         return FAILED;
 
-      if (t->arg1_size == 0)
-        fprintf(stderr, "propagate_operand_sizes(): Couldn't find size for ARG1!\n");
-      if (t->arg2_size == 0)
-        fprintf(stderr, "propagate_operand_sizes(): Couldn't find size for ARG2!\n");
-      if (t->result_size == 0)
-        fprintf(stderr, "propagate_operand_sizes(): Couldn't find size for RESULT!\n");
+      if (t->arg1_var_type == VARIABLE_TYPE_NONE)
+        fprintf(stderr, "propagate_operand_types(): Couldn't find type for ARG1!\n");
+      if (t->arg2_var_type == VARIABLE_TYPE_NONE)
+        fprintf(stderr, "propagate_operand_types(): Couldn't find type for ARG2!\n");
+      if (t->result_var_type == VARIABLE_TYPE_NONE)
+        fprintf(stderr, "propagate_operand_types(): Couldn't find type for RESULT!\n");
     }
     else if (op == TAC_OP_ARRAY_READ) {
-      if (_find_operand_size(&t->arg1_size, t->arg1_type, (int)t->arg1_d, t->arg1_s, t->arg1_node, NO) == FAILED)
+      if (_find_operand_type(&t->arg1_var_type, t->arg1_type, (int)t->arg1_d, t->arg1_s, t->arg1_node, NO) == FAILED)
         return FAILED;
-      if (_find_operand_size(&t->arg2_size, t->arg2_type, (int)t->arg2_d, t->arg2_s, t->arg2_node, NO) == FAILED)
+      if (_find_operand_type(&t->arg2_var_type, t->arg2_type, (int)t->arg2_d, t->arg2_s, t->arg2_node, NO) == FAILED)
         return FAILED;
-      if (_find_operand_size(&t->result_size, t->result_type, (int)t->result_d, t->result_s, t->result_node, YES) == FAILED)
+      if (_find_operand_type(&t->result_var_type, t->result_type, (int)t->result_d, t->result_s, t->result_node, YES) == FAILED)
         return FAILED;
 
       /* RESULT from ARG1 and ARG2? */
       if (t->result_type == TAC_ARG_TYPE_TEMP) {
-        int size_max = 8;
+        int type_max = get_max_variable_type(t->arg1_var_type, t->arg2_var_type);
         
-        if (t->arg1_size == 16 || t->arg2_size == 16)
-          size_max = 16;
-
-        if (t->result_size == 0) {
-          /* get the size from the operands */
-          t->result_size = size_max;
+        if (t->result_var_type == VARIABLE_TYPE_NONE) {
+          /* get the type from the operands */
+          t->result_var_type = type_max;
         }
 
-        _set_temp_register_size((int)t->result_d, t->result_size);
+        _set_temp_register_type((int)t->result_d, t->result_var_type);
       }
 
-      if (t->arg1_size == 0)
-        fprintf(stderr, "propagate_operand_sizes(): Couldn't find size for ARG1!\n");
-      if (t->arg2_size == 0)
-        fprintf(stderr, "propagate_operand_sizes(): Couldn't find size for ARG2!\n");
-      if (t->result_size == 0)
-        fprintf(stderr, "propagate_operand_sizes(): Couldn't find size for RESULT!\n");
+      if (t->arg1_var_type == VARIABLE_TYPE_NONE)
+        fprintf(stderr, "propagate_operand_types(): Couldn't find type for ARG1!\n");
+      if (t->arg2_var_type == VARIABLE_TYPE_NONE)
+        fprintf(stderr, "propagate_operand_types(): Couldn't find type for ARG2!\n");
+      if (t->result_var_type == VARIABLE_TYPE_NONE)
+        fprintf(stderr, "propagate_operand_types(): Couldn't find type for RESULT!\n");
     }
     else if (op == TAC_OP_JUMP) {
     }
@@ -1105,29 +1102,29 @@ int propagate_operand_sizes(void) {
     else if (op == TAC_OP_RETURN) {
     }
     else if (op == TAC_OP_RETURN_VALUE) {
-      if (_find_operand_size(&t->arg1_size, t->arg1_type, (int)t->arg1_d, t->arg1_s, t->arg1_node, NO) == FAILED)
+      if (_find_operand_type(&t->arg1_var_type, t->arg1_type, (int)t->arg1_d, t->arg1_s, t->arg1_node, NO) == FAILED)
         return FAILED;
 
-      if (t->arg1_size == 0)
-        fprintf(stderr, "propagate_operand_sizes(): Couldn't find size for ARG1!\n");
+      if (t->arg1_var_type == VARIABLE_TYPE_NONE)
+        fprintf(stderr, "propagate_operand_types(): Couldn't find type for ARG1!\n");
     }
     else if (op == TAC_OP_FUNCTION_CALL) {
-      int size_max = _get_set_max_registers_size(t);
+      int type_max = _get_set_max_registers_type(t);
 
-      if (size_max < 0)
+      if (type_max == VARIABLE_TYPE_NONE)
         return FAILED;
     }
     else if (op == TAC_OP_FUNCTION_CALL_USE_RETURN_VALUE) {
-      int size_max = _get_set_max_registers_size(t);
+      int type_max = _get_set_max_registers_type(t);
 
-      if (size_max < 0)
+      if (type_max == VARIABLE_TYPE_NONE)
         return FAILED;
 
-      if (_find_operand_size(&t->result_size, t->result_type, (int)t->result_d, t->result_s, t->result_node, YES) == FAILED)
+      if (_find_operand_type(&t->result_var_type, t->result_type, (int)t->result_d, t->result_s, t->result_node, YES) == FAILED)
         return FAILED;
 
-      if (t->result_size <= 0)
-        t->result_size = size_max;
+      if (t->result_var_type == VARIABLE_TYPE_NONE)
+        t->result_var_type = type_max;
     }
     else if (op == TAC_OP_CREATE_VARIABLE) {
     }
@@ -1236,21 +1233,27 @@ int collect_and_preprocess_local_variables_inside_functions(void) {
           /* mark the used registers */
           if (t->arg1_type == TAC_ARG_TYPE_TEMP) {
             int index = (int)t->arg1_d;
+            int size = get_variable_type_size(t->arg1_var_type);
+              
             register_usage[index] = 1;
-            if (t->arg1_size > register_sizes[index])
-              register_sizes[index] = t->arg1_size;
+            if (size > register_sizes[index])
+              register_sizes[index] = size;
           }
           if (t->arg2_type == TAC_ARG_TYPE_TEMP) {
             int index = (int)t->arg2_d;
+            int size = get_variable_type_size(t->arg2_var_type);
+            
             register_usage[index] = 1;
-            if (t->arg2_size > register_sizes[index])
-              register_sizes[index] = t->arg2_size;
+            if (size > register_sizes[index])
+              register_sizes[index] = size;
           }
           if (t->result_type == TAC_ARG_TYPE_TEMP) {
             int index = (int)t->result_d;
+            int size = get_variable_type_size(t->result_var_type);
+            
             register_usage[index] = 1;
-            if (t->result_size > register_sizes[index])
-              register_sizes[index] = t->result_size;
+            if (size > register_sizes[index])
+              register_sizes[index] = size;
           }
         }
 
@@ -1313,7 +1316,6 @@ int collect_and_preprocess_local_variables_inside_functions(void) {
         }
 
         function_node->local_variables->temp_registers[j].offset_to_fp = offset;
-        /* from bits to bytes */
         function_node->local_variables->temp_registers[j].size = register_sizes[k];
         function_node->local_variables->temp_registers[j].register_index = k;
         

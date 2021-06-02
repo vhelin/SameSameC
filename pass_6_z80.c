@@ -231,28 +231,17 @@ static void _sign_extend_c_to_bc(FILE *file_out) {
 
 static int _generate_asm_assignment_z80(struct tac *t, FILE *file_out, struct tree_node *function_node) {
 
-  int result_offset = -1, result_size = 0, arg1_offset = -1, arg1_size = 0;
-  int result_var_type, arg1_var_type;
+  int result_offset = -1, arg1_offset = -1;
 
   /* result */
 
   if (find_stack_offset(t->result_type, t->result_s, t->result_d, t->result_node, &result_offset, function_node) == FAILED)
     return FAILED;
-  result_size = t->result_size;
-  if (t->result_node != NULL)
-    result_var_type = t->result_node->children[0]->value;
-  else
-    result_var_type = VARIABLE_TYPE_NONE;
   
   /* arg1 */
 
   if (find_stack_offset(t->arg1_type, t->arg1_s, t->arg1_d, t->arg1_node, &arg1_offset, function_node) == FAILED)
     return FAILED;
-  arg1_size = t->arg1_size;
-  if (t->arg1_node != NULL)
-    arg1_var_type = t->arg1_node->children[0]->value;
-  else
-    arg1_var_type = VARIABLE_TYPE_NONE;
   
   /* generate asm */
 
@@ -298,7 +287,7 @@ static int _generate_asm_assignment_z80(struct tac *t, FILE *file_out, struct tr
 
   if (t->arg1_type == TAC_ARG_TYPE_CONSTANT) {
     int value = (int)t->arg1_d;
-    if (result_size == 16) {
+    if (t->result_var_type == VARIABLE_TYPE_INT16 || t->result_var_type == VARIABLE_TYPE_UINT16) {
       /* 16-bit */
       _load_value_into_ix(value & 0xff, 0, file_out);
       _load_value_into_ix((value >> 8) & 0xff, 1, file_out);
@@ -309,9 +298,9 @@ static int _generate_asm_assignment_z80(struct tac *t, FILE *file_out, struct tr
     }
   }
   else {
-    if (result_size == 16) {
+    if (t->result_var_type == VARIABLE_TYPE_INT16 || t->result_var_type == VARIABLE_TYPE_UINT16) {
       /* 16-bit */
-      if (arg1_size == 16) {
+      if (t->arg1_var_type == VARIABLE_TYPE_INT16 || t->arg1_var_type == VARIABLE_TYPE_UINT16) {
         _load_from_iy_to_a(0, file_out);
         _load_a_into_ix(0, file_out);
         _load_from_iy_to_a(1, file_out);
@@ -319,7 +308,7 @@ static int _generate_asm_assignment_z80(struct tac *t, FILE *file_out, struct tr
       }
       else {
         /* sign extend 8-bit -> 16-bit? */
-        if (result_var_type == VARIABLE_TYPE_INT16 && arg1_var_type == VARIABLE_TYPE_INT8) {
+        if (t->result_var_type == VARIABLE_TYPE_INT16 && t->arg1_var_type == VARIABLE_TYPE_INT8) {
           /* lower byte must be sign extended */
           _load_from_iy_to_a(0, file_out);
           _sign_extend_a_to_bc(file_out);
@@ -346,40 +335,24 @@ static int _generate_asm_assignment_z80(struct tac *t, FILE *file_out, struct tr
 }
 
 
-static int _get_var_type(struct tree_node *node) {
-
-  if (node != NULL)
-    return (int)node->children[0]->value;
-  else
-    return VARIABLE_TYPE_NONE;
-}
-
-
 static int _generate_asm_add_z80(struct tac *t, FILE *file_out, struct tree_node *function_node) {
 
-  int result_offset = -1, result_size = 0, arg1_offset = -1, arg1_size = 0, arg2_offset = -1, arg2_size = 0;
-  int result_var_type, arg1_var_type, arg2_var_type;
+  int result_offset = -1, arg1_offset = -1, arg2_offset = -1;
   
   /* result */
 
   if (find_stack_offset(t->result_type, t->result_s, t->result_d, t->result_node, &result_offset, function_node) == FAILED)
     return FAILED;
-  result_size = t->result_size;
-  result_var_type = _get_var_type(t->result_node);
   
   /* arg1 */
 
   if (find_stack_offset(t->arg1_type, t->arg1_s, t->arg1_d, t->arg1_node, &arg1_offset, function_node) == FAILED)
     return FAILED;
-  arg1_size = t->arg1_size;
-  arg1_var_type = _get_var_type(t->arg1_node);
 
   /* arg2 */
 
   if (find_stack_offset(t->arg2_type, t->arg2_s, t->arg2_d, t->arg2_node, &arg2_offset, function_node) == FAILED)
     return FAILED;
-  arg2_size = t->arg2_size;
-  arg2_var_type = _get_var_type(t->arg2_node);
     
   /* generate asm */
 
@@ -425,41 +398,42 @@ static int _generate_asm_add_z80(struct tac *t, FILE *file_out, struct tree_node
 
   if (t->arg1_type == TAC_ARG_TYPE_CONSTANT) {
     int value = (int)t->arg1_d;
-    if (arg1_size == 16 || arg2_size == 16) {
+    if (t->arg1_var_type == VARIABLE_TYPE_INT16 || t->arg1_var_type == VARIABLE_TYPE_UINT16 ||
+        t->arg2_var_type == VARIABLE_TYPE_INT16 || t->arg2_var_type == VARIABLE_TYPE_UINT16) {
       /* 16-bit */
       _load_value_to_bc(value, file_out);
-      arg1_size = 16;
     }
     else {
       /* 8-bit */
       _load_value_to_c(value & 0xff, file_out);
-      arg1_size = 8;
     }
   }
   else {
-    if (arg1_size == 16) {
+    if (t->arg1_var_type == VARIABLE_TYPE_INT16 || t->arg1_var_type == VARIABLE_TYPE_UINT16) {
       /* 16-bit */
       _load_from_iy_to_c(0, file_out);
       _load_from_iy_to_b(1, file_out);
-      arg1_size = 16;
     }
     else {
       /* 8-bit */
       _load_from_iy_to_c(0, file_out);
-      arg1_size = 8;
     }
   }
 
   /* sign extend 8-bit -> 16-bit? */
-  if (arg1_var_type == VARIABLE_TYPE_INT8 && (result_var_type == VARIABLE_TYPE_INT16 || arg2_var_type == VARIABLE_TYPE_INT16)) {
+  if (t->arg1_var_type == VARIABLE_TYPE_INT8 && (t->result_var_type == VARIABLE_TYPE_INT16 ||
+                                                 t->result_var_type == VARIABLE_TYPE_UINT16 ||
+                                                 t->arg2_var_type == VARIABLE_TYPE_INT16 ||
+                                                 t->arg2_var_type == VARIABLE_TYPE_UINT16)) {
     /* yes */
     _sign_extend_c_to_bc(file_out);
-    arg1_size = 16;
   }
-  else if (arg1_size == 8 && (result_size == 16 || arg2_size == 16)) {
+  else if (t->arg1_var_type == VARIABLE_TYPE_UINT8 && (t->result_var_type == VARIABLE_TYPE_INT16 ||
+                                                       t->result_var_type == VARIABLE_TYPE_UINT16 ||
+                                                       t->arg2_var_type == VARIABLE_TYPE_INT16 ||
+                                                       t->arg2_var_type == VARIABLE_TYPE_UINT16)) {
     /* upper byte -> 0 */
     _load_value_to_b(0, file_out);
-    arg1_size = 16;
   }
 
 

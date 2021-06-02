@@ -284,7 +284,7 @@ static int _generate_il_create_variable(struct tree_node *node) {
 
   if (node->value == 0) {
     /* single value assignment, not an array */
-    int r1 = g_temp_r;
+    int r1 = g_temp_r, type;
 
     if (_generate_il_create_expression(node->children[2]) == FAILED)
       return FAILED;
@@ -300,13 +300,19 @@ static int _generate_il_create_variable(struct tree_node *node) {
     tac_set_result(t, TAC_ARG_TYPE_LABEL, 0, node->children[1]->label);
     t->result_node = node;
     tac_set_arg1(t, TAC_ARG_TYPE_TEMP, r1, NULL);
+
+    /* set promotions */
+    type = tree_node_get_max_var_type(node->children[0]);
+    tac_promote_argument(t, type, TAC_USE_RESULT);
+    type = tree_node_get_max_var_type(node->children[2]);
+    tac_promote_argument(t, type, TAC_USE_ARG1);
   }
   else {
     /* array copy */
     int i;
 
     for (i = 0; i < node->value; i++) {
-      int r2 = g_temp_r;
+      int r2 = g_temp_r, type;
 
       if (_generate_il_create_expression(node->children[2 + i]) == FAILED)
         return FAILED;
@@ -323,6 +329,16 @@ static int _generate_il_create_variable(struct tree_node *node) {
       t->result_node = node;
       tac_set_arg1(t, TAC_ARG_TYPE_TEMP, r2, NULL);
       tac_set_arg2(t, TAC_ARG_TYPE_CONSTANT, i, NULL);
+
+      /* set promotions */
+      type = tree_node_get_max_var_type(node->children[0]);
+      tac_promote_argument(t, type, TAC_USE_RESULT);
+      type = tree_node_get_max_var_type(node->children[2 + i]);
+      tac_promote_argument(t, type, TAC_USE_ARG1);
+      if (i < 255)
+        tac_promote_argument(t, VARIABLE_TYPE_UINT8, TAC_USE_ARG2);
+      else
+        tac_promote_argument(t, VARIABLE_TYPE_UINT16, TAC_USE_ARG2);
     }
   }
   
@@ -341,7 +357,7 @@ static int _generate_il_create_assignment(struct tree_node *node) {
     return FAILED;
 
   if (node->added_children == 3) {
-    int r2 = g_temp_r;
+    int r2 = g_temp_r, type;
 
     if (_generate_il_create_expression(node->children[2]) == FAILED)
       return FAILED;
@@ -357,8 +373,18 @@ static int _generate_il_create_assignment(struct tree_node *node) {
     tac_set_result(t, TAC_ARG_TYPE_LABEL, 0, node->children[0]->label);
     tac_set_arg1(t, TAC_ARG_TYPE_TEMP, r2, NULL);
     tac_set_arg2(t, TAC_ARG_TYPE_TEMP, r1, NULL);
+
+    /* set promotions */
+    type = tree_node_get_max_var_type(node->children[1]);
+    tac_promote_argument(t, type, TAC_USE_ARG2);
+    type = tree_node_get_max_var_type(node->children[2]);
+    tac_promote_argument(t, type, TAC_USE_ARG1);
+    type = tree_node_get_max_var_type(node->children[0]);
+    tac_promote_argument(t, type, TAC_USE_RESULT);
   }
   else {
+    int type;
+    
     t = add_tac();
     if (t == NULL)
       return FAILED;
@@ -369,6 +395,12 @@ static int _generate_il_create_assignment(struct tree_node *node) {
 
     tac_set_result(t, TAC_ARG_TYPE_LABEL, 0, node->children[0]->label);
     tac_set_arg1(t, TAC_ARG_TYPE_TEMP, r1, NULL);
+
+    /* set promotions */
+    type = tree_node_get_max_var_type(node->children[1]);
+    tac_promote_argument(t, type, TAC_USE_ARG1);
+    type = tree_node_get_max_var_type(node->children[0]);
+    tac_promote_argument(t, type, TAC_USE_RESULT);
   }
 
   /* find the definition */
@@ -486,6 +518,7 @@ static int _generate_il_create_return(struct tree_node *node) {
   }
   else {
     /* return {expression} */
+    int type;
 
     if (g_current_function->children[0]->value == VARIABLE_TYPE_VOID) {
       g_current_filename_id = node->file_id;
@@ -508,6 +541,13 @@ static int _generate_il_create_return(struct tree_node *node) {
   
     t->op = TAC_OP_RETURN_VALUE;
     tac_set_arg1(t, TAC_ARG_TYPE_TEMP, r1, NULL);    
+
+    /* set promotions */
+    if (g_current_function->children[0]->value_double > 0.0)
+      type = VARIABLE_TYPE_UINT16;
+    else
+      type = g_current_function->children[0]->value;
+    tac_promote_argument(t, type, TAC_USE_ARG1);
   }
 
   return SUCCEEDED;
@@ -517,7 +557,7 @@ static int _generate_il_create_return(struct tree_node *node) {
 static int _generate_il_create_condition(struct tree_node *node, int false_label_id) {
 
   struct tac *t;
-  int r1;
+  int r1, type;
 
   if (node->type != TREE_NODE_TYPE_CONDITION) {
     g_current_filename_id = node->file_id;
@@ -542,6 +582,11 @@ static int _generate_il_create_condition(struct tree_node *node, int false_label
   tac_set_arg2(t, TAC_ARG_TYPE_CONSTANT, 0, NULL);
   tac_set_result(t, TAC_ARG_TYPE_LABEL, 0, generate_temp_label(false_label_id));
 
+  /* set promotions */
+  type = tree_node_get_max_var_type(node->children[0]);
+  tac_promote_argument(t, type, TAC_USE_ARG1);
+  tac_promote_argument(t, type, TAC_USE_ARG2);
+  
   return SUCCEEDED;
 }
 
@@ -773,6 +818,7 @@ static int _generate_il_create_for(struct tree_node *node) {
 static int _generate_il_create_increment_decrement(struct tree_node *node) {
 
   struct tac *t = add_tac();
+  int type;
 
   if (t == NULL)
     return FAILED;
@@ -790,6 +836,12 @@ static int _generate_il_create_increment_decrement(struct tree_node *node) {
   tac_try_find_definition(t, node->label, NULL, TAC_USE_ARG1);
   tac_try_find_definition(t, node->label, NULL, TAC_USE_RESULT);
 
+  /* set promotions */
+  type = tree_node_get_max_var_type(t->result_node);
+  tac_promote_argument(t, type, TAC_USE_ARG1);
+  tac_promote_argument(t, type, TAC_USE_ARG2);
+  tac_promote_argument(t, type, TAC_USE_RESULT);
+  
   return SUCCEEDED;
 }
 
