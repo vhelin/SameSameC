@@ -23,12 +23,12 @@ static int g_variable_type_priorities[6] = {
 };
 
 static int g_variable_type_sizes[6] = {
-  0, /* VARIABLE_TYPE_NONE */
-  0, /* VARIABLE_TYPE_VOID */
-  1, /* VARIABLE_TYPE_INT8 */
-  2, /* VARIABLE_TYPE_INT16 */
-  1, /* VARIABLE_TYPE_UINT8 */
-  2  /* VARIABLE_TYPE_UINT16 */
+  0,  /* VARIABLE_TYPE_NONE */
+  0,  /* VARIABLE_TYPE_VOID */
+  8,  /* VARIABLE_TYPE_INT8 */
+  16, /* VARIABLE_TYPE_INT16 */
+  8,  /* VARIABLE_TYPE_UINT8 */
+  16  /* VARIABLE_TYPE_UINT16 */
 };
 
 

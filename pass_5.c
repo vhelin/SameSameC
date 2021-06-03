@@ -39,8 +39,10 @@ int pass_5(void) {
   if (g_verbose_mode == ON)
     printf("Pass 5...\n");
 
+  /*
   if (optimize_il() == FAILED)
     return FAILED;
+  */
   if (compress_register_names() == FAILED)
     return FAILED;
   
@@ -826,7 +828,7 @@ static int _set_temp_register_type(int r, int type) {
 static int _get_temp_register_type(int r) {
 
   if (r >= g_temp_register_types_count)
-    return -1;
+    return VARIABLE_TYPE_NONE;
 
   return g_temp_register_types[r];
 }
@@ -971,7 +973,7 @@ int propagate_operand_types(void) {
       /* RESULT from ARG1 and ARG2? */
       if (t->result_type == TAC_ARG_TYPE_TEMP) {
         int type_max = get_max_variable_type(t->arg1_var_type, t->arg2_var_type);
-        
+
         if (t->result_var_type == VARIABLE_TYPE_NONE) {
           /* get the type from the operands */
           t->result_var_type = type_max;
@@ -1234,7 +1236,10 @@ int collect_and_preprocess_local_variables_inside_functions(void) {
           if (t->arg1_type == TAC_ARG_TYPE_TEMP) {
             int index = (int)t->arg1_d;
             int size = get_variable_type_size(t->arg1_var_type);
-              
+
+            if (size == 0)
+              fprintf(stderr, "collect_local_variables_inside_functions(): Register r%d size is 0!\n", index);
+            
             register_usage[index] = 1;
             if (size > register_sizes[index])
               register_sizes[index] = size;
@@ -1243,6 +1248,9 @@ int collect_and_preprocess_local_variables_inside_functions(void) {
             int index = (int)t->arg2_d;
             int size = get_variable_type_size(t->arg2_var_type);
             
+            if (size == 0)
+              fprintf(stderr, "collect_local_variables_inside_functions(): Register r%d size is 0!\n", index);
+
             register_usage[index] = 1;
             if (size > register_sizes[index])
               register_sizes[index] = size;
@@ -1251,6 +1259,9 @@ int collect_and_preprocess_local_variables_inside_functions(void) {
             int index = (int)t->result_d;
             int size = get_variable_type_size(t->result_var_type);
             
+            if (size == 0)
+              fprintf(stderr, "collect_local_variables_inside_functions(): Register r%d size is 0!\n", index);
+
             register_usage[index] = 1;
             if (size > register_sizes[index])
               register_sizes[index] = size;

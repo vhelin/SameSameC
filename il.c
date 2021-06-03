@@ -6,7 +6,6 @@
 #include <math.h>
 
 #include "defines.h"
-
 #include "printf.h"
 #include "include_file.h"
 #include "main.h"
@@ -36,6 +35,8 @@ int il_stack_calculate_expression(struct tree_node *node) {
 
   /* calculate the promotion for all the items inside this expression */
   g_max_var_types[g_max_var_type_index] = tree_node_get_max_var_type(node);
+
+  fprintf(stderr, "MAX TYPE: %d\n", g_max_var_types[g_max_var_type_index]);
   
   /* slice the data into infix format */
   for (q = 0, z = 0; q < node->added_children; q++, z++) {
