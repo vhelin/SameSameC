@@ -94,10 +94,10 @@ int get_variable_type_size(int type) {
 
 int get_variable_type_constant(int value) {
 
-  if (value >= -128 && value <= 127)
-    return VARIABLE_TYPE_INT8;
-  else if (value >= 0 && value <= 255)
+  if (value >= 0 && value <= 255)
     return VARIABLE_TYPE_UINT8;
+  else if (value >= -128 && value <= 127)
+    return VARIABLE_TYPE_INT8;
   else if (value >= -32768 && value <= 32767)
     return VARIABLE_TYPE_INT16;
   else
