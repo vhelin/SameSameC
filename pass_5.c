@@ -39,10 +39,8 @@ int pass_5(void) {
   if (g_verbose_mode == ON)
     printf("Pass 5...\n");
 
-  /*
   if (optimize_il() == FAILED)
     return FAILED;
-  */
   if (compress_register_names() == FAILED)
     return FAILED;
   
@@ -932,7 +930,7 @@ static int _get_set_max_registers_type(struct tac *t) {
 
     t->registers_types[j] = type;
 
-    type_max = get_max_variable_type(type, type_max);
+    type_max = get_max_variable_type_2(type, type_max);
   }
 
   return type_max;
@@ -972,7 +970,7 @@ int propagate_operand_types(void) {
 
       /* RESULT from ARG1 and ARG2? */
       if (t->result_type == TAC_ARG_TYPE_TEMP) {
-        int type_max = get_max_variable_type(t->arg1_var_type, t->arg2_var_type);
+        int type_max = get_max_variable_type_4(t->arg1_var_type, t->arg2_var_type, t->arg1_var_type_promoted, t->arg2_var_type_promoted);
 
         if (t->result_var_type == VARIABLE_TYPE_NONE) {
           /* get the type from the operands */
@@ -1037,9 +1035,11 @@ int propagate_operand_types(void) {
 
       /* RESULT from ARG1? */
       if (t->result_type == TAC_ARG_TYPE_TEMP) {
+        int type_max = get_max_variable_type_2(t->arg1_var_type, t->arg1_var_type_promoted);
+
         if (t->result_var_type == VARIABLE_TYPE_NONE) {
           /* get the type from the operands */
-          t->result_var_type = t->arg1_var_type;
+          t->result_var_type = type_max;
         }
 
         _set_temp_register_type((int)t->result_d, t->result_var_type);
@@ -1075,7 +1075,7 @@ int propagate_operand_types(void) {
 
       /* RESULT from ARG1 and ARG2? */
       if (t->result_type == TAC_ARG_TYPE_TEMP) {
-        int type_max = get_max_variable_type(t->arg1_var_type, t->arg2_var_type);
+        int type_max = get_max_variable_type_4(t->arg1_var_type, t->arg2_var_type, t->arg1_var_type_promoted, t->arg2_var_type_promoted);
         
         if (t->result_var_type == VARIABLE_TYPE_NONE) {
           /* get the type from the operands */

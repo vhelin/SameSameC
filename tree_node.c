@@ -105,7 +105,7 @@ int get_variable_type_constant(int value) {
 }
 
 
-int get_max_variable_type(int t1, int t2) {
+int get_max_variable_type_2(int t1, int t2) {
 
   if (g_variable_type_priorities[t1] > g_variable_type_priorities[t2])
     return t1;
@@ -113,6 +113,17 @@ int get_max_variable_type(int t1, int t2) {
     return t2;
   else
     return t1;
+}
+
+
+int get_max_variable_type_4(int t1, int t2, int t3, int t4) {
+
+  int r1, r2;
+
+  r1 = get_max_variable_type_2(t1, t2);
+  r2 = get_max_variable_type_2(t3, t4);
+
+  return get_max_variable_type_2(r1, r2);
 }
 
 
@@ -133,15 +144,15 @@ int tree_node_get_max_var_type(struct tree_node *node) {
       struct tree_node *n = node->children[i];
 
       if (n->type == TREE_NODE_TYPE_VALUE_INT)
-        type_max = get_max_variable_type(type_max, get_variable_type_constant(n->value));
+        type_max = get_max_variable_type_2(type_max, get_variable_type_constant(n->value));
       else if (n->type == TREE_NODE_TYPE_VALUE_DOUBLE)
-        type_max = get_max_variable_type(type_max, get_variable_type_constant((int)n->value_double));
+        type_max = get_max_variable_type_2(type_max, get_variable_type_constant((int)n->value_double));
       else if (n->type == TREE_NODE_TYPE_SYMBOL) {
       }
       else if (n->type == TREE_NODE_TYPE_EXPRESSION)
-        type_max = get_max_variable_type(type_max, tree_node_get_max_var_type(n));
+        type_max = get_max_variable_type_2(type_max, tree_node_get_max_var_type(n));
       else if (n->type == TREE_NODE_TYPE_VALUE_STRING)
-        type_max = get_max_variable_type(type_max, n->definition->children[0]->value);
+        type_max = get_max_variable_type_2(type_max, n->definition->children[0]->value);
       else
         fprintf(stderr, "tree_node_get_max_var_type(): Unsupported tree_node type %d in an expression! Please submit a bug report!\n", n->type);
     }

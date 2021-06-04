@@ -19,11 +19,10 @@
 extern int g_current_line_number, g_current_filename_id;
 extern int g_temp_r, g_temp_label_id;
 
-static char g_max_var_types[1024];
-static int g_max_var_type_index = 0;
+static int g_max_var_type = VARIABLE_TYPE_NONE;
 
 
-int il_stack_calculate_expression(struct tree_node *node) {
+int il_stack_calculate_expression(struct tree_node *node, char calculate_max_var_type) {
 
   struct stack_item si[256];
   struct tree_node *child;
@@ -34,10 +33,9 @@ int il_stack_calculate_expression(struct tree_node *node) {
     tree_node_flatten(node);
 
   /* calculate the promotion for all the items inside this expression */
-  g_max_var_types[g_max_var_type_index] = tree_node_get_max_var_type(node);
+  if (calculate_max_var_type == YES)
+    g_max_var_type = tree_node_get_max_var_type(node);
 
-  fprintf(stderr, "MAX TYPE: %d\n", g_max_var_types[g_max_var_type_index]);
-  
   /* slice the data into infix format */
   for (q = 0, z = 0; q < node->added_children; q++, z++) {
     /* init the stack item */
@@ -292,10 +290,8 @@ int il_stack_calculate_expression(struct tree_node *node) {
       struct tac *t;
       
       /* calculate the index */
-      g_max_var_type_index++;
-      if (il_stack_calculate_expression(child->children[0]) == FAILED)
+      if (il_stack_calculate_expression(child->children[0], NO) == FAILED)
         return FAILED;
-      g_max_var_type_index--;
 
       t = add_tac();
       if (t == NULL)
@@ -307,6 +303,9 @@ int il_stack_calculate_expression(struct tree_node *node) {
       tac_set_arg1(t, TAC_ARG_TYPE_LABEL, 0, child->label);
       tac_set_arg2(t, TAC_ARG_TYPE_TEMP, rindex, NULL);
 
+      /* promote to the maximum of this expression */
+      t->result_var_type_promoted = g_max_var_type;
+      
       /* find the definition */
       if (tac_try_find_definition(t, child->label, child, TAC_USE_ARG1) == FAILED)
         return FAILED;
@@ -547,7 +546,7 @@ static struct tac *_add_tac_calculation(int op, int r1, int r2, int rresult, str
   t->op = op;
 
   tac_set_result(t, TAC_ARG_TYPE_TEMP, rresult, NULL);
-
+      
   if (si[r1] != NULL) {
     if (si[r1]->type == STACK_ITEM_TYPE_REGISTER)
       tac_set_arg1(t, TAC_ARG_TYPE_TEMP, (int)si[r1]->value, NULL);
@@ -574,6 +573,11 @@ static struct tac *_add_tac_calculation(int op, int r1, int r2, int rresult, str
   else
     tac_set_arg2(t, TAC_ARG_TYPE_CONSTANT, (int)v[r2], NULL);
 
+  /* promote to the maximum of this expression */
+  t->result_var_type_promoted = g_max_var_type;
+  t->arg1_var_type_promoted = g_max_var_type;
+  t->arg2_var_type_promoted = g_max_var_type;
+  
   return t;
 }
 
@@ -588,6 +592,7 @@ static int _load_to_register(struct stack_item *si[256], double v[256], int inde
   t->op = TAC_OP_ASSIGNMENT;
 
   tac_set_result(t, TAC_ARG_TYPE_TEMP, g_temp_r++, NULL);
+
   if (si[index] != NULL) {
     if (si[index]->type == STACK_ITEM_TYPE_REGISTER)
       tac_set_arg1(t, TAC_ARG_TYPE_TEMP, (int)si[index]->value, NULL);
@@ -601,6 +606,10 @@ static int _load_to_register(struct stack_item *si[256], double v[256], int inde
   else
     tac_set_arg1(t, TAC_ARG_TYPE_CONSTANT, (int)v[index], NULL);
 
+  /* promote to the maximum of this expression */
+  t->result_var_type_promoted = g_max_var_type;
+  t->arg1_var_type_promoted = g_max_var_type;
+  
   return g_temp_r - 1;
 }
 
@@ -632,6 +641,10 @@ static int _add_comparison(struct stack_item *si[256], struct stack_item sit[256
   tac_set_result(ta, TAC_ARG_TYPE_TEMP, tresult, NULL);
   tac_set_arg1(ta, TAC_ARG_TYPE_CONSTANT, 0, NULL);
 
+  /* promote to the maximum of this expression */
+  ta->result_var_type_promoted = g_max_var_type;
+  ta->arg1_var_type_promoted = g_max_var_type;
+  
   /* comparison + jump if true, to label true */
   r1 = _load_to_register(si, v, index-2);
   r2 = _load_to_register(si, v, index-1);
@@ -665,6 +678,10 @@ static int _add_comparison(struct stack_item *si[256], struct stack_item sit[256
   tac_set_result(ta, TAC_ARG_TYPE_TEMP, tresult, NULL);
   tac_set_arg1(ta, TAC_ARG_TYPE_CONSTANT, 1, NULL);
 
+  /* promote to the maximum of this expression */
+  ta->result_var_type_promoted = g_max_var_type;
+  ta->arg1_var_type_promoted = g_max_var_type;
+  
   /* label false */
   add_tac_label(generate_temp_label(label_false));
 
@@ -676,7 +693,11 @@ static int _add_comparison(struct stack_item *si[256], struct stack_item sit[256
   ta->op = TAC_OP_ASSIGNMENT;
   tac_set_arg1(ta, TAC_ARG_TYPE_TEMP, tresult, NULL);
   tac_set_result(ta, TAC_ARG_TYPE_TEMP, g_temp_r++, NULL);
-          
+
+  /* promote to the maximum of this expression */
+  ta->result_var_type_promoted = g_max_var_type;
+  ta->arg1_var_type_promoted = g_max_var_type;
+
   _turn_stack_item_into_a_register(si, sit, index-2, (int)ta->result_d);
 
   return SUCCEEDED;
@@ -752,6 +773,10 @@ int il_compute_stack(struct stack *sta, int count, int rresult) {
         tac_set_result(ta, TAC_ARG_TYPE_TEMP, g_temp_r++, NULL);
         tac_set_arg1(ta, TAC_ARG_TYPE_LABEL, 0, si[t-1]->string);
 
+        /* promote to the maximum of this expression */
+        ta->result_var_type_promoted = g_max_var_type;
+        ta->arg1_var_type_promoted = g_max_var_type;
+
         /* find the definition */
         if (tac_try_find_definition(ta, si[t-1]->string, NULL, TAC_USE_ARG1) == FAILED)
           return FAILED;
@@ -773,6 +798,10 @@ int il_compute_stack(struct stack *sta, int count, int rresult) {
         tac_set_result(ta, TAC_ARG_TYPE_TEMP, g_temp_r++, NULL);
         tac_set_arg1(ta, TAC_ARG_TYPE_LABEL, 0, si[t-1]->string);
 
+        /* promote to the maximum of this expression */
+        ta->result_var_type_promoted = g_max_var_type;
+        ta->arg1_var_type_promoted = g_max_var_type;
+        
         /* find the definition */
         if (tac_try_find_definition(ta, si[t-1]->string, NULL, TAC_USE_ARG1) == FAILED)
           return FAILED;
@@ -793,6 +822,10 @@ int il_compute_stack(struct stack *sta, int count, int rresult) {
         tac_set_result(ta, TAC_ARG_TYPE_TEMP, tresult, NULL);
         tac_set_arg1(ta, TAC_ARG_TYPE_LABEL, 0, si[t-1]->string);
 
+        /* promote to the maximum of this expression */
+        ta->result_var_type_promoted = g_max_var_type;
+        ta->arg1_var_type_promoted = g_max_var_type;
+        
         /* find the definition */
         if (tac_try_find_definition(ta, si[t-1]->string, NULL, TAC_USE_ARG1) == FAILED)
           return FAILED;
@@ -808,6 +841,10 @@ int il_compute_stack(struct stack *sta, int count, int rresult) {
         ta->op = TAC_OP_ASSIGNMENT;
         tac_set_result(ta, TAC_ARG_TYPE_TEMP, g_temp_r++, NULL);
         tac_set_arg1(ta, TAC_ARG_TYPE_TEMP, tresult, 0);
+
+        /* promote to the maximum of this expression */
+        ta->result_var_type_promoted = g_max_var_type;
+        ta->arg1_var_type_promoted = g_max_var_type;
         
         _turn_stack_item_into_a_register(si, sit, t-1, g_temp_r-1);
         t--;
@@ -825,6 +862,10 @@ int il_compute_stack(struct stack *sta, int count, int rresult) {
         tac_set_result(ta, TAC_ARG_TYPE_TEMP, tresult, NULL);
         tac_set_arg1(ta, TAC_ARG_TYPE_LABEL, 0, si[t-1]->string);
 
+        /* promote to the maximum of this expression */
+        ta->result_var_type_promoted = g_max_var_type;
+        ta->arg1_var_type_promoted = g_max_var_type;
+        
         /* find the definition */
         if (tac_try_find_definition(ta, si[t-1]->string, NULL, TAC_USE_ARG1) == FAILED)
           return FAILED;
@@ -840,6 +881,10 @@ int il_compute_stack(struct stack *sta, int count, int rresult) {
         ta->op = TAC_OP_ASSIGNMENT;
         tac_set_result(ta, TAC_ARG_TYPE_TEMP, g_temp_r++, NULL);
         tac_set_arg1(ta, TAC_ARG_TYPE_TEMP, tresult, NULL);
+
+        /* promote to the maximum of this expression */
+        ta->result_var_type_promoted = g_max_var_type;
+        ta->arg1_var_type_promoted = g_max_var_type;
         
         _turn_stack_item_into_a_register(si, sit, t-1, g_temp_r-1);
         t--;
@@ -853,6 +898,10 @@ int il_compute_stack(struct stack *sta, int count, int rresult) {
         ta->op = TAC_OP_ASSIGNMENT;
         tac_set_result(ta, TAC_ARG_TYPE_TEMP, g_temp_r++, NULL);
         tac_set_arg1(ta, TAC_ARG_TYPE_TEMP, (int)v[t-1], NULL);
+
+        /* promote to the maximum of this expression */
+        ta->result_var_type_promoted = g_max_var_type;
+        ta->arg1_var_type_promoted = g_max_var_type;
         
         _turn_stack_item_into_a_register(si, sit, t-1, g_temp_r-1);
         t--;
@@ -916,6 +965,10 @@ int il_compute_stack(struct stack *sta, int count, int rresult) {
           tac_set_result(ta, TAC_ARG_TYPE_TEMP, tresult, NULL);
           tac_set_arg1(ta, TAC_ARG_TYPE_CONSTANT, 0, NULL);
 
+          /* promote to the maximum of this expression */
+          ta->result_var_type_promoted = g_max_var_type;
+          ta->arg1_var_type_promoted = g_max_var_type;
+
           ta = add_tac();
           if (ta == NULL)
             return FAILED;
@@ -925,6 +978,10 @@ int il_compute_stack(struct stack *sta, int count, int rresult) {
           tac_set_arg2(ta, TAC_ARG_TYPE_TEMP, tresult, NULL);
           tac_set_result(ta, TAC_ARG_TYPE_LABEL, 0, generate_temp_label(label_true));
 
+          /* promote to the maximum of this expression */
+          ta->arg1_var_type_promoted = g_max_var_type;
+          ta->arg2_var_type_promoted = g_max_var_type;
+          
           /* load r2 */
           r2 = _load_to_register(si, v, t-2);
 
@@ -937,6 +994,10 @@ int il_compute_stack(struct stack *sta, int count, int rresult) {
           tac_set_arg2(ta, TAC_ARG_TYPE_TEMP, tresult, NULL);
           tac_set_result(ta, TAC_ARG_TYPE_LABEL, 0, generate_temp_label(label_true));
 
+          /* promote to the maximum of this expression */
+          ta->arg1_var_type_promoted = g_max_var_type;
+          ta->arg2_var_type_promoted = g_max_var_type;
+          
           /* jump to exit */
           add_tac_jump(generate_temp_label(label_exit));
 
@@ -952,6 +1013,10 @@ int il_compute_stack(struct stack *sta, int count, int rresult) {
           tac_set_result(ta, TAC_ARG_TYPE_TEMP, tresult, NULL);
           tac_set_arg1(ta, TAC_ARG_TYPE_CONSTANT, 1, NULL);
           
+          /* promote to the maximum of this expression */
+          ta->result_var_type_promoted = g_max_var_type;
+          ta->arg1_var_type_promoted = g_max_var_type;
+
           /* label exit */
           add_tac_label(generate_temp_label(label_exit));
 
@@ -963,6 +1028,10 @@ int il_compute_stack(struct stack *sta, int count, int rresult) {
           ta->op = TAC_OP_ASSIGNMENT;
           tac_set_result(ta, TAC_ARG_TYPE_TEMP, g_temp_r++, NULL);
           tac_set_arg1(ta, TAC_ARG_TYPE_TEMP, tresult, NULL);
+
+          /* promote to the maximum of this expression */
+          ta->result_var_type_promoted = g_max_var_type;
+          ta->arg1_var_type_promoted = g_max_var_type;
           
           _turn_stack_item_into_a_register(si, sit, t-1, (int)ta->result_d);
 
@@ -988,6 +1057,10 @@ int il_compute_stack(struct stack *sta, int count, int rresult) {
           tac_set_result(ta, TAC_ARG_TYPE_TEMP, tresult, NULL);
           tac_set_arg1(ta, TAC_ARG_TYPE_CONSTANT, 0, NULL);
 
+          /* promote to the maximum of this expression */
+          ta->result_var_type_promoted = g_max_var_type;
+          ta->arg1_var_type_promoted = g_max_var_type;
+
           ta = add_tac();
           if (ta == NULL)
             return FAILED;
@@ -996,6 +1069,10 @@ int il_compute_stack(struct stack *sta, int count, int rresult) {
           tac_set_arg1(ta, TAC_ARG_TYPE_TEMP, r1, NULL);
           tac_set_arg2(ta, TAC_ARG_TYPE_TEMP, tresult, NULL);
           tac_set_result(ta, TAC_ARG_TYPE_LABEL, 0, generate_temp_label(label_false));
+
+          /* promote to the maximum of this expression */
+          ta->arg1_var_type_promoted = g_max_var_type;
+          ta->arg2_var_type_promoted = g_max_var_type;
 
           /* load r2 */
           r2 = _load_to_register(si, v, t-2);
@@ -1009,6 +1086,10 @@ int il_compute_stack(struct stack *sta, int count, int rresult) {
           tac_set_arg2(ta, TAC_ARG_TYPE_TEMP, tresult, NULL);
           tac_set_result(ta, TAC_ARG_TYPE_LABEL, 0, generate_temp_label(label_false));
 
+          /* promote to the maximum of this expression */
+          ta->arg1_var_type_promoted = g_max_var_type;
+          ta->arg2_var_type_promoted = g_max_var_type;
+
           /* load 1 */
           ta = add_tac();
           if (ta == NULL)
@@ -1018,6 +1099,10 @@ int il_compute_stack(struct stack *sta, int count, int rresult) {
           tac_set_result(ta, TAC_ARG_TYPE_TEMP, tresult, NULL);
           tac_set_arg1(ta, TAC_ARG_TYPE_CONSTANT, 1, NULL);
           
+          /* promote to the maximum of this expression */
+          ta->result_var_type_promoted = g_max_var_type;
+          ta->arg1_var_type_promoted = g_max_var_type;
+
           /* label false */
           add_tac_label(generate_temp_label(label_false));
 
@@ -1030,6 +1115,10 @@ int il_compute_stack(struct stack *sta, int count, int rresult) {
           tac_set_result(ta, TAC_ARG_TYPE_TEMP, g_temp_r++, NULL);
           tac_set_arg1(ta, TAC_ARG_TYPE_TEMP, tresult, NULL);
           
+          /* promote to the maximum of this expression */
+          ta->result_var_type_promoted = g_max_var_type;
+          ta->arg1_var_type_promoted = g_max_var_type;
+
           _turn_stack_item_into_a_register(si, sit, t-1, (int)ta->result_d);
 
           t--;
@@ -1067,6 +1156,10 @@ int il_compute_stack(struct stack *sta, int count, int rresult) {
           tac_set_result(ta, TAC_ARG_TYPE_TEMP, tresult, NULL);
           tac_set_arg1(ta, TAC_ARG_TYPE_CONSTANT, 0, NULL);
 
+          /* promote to the maximum of this expression */
+          ta->result_var_type_promoted = g_max_var_type;
+          ta->arg1_var_type_promoted = g_max_var_type;
+
           ta = add_tac();
           if (ta == NULL)
             return FAILED;
@@ -1075,6 +1168,10 @@ int il_compute_stack(struct stack *sta, int count, int rresult) {
           tac_set_arg1(ta, TAC_ARG_TYPE_TEMP, r1, NULL);
           tac_set_arg2(ta, TAC_ARG_TYPE_TEMP, tresult, NULL);
           tac_set_result(ta, TAC_ARG_TYPE_LABEL, 0, generate_temp_label(label_non_zero));
+
+          /* promote to the maximum of this expression */
+          ta->arg1_var_type_promoted = g_max_var_type;
+          ta->arg2_var_type_promoted = g_max_var_type;
 
           /* label zero */
           add_tac_label(generate_temp_label(label_zero));
@@ -1087,6 +1184,10 @@ int il_compute_stack(struct stack *sta, int count, int rresult) {
           ta->op = TAC_OP_ASSIGNMENT;
           tac_set_result(ta, TAC_ARG_TYPE_TEMP, tresult, NULL);
           tac_set_arg1(ta, TAC_ARG_TYPE_CONSTANT, 1, NULL);
+
+          /* promote to the maximum of this expression */
+          ta->result_var_type_promoted = g_max_var_type;
+          ta->arg1_var_type_promoted = g_max_var_type;
 
           /* label non-zero */
           add_tac_label(generate_temp_label(label_non_zero));
@@ -1208,5 +1309,9 @@ int il_compute_stack(struct stack *sta, int count, int rresult) {
   tac_set_result(ta, TAC_ARG_TYPE_TEMP, rresult, NULL);
   tac_set_arg1(ta, TAC_ARG_TYPE_TEMP, g_temp_r - 1, NULL);
 
+  /* promote to the maximum of this expression */
+  ta->result_var_type_promoted = g_max_var_type;
+  ta->arg1_var_type_promoted = g_max_var_type;
+  
   return SUCCEEDED;
 }

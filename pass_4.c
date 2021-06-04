@@ -131,9 +131,9 @@ static int _generate_il_create_expression(struct tree_node *node) {
   struct tac *t;
   
   if (node->type == TREE_NODE_TYPE_EXPRESSION)
-    il_stack_calculate_expression(node);
+    il_stack_calculate_expression(node, YES);
   else if (node->type == TREE_NODE_TYPE_CONDITION)
-    il_stack_calculate_expression(node->children[0]);
+    il_stack_calculate_expression(node->children[0], YES);
   else if (node->type == TREE_NODE_TYPE_VALUE_STRING) {
     t = add_tac();
     if (t == NULL)
