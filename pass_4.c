@@ -129,6 +129,7 @@ int pass_4(void) {
 static int _generate_il_create_expression(struct tree_node *node) {
 
   struct tac *t;
+  int type;
   
   if (node->type == TREE_NODE_TYPE_EXPRESSION)
     il_stack_calculate_expression(node, YES);
@@ -157,6 +158,10 @@ static int _generate_il_create_expression(struct tree_node *node) {
 
     tac_set_result(t, TAC_ARG_TYPE_TEMP, g_temp_r++, NULL);
     tac_set_arg1(t, TAC_ARG_TYPE_CONSTANT, node->value, NULL);
+
+    /* set promotions */
+    type = get_variable_type_constant(node->value);
+    tac_promote_argument(t, type, TAC_USE_ARG1);
   }
   else if (node->type == TREE_NODE_TYPE_VALUE_DOUBLE) {
     t = add_tac();
@@ -167,6 +172,10 @@ static int _generate_il_create_expression(struct tree_node *node) {
 
     tac_set_result(t, TAC_ARG_TYPE_TEMP, g_temp_r++, NULL);
     tac_set_arg1(t, TAC_ARG_TYPE_CONSTANT, (int)node->value_double, NULL);
+
+    /* set promotions */
+    type = get_variable_type_constant((int)node->value_double);
+    tac_promote_argument(t, type, TAC_USE_ARG1);    
   }
   else if (node->type == TREE_NODE_TYPE_FUNCTION_CALL) {
     fprintf(stderr, "_generate_il_create_expression(): IMPLEMENT ME!\n");
@@ -335,7 +344,7 @@ static int _generate_il_create_variable(struct tree_node *node) {
       tac_promote_argument(t, type, TAC_USE_RESULT);
       type = tree_node_get_max_var_type(node->children[2 + i]);
       tac_promote_argument(t, type, TAC_USE_ARG1);
-      if (i < 255)
+      if (i < 256)
         tac_promote_argument(t, VARIABLE_TYPE_UINT8, TAC_USE_ARG2);
       else
         tac_promote_argument(t, VARIABLE_TYPE_UINT16, TAC_USE_ARG2);

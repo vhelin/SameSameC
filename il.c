@@ -1312,6 +1312,6 @@ int il_compute_stack(struct stack *sta, int count, int rresult) {
   /* promote to the maximum of this expression */
   ta->result_var_type_promoted = g_max_var_type;
   ta->arg1_var_type_promoted = g_max_var_type;
-  
+
   return SUCCEEDED;
 }
