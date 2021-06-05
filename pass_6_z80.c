@@ -159,6 +159,36 @@ static void _load_from_iy_to_c(int offset, FILE *file_out) {
 }
 
 
+static void _load_from_ix_to_a(int offset, FILE *file_out) {
+
+  fprintf(file_out, "      LD  A,(IX+%d)\n", offset);
+}
+
+
+static void _load_from_ix_to_b(int offset, FILE *file_out) {
+
+  fprintf(file_out, "      LD  B,(IX+%d)\n", offset);
+}
+
+
+static void _load_from_ix_to_c(int offset, FILE *file_out) {
+
+  fprintf(file_out, "      LD  C,(IX+%d)\n", offset);
+}
+
+
+static void _load_from_ix_to_h(int offset, FILE *file_out) {
+
+  fprintf(file_out, "      LD  H,(IX+%d)\n", offset);
+}
+
+
+static void _load_from_ix_to_l(int offset, FILE *file_out) {
+
+  fprintf(file_out, "      LD  L,(IX+%d)\n", offset);
+}
+
+
 static void _load_a_into_ix(int offset, FILE *file_out) {
 
   fprintf(file_out, "      LD  (IX+%d),A\n", offset);
@@ -222,6 +252,12 @@ static void _add_bc_to_hl(FILE *file_out) {
 static void _add_c_to_a(FILE *file_out) {
 
   fprintf(file_out, "      ADD A,C\n");
+}
+
+
+static void _add_l_to_a(FILE *file_out) {
+
+  fprintf(file_out, "      ADD A,L\n");
 }
 
 
@@ -430,52 +466,52 @@ static int _generate_asm_add_z80_8bit(struct tac *t, FILE *file_out, struct tree
   /* generate asm */
 
   /******************************************************************************************************/
-  /* source address (arg1) -> iy */
+  /* source address (arg1) -> ix */
   /******************************************************************************************************/
   
   if (t->arg1_type == TAC_ARG_TYPE_CONSTANT) {
   }
   else if (t->arg1_type == TAC_ARG_TYPE_LABEL && arg1_offset == 999999) {
     /* global var */
-    _load_label_to_iy(t->arg1_s, file_out);
+    _load_label_to_ix(t->arg1_s, file_out);
   }
   else {
     /* it's a variable in the frame! */
     fprintf(file_out, "      ; offset %d\n", arg1_offset);
 
-    _load_value_to_iy(arg1_offset, file_out);
-    _add_de_to_iy(file_out);
+    _load_value_to_ix(arg1_offset, file_out);
+    _add_de_to_ix(file_out);
   }
   
   /******************************************************************************************************/
-  /* copy data (arg1) -> c */
+  /* copy data (arg1) -> l */
   /******************************************************************************************************/
   
   if (t->arg1_type == TAC_ARG_TYPE_CONSTANT) {
     /* 8-bit */
-    _load_value_to_c(((int)t->arg1_d) & 0xff, file_out);
+    _load_value_to_l(((int)t->arg1_d) & 0xff, file_out);
   }
   else {
     /* 8-bit */
-    _load_from_iy_to_c(0, file_out);
+    _load_from_ix_to_l(0, file_out);
   }
 
   /******************************************************************************************************/
-  /* source address (arg2) -> iy */
+  /* source address (arg2) -> ix */
   /******************************************************************************************************/
   
   if (t->arg2_type == TAC_ARG_TYPE_CONSTANT) {
   }
   else if (t->arg2_type == TAC_ARG_TYPE_LABEL && arg2_offset == 999999) {
     /* global var */
-    _load_label_to_iy(t->arg2_s, file_out);
+    _load_label_to_ix(t->arg2_s, file_out);
   }
   else {
     /* it's a variable in the frame! */
     fprintf(file_out, "      ; offset %d\n", arg2_offset);
 
-    _load_value_to_iy(arg2_offset, file_out);
-    _add_de_to_iy(file_out);
+    _load_value_to_ix(arg2_offset, file_out);
+    _add_de_to_ix(file_out);
   }
   
   /******************************************************************************************************/
@@ -488,14 +524,14 @@ static int _generate_asm_add_z80_8bit(struct tac *t, FILE *file_out, struct tree
   }
   else {
     /* 8-bit */
-    _load_from_iy_to_a(0, file_out);
+    _load_from_ix_to_a(0, file_out);
   }
 
   /******************************************************************************************************/
-  /* add data (c, a) */
+  /* add data l -> a */
   /******************************************************************************************************/
 
-  _add_c_to_a(file_out);
+  _add_l_to_a(file_out);
 
   /******************************************************************************************************/
   /* target address -> ix */
@@ -550,51 +586,51 @@ static int _generate_asm_add_z80_16bit(struct tac *t, FILE *file_out, struct tre
   /* generate asm */
 
   /******************************************************************************************************/
-  /* source address (arg1) -> iy */
+  /* source address (arg1) -> ix */
   /******************************************************************************************************/
   
   if (t->arg1_type == TAC_ARG_TYPE_CONSTANT) {
   }
   else if (t->arg1_type == TAC_ARG_TYPE_LABEL && arg1_offset == 999999) {
     /* global var */
-    _load_label_to_iy(t->arg1_s, file_out);
+    _load_label_to_ix(t->arg1_s, file_out);
   }
   else {
     /* it's a variable in the frame! */
     fprintf(file_out, "      ; offset %d\n", arg1_offset);
 
-    _load_value_to_iy(arg1_offset, file_out);
-    _add_de_to_iy(file_out);
+    _load_value_to_ix(arg1_offset, file_out);
+    _add_de_to_ix(file_out);
   }
   
   /******************************************************************************************************/
-  /* copy data (arg1) -> bc */
+  /* copy data (arg1) -> hl */
   /******************************************************************************************************/
   
   if (t->arg1_type == TAC_ARG_TYPE_CONSTANT) {
     /* 16-bit */
-    _load_value_to_bc((int)t->arg1_d, file_out);
+    _load_value_to_hl((int)t->arg1_d, file_out);
   }
   else {
     if (t->arg1_var_type == VARIABLE_TYPE_INT16 || t->arg1_var_type == VARIABLE_TYPE_UINT16) {
       /* 16-bit */
-      _load_from_iy_to_c(0, file_out);
-      _load_from_iy_to_b(1, file_out);
+      _load_from_ix_to_l(0, file_out);
+      _load_from_ix_to_h(1, file_out);
     }
     else {
       /* 8-bit */
-      _load_from_iy_to_c(0, file_out);
+      _load_from_ix_to_l(0, file_out);
 
       /* sign extend 8-bit -> 16-bit? */
       if (t->arg1_var_type == VARIABLE_TYPE_INT8 && (t->arg1_var_type_promoted == VARIABLE_TYPE_INT16 ||
                                                      t->arg1_var_type_promoted == VARIABLE_TYPE_UINT16)) {
         /* yes */
-        _sign_extend_c_to_bc(file_out);
+        _sign_extend_l_to_hl(file_out);
       }
       else if (t->arg1_var_type == VARIABLE_TYPE_UINT8 && (t->arg1_var_type_promoted == VARIABLE_TYPE_INT16 ||
                                                            t->arg1_var_type_promoted == VARIABLE_TYPE_UINT16)) {
         /* upper byte -> 0 */
-        _load_value_to_b(0, file_out);
+        _load_value_to_h(0, file_out);
       }
       else {
         fprintf(stderr, "_generate_asm_add_z80_16bit(): Unhandled 8-bit ARG1! Please submit a bug report!\n");
@@ -604,51 +640,51 @@ static int _generate_asm_add_z80_16bit(struct tac *t, FILE *file_out, struct tre
   }
   
   /******************************************************************************************************/
-  /* source address (arg2) -> iy */
+  /* source address (arg2) -> ix */
   /******************************************************************************************************/
   
   if (t->arg2_type == TAC_ARG_TYPE_CONSTANT) {
   }
   else if (t->arg2_type == TAC_ARG_TYPE_LABEL && arg2_offset == 999999) {
     /* global var */
-    _load_label_to_iy(t->arg2_s, file_out);
+    _load_label_to_ix(t->arg2_s, file_out);
   }
   else {
     /* it's a variable in the frame! */
     fprintf(file_out, "      ; offset %d\n", arg2_offset);
 
-    _load_value_to_iy(arg2_offset, file_out);
-    _add_de_to_iy(file_out);
+    _load_value_to_ix(arg2_offset, file_out);
+    _add_de_to_ix(file_out);
   }
   
   /******************************************************************************************************/
-  /* copy data (arg2) -> hl */
+  /* copy data (arg2) -> bc */
   /******************************************************************************************************/
   
   if (t->arg2_type == TAC_ARG_TYPE_CONSTANT) {
     /* 16-bit */
-    _load_value_to_hl((int)t->arg2_d, file_out);
+    _load_value_to_bc((int)t->arg2_d, file_out);
   }
   else {
     if (t->arg2_var_type == VARIABLE_TYPE_INT16 || t->arg2_var_type == VARIABLE_TYPE_UINT16) {
       /* 16-bit */
-      _load_from_iy_to_l(0, file_out);
-      _load_from_iy_to_h(1, file_out);
+      _load_from_ix_to_c(0, file_out);
+      _load_from_ix_to_b(1, file_out);
     }
     else {
       /* 8-bit */
-      _load_from_iy_to_l(0, file_out);
+      _load_from_ix_to_c(0, file_out);
 
       /* sign extend 8-bit -> 16-bit? */
       if (t->arg2_var_type == VARIABLE_TYPE_INT8 && (t->arg2_var_type_promoted == VARIABLE_TYPE_INT16 ||
                                                      t->arg2_var_type_promoted == VARIABLE_TYPE_UINT16)) {
         /* yes */
-        _sign_extend_l_to_hl(file_out);
+        _sign_extend_c_to_bc(file_out);
       }
       else if (t->arg2_var_type == VARIABLE_TYPE_UINT8 && (t->arg2_var_type_promoted == VARIABLE_TYPE_INT16 ||
                                                            t->arg2_var_type_promoted == VARIABLE_TYPE_UINT16)) {
         /* upper byte -> 0 */
-        _load_value_to_h(0, file_out);
+        _load_value_to_b(0, file_out);
       }
       else {
         fprintf(stderr, "_generate_asm_add_z80_16bit(): Unhandled 8-bit ARG2! Please submit a bug report!\n");
