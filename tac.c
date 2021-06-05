@@ -15,7 +15,9 @@
 
 
 extern int g_verbose_mode, g_input_float_mode, g_current_filename_id, g_current_line_number;
+extern int g_current_filename_id, g_current_line_number;
 extern char g_tmp[4096], g_error_message[sizeof(g_tmp) + MAX_NAME_LENGTH + 1 + 1024];
+extern struct tree_node *g_current_statement;
 
 struct tac *g_tacs = NULL;
 int g_tacs_count = 0, g_tacs_max = 0;
@@ -496,6 +498,11 @@ struct tac *add_tac(void) {
   t->registers_types = NULL;
   t->function_node = NULL;
   t->is_function = NO;
+
+  /* NOTE! */
+  t->statement = g_current_statement;
+  t->file_id = g_current_filename_id;
+  t->line_number = g_current_line_number;
   
   return t;
 }

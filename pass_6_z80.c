@@ -786,6 +786,8 @@ int generate_asm_z80(FILE *file_out) {
 
         /* IL -> ASM */
 
+        fprintf(file_out, "      ; %s:%d\n", get_file_name(t->file_id), t->line_number);
+        
         if (op == TAC_OP_LABEL && t->is_function == YES) {
           _reset_cpu_z80();
           i--;
@@ -808,6 +810,8 @@ int generate_asm_z80(FILE *file_out) {
           if (_generate_asm_add_z80(t, file_out, function_node) == FAILED)
             return FAILED;
         }
+        else
+          fprintf(stderr, "generate_asm_z80(): Unimplemented IL -> Z80 ASM op %d! Please submit a bug report!\n", op);
       }
       
       fprintf(file_out, "  .ENDS\n");

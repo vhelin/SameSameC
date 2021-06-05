@@ -34,6 +34,8 @@ static struct tree_node *g_current_function = NULL;
 
 int g_temp_r = 0, g_temp_label_id = 0;
 
+/* add_tac() uses this variable to set the statement field */
+struct tree_node *g_current_statement = NULL;
 
 static int _generate_il_create_block(struct tree_node *node);
 static int _generate_il_create_increment_decrement(struct tree_node *node);
@@ -131,6 +133,10 @@ static int _generate_il_create_expression(struct tree_node *node) {
   struct tac *t;
   int type;
   
+  /* update file id and line number for all TACs and error messages */
+  g_current_filename_id = node->file_id;
+  g_current_line_number = node->line_number;
+
   if (node->type == TREE_NODE_TYPE_EXPRESSION)
     il_stack_calculate_expression(node, YES);
   else if (node->type == TREE_NODE_TYPE_CONDITION)
@@ -256,8 +262,6 @@ static int _generate_il_create_expression(struct tree_node *node) {
     }
   }
   else {
-    g_current_filename_id = node->file_id;
-    g_current_line_number = node->line_number;
     snprintf(g_error_message, sizeof(g_error_message), "_generate_il_create_expression(): Unsupported tree node %d!\n", node->type);
     print_error(g_error_message, ERROR_ERR);
 
@@ -272,9 +276,12 @@ static int _generate_il_create_variable(struct tree_node *node) {
 
   struct tac *t;
 
+  /* update file id and line number for all TACs and error messages */
+  g_current_filename_id = node->file_id;
+  g_current_line_number = node->line_number;
+
   /* create variable */
   
-  fprintf(stderr, "ADDED SYMBOL %s\n", node->children[1]->label);
   symbol_table_add_symbol(node, node->children[1]->label, g_block_level);
 
   t = add_tac();
@@ -360,6 +367,10 @@ static int _generate_il_create_assignment(struct tree_node *node) {
   struct tac *t;
   int r1;
 
+  /* update file id and line number for all TACs and error messages */
+  g_current_filename_id = node->file_id;
+  g_current_line_number = node->line_number;
+
   r1 = g_temp_r;
 
   if (_generate_il_create_expression(node->children[1]) == FAILED)
@@ -426,6 +437,9 @@ struct tac *generate_il_create_get_address_array(struct tree_node *node) {
   struct tac *t;
   int r;
 
+  /* update file id and line number for all TACs and error messages */
+  g_current_filename_id = node->file_id;
+  g_current_line_number = node->line_number;
 
   r = g_temp_r;
   if (_generate_il_create_expression(node->children[0]) == FAILED)
@@ -444,8 +458,6 @@ struct tac *generate_il_create_get_address_array(struct tree_node *node) {
   if (sti != NULL)
     t->arg1_node = sti->node;
   else {
-    g_current_filename_id = node->file_id;
-    g_current_line_number = node->line_number;
     snprintf(g_error_message, sizeof(g_error_message), "_generate_il_get_address_array(): Cannot find variable \"%s\"! Please submit a bug report!\n", node->label);
     print_error(g_error_message, ERROR_ERR);
     return NULL;
@@ -461,11 +473,13 @@ struct tac *generate_il_create_function_call(struct tree_node *node) {
   int *registers = NULL, i;
   struct tac *t;
 
+  /* update file id and line number for all TACs and error messages */
+  g_current_filename_id = node->file_id;
+  g_current_line_number = node->line_number;
+
   if (node->added_children - 1 > 0) {
     registers = (int *)calloc(sizeof(int) * node->added_children - 1, 1);
     if (registers == NULL) {
-      g_current_filename_id = node->file_id;
-      g_current_line_number = node->line_number;
       snprintf(g_error_message, sizeof(g_error_message), "_generate_il_create_function_call(): Out of memory error.\n");
       print_error(g_error_message, ERROR_ERR);
       return NULL;
@@ -492,8 +506,6 @@ struct tac *generate_il_create_function_call(struct tree_node *node) {
   if (sti != NULL)
     t->arg1_node = sti->node;
   else {
-    g_current_filename_id = node->file_id;
-    g_current_line_number = node->line_number;
     snprintf(g_error_message, sizeof(g_error_message), "_generate_il_create_function_call(): Cannot find function \"%s\"! Please submit a bug report!\n", node->label);
     print_error(g_error_message, ERROR_ERR);
     return NULL;
@@ -508,12 +520,14 @@ static int _generate_il_create_return(struct tree_node *node) {
   struct tac *t;
   int r1;
   
+  /* update file id and line number for all TACs and error messages */
+  g_current_filename_id = node->file_id;
+  g_current_line_number = node->line_number;
+
   if (node->added_children == 0) {
     /* return */
 
     if (g_current_function->children[0]->value != VARIABLE_TYPE_VOID) {
-      g_current_filename_id = node->file_id;
-      g_current_line_number = node->line_number;
       snprintf(g_error_message, sizeof(g_error_message), "_generate_il_create_return(): The function \"%s\" needs to return a value.\n", g_current_function->children[1]->label);
       print_error(g_error_message, ERROR_ERR);
       return FAILED;
@@ -530,8 +544,6 @@ static int _generate_il_create_return(struct tree_node *node) {
     int type;
 
     if (g_current_function->children[0]->value == VARIABLE_TYPE_VOID) {
-      g_current_filename_id = node->file_id;
-      g_current_line_number = node->line_number;
       snprintf(g_error_message, sizeof(g_error_message), "_generate_il_create_return(): The function \"%s\" doesn't return anything.\n", g_current_function->children[1]->label);
       print_error(g_error_message, ERROR_ERR);
       return FAILED;
@@ -568,9 +580,11 @@ static int _generate_il_create_condition(struct tree_node *node, int false_label
   struct tac *t;
   int r1, type;
 
+  /* update file id and line number for all TACs and error messages */
+  g_current_filename_id = node->file_id;
+  g_current_line_number = node->line_number;
+
   if (node->type != TREE_NODE_TYPE_CONDITION) {
-    g_current_filename_id = node->file_id;
-    g_current_line_number = node->line_number;
     snprintf(g_error_message, sizeof(g_error_message), "_generate_il_create_condition(): Was expecting TREE_NODE_TYPE_CONDITION, but got %d instead.\n", node->type);
     print_error(g_error_message, ERROR_ERR);
     return FAILED;
@@ -604,6 +618,10 @@ static int _generate_il_create_switch(struct tree_node *node) {
 
   int label_exit, i, j = 0, blocks = 0, *labels, r1, r2, got_default = NO;
   struct tac *t;
+
+  /* update file id and line number for all TACs and error messages */
+  g_current_filename_id = node->file_id;
+  g_current_line_number = node->line_number;
 
   label_exit = ++g_temp_label_id;
 
@@ -712,6 +730,10 @@ static int _generate_il_create_if(struct tree_node *node) {
 
   int label_exit, i;
 
+  /* update file id and line number for all TACs and error messages */
+  g_current_filename_id = node->file_id;
+  g_current_line_number = node->line_number;
+
   label_exit = ++g_temp_label_id;
 
   for (i = 0; i < node->added_children; i += 2) {
@@ -752,6 +774,10 @@ static int _generate_il_create_while(struct tree_node *node) {
 
   int label_condition, label_exit;
   
+  /* update file id and line number for all TACs and error messages */
+  g_current_filename_id = node->file_id;
+  g_current_line_number = node->line_number;
+
   label_condition = ++g_temp_label_id;
   label_exit = ++g_temp_label_id;
   
@@ -786,6 +812,10 @@ static int _generate_il_create_for(struct tree_node *node) {
 
   int label_condition, label_increments, label_exit;
   
+  /* update file id and line number for all TACs and error messages */
+  g_current_filename_id = node->file_id;
+  g_current_line_number = node->line_number;
+
   label_condition = ++g_temp_label_id;
   label_increments = ++g_temp_label_id;
   label_exit = ++g_temp_label_id;
@@ -826,9 +856,14 @@ static int _generate_il_create_for(struct tree_node *node) {
 
 static int _generate_il_create_increment_decrement(struct tree_node *node) {
 
-  struct tac *t = add_tac();
+  struct tac *t;
   int type;
 
+  /* update file id and line number for all TACs and error messages */
+  g_current_filename_id = node->file_id;
+  g_current_line_number = node->line_number;
+
+  t = add_tac();
   if (t == NULL)
     return FAILED;
 
@@ -857,9 +892,11 @@ static int _generate_il_create_increment_decrement(struct tree_node *node) {
 
 static int _generate_il_create_break(struct tree_node *node) {
 
+  /* update file id and line number for all TACs and error messages */
+  g_current_filename_id = node->file_id;
+  g_current_line_number = node->line_number;
+
   if (g_breakable_stack_items_level < 0) {
-    g_current_filename_id = node->file_id;
-    g_current_line_number = node->line_number;
     snprintf(g_error_message, sizeof(g_error_message), "_generate_il_create_break(): break does nothing here, nothing to break from.\n");
     print_error(g_error_message, ERROR_ERR);
 
@@ -875,9 +912,11 @@ static int _generate_il_create_break(struct tree_node *node) {
 
 static int _generate_il_create_continue(struct tree_node *node) {
 
+  /* update file id and line number for all TACs and error messages */
+  g_current_filename_id = node->file_id;
+  g_current_line_number = node->line_number;
+
   if (g_breakable_stack_items_level < 0) {
-    g_current_filename_id = node->file_id;
-    g_current_line_number = node->line_number;
     snprintf(g_error_message, sizeof(g_error_message), "_generate_il_create_continue(): continue does nothing here, nothing to continue.\n");
     print_error(g_error_message, ERROR_ERR);
 
@@ -894,6 +933,13 @@ static int _generate_il_create_continue(struct tree_node *node) {
 static int _generate_il_create_statement(struct tree_node *node) {
 
   int r = SUCCEEDED;
+
+  /* update file id and line number for all TACs and error messages */
+  g_current_filename_id = node->file_id;
+  g_current_line_number = node->line_number;
+
+  /* add_tac() uses g_current_statement to make the TAC to remember the statement it was created from */
+  g_current_statement = node;
   
   if (node->type == TREE_NODE_TYPE_CREATE_VARIABLE || node->type == TREE_NODE_TYPE_CREATE_VARIABLE_FUNCTION_ARGUMENT)
     r = _generate_il_create_variable(node);
@@ -922,8 +968,6 @@ static int _generate_il_create_statement(struct tree_node *node) {
   else if (node->type == TREE_NODE_TYPE_CONTINUE)
     r = _generate_il_create_continue(node);
   else {
-    g_current_filename_id = node->file_id;
-    g_current_line_number = node->line_number;
     snprintf(g_error_message, sizeof(g_error_message), "_generate_il_create_statement(): Unsupported node type %d! Please send a bug report!\n", node->type);
     print_error(g_error_message, ERROR_ERR);
 
@@ -938,6 +982,10 @@ static int _generate_il_create_block(struct tree_node *node) {
 
   int i;
   
+  /* update file id and line number for all TACs and error messages */
+  g_current_filename_id = node->file_id;
+  g_current_line_number = node->line_number;
+
   g_block_level++;
   
   for (i = 0; i < node->added_children; i++) {
@@ -956,6 +1004,10 @@ static int _generate_il_create_block(struct tree_node *node) {
 static int _generate_il_create_function(struct tree_node *node) {
 
   struct tac *t;
+
+  /* update file id and line number for all TACs and error messages */
+  g_current_filename_id = node->file_id;
+  g_current_line_number = node->line_number;
 
   g_current_function = node;
   
@@ -977,8 +1029,6 @@ static int _generate_il_create_function(struct tree_node *node) {
   /* HACK: the block has eneded without a return, so we'll add one here */
 
   if (node->children[0]->value != VARIABLE_TYPE_VOID) {
-    g_current_filename_id = node->file_id;
-    g_current_line_number = node->line_number;
     snprintf(g_error_message, sizeof(g_error_message), "_generate_il_create_function(): The function \"%s\" doesn't end to a return, but its return type is not void!\n", node->children[1]->label);
     print_error(g_error_message, ERROR_ERR);
     return FAILED;

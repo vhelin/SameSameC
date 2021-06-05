@@ -275,6 +275,10 @@ struct tree_node *allocate_tree_node(int type) {
   node->line_number = g_current_line_number;
   node->definition = NULL;
   node->local_variables = NULL;
+
+  /* NOTE! */
+  node->file_id = g_current_filename_id;
+  node->line_number = g_current_line_number;
   
   return node;
 }

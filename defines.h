@@ -370,6 +370,10 @@ struct tac {
   
   struct tree_node *function_node;
   char is_function;
+
+  struct tree_node *statement;
+  int file_id;
+  int line_number;
 };
 
 #define TAC_OP_DEAD               0
