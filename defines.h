@@ -173,6 +173,16 @@ struct file_name_info {
   struct file_name_info *next;
 };
 
+struct source_file {
+  char *file_name;
+  int  file_size;
+  int  id;
+  char *source;
+  int  lines_total;
+  int  *line_pointers;
+  struct source_file *next;
+};
+
 struct stack {
   struct stack_item *stack;
   struct stack *next;

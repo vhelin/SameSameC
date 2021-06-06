@@ -11,6 +11,7 @@
 #include "printf.h"
 #include "main.h"
 #include "definitions.h"
+#include "source_line_manager.h"
 
 
 extern int g_ind, g_source_pointer, g_extra_definitions, g_parsed_int, g_use_incdir;
@@ -198,6 +199,9 @@ int include_file(char *name, int *include_size, char *namespace) {
     g_file_name_info_tmp->id = g_file_name_id;
     id = g_file_name_id;
     g_file_name_id++;
+
+    /* load the source file for later copying the original lines into ASM output */
+    load_source_file(g_file_name_info_tmp->name, g_file_name_info_tmp->id);
   }
 
   if (namespace == NULL || namespace[0] == 0)

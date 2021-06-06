@@ -22,6 +22,7 @@ DWORD __stdcall GetCurrentProcessId(void);
 #include "printf.h"
 #include "parse.h"
 #include "include_file.h"
+#include "source_line_manager.h"
 #include "definitions.h"
 #include "symbol_table.h"
 #include "pass_1.h"
@@ -361,6 +362,8 @@ void procedures_at_exit(void) {
 
   free(g_register_reads);
   free(g_register_writes);
+
+  source_files_free();
   
   /* remove the tmp files */
   if (g_tmp_name != NULL)

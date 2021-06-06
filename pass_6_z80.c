@@ -13,6 +13,7 @@
 #include "definitions.h"
 #include "stack.h"
 #include "include_file.h"
+#include "source_line_manager.h"
 #include "pass_6_z80.h"
 #include "tree_node.h"
 #include "symbol_table.h"
@@ -755,7 +756,7 @@ static int _generate_asm_add_z80(struct tac *t, FILE *file_out, struct tree_node
 
 int generate_asm_z80(FILE *file_out) {
 
-  int i;
+  int i, file_id = -1, line_number = -1;
 
   for (i = 0; i < g_tacs_count; i++) {
     struct tac *t = &g_tacs[i];
@@ -765,6 +766,12 @@ int generate_asm_z80(FILE *file_out) {
       /* function start! */
       struct tree_node *function_node = t->function_node;
 
+      fprintf(file_out, "  ; =================================================================\n");
+      fprintf(file_out, "  ; %s:%d: ", get_file_name(t->file_id), t->line_number);
+      get_source_line(t->file_id, t->line_number, file_out);
+      fprintf(file_out, "\n");
+      fprintf(file_out, "  ; =================================================================\n");
+      
       fprintf(file_out, "  .SECTION \"%s\" FREE\n", function_node->children[1]->label);
 
       fprintf(file_out, "    %s:\n", function_node->children[1]->label);
@@ -786,7 +793,15 @@ int generate_asm_z80(FILE *file_out) {
 
         /* IL -> ASM */
 
-        fprintf(file_out, "      ; %s:%d\n", get_file_name(t->file_id), t->line_number);
+        if (t->file_id != file_id || t->line_number != line_number) {
+          file_id = t->file_id;
+          line_number = t->line_number;
+          fprintf(file_out, "      ; =================================================================\n");
+          fprintf(file_out, "      ; %s:%d: ", get_file_name(t->file_id), t->line_number);
+          get_source_line(t->file_id, t->line_number, file_out);
+          fprintf(file_out, "\n");
+          fprintf(file_out, "      ; =================================================================\n");
+        }
         
         if (op == TAC_OP_LABEL && t->is_function == YES) {
           _reset_cpu_z80();
@@ -794,8 +809,9 @@ int generate_asm_z80(FILE *file_out) {
           break;
         }
 
-        fprintf(file_out, "      ; -------------------------------------------------------\n");
+        fprintf(file_out, "      ; -----------------------------------------------------------------\n");
         print_tac(t, YES, file_out);
+        fprintf(file_out, "      ; -----------------------------------------------------------------\n");
         
         if (op == TAC_OP_LABEL && t->is_function == NO) {
           _reset_cpu_z80();
