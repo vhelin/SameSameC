@@ -11,44 +11,30 @@
       ; IX - tmp
       ; IY - tmp
       ; =================================================================
-      ; test2.blb:7: int8 var = g_value - 1 - 10 - 100;
+      ; test2.blb:7: int8 var = g_value & 1 & g_value;
       ; =================================================================
       ; -----------------------------------------------------------------
       ; TAC: variable "var" size 1 offset 0 type n
       ; -----------------------------------------------------------------
       ; -----------------------------------------------------------------
-      ; TAC: r0.uint8 (uint8) := g_value.int8 (uint8) - 1.uint8 (uint8)
+      ; TAC: r0.uint8 (uint8) := g_value.int8 (uint8) & 1.uint8 (uint8)
       ; -----------------------------------------------------------------
       LD  IX,g_value
       LD  A,(IX+0)
-      LD  L,1
-      SUB A,L
+      AND A,1
       ; offset -1
       LD  IX,-1
       ADD IX,DE
       LD  (IX+0),A
       ; -----------------------------------------------------------------
-      ; TAC: r1.uint8 (uint8) := r0.uint8 (uint8) - 10.uint8 (uint8)
+      ; TAC: var.int8 (int8) := r0.uint8 (uint8) & g_value.int8 (uint8)
       ; -----------------------------------------------------------------
       ; offset -1
       LD  IX,-1
       ADD IX,DE
       LD  A,(IX+0)
-      LD  L,10
-      SUB A,L
-      ; offset -2
-      LD  IX,-2
-      ADD IX,DE
-      LD  (IX+0),A
-      ; -----------------------------------------------------------------
-      ; TAC: var.int8 (int8) := r1.uint8 (uint8) - 100.uint8 (uint8)
-      ; -----------------------------------------------------------------
-      ; offset -2
-      LD  IX,-2
-      ADD IX,DE
-      LD  A,(IX+0)
-      LD  L,100
-      SUB A,L
+      LD  IX,g_value
+      AND A,(IX+0)
       ; offset 0
       LD  IX,0
       ADD IX,DE

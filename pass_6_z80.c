@@ -262,6 +262,18 @@ static void _add_l_to_a(FILE *file_out) {
 }
 
 
+static void _add_value_to_a(int value, FILE *file_out) {
+
+  fprintf(file_out, "      ADD A,%d\n", value);
+}
+
+
+static void _add_from_ix_to_a(int offset, FILE *file_out) {
+
+  fprintf(file_out, "      ADD A,(IX+%d)\n", offset);
+}
+
+
 static void _sub_l_from_a(FILE *file_out) {
 
   fprintf(file_out, "      SUB A,L\n");
@@ -272,6 +284,64 @@ static void _sub_bc_from_hl(FILE *file_out) {
 
   fprintf(file_out, "      AND A    ; Clear carry\n");
   fprintf(file_out, "      SBC HL,BC\n");
+}
+
+
+static void _sub_value_from_a(int value, FILE *file_out) {
+
+  fprintf(file_out, "      SUB A,%d\n", value);
+}
+
+
+static void _sub_from_ix_from_a(int offset, FILE *file_out) {
+
+  fprintf(file_out, "      SUB A,(IX+%d)\n", offset);
+}
+
+
+static void _or_value_from_a(int value, FILE *file_out) {
+
+  fprintf(file_out, "      OR A,%d\n", value);
+}
+
+
+static void _or_from_ix_from_a(int offset, FILE *file_out) {
+
+  fprintf(file_out, "      OR A,(IX+%d)\n", offset);
+}
+
+
+static void _or_bc_to_hl(FILE *file_out) {
+
+  fprintf(file_out, "      LD A,B\n");
+  fprintf(file_out, "      OR A,H\n");
+  fprintf(file_out, "      LD H,A\n");
+  fprintf(file_out, "      LD A,C\n");
+  fprintf(file_out, "      OR A,L\n");
+  fprintf(file_out, "      LD L,A\n");
+}
+
+
+static void _and_value_from_a(int value, FILE *file_out) {
+
+  fprintf(file_out, "      AND A,%d\n", value);
+}
+
+
+static void _and_from_ix_from_a(int offset, FILE *file_out) {
+
+  fprintf(file_out, "      AND A,(IX+%d)\n", offset);
+}
+
+
+static void _and_bc_to_hl(FILE *file_out) {
+
+  fprintf(file_out, "      LD A,B\n");
+  fprintf(file_out, "      AND A,H\n");
+  fprintf(file_out, "      LD H,A\n");
+  fprintf(file_out, "      LD A,C\n");
+  fprintf(file_out, "      AND A,L\n");
+  fprintf(file_out, "      LD L,A\n");
 }
 
 
@@ -458,7 +528,7 @@ static int _generate_asm_assignment_z80(struct tac *t, FILE *file_out, struct tr
 }
 
 
-static int _generate_asm_add_sub_z80_8bit(struct tac *t, FILE *file_out, struct tree_node *function_node, int op) {
+static int _generate_asm_add_sub_or_and_z80_8bit(struct tac *t, FILE *file_out, struct tree_node *function_node, int op) {
   
   int result_offset = -1, arg1_offset = -1, arg2_offset = -1;
   
@@ -529,28 +599,51 @@ static int _generate_asm_add_sub_z80_8bit(struct tac *t, FILE *file_out, struct 
   }
   
   /******************************************************************************************************/
-  /* copy data (arg2) -> l */
-  /******************************************************************************************************/
-  
-  if (t->arg2_type == TAC_ARG_TYPE_CONSTANT) {
-    /* 8-bit */
-    _load_value_to_l(((int)t->arg2_d) & 0xff, file_out);
-  }
-  else {
-    /* 8-bit */
-    _load_from_ix_to_l(0, file_out);
-  }
-
-  /******************************************************************************************************/
-  /* add/sub data l -> a */
+  /* add/sub/or/and data (arg2) -> a */
   /******************************************************************************************************/
 
-  if (op == TAC_OP_ADD)
-    _add_l_to_a(file_out);
-  else if (op == TAC_OP_SUB)
-    _sub_l_from_a(file_out);
+  if (op == TAC_OP_ADD) {
+    if (t->arg2_type == TAC_ARG_TYPE_CONSTANT) {
+      /* 8-bit */
+      _add_value_to_a(((int)t->arg2_d) & 0xff, file_out);
+    }
+    else {
+      /* 8-bit */
+      _add_from_ix_to_a(0, file_out);
+    }
+  }
+  else if (op == TAC_OP_SUB) {
+    if (t->arg2_type == TAC_ARG_TYPE_CONSTANT) {
+      /* 8-bit */
+      _sub_value_from_a(((int)t->arg2_d) & 0xff, file_out);
+    }
+    else {
+      /* 8-bit */
+      _sub_from_ix_from_a(0, file_out);
+    }
+  }
+  else if (op == TAC_OP_OR) {
+    if (t->arg2_type == TAC_ARG_TYPE_CONSTANT) {
+      /* 8-bit */
+      _or_value_from_a(((int)t->arg2_d) & 0xff, file_out);
+    }
+    else {
+      /* 8-bit */
+      _or_from_ix_from_a(0, file_out);
+    }
+  }
+  else if (op == TAC_OP_AND) {
+    if (t->arg2_type == TAC_ARG_TYPE_CONSTANT) {
+      /* 8-bit */
+      _and_value_from_a(((int)t->arg2_d) & 0xff, file_out);
+    }
+    else {
+      /* 8-bit */
+      _and_from_ix_from_a(0, file_out);
+    }
+  }
   else {
-    fprintf(stderr, "_generate_asm_add_sub_z80_8bit(): Unsupported TAC op %d! Please submit a bug report!\n", op);
+    fprintf(stderr, "_generate_asm_add_sub_or_and_z80_8bit(): Unsupported TAC op %d! Please submit a bug report!\n", op);
     return FAILED;
   }
 
@@ -559,7 +652,7 @@ static int _generate_asm_add_sub_z80_8bit(struct tac *t, FILE *file_out, struct 
   /******************************************************************************************************/
   
   if (t->result_type == TAC_ARG_TYPE_CONSTANT) {
-    fprintf(stderr, "_generate_asm_add_sub_z80_8bit(): Target cannot be a value!\n");
+    fprintf(stderr, "_generate_asm_add_sub_or_and_z80_8bit(): Target cannot be a value!\n");
     return FAILED;
   }
   else if (t->result_type == TAC_ARG_TYPE_LABEL && result_offset == 999999) {
@@ -585,7 +678,7 @@ static int _generate_asm_add_sub_z80_8bit(struct tac *t, FILE *file_out, struct 
 }
 
 
-static int _generate_asm_add_sub_z80_16bit(struct tac *t, FILE *file_out, struct tree_node *function_node, int op) {
+static int _generate_asm_add_sub_or_and_z80_16bit(struct tac *t, FILE *file_out, struct tree_node *function_node, int op) {
   
   int result_offset = -1, arg1_offset = -1, arg2_offset = -1;
   
@@ -654,7 +747,7 @@ static int _generate_asm_add_sub_z80_16bit(struct tac *t, FILE *file_out, struct
         _load_value_to_h(0, file_out);
       }
       else {
-        fprintf(stderr, "_generate_asm_add_sub_z80_16bit(): Unhandled 8-bit ARG1! Please submit a bug report!\n");
+        fprintf(stderr, "_generate_asm_add_sub_or_and_z80_16bit(): Unhandled 8-bit ARG1! Please submit a bug report!\n");
         return FAILED;
       }
     }
@@ -708,7 +801,7 @@ static int _generate_asm_add_sub_z80_16bit(struct tac *t, FILE *file_out, struct
         _load_value_to_b(0, file_out);
       }
       else {
-        fprintf(stderr, "_generate_asm_add_sub_z80_16bit(): Unhandled 8-bit ARG2! Please submit a bug report!\n");
+        fprintf(stderr, "_generate_asm_add_sub_or_and_z80_16bit(): Unhandled 8-bit ARG2! Please submit a bug report!\n");
         return FAILED;
       }
     }
@@ -722,8 +815,12 @@ static int _generate_asm_add_sub_z80_16bit(struct tac *t, FILE *file_out, struct
     _add_bc_to_hl(file_out);
   else if (op == TAC_OP_SUB)
     _sub_bc_from_hl(file_out);
+  else if (op == TAC_OP_OR)
+    _or_bc_to_hl(file_out);
+  else if (op == TAC_OP_AND)
+    _and_bc_to_hl(file_out);
   else {
-    fprintf(stderr, "_generate_asm_add_sub_z80_16bit(): Unsupported TAC op %d! Please submit a bug report!\n", op);
+    fprintf(stderr, "_generate_asm_add_sub_or_and_z80_16bit(): Unsupported TAC op %d! Please submit a bug report!\n", op);
     return FAILED;
   }
   
@@ -732,7 +829,7 @@ static int _generate_asm_add_sub_z80_16bit(struct tac *t, FILE *file_out, struct
   /******************************************************************************************************/
   
   if (t->result_type == TAC_ARG_TYPE_CONSTANT) {
-    fprintf(stderr, "_generate_asm_add_sub_z80_16bit(): Target cannot be a value!\n");
+    fprintf(stderr, "_generate_asm_add_sub_or_and_z80_16bit(): Target cannot be a value!\n");
     return FAILED;
   }
   else if (t->result_type == TAC_ARG_TYPE_LABEL && result_offset == 999999) {
@@ -765,17 +862,17 @@ static int _generate_asm_add_sub_z80_16bit(struct tac *t, FILE *file_out, struct
 }
 
 
-static int _generate_asm_add_sub_z80(struct tac *t, FILE *file_out, struct tree_node *function_node, int op) {
+static int _generate_asm_add_sub_or_and_z80(struct tac *t, FILE *file_out, struct tree_node *function_node, int op) {
 
   /* 8-bit or 16-bit? */
   if ((t->arg1_var_type_promoted == VARIABLE_TYPE_INT8 || t->arg1_var_type_promoted == VARIABLE_TYPE_UINT8) &&
       (t->arg2_var_type_promoted == VARIABLE_TYPE_INT8 || t->arg2_var_type_promoted == VARIABLE_TYPE_UINT8))
-    return _generate_asm_add_sub_z80_8bit(t, file_out, function_node, op);
+    return _generate_asm_add_sub_or_and_z80_8bit(t, file_out, function_node, op);
   else if ((t->arg1_var_type_promoted == VARIABLE_TYPE_INT16 || t->arg1_var_type_promoted == VARIABLE_TYPE_UINT16) &&
       (t->arg2_var_type_promoted == VARIABLE_TYPE_INT16 || t->arg2_var_type_promoted == VARIABLE_TYPE_UINT16))
-    return _generate_asm_add_sub_z80_16bit(t, file_out, function_node, op);
+    return _generate_asm_add_sub_or_and_z80_16bit(t, file_out, function_node, op);
 
-  fprintf(stderr, "_generate_asm_add_sub_z80(): 8-bit + 16-bit, this shouldn't happen. Please submit a bug report!\n");
+  fprintf(stderr, "_generate_asm_add_sub_or_and_z80(): 8-bit + 16-bit, this shouldn't happen. Please submit a bug report!\n");
 
   return FAILED;
 }
@@ -850,11 +947,19 @@ int generate_asm_z80(FILE *file_out) {
             return FAILED;
         }
         else if (op == TAC_OP_ADD) {
-          if (_generate_asm_add_sub_z80(t, file_out, function_node, TAC_OP_ADD) == FAILED)
+          if (_generate_asm_add_sub_or_and_z80(t, file_out, function_node, TAC_OP_ADD) == FAILED)
             return FAILED;
         }
         else if (op == TAC_OP_SUB) {
-          if (_generate_asm_add_sub_z80(t, file_out, function_node, TAC_OP_SUB) == FAILED)
+          if (_generate_asm_add_sub_or_and_z80(t, file_out, function_node, TAC_OP_SUB) == FAILED)
+            return FAILED;
+        }
+        else if (op == TAC_OP_OR) {
+          if (_generate_asm_add_sub_or_and_z80(t, file_out, function_node, TAC_OP_OR) == FAILED)
+            return FAILED;
+        }
+        else if (op == TAC_OP_AND) {
+          if (_generate_asm_add_sub_or_and_z80(t, file_out, function_node, TAC_OP_AND) == FAILED)
             return FAILED;
         }
         else
