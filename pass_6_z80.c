@@ -387,6 +387,12 @@ static void _load_value_to_l(int value, FILE *file_out) {
 }
 
 
+static void _jump_to(char *label, FILE *file_out) {
+
+  fprintf(file_out, "      JP  %s\n", label);
+}
+
+
 static void _sign_extend_a_to_bc(FILE *file_out) {
 
   /* from https://stackoverflow.com/questions/49070981/z80-assembly-how-to-add-signed-8-bit-value-to-16-bit-register */
@@ -938,6 +944,7 @@ int generate_asm_z80(FILE *file_out) {
         fprintf(file_out, "      ; -----------------------------------------------------------------\n");
         
         if (op == TAC_OP_LABEL && t->is_function == NO) {
+          fprintf(file_out, "    %s:\n", t->result_s);
           _reset_cpu_z80();
         }
         else if (op == TAC_OP_LABEL)
@@ -962,6 +969,8 @@ int generate_asm_z80(FILE *file_out) {
           if (_generate_asm_add_sub_or_and_z80(t, file_out, function_node, TAC_OP_AND) == FAILED)
             return FAILED;
         }
+        else if (op == TAC_OP_JUMP)
+          _jump_to(t->result_s, file_out);
         else
           fprintf(stderr, "generate_asm_z80(): Unimplemented IL -> Z80 ASM op %d! Please submit a bug report!\n", op);
       }

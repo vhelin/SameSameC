@@ -343,6 +343,8 @@ struct tree_node {
 #define TREE_NODE_TYPE_CREATE_VARIABLE_FUNCTION_ARGUMENT 24
 #define TREE_NODE_TYPE_GET_ADDRESS         25
 #define TREE_NODE_TYPE_GET_ADDRESS_ARRAY   26
+#define TREE_NODE_TYPE_LABEL               27
+#define TREE_NODE_TYPE_GOTO                28
 
 struct symbol_table_item {
   int level;

@@ -930,6 +930,35 @@ static int _generate_il_create_continue(struct tree_node *node) {
 }
 
 
+static int _generate_il_create_label(struct tree_node *node) {
+
+  /* update file id and line number for all TACs and error messages */
+  g_current_filename_id = node->file_id;
+  g_current_line_number = node->line_number;
+
+  if (add_tac_label(node->label) == NULL)
+    return FAILED;
+
+  return SUCCEEDED;
+}
+
+
+static int _generate_il_create_goto(struct tree_node *node) {
+
+  struct tac *t;
+  
+  /* update file id and line number for all TACs and error messages */
+  g_current_filename_id = node->file_id;
+  g_current_line_number = node->line_number;
+
+  t = add_tac_jump(node->label);
+  if (t == NULL)
+    return FAILED;
+
+  return SUCCEEDED;
+}
+
+
 static int _generate_il_create_statement(struct tree_node *node) {
 
   int r = SUCCEEDED;
@@ -967,6 +996,10 @@ static int _generate_il_create_statement(struct tree_node *node) {
     r = _generate_il_create_break(node);
   else if (node->type == TREE_NODE_TYPE_CONTINUE)
     r = _generate_il_create_continue(node);
+  else if (node->type == TREE_NODE_TYPE_LABEL)
+    r = _generate_il_create_label(node);
+  else if (node->type == TREE_NODE_TYPE_GOTO)
+    r = _generate_il_create_goto(node);
   else {
     snprintf(g_error_message, sizeof(g_error_message), "_generate_il_create_statement(): Unsupported node type %d! Please send a bug report!\n", node->type);
     print_error(g_error_message, ERROR_ERR);

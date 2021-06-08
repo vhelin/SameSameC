@@ -414,6 +414,16 @@ static void _print_statement(struct tree_node *node, int line) {
     _print_while(node);
   else if (node->type == TREE_NODE_TYPE_FOR)
     _print_for(node);
+  else if (node->type == TREE_NODE_TYPE_LABEL) {
+    fprintf(stderr, "%s", _get_current_indentation());
+    fprintf(stderr, "%s:", node->label);
+    fprintf(stderr, "%s", _get_current_end_of_line());
+  }
+  else if (node->type == TREE_NODE_TYPE_GOTO) {
+    fprintf(stderr, "%s", _get_current_indentation());
+    fprintf(stderr, "goto %s", node->label);
+    fprintf(stderr, "%s%s", _get_current_end_of_statement(), _get_current_end_of_line());
+  }
   else if (node->type == TREE_NODE_TYPE_INCREMENT_DECREMENT) {
     fprintf(stderr, "%s", _get_current_indentation());
     _print_simple_tree_node(node);

@@ -1115,9 +1115,43 @@ int create_statement(void) {
     /* next token */
     _next_token();
 
+    if (strcmp(name, "goto") == 0) {
+      /* goto */
+      if (g_token_current->id != TOKEN_ID_VALUE_STRING) {
+        print_error("\"goto\" needs a label to go to.\n", ERROR_ERR);
+        return FAILED;
+      }
+
+      /* add prefix '_' */
+      snprintf(g_error_message, sizeof(g_error_message), "_%s", g_token_current->label);
+      
+      /* next token */
+      _next_token();
+
+      node = allocate_tree_node_value_string(g_error_message);
+      if (node == NULL)
+        return FAILED;
+
+      node->type = TREE_NODE_TYPE_GOTO;
+      
+      tree_node_add_child(_get_current_open_block(), node);
+
+      if (!(g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == ';'))  {
+        snprintf(g_error_message, sizeof(g_error_message), "Expected ';', but got %s.\n", _get_token_simple(g_token_current));
+        print_error(g_error_message, ERROR_ERR);
+        return FAILED;
+      }
+
+      /* next token */
+      _next_token();
+
+      return SUCCEEDED;
+    }
+    
     if (g_token_current->id != TOKEN_ID_SYMBOL || (g_token_current->value != '=' &&
                                                    g_token_current->value != '(' &&
                                                    g_token_current->value != '[' &&
+                                                   g_token_current->value != ':' &&
                                                    g_token_current->value != SYMBOL_INCREMENT &&
                                                    g_token_current->value != SYMBOL_DECREMENT)) {
       snprintf(g_error_message, sizeof(g_error_message), "%s must be followed by '=' / '[' / '(' / '++' / '--'.\n", name);
@@ -1160,6 +1194,22 @@ int create_statement(void) {
       if (item != NULL)
         node->definition = item->node;
       
+      return SUCCEEDED;
+    }
+    else if (symbol == ':') {
+      /* label */
+
+      /* add prefix '_' */
+      snprintf(g_error_message, sizeof(g_error_message), "_%s", name);
+      
+      node = allocate_tree_node_value_string(g_error_message);
+      if (node == NULL)
+        return FAILED;
+
+      node->type = TREE_NODE_TYPE_LABEL;
+      
+      tree_node_add_child(_get_current_open_block(), node);
+
       return SUCCEEDED;
     }
     else if (symbol == '=' || symbol == '[') {
@@ -2918,8 +2968,10 @@ static void _check_ast_statement(struct tree_node *node) {
     _check_ast_simple_tree_node(node);
   else if (node->type == TREE_NODE_TYPE_BREAK || node->type == TREE_NODE_TYPE_CONTINUE)
     return;
+  else if (node->type == TREE_NODE_TYPE_LABEL || node->type == TREE_NODE_TYPE_GOTO)
+    return;
   else {
-    fprintf(stderr, "_check_ast_statement(): Unhandled statemet type %d! Please submit a bug report!\n", node->type);
+    fprintf(stderr, "_check_ast_statement(): Unhandled statement type %d! Please submit a bug report!\n", node->type);
     g_check_ast_failed = YES;
   }
 }
