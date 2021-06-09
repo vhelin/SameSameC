@@ -112,6 +112,12 @@ static void _load_value_to_iy(int value, FILE *file_out) {
 }
 
 
+static void _load_label_to_hl(char *label, FILE *file_out) {
+
+  fprintf(file_out, "      LD  HL,%s\n", label);
+}
+
+
 static void _load_label_to_ix(char *label, FILE *file_out) {
 
   fprintf(file_out, "      LD  IX,%s\n", label);
@@ -217,6 +223,12 @@ static void _load_h_into_ix(int offset, FILE *file_out) {
 static void _load_l_into_ix(int offset, FILE *file_out) {
 
   fprintf(file_out, "      LD  (IX+%d),L\n", offset);
+}
+
+
+static void _add_de_to_hl(FILE *file_out) {
+
+  fprintf(file_out, "      ADD HL,DE\n");
 }
 
 
@@ -884,6 +896,80 @@ static int _generate_asm_add_sub_or_and_z80(struct tac *t, FILE *file_out, struc
 }
 
 
+static int _generate_asm_get_address_z80(struct tac *t, FILE *file_out, struct tree_node *function_node) {
+
+  int result_offset = -1, arg1_offset = -1;
+  
+  /* result */
+
+  if (find_stack_offset(t->result_type, t->result_s, t->result_d, t->result_node, &result_offset, function_node) == FAILED)
+    return FAILED;
+  
+  /* arg1 */
+
+  if (find_stack_offset(t->arg1_type, t->arg1_s, t->arg1_d, t->arg1_node, &arg1_offset, function_node) == FAILED)
+    return FAILED;
+
+  /* generate asm */
+
+  /******************************************************************************************************/
+  /* source address (arg1) -> hl */
+  /******************************************************************************************************/
+  
+  if (t->arg1_type == TAC_ARG_TYPE_CONSTANT) {
+    fprintf(stderr, "_generate_asm_get_address_z80(): Source cannot be a value!\n");
+    return FAILED;
+  }
+  else if (t->arg1_type == TAC_ARG_TYPE_LABEL && arg1_offset == 999999) {
+    /* global var */
+    _load_label_to_hl(t->arg1_s, file_out);
+  }
+  else {
+    /* it's a variable in the frame! */
+    fprintf(file_out, "      ; offset %d\n", arg1_offset);
+
+    _load_value_to_hl(arg1_offset, file_out);
+    _add_de_to_hl(file_out);
+  }
+  
+  /******************************************************************************************************/
+  /* target address -> ix */
+  /******************************************************************************************************/
+  
+  if (t->result_type == TAC_ARG_TYPE_CONSTANT) {
+    fprintf(stderr, "_generate_asm_get_address_z80(): Target cannot be a value!\n");
+    return FAILED;
+  }
+  else if (t->result_type == TAC_ARG_TYPE_LABEL && result_offset == 999999) {
+    /* global var */
+    _load_label_to_ix(t->result_s, file_out);
+  }
+  else {
+    /* it's a variable in the frame! */
+    fprintf(file_out, "      ; offset %d\n", result_offset);
+
+    _load_value_to_ix(result_offset, file_out);
+    _add_de_to_ix(file_out);
+  }
+
+  /******************************************************************************************************/
+  /* copy data hl -> (ix) */
+  /******************************************************************************************************/
+
+  if (t->result_var_type == VARIABLE_TYPE_INT16 || t->result_var_type == VARIABLE_TYPE_UINT16) {
+    /* 16-bit */
+    _load_l_into_ix(0, file_out);
+    _load_h_into_ix(1, file_out);
+  }
+  else {
+    fprintf(stderr, "_generate_asm_get_address_z80(): The target cannot be an 8-bit value!\n");
+    return FAILED;
+  }
+  
+  return SUCCEEDED;
+}
+
+
 int generate_asm_z80(FILE *file_out) {
 
   int i, file_id = -1, line_number = -1;
@@ -967,6 +1053,10 @@ int generate_asm_z80(FILE *file_out) {
         }
         else if (op == TAC_OP_AND) {
           if (_generate_asm_add_sub_or_and_z80(t, file_out, function_node, TAC_OP_AND) == FAILED)
+            return FAILED;
+        }
+        else if (op == TAC_OP_GET_ADDRESS) {
+          if (_generate_asm_get_address_z80(t, file_out, function_node) == FAILED)
             return FAILED;
         }
         else if (op == TAC_OP_JUMP)

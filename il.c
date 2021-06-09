@@ -533,6 +533,11 @@ static void _increment_decrement(char *label, int increment) {
   /* find the definition */
   tac_try_find_definition(t, label, NULL, TAC_USE_ARG1);
   tac_try_find_definition(t, label, NULL, TAC_USE_RESULT);
+
+  /* promote to the maximum of this expression */
+  t->result_var_type_promoted = t->result_node->children[0]->value;
+  t->arg1_var_type_promoted = t->result_node->children[0]->value;
+  t->arg2_var_type_promoted = t->result_node->children[0]->value;
 }
 
 
@@ -748,16 +753,18 @@ int il_compute_stack(struct stack *sta, int count, int rresult) {
           return FAILED;
 
         ta->op = TAC_OP_GET_ADDRESS;
-
-        tac_set_arg1(ta, TAC_ARG_TYPE_LABEL, 0, si[t-1]->string);
         tac_set_result(ta, TAC_ARG_TYPE_TEMP, g_temp_r++, NULL);
+        tac_set_arg1(ta, TAC_ARG_TYPE_LABEL, 0, si[t-1]->string);
 
+        /* promote to the maximum of this expression */
+        ta->result_var_type_promoted = g_max_var_type;
+        ta->arg1_var_type_promoted = g_max_var_type;
+        
         /* find the definition */
         if (tac_try_find_definition(ta, si[t-1]->string, NULL, TAC_USE_ARG1) == FAILED)
           return FAILED;
 
         _turn_stack_item_into_a_register(si, sit, t-1, g_temp_r-1);
-        t--;
         
         break;
       case SI_OP_PRE_INC:
@@ -782,7 +789,6 @@ int il_compute_stack(struct stack *sta, int count, int rresult) {
           return FAILED;
 
         _turn_stack_item_into_a_register(si, sit, t-1, g_temp_r-1);
-        t--;
         
         break;
       case SI_OP_PRE_DEC:
@@ -807,7 +813,6 @@ int il_compute_stack(struct stack *sta, int count, int rresult) {
           return FAILED;
         
         _turn_stack_item_into_a_register(si, sit, t-1, g_temp_r-1);
-        t--;
         
         break;
       case SI_OP_POST_INC:
@@ -847,7 +852,6 @@ int il_compute_stack(struct stack *sta, int count, int rresult) {
         ta->arg1_var_type_promoted = g_max_var_type;
         
         _turn_stack_item_into_a_register(si, sit, t-1, g_temp_r-1);
-        t--;
         
         break;
       case SI_OP_POST_DEC:
@@ -887,7 +891,6 @@ int il_compute_stack(struct stack *sta, int count, int rresult) {
         ta->arg1_var_type_promoted = g_max_var_type;
         
         _turn_stack_item_into_a_register(si, sit, t-1, g_temp_r-1);
-        t--;
 
         break;
       case SI_OP_USE_REGISTER:

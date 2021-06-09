@@ -389,10 +389,10 @@ struct tac {
 };
 
 #define TAC_OP_DEAD               0
-#define TAC_OP_LABEL              1
-#define TAC_OP_ADD                2
-#define TAC_OP_SUB                3
-#define TAC_OP_ASSIGNMENT         4
+#define TAC_OP_LABEL              1 /* DONE */
+#define TAC_OP_ADD                2 /* DONE */
+#define TAC_OP_SUB                3 /* DONE */
+#define TAC_OP_ASSIGNMENT         4 /* DONE */
 #define TAC_OP_ARRAY_ASSIGNMENT   5
 #define TAC_OP_CREATE_VARIABLE    6
 #define TAC_OP_MUL                7
@@ -406,15 +406,15 @@ struct tac {
 #define TAC_OP_ARRAY_READ        15
 #define TAC_OP_DIV               16
 #define TAC_OP_MOD               17
-#define TAC_OP_AND               18
-#define TAC_OP_OR                19
+#define TAC_OP_AND               18 /* DONE */
+#define TAC_OP_OR                19 /* DONE */
 #define TAC_OP_SHIFT_LEFT        20
 #define TAC_OP_SHIFT_RIGHT       21
 #define TAC_OP_RETURN            22
 #define TAC_OP_RETURN_VALUE      23
 #define TAC_OP_FUNCTION_CALL     24
 #define TAC_OP_FUNCTION_CALL_USE_RETURN_VALUE 25
-#define TAC_OP_GET_ADDRESS       26
+#define TAC_OP_GET_ADDRESS       26 /* DONE */
 #define TAC_OP_GET_ADDRESS_ARRAY 27
 
 #define TAC_ARG_TYPE_NONE     0

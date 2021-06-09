@@ -153,6 +153,10 @@ int tree_node_get_max_var_type(struct tree_node *node) {
         type_max = get_max_variable_type_2(type_max, tree_node_get_max_var_type(n));
       else if (n->type == TREE_NODE_TYPE_VALUE_STRING)
         type_max = get_max_variable_type_2(type_max, n->definition->children[0]->value);
+      else if (n->type == TREE_NODE_TYPE_GET_ADDRESS || n->type == TREE_NODE_TYPE_GET_ADDRESS_ARRAY)
+        type_max = get_max_variable_type_2(type_max, VARIABLE_TYPE_UINT16);
+      else if (n->type == TREE_NODE_TYPE_INCREMENT_DECREMENT)
+        type_max = get_max_variable_type_2(type_max, n->definition->children[0]->value);
       else
         fprintf(stderr, "tree_node_get_max_var_type(): Unsupported tree_node type %d in an expression! Please submit a bug report!\n", n->type);
     }
@@ -161,7 +165,7 @@ int tree_node_get_max_var_type(struct tree_node *node) {
   }
   else {
     fprintf(stderr, "tree_node_get_max_var_type(): Unsupported tree_node type %d! Please submit a bug report!\n", node->type);
-    return VARIABLE_TYPE_NONE;    
+    return VARIABLE_TYPE_NONE;
   }  
 }
 
