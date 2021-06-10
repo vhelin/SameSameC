@@ -388,7 +388,7 @@ struct tac {
   int line_number;
 };
 
-#define TAC_OP_DEAD               0
+#define TAC_OP_DEAD               0 /* DONE */
 #define TAC_OP_LABEL              1 /* DONE */
 #define TAC_OP_ADD                2 /* DONE */
 #define TAC_OP_SUB                3 /* DONE */
@@ -396,7 +396,7 @@ struct tac {
 #define TAC_OP_ARRAY_ASSIGNMENT   5
 #define TAC_OP_CREATE_VARIABLE    6
 #define TAC_OP_MUL                7
-#define TAC_OP_JUMP               8
+#define TAC_OP_JUMP               8 /* DONE */
 #define TAC_OP_JUMP_EQ            9
 #define TAC_OP_JUMP_LT           10
 #define TAC_OP_JUMP_GT           11

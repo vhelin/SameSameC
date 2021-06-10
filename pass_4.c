@@ -453,6 +453,10 @@ struct tac *generate_il_create_get_address_array(struct tree_node *node) {
   tac_set_arg1(t, TAC_ARG_TYPE_LABEL, 0, node->label);
   tac_set_arg2(t, TAC_ARG_TYPE_TEMP, r, NULL);
 
+  /* set promotions */
+  tac_promote_argument(t, VARIABLE_TYPE_UINT16, TAC_USE_ARG1);
+  tac_promote_argument(t, VARIABLE_TYPE_UINT16, TAC_USE_ARG2);
+
   /* find the function */
   sti = symbol_table_find_symbol(node->label);
   if (sti != NULL)

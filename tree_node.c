@@ -127,6 +127,15 @@ int get_max_variable_type_4(int t1, int t2, int t3, int t4) {
 }
 
 
+static int _get_create_variable_variable_type(struct tree_node *node) {
+
+  if (node->value_double > 0.0)
+    return VARIABLE_TYPE_UINT16;
+  else
+    return node->value;
+}
+
+
 int tree_node_get_max_var_type(struct tree_node *node) {
 
   if (node->type == TREE_NODE_TYPE_VALUE_INT)
@@ -134,9 +143,17 @@ int tree_node_get_max_var_type(struct tree_node *node) {
   else if (node->type == TREE_NODE_TYPE_VALUE_DOUBLE)
     return get_variable_type_constant((int)node->value_double);
   else if (node->type == TREE_NODE_TYPE_VALUE_STRING)
-    return node->definition->children[0]->value;
+    return _get_create_variable_variable_type(node->definition->children[0]);
   else if (node->type == TREE_NODE_TYPE_VARIABLE_TYPE)
     return node->value;
+  else if (node->type == TREE_NODE_TYPE_ARRAY_ITEM)
+    return _get_create_variable_variable_type(node->definition->children[0]);
+  else if (node->type == TREE_NODE_TYPE_GET_ADDRESS || node->type == TREE_NODE_TYPE_GET_ADDRESS_ARRAY)
+    return VARIABLE_TYPE_UINT16;
+  else if (node->type == TREE_NODE_TYPE_INCREMENT_DECREMENT)
+    return _get_create_variable_variable_type(node->definition->children[0]);
+  else if (node->type == TREE_NODE_TYPE_ARRAY_ITEM)
+    return _get_create_variable_variable_type(node->definition->children[0]);
   else if (node->type == TREE_NODE_TYPE_EXPRESSION) {
     int type_max = VARIABLE_TYPE_NONE, i;
 
@@ -152,11 +169,13 @@ int tree_node_get_max_var_type(struct tree_node *node) {
       else if (n->type == TREE_NODE_TYPE_EXPRESSION)
         type_max = get_max_variable_type_2(type_max, tree_node_get_max_var_type(n));
       else if (n->type == TREE_NODE_TYPE_VALUE_STRING)
-        type_max = get_max_variable_type_2(type_max, n->definition->children[0]->value);
+        type_max = get_max_variable_type_2(type_max, _get_create_variable_variable_type(n->definition->children[0]));
       else if (n->type == TREE_NODE_TYPE_GET_ADDRESS || n->type == TREE_NODE_TYPE_GET_ADDRESS_ARRAY)
         type_max = get_max_variable_type_2(type_max, VARIABLE_TYPE_UINT16);
       else if (n->type == TREE_NODE_TYPE_INCREMENT_DECREMENT)
-        type_max = get_max_variable_type_2(type_max, n->definition->children[0]->value);
+        type_max = get_max_variable_type_2(type_max, _get_create_variable_variable_type(n->definition->children[0]));
+      else if (n->type == TREE_NODE_TYPE_ARRAY_ITEM)
+        type_max = get_max_variable_type_2(type_max, _get_create_variable_variable_type(n->definition->children[0]));
       else
         fprintf(stderr, "tree_node_get_max_var_type(): Unsupported tree_node type %d in an expression! Please submit a bug report!\n", n->type);
     }

@@ -19,10 +19,10 @@
 extern int g_current_line_number, g_current_filename_id;
 extern int g_temp_r, g_temp_label_id;
 
-static int g_max_var_type = VARIABLE_TYPE_NONE;
+static int g_max_var_type = VARIABLE_TYPE_NONE, g_max_var_types[256], g_max_var_type_index = 0;
 
 
-int il_stack_calculate_expression(struct tree_node *node, char calculate_max_var_type) {
+int il_stack_calculate_expression(struct tree_node *node, int calculate_max_var_type) {
 
   struct stack_item si[256];
   struct tree_node *child;
@@ -251,6 +251,9 @@ int il_stack_calculate_expression(struct tree_node *node, char calculate_max_var
       /* find the definition */
       if (tac_try_find_definition(t, child->label, child, TAC_USE_ARG1) == FAILED)
         return FAILED;
+
+      /* set promotions */
+      tac_promote_argument(t, VARIABLE_TYPE_UINT16, TAC_USE_RESULT);
       
       si[z].type = STACK_ITEM_TYPE_OPERATOR;
       si[z].value = SI_OP_USE_REGISTER;
@@ -286,12 +289,19 @@ int il_stack_calculate_expression(struct tree_node *node, char calculate_max_var
       si[z].sign = SI_SIGN_POSITIVE;
     }
     else if (child->type == TREE_NODE_TYPE_ARRAY_ITEM) {
-      int rindex = g_temp_r;
+      int rindex = g_temp_r, index_max_var_type;
       struct tac *t;
       
       /* calculate the index */
-      if (il_stack_calculate_expression(child->children[0], NO) == FAILED)
+      if (g_max_var_type_index >= 255) {
+        fprintf(stderr, "_il_stack_calculate_expression(): Out of recursive call stack! Please submit a bug report!\n");
         return FAILED;
+      }
+      g_max_var_types[g_max_var_type_index++] = g_max_var_type;
+      if (il_stack_calculate_expression(child->children[0], YES) == FAILED)
+        return FAILED;
+      index_max_var_type = g_max_var_type;
+      g_max_var_type = g_max_var_types[--g_max_var_type_index];
 
       t = add_tac();
       if (t == NULL)
@@ -305,7 +315,8 @@ int il_stack_calculate_expression(struct tree_node *node, char calculate_max_var
 
       /* promote to the maximum of this expression */
       t->result_var_type_promoted = g_max_var_type;
-      
+      t->arg2_var_type_promoted = index_max_var_type;
+            
       /* find the definition */
       if (tac_try_find_definition(t, child->label, child, TAC_USE_ARG1) == FAILED)
         return FAILED;

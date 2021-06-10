@@ -896,7 +896,7 @@ static int _generate_asm_add_sub_or_and_z80(struct tac *t, FILE *file_out, struc
 }
 
 
-static int _generate_asm_get_address_z80(struct tac *t, FILE *file_out, struct tree_node *function_node) {
+static int _generate_asm_get_address_z80(struct tac *t, FILE *file_out, struct tree_node *function_node, int op) {
 
   int result_offset = -1, arg1_offset = -1;
   
@@ -1039,24 +1039,12 @@ int generate_asm_z80(FILE *file_out) {
           if (_generate_asm_assignment_z80(t, file_out, function_node) == FAILED)
             return FAILED;
         }
-        else if (op == TAC_OP_ADD) {
-          if (_generate_asm_add_sub_or_and_z80(t, file_out, function_node, TAC_OP_ADD) == FAILED)
+        else if (op == TAC_OP_ADD || op == TAC_OP_SUB || op == TAC_OP_OR || op == TAC_OP_AND) {
+          if (_generate_asm_add_sub_or_and_z80(t, file_out, function_node, op) == FAILED)
             return FAILED;
         }
-        else if (op == TAC_OP_SUB) {
-          if (_generate_asm_add_sub_or_and_z80(t, file_out, function_node, TAC_OP_SUB) == FAILED)
-            return FAILED;
-        }
-        else if (op == TAC_OP_OR) {
-          if (_generate_asm_add_sub_or_and_z80(t, file_out, function_node, TAC_OP_OR) == FAILED)
-            return FAILED;
-        }
-        else if (op == TAC_OP_AND) {
-          if (_generate_asm_add_sub_or_and_z80(t, file_out, function_node, TAC_OP_AND) == FAILED)
-            return FAILED;
-        }
-        else if (op == TAC_OP_GET_ADDRESS) {
-          if (_generate_asm_get_address_z80(t, file_out, function_node) == FAILED)
+        else if (op == TAC_OP_GET_ADDRESS || op == TAC_OP_GET_ADDRESS_ARRAY) {
+          if (_generate_asm_get_address_z80(t, file_out, function_node, op) == FAILED)
             return FAILED;
         }
         else if (op == TAC_OP_JUMP)
