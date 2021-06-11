@@ -315,6 +315,7 @@ int il_stack_calculate_expression(struct tree_node *node, int calculate_max_var_
 
       /* promote to the maximum of this expression */
       t->result_var_type_promoted = g_max_var_type;
+      t->arg1_var_type_promoted = g_max_var_type;
       t->arg2_var_type_promoted = index_max_var_type;
 
       /* find the definition */

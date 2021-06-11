@@ -139,25 +139,16 @@ static int _find_end_of_il_function(int start, int *is_last_function) {
     return start;
   }
 
-  fprintf(stderr, "FUNCTION %s %d\n%.3d: ", g_tacs[j].result_s, g_tacs[j].is_function == YES, j);
-  print_tac(&g_tacs[j], NO, stderr);
-
   j++;
   
   while (j < g_tacs_count) {
-    if (g_tacs[j].op == TAC_OP_LABEL && g_tacs[j].is_function == YES) {
-      fprintf(stderr, "%.3d: ", j);
-      print_tac(&g_tacs[j], NO, stderr);
+    if (g_tacs[j].op == TAC_OP_LABEL && g_tacs[j].is_function == YES)
       return j;
-    }
     j++;
   }
 
   *is_last_function = YES;
 
-  fprintf(stderr, "%.3d: ", j-1);
-  print_tac(&g_tacs[j-1], NO, stderr);
-  
   return j;
 }
 
