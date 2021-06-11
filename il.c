@@ -316,7 +316,7 @@ int il_stack_calculate_expression(struct tree_node *node, int calculate_max_var_
       /* promote to the maximum of this expression */
       t->result_var_type_promoted = g_max_var_type;
       t->arg2_var_type_promoted = index_max_var_type;
-            
+
       /* find the definition */
       if (tac_try_find_definition(t, child->label, child, TAC_USE_ARG1) == FAILED)
         return FAILED;
@@ -1307,10 +1307,8 @@ int il_compute_stack(struct stack *sta, int count, int rresult) {
   }
 
   /* no operations were made and we have a value in the stack? */
-  /*
   if (rresult == g_temp_r - 1 && t == 1)
-    r1 = _load_to_register(si, v, t-1);
-  */
+    _load_to_register(si, v, t-1);
 
   /* move the result to the result register */
   ta = add_tac();
