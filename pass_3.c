@@ -17,7 +17,7 @@
 #include "tree_node.h"
 
 
-extern struct tree_node *g_global_nodes;
+extern struct tree_node *g_global_nodes, *g_label_definition;
 extern int g_verbose_mode, g_input_float_mode;
 extern char *g_variable_types[4], *g_two_char_symbols[10], g_label[MAX_NAME_LENGTH + 1];
 extern double g_parsed_double;
@@ -556,7 +556,12 @@ static int _simplify_expression(struct tree_node *node) {
       if (_simplify_expression(node->children[i]->children[0]) == SUCCEEDED)
         return SUCCEEDED;
       subexpressions++;
-    }    
+    }
+    if (node->children[i]->type == TREE_NODE_TYPE_ARRAY_ITEM) {
+      if (_simplify_expression(node->children[i]->children[0]) == SUCCEEDED)
+        return SUCCEEDED;
+      subexpressions++;
+    }
   }
 
   if (subexpressions == 0) {
@@ -584,10 +589,11 @@ static int _simplify_expression(struct tree_node *node) {
       return SUCCEEDED;
     }
     else if (result == INPUT_NUMBER_STRING) {
-      /* turn the expression into a string */
+      /* turn the expression into a string - HACK_1 */
       free_tree_node_children(node);
 
       node->type = TREE_NODE_TYPE_VALUE_STRING;
+      node->definition = g_label_definition;
 
       if (tree_node_set_string(node, g_label) == FAILED)
         return FAILED;

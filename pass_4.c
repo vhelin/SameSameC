@@ -151,6 +151,11 @@ static int _generate_il_create_expression(struct tree_node *node) {
     tac_set_result(t, TAC_ARG_TYPE_TEMP, g_temp_r++, NULL);
     tac_set_arg1(t, TAC_ARG_TYPE_LABEL, 0, node->label);
 
+    /* set promotions */
+    type = tree_node_get_max_var_type(node->definition->children[0]);
+    tac_promote_argument(t, type, TAC_USE_RESULT);
+    tac_promote_argument(t, type, TAC_USE_ARG1);
+
     /* find the definition */
     if (tac_try_find_definition(t, node->label, node, TAC_USE_ARG1) == FAILED)
       return FAILED;
@@ -168,6 +173,7 @@ static int _generate_il_create_expression(struct tree_node *node) {
     /* set promotions */
     type = get_variable_type_constant(node->value);
     tac_promote_argument(t, type, TAC_USE_ARG1);
+    tac_promote_argument(t, type, TAC_USE_RESULT);
   }
   else if (node->type == TREE_NODE_TYPE_VALUE_DOUBLE) {
     t = add_tac();
@@ -181,7 +187,8 @@ static int _generate_il_create_expression(struct tree_node *node) {
 
     /* set promotions */
     type = get_variable_type_constant((int)node->value_double);
-    tac_promote_argument(t, type, TAC_USE_ARG1);    
+    tac_promote_argument(t, type, TAC_USE_ARG1);
+    tac_promote_argument(t, type, TAC_USE_RESULT);
   }
   else if (node->type == TREE_NODE_TYPE_FUNCTION_CALL) {
     fprintf(stderr, "_generate_il_create_expression(): IMPLEMENT ME!\n");
@@ -435,7 +442,7 @@ struct tac *generate_il_create_get_address_array(struct tree_node *node) {
 
   struct symbol_table_item *sti;
   struct tac *t;
-  int r;
+  int r, type;
 
   /* update file id and line number for all TACs and error messages */
   g_current_filename_id = node->file_id;
@@ -453,10 +460,6 @@ struct tac *generate_il_create_get_address_array(struct tree_node *node) {
   tac_set_arg1(t, TAC_ARG_TYPE_LABEL, 0, node->label);
   tac_set_arg2(t, TAC_ARG_TYPE_TEMP, r, NULL);
 
-  /* set promotions */
-  tac_promote_argument(t, VARIABLE_TYPE_UINT16, TAC_USE_ARG1);
-  tac_promote_argument(t, VARIABLE_TYPE_UINT16, TAC_USE_ARG2);
-
   /* find the function */
   sti = symbol_table_find_symbol(node->label);
   if (sti != NULL)
@@ -467,6 +470,11 @@ struct tac *generate_il_create_get_address_array(struct tree_node *node) {
     return NULL;
   }
 
+  /* set promotions */
+  tac_promote_argument(t, VARIABLE_TYPE_UINT16, TAC_USE_ARG1);
+  type = tree_node_get_max_var_type(node->children[0]);
+  tac_promote_argument(t, type, TAC_USE_ARG2);
+  
   return t;
 }
 
@@ -542,7 +550,7 @@ static int _generate_il_create_return(struct tree_node *node) {
       return FAILED;
   
     t->op = TAC_OP_RETURN;
-  }
+  }
   else {
     /* return {expression} */
     int type;

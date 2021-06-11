@@ -1,8 +1,8 @@
 
-int16 g_i[8];
+int8 g_i[8];
 int8 g_value = 1;
 
 void main() {
 
-  int16 var = g_i[2];
+  int16 var = &g_i[20];
 }

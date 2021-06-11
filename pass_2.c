@@ -490,7 +490,7 @@ int create_factor(void) {
       item = symbol_table_find_symbol(node->children[0]->label);
       if (item != NULL)
         node->definition = item->node;
-      
+
       fprintf(stderr, "ABC: FUNCTION CALL: %s %d\n", node->children[0]->label, node->added_children);
     }
     else if (g_token_current->id == TOKEN_ID_SYMBOL && (g_token_current->value == SYMBOL_INCREMENT || g_token_current->value == SYMBOL_DECREMENT)) {
@@ -2619,7 +2619,7 @@ static void _check_ast_check_definition(struct tree_node *node) {
   else if (node->type == TREE_NODE_TYPE_VALUE_STRING) {
     /* this will be checked later when turning the AST into IL */
   }
-  else if (node->type == TREE_NODE_TYPE_ARRAY_ITEM) {
+  else if (node->type == TREE_NODE_TYPE_ARRAY_ITEM || node->type == TREE_NODE_TYPE_GET_ADDRESS_ARRAY) {
     int is_ok = YES;
 
     if (node->definition->type != TREE_NODE_TYPE_CREATE_VARIABLE && node->definition->type != TREE_NODE_TYPE_CREATE_VARIABLE_FUNCTION_ARGUMENT)
@@ -2686,7 +2686,7 @@ static void _check_ast_simple_tree_node(struct tree_node *node) {
     _check_ast_function_call(node);
     return;
   }
-  else if (node->type == TREE_NODE_TYPE_ARRAY_ITEM) {
+  else if (node->type == TREE_NODE_TYPE_ARRAY_ITEM || node->type == TREE_NODE_TYPE_GET_ADDRESS_ARRAY) {
     _check_ast_expression(node->children[0]);
   }
   else if (node->type == TREE_NODE_TYPE_INCREMENT_DECREMENT) {

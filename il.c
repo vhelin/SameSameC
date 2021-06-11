@@ -625,7 +625,7 @@ static int _load_to_register(struct stack_item *si[256], double v[256], int inde
   /* promote to the maximum of this expression */
   t->result_var_type_promoted = g_max_var_type;
   t->arg1_var_type_promoted = g_max_var_type;
-  
+
   return g_temp_r - 1;
 }
 

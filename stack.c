@@ -28,6 +28,7 @@ extern int g_operand_hint, g_operand_hint_type;
 extern struct token *g_token_current;
 
 int g_latest_stack = 0, g_stacks_inside = 0, g_stacks_outside = 0, g_stack_id = 0;
+struct tree_node *g_label_definition = NULL;
 
 
 static int _stack_insert(void) {
@@ -142,6 +143,13 @@ int stack_calculate_tree_node(struct tree_node *node, int *value) {
   struct stack_item si[256];
   struct tree_node *child;
   int q, b = 0;
+
+  /* only one string? HACK_1 */
+  if (node->added_children == 1 && node->children[0]->type == TREE_NODE_TYPE_VALUE_STRING) {
+    strcpy(g_label, node->children[0]->label);
+    g_label_definition = node->children[0]->definition;
+    return INPUT_NUMBER_STRING;
+  }
 
   /* slice the data into infix format */
   for (q = 0; q < node->added_children; q++) {
@@ -849,7 +857,9 @@ int stack_calculate(int *value, struct stack_item *si, int q, int save_if_cannot
 
   /* only one string? */
   if (d == 1 && ta[0].type == STACK_ITEM_TYPE_STRING) {
+    fprintf(stderr, "stack_calculate(): WARNING! THIS LABEL (%s) IS MISSING IT'S DEFINITION! Please submit a bug report!\n", ta[0].string);
     strcpy(g_label, ta[0].string);
+    g_label_definition = NULL;
     return INPUT_NUMBER_STRING;
   }
 

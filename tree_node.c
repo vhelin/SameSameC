@@ -145,7 +145,7 @@ int tree_node_get_max_var_type(struct tree_node *node) {
   else if (node->type == TREE_NODE_TYPE_VALUE_STRING)
     return _get_create_variable_variable_type(node->definition->children[0]);
   else if (node->type == TREE_NODE_TYPE_VARIABLE_TYPE)
-    return node->value;
+    return _get_create_variable_variable_type(node);
   else if (node->type == TREE_NODE_TYPE_ARRAY_ITEM)
     return _get_create_variable_variable_type(node->definition->children[0]);
   else if (node->type == TREE_NODE_TYPE_GET_ADDRESS || node->type == TREE_NODE_TYPE_GET_ADDRESS_ARRAY)
@@ -323,7 +323,7 @@ struct tree_node *clone_tree_node(struct tree_node *node) {
     free_tree_node(clone);
     return NULL;
   }
-  
+
   clone->type = node->type;
   clone->value = node->value;
   clone->value_double = node->value_double;
