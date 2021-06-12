@@ -11,36 +11,28 @@
       ; IX - tmp
       ; IY - tmp
       ; =================================================================
-      ; test2.blb:7: int16 var = &g_i[20+g_value];
+      ; test2.blb:7: int8 var = g_i[g_value];
       ; =================================================================
       ; -----------------------------------------------------------------
-      ; TAC: variable "var" size 2 offset 0 type n
+      ; TAC: variable "var" size 1 offset 0 type n
       ; -----------------------------------------------------------------
       ; -----------------------------------------------------------------
-      ; TAC: r0.uint8 (uint8) := 20.uint8 (uint8) + g_value.int8 (uint8)
+      ; TAC: var.int8 (int8) := g_i.int8 (int8)[g_value.int8 (int8)]
       ; -----------------------------------------------------------------
-      LD  A,20
+      LD  IY,g_i
       LD  IX,g_value
-      ADD A,(IX+0)
-      ; offset -2
-      LD  IX,-2
-      ADD IX,DE
-      LD  (IX+0),A
-      ; -----------------------------------------------------------------
-      ; TAC: var.int16 (int16) := &g_i.uint16 (uint16)[r0.uint8 (uint8)]
-      ; -----------------------------------------------------------------
-      LD  HL,g_i
-      ; offset -2
-      LD  IX,-2
-      ADD IX,DE
       LD  C,(IX+0)
-      LD  B,0
-      ADD HL,BC
+      ; sign extend 8-bit C -> 16-bit BC
+      LD  A,C
+      ADD A,A  ; sign bit of A into carry
+      SBC A,A  ; A = 0 if carry == 0, $FF otherwise
+      LD  B,A  ; now BC is sign extended C
+      ADD IY,BC
+      LD  L,(IY+0)
       ; offset 0
       LD  IX,0
       ADD IX,DE
       LD  (IX+0),L
-      LD  (IX+1),H
       ; -----------------------------------------------------------------
       ; TAC: return
       ; -----------------------------------------------------------------

@@ -4,5 +4,5 @@ int8 g_value = 1;
 
 void main() {
 
-  int16 var = &g_i[20+g_value];
+  int8 var = g_i[g_value];
 }

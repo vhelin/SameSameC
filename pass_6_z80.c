@@ -988,7 +988,7 @@ static int _generate_asm_get_address_z80(struct tac *t, FILE *file_out, struct t
           _load_value_to_b(0, file_out);
         }
         else {
-          fprintf(stderr, "_generate_asm_get_address_z80_16bit(): Unhandled 8-bit ARG2! Please submit a bug report!\n");
+          fprintf(stderr, "_generate_asm_get_address_z80(): Unhandled 8-bit ARG2! Please submit a bug report!\n");
           return FAILED;
         }
       }
@@ -1045,6 +1045,188 @@ static int _generate_asm_get_address_z80(struct tac *t, FILE *file_out, struct t
 }
 
 
+static int _generate_asm_array_read_z80(struct tac *t, FILE *file_out, struct tree_node *function_node) {
+
+  int result_offset = -1, arg1_offset = -1, arg2_offset = -1, var_type;
+
+  /* result */
+
+  if (find_stack_offset(t->result_type, t->result_s, t->result_d, t->result_node, &result_offset, function_node) == FAILED)
+    return FAILED;
+  
+  /* arg1 */
+
+  if (find_stack_offset(t->arg1_type, t->arg1_s, t->arg1_d, t->arg1_node, &arg1_offset, function_node) == FAILED)
+    return FAILED;
+
+  /* arg2 */
+
+  if (find_stack_offset(t->arg2_type, t->arg2_s, t->arg2_d, t->arg2_node, &arg2_offset, function_node) == FAILED)
+    return FAILED;
+  
+  /* generate asm */
+
+  /******************************************************************************************************/
+  /* source address (arg1) -> iy */
+  /******************************************************************************************************/
+  
+  if (t->arg1_type == TAC_ARG_TYPE_CONSTANT) {
+    fprintf(stderr, "_generate_asm_array_read_z80(): Source cannot be a value!\n");
+    return FAILED;
+  }
+  else if (t->arg1_type == TAC_ARG_TYPE_LABEL && arg1_offset == 999999) {
+    /* global var */
+    _load_label_to_iy(t->arg1_s, file_out);
+  }
+  else {
+    /* it's a variable in the frame! */
+    fprintf(file_out, "      ; offset %d\n", arg1_offset);
+
+    _load_value_to_iy(arg1_offset, file_out);
+    _add_de_to_iy(file_out);
+  }
+    
+  /******************************************************************************************************/
+  /* index address (arg2) -> ix */
+  /******************************************************************************************************/
+  
+  if (t->arg2_type == TAC_ARG_TYPE_CONSTANT) {
+  }
+  else if (t->arg2_type == TAC_ARG_TYPE_LABEL && arg2_offset == 999999) {
+    /* global var */
+    _load_label_to_ix(t->arg2_s, file_out);
+  }
+  else {
+    /* it's a variable in the frame! */
+    fprintf(file_out, "      ; offset %d\n", arg2_offset);
+
+    _load_value_to_ix(arg2_offset, file_out);
+    _add_de_to_ix(file_out);
+  }
+
+  /******************************************************************************************************/
+  /* copy data (ix) -> bc */
+  /******************************************************************************************************/
+  
+  if (t->arg2_type == TAC_ARG_TYPE_CONSTANT) {
+    /* 16-bit */
+    _load_value_to_bc((int)t->arg2_d, file_out);
+  }
+  else {
+    if (t->arg2_var_type == VARIABLE_TYPE_INT16 || t->arg2_var_type == VARIABLE_TYPE_UINT16) {
+      /* 16-bit */
+      _load_from_ix_to_c(0, file_out);
+      _load_from_ix_to_b(1, file_out);
+    }
+    else {
+      /* 8-bit */
+      _load_from_ix_to_c(0, file_out);
+
+      /* sign extend 8-bit -> 16-bit? */
+      if (t->arg2_var_type == VARIABLE_TYPE_INT8) {
+        /* yes */
+        _sign_extend_c_to_bc(file_out);
+      }
+      else if (t->arg2_var_type == VARIABLE_TYPE_UINT8) {
+        /* upper byte -> 0 */
+        _load_value_to_b(0, file_out);
+      }
+      else {
+        fprintf(stderr, "_generate_asm_array_read_z80(): Unhandled 8-bit ARG2! Please submit a bug report!\n");
+        return FAILED;
+      }
+    }
+  }
+
+  /******************************************************************************************************/
+  /* add bc -> iy */
+  /******************************************************************************************************/
+
+  _add_bc_to_iy(file_out);
+
+  var_type = tree_node_get_max_var_type(t->arg1_node->children[0]);
+  if (var_type == VARIABLE_TYPE_INT16 || var_type == VARIABLE_TYPE_UINT16) {
+    /* the array has 16-bit items -> add bc -> iy twice! */
+    _add_bc_to_iy(file_out);
+  }
+
+  /******************************************************************************************************/
+  /* copy data (iy) -> hl */
+  /******************************************************************************************************/
+  
+  if (t->arg1_type == TAC_ARG_TYPE_CONSTANT) {
+    fprintf(stderr, "_generate_asm_array_read_z80(): Source cannot be a value!\n");
+    return FAILED;
+  }
+  else {
+    if (var_type == VARIABLE_TYPE_INT16 || var_type == VARIABLE_TYPE_UINT16) {
+      /* 16-bit */
+      _load_from_iy_to_l(0, file_out);
+      _load_from_iy_to_h(1, file_out);
+    }
+    else {
+      /* 8-bit */
+      _load_from_iy_to_l(0, file_out);
+
+      /* sign extend 8-bit -> 16-bit? */
+      if (var_type == VARIABLE_TYPE_INT8 && (t->result_var_type_promoted == VARIABLE_TYPE_INT16 ||
+                                             t->result_var_type_promoted == VARIABLE_TYPE_UINT16)) {
+        /* yes */
+        _sign_extend_l_to_hl(file_out);
+      }
+      else if (var_type == VARIABLE_TYPE_UINT8 && (t->result_var_type_promoted == VARIABLE_TYPE_INT16 ||
+                                                   t->result_var_type_promoted == VARIABLE_TYPE_UINT16)) {
+        /* upper byte -> 0 */
+        _load_value_to_h(0, file_out);
+      }
+      else if ((var_type == VARIABLE_TYPE_UINT8 || var_type == VARIABLE_TYPE_INT8) &&
+               (t->result_var_type_promoted == VARIABLE_TYPE_INT8 || t->result_var_type_promoted == VARIABLE_TYPE_UINT8)) {
+      }
+      else {
+        fprintf(stderr, "_generate_asm_array_read_z80: Unhandled 8-bit ARG1! Please submit a bug report!\n");
+        return FAILED;
+      }
+    }
+  }
+  
+  /******************************************************************************************************/
+  /* target address -> ix */
+  /******************************************************************************************************/
+  
+  if (t->result_type == TAC_ARG_TYPE_CONSTANT) {
+    fprintf(stderr, "_generate_asm_array_read_z80(): Target cannot be a value!\n");
+    return FAILED;
+  }
+  else if (t->result_type == TAC_ARG_TYPE_LABEL && result_offset == 999999) {
+    /* global var */
+    _load_label_to_ix(t->result_s, file_out);
+  }
+  else {
+    /* it's a variable in the frame! */
+    fprintf(file_out, "      ; offset %d\n", result_offset);
+
+    _load_value_to_ix(result_offset, file_out);
+    _add_de_to_ix(file_out);
+  }
+
+  /******************************************************************************************************/
+  /* copy data hl -> (ix) */
+  /******************************************************************************************************/
+
+  if (t->result_var_type == VARIABLE_TYPE_INT16 || t->result_var_type == VARIABLE_TYPE_UINT16) {
+    /* 16-bit */
+    _load_l_into_ix(0, file_out);
+    _load_h_into_ix(1, file_out);
+  }
+  else {
+    /* 8-bit */
+    _load_l_into_ix(0, file_out);
+  }
+
+  return SUCCEEDED;
+}
+
+
 int generate_asm_z80(FILE *file_out) {
 
   int i, file_id = -1, line_number = -1;
@@ -1085,6 +1267,7 @@ int generate_asm_z80(FILE *file_out) {
         /* IL -> ASM */
 
         if (t->file_id != file_id || t->line_number != line_number) {
+          /* the source code line has changed, print info about the new line */
           file_id = t->file_id;
           line_number = t->line_number;
           fprintf(file_out, "      ; =================================================================\n");
@@ -1120,6 +1303,10 @@ int generate_asm_z80(FILE *file_out) {
         }
         else if (op == TAC_OP_GET_ADDRESS || op == TAC_OP_GET_ADDRESS_ARRAY) {
           if (_generate_asm_get_address_z80(t, file_out, function_node, op) == FAILED)
+            return FAILED;
+        }
+        else if (op == TAC_OP_ARRAY_READ) {
+          if (_generate_asm_array_read_z80(t, file_out, function_node) == FAILED)
             return FAILED;
         }
         else if (op == TAC_OP_JUMP)

@@ -67,7 +67,7 @@
 #define FAILED      0
 #define SUCCEEDED   1
 #define FINISHED  100
-#define THEEND    200
+#define THE_END   200
 
 #define OFF 0
 #define ON  1
@@ -86,8 +86,8 @@
 #define STACK_ITEM_TYPE_REGISTER 5
 #define STACK_ITEM_TYPE_INC_DEC  6
 
-#define SI_OP_PLUS          0
-#define SI_OP_MINUS         1
+#define SI_OP_ADD           0
+#define SI_OP_SUB           1
 #define SI_OP_MULTIPLY      2
 #define SI_OP_LEFT          3
 #define SI_OP_RIGHT         4
@@ -403,7 +403,7 @@ struct tac {
 #define TAC_OP_JUMP_NEQ          12
 #define TAC_OP_JUMP_LTE          13
 #define TAC_OP_JUMP_GTE          14
-#define TAC_OP_ARRAY_READ        15
+#define TAC_OP_ARRAY_READ        15 /* DONE */
 #define TAC_OP_DIV               16
 #define TAC_OP_MOD               17
 #define TAC_OP_AND               18 /* DONE */

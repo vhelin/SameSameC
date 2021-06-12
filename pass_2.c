@@ -884,7 +884,7 @@ int create_expression(void) {
     /* next token */
     _next_token();
     
-    return THEEND;
+    return THE_END;
   }
 
   if (g_token_current->id == TOKEN_ID_SYMBOL && (g_token_current->value == '-' || g_token_current->value == '+')) {

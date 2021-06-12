@@ -25,7 +25,7 @@ static int g_max_var_type = VARIABLE_TYPE_NONE, g_max_var_types[256], g_max_var_
 int il_stack_calculate_expression(struct tree_node *node, int calculate_max_var_type) {
 
   struct stack_item si[256];
-  struct tree_node *child;
+  struct tree_node *child, temp_expression, *temp_children[1];
   int q, b = 0, z, rresult = g_temp_r++;
 
   /* do we need to flatten the expression? (i.e., does it contain other expressions? */
@@ -35,6 +35,27 @@ int il_stack_calculate_expression(struct tree_node *node, int calculate_max_var_
   /* calculate the promotion for all the items inside this expression */
   if (calculate_max_var_type == YES)
     g_max_var_type = tree_node_get_max_var_type(node);
+
+  /* encapsulate loose values and strings as these functions assume that "node" is an expression */
+  if (node->type == TREE_NODE_TYPE_VALUE_INT ||
+      node->type == TREE_NODE_TYPE_VALUE_DOUBLE ||
+      node->type == TREE_NODE_TYPE_VALUE_STRING) {
+    temp_expression.type = TREE_NODE_TYPE_EXPRESSION;
+    temp_expression.value = 0;
+    temp_expression.value_double = 0.0;
+    temp_expression.label = NULL;
+    temp_expression.file_id = node->file_id;
+    temp_expression.line_number = node->line_number;
+    temp_expression.definition = NULL;
+    temp_expression.added_children = 1;
+    temp_expression.children_max = 1;
+    temp_expression.children = &temp_children[0];
+    temp_expression.local_variables = NULL;
+
+    temp_children[0] = node;
+
+    node = &temp_expression;
+  }
 
   /* slice the data into infix format */
   for (q = 0, z = 0; q < node->added_children; q++, z++) {
@@ -48,12 +69,12 @@ int il_stack_calculate_expression(struct tree_node *node, int calculate_max_var_
 
     if (child->type == TREE_NODE_TYPE_SYMBOL && child->value == '-') {
       si[z].type = STACK_ITEM_TYPE_OPERATOR;
-      si[z].value = SI_OP_MINUS;
+      si[z].value = SI_OP_SUB;
       fprintf(stderr, "GOT STACK ITEM -\n");
     }
     else if (child->type == TREE_NODE_TYPE_SYMBOL && child->value == '+') {
       si[z].type = STACK_ITEM_TYPE_OPERATOR;
-      si[z].value = SI_OP_PLUS;
+      si[z].value = SI_OP_ADD;
       fprintf(stderr, "GOT STACK ITEM +\n");
     }
     else if (child->type == TREE_NODE_TYPE_SYMBOL && child->value == '*') {
@@ -292,6 +313,8 @@ int il_stack_calculate_expression(struct tree_node *node, int calculate_max_var_
       int rindex = g_temp_r, index_max_var_type;
       struct tac *t;
       
+      fprintf(stderr, "GOT STACK ITEM %s[]\n", child->label);
+
       /* calculate the index */
       if (g_max_var_type_index >= 255) {
         fprintf(stderr, "_il_stack_calculate_expression(): Out of recursive call stack! Please submit a bug report!\n");
@@ -374,8 +397,8 @@ int il_stack_calculate(struct stack_item *si, int q, int rresult) {
   }
 
   /* check if the computation is of the form "+-..." and remove that leading "+" */
-  if (q > 2 && si[0].type == STACK_ITEM_TYPE_OPERATOR && si[0].value == SI_OP_PLUS &&
-      si[1].type == STACK_ITEM_TYPE_OPERATOR && si[1].value == SI_OP_MINUS) {
+  if (q > 2 && si[0].type == STACK_ITEM_TYPE_OPERATOR && si[0].value == SI_OP_ADD &&
+      si[1].type == STACK_ITEM_TYPE_OPERATOR && si[1].value == SI_OP_SUB) {
     si[0].type = STACK_ITEM_TYPE_DELETED;
   }
 
@@ -390,7 +413,7 @@ int il_stack_calculate(struct stack_item *si, int q, int rresult) {
       }
     }
     */
-    if (si[k].type == STACK_ITEM_TYPE_OPERATOR && si[k].value == SI_OP_MINUS && b == 1) {
+    if (si[k].type == STACK_ITEM_TYPE_OPERATOR && si[k].value == SI_OP_SUB && b == 1) {
       if (si[k + 1].type == STACK_ITEM_TYPE_VALUE || si[k + 1].type == STACK_ITEM_TYPE_STRING) {
         if (si[k + 1].sign == SI_SIGN_POSITIVE)
           si[k + 1].sign = SI_SIGN_NEGATIVE;
@@ -427,7 +450,7 @@ int il_stack_calculate(struct stack_item *si, int q, int rresult) {
       }
     }
     /* remove unnecessary + */
-    if (si[k].type == STACK_ITEM_TYPE_OPERATOR && si[k].value == SI_OP_PLUS && b == 1) {
+    if (si[k].type == STACK_ITEM_TYPE_OPERATOR && si[k].value == SI_OP_ADD && b == 1) {
       if (si[k + 1].type == STACK_ITEM_TYPE_VALUE || si[k + 1].type == STACK_ITEM_TYPE_STRING)
         si[k].type = STACK_ITEM_TYPE_DELETED;
       else if (si[k + 1].type == STACK_ITEM_TYPE_OPERATOR && si[k + 1].value == SI_OP_LEFT)
@@ -447,7 +470,7 @@ int il_stack_calculate(struct stack_item *si, int q, int rresult) {
       b = 0;
     else if (si[k].type == STACK_ITEM_TYPE_OPERATOR && si[k].value == SI_OP_LEFT)
       b = 1;
-  }
+  }
 
   /* convert infix stack into postfix stack */
   for (b = 0, k = 0, d = 0; k < q; k++) {
@@ -748,12 +771,12 @@ int il_compute_stack(struct stack *sta, int count, int rresult) {
     }
     else {
       switch ((int)s->value) {
-      case SI_OP_PLUS:
+      case SI_OP_ADD:
         ta = _add_tac_calculation(TAC_OP_ADD, t-2, t-1, g_temp_r++, si, v);
         _turn_stack_item_into_a_register(si, sit, t-2, (int)ta->result_d);
         t--;
         break;
-      case SI_OP_MINUS:
+      case SI_OP_SUB:
         ta = _add_tac_calculation(TAC_OP_SUB, t-2, t-1, g_temp_r++, si, v);
         _turn_stack_item_into_a_register(si, sit, t-2, (int)ta->result_d);
         t--;
@@ -919,7 +942,7 @@ int il_compute_stack(struct stack *sta, int count, int rresult) {
         ta->arg1_var_type_promoted = g_max_var_type;
         
         _turn_stack_item_into_a_register(si, sit, t-1, g_temp_r-1);
-        t--;
+
         break;
       case SI_OP_MULTIPLY:
         if (t <= 1) {

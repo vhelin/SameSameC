@@ -191,7 +191,7 @@ static int _generate_il_create_expression(struct tree_node *node) {
     tac_promote_argument(t, type, TAC_USE_RESULT);
   }
   else if (node->type == TREE_NODE_TYPE_FUNCTION_CALL) {
-    fprintf(stderr, "_generate_il_create_expression(): IMPLEMENT ME!\n");
+    fprintf(stderr, "_generate_il_create_expression(): IMPLEMENT ME - TREE_NODE_TYPE_FUNCTION_CALL!\n");
   }
   else if (node->type == TREE_NODE_TYPE_ARRAY_ITEM) {
     int rindex = g_temp_r;
