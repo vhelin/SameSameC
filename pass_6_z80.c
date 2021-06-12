@@ -1227,6 +1227,193 @@ static int _generate_asm_array_read_z80(struct tac *t, FILE *file_out, struct tr
 }
 
 
+static int _generate_asm_array_assignment_z80(struct tac *t, FILE *file_out, struct tree_node *function_node) {
+
+  int result_offset = -1, arg1_offset = -1, arg2_offset = -1;
+
+  /* result */
+
+  if (find_stack_offset(t->result_type, t->result_s, t->result_d, t->result_node, &result_offset, function_node) == FAILED)
+    return FAILED;
+  
+  /* arg1 */
+
+  if (find_stack_offset(t->arg1_type, t->arg1_s, t->arg1_d, t->arg1_node, &arg1_offset, function_node) == FAILED)
+    return FAILED;
+
+  /* arg2 */
+
+  if (find_stack_offset(t->arg2_type, t->arg2_s, t->arg2_d, t->arg2_node, &arg2_offset, function_node) == FAILED)
+    return FAILED;
+  
+  /* generate asm */
+
+  /******************************************************************************************************/
+  /* index address (arg2) -> ix */
+  /******************************************************************************************************/
+  
+  if (t->arg2_type == TAC_ARG_TYPE_CONSTANT) {
+  }
+  else if (t->arg2_type == TAC_ARG_TYPE_LABEL && arg2_offset == 999999) {
+    /* global var */
+    _load_label_to_ix(t->arg2_s, file_out);
+  }
+  else {
+    /* it's a variable in the frame! */
+    fprintf(file_out, "      ; offset %d\n", arg2_offset);
+
+    _load_value_to_ix(arg2_offset, file_out);
+    _add_de_to_ix(file_out);
+  }
+
+  /******************************************************************************************************/
+  /* copy data (ix) -> bc */
+  /******************************************************************************************************/
+  
+  if (t->arg2_type == TAC_ARG_TYPE_CONSTANT) {
+    /* 16-bit */
+    _load_value_to_bc((int)t->arg2_d, file_out);
+  }
+  else {
+    if (t->arg2_var_type == VARIABLE_TYPE_INT16 || t->arg2_var_type == VARIABLE_TYPE_UINT16) {
+      /* 16-bit */
+      _load_from_ix_to_c(0, file_out);
+      _load_from_ix_to_b(1, file_out);
+    }
+    else {
+      /* 8-bit */
+      _load_from_ix_to_c(0, file_out);
+
+      /* sign extend 8-bit -> 16-bit? */
+      if (t->arg2_var_type == VARIABLE_TYPE_INT8) {
+        /* yes */
+        _sign_extend_c_to_bc(file_out);
+      }
+      else if (t->arg2_var_type == VARIABLE_TYPE_UINT8) {
+        /* upper byte -> 0 */
+        _load_value_to_b(0, file_out);
+      }
+      else {
+        fprintf(stderr, "_generate_asm_array_assignment_z80(): Unhandled 8-bit ARG2! Please submit a bug report!\n");
+        return FAILED;
+      }
+    }
+  }
+
+  /******************************************************************************************************/
+  /* result address (result) -> ix */
+  /******************************************************************************************************/
+  
+  if (t->result_type == TAC_ARG_TYPE_CONSTANT) {
+  }
+  else if (t->result_type == TAC_ARG_TYPE_LABEL && result_offset == 999999) {
+    /* global var */
+    _load_label_to_ix(t->result_s, file_out);
+  }
+  else {
+    /* it's a variable in the frame! */
+    fprintf(file_out, "      ; offset %d\n", result_offset);
+
+    _load_value_to_ix(result_offset, file_out);
+    _add_de_to_ix(file_out);
+  }
+  
+  /******************************************************************************************************/
+  /* add index bc -> ix */
+  /******************************************************************************************************/
+
+  _add_bc_to_ix(file_out);
+
+  if (t->result_var_type == VARIABLE_TYPE_INT16 || t->result_var_type == VARIABLE_TYPE_UINT16) {
+    /* the array has 16-bit items -> add bc -> ix twice! */
+    _add_bc_to_ix(file_out);
+  }
+
+  /******************************************************************************************************/
+  /* source address (arg1) -> iy */
+  /******************************************************************************************************/
+  
+  if (t->arg1_type == TAC_ARG_TYPE_CONSTANT) {
+  }
+  else if (t->arg1_type == TAC_ARG_TYPE_LABEL && arg1_offset == 999999) {
+    /* global var */
+    _load_label_to_iy(t->arg1_s, file_out);
+  }
+  else {
+    /* it's a variable in the frame! */
+    fprintf(file_out, "      ; offset %d\n", arg1_offset);
+
+    _load_value_to_iy(arg1_offset, file_out);
+    _add_de_to_iy(file_out);
+  }
+
+  /******************************************************************************************************/
+  /* copy data (iy) -> hl */
+  /******************************************************************************************************/
+  
+  if (t->arg1_type == TAC_ARG_TYPE_CONSTANT) {
+    int value = (int)t->arg1_d;
+    if (t->result_var_type == VARIABLE_TYPE_INT16 || t->result_var_type == VARIABLE_TYPE_UINT16) {
+      /* 16-bit */
+      _load_value_into_ix(value & 0xff, 0, file_out);
+      _load_value_into_ix((value >> 8) & 0xff, 1, file_out);
+      return SUCCEEDED;
+    }
+    else {
+      /* 8-bit */
+      _load_value_into_ix(value & 0xff, 0, file_out);
+      return SUCCEEDED;
+    }
+  }
+  else {
+    if (t->arg1_var_type == VARIABLE_TYPE_INT16 || t->arg1_var_type == VARIABLE_TYPE_UINT16) {
+      /* 16-bit */
+      _load_from_iy_to_l(0, file_out);
+      _load_from_iy_to_h(1, file_out);
+    }
+    else {
+      /* 8-bit */
+      _load_from_iy_to_l(0, file_out);
+
+      /* sign extend 8-bit -> 16-bit? */
+      if (t->arg1_var_type == VARIABLE_TYPE_INT8 && (t->result_var_type == VARIABLE_TYPE_INT16 ||
+                                                     t->result_var_type == VARIABLE_TYPE_UINT16)) {
+        /* yes */
+        _sign_extend_l_to_hl(file_out);
+      }
+      else if (t->arg1_var_type == VARIABLE_TYPE_UINT8 && (t->result_var_type == VARIABLE_TYPE_INT16 ||
+                                                           t->result_var_type == VARIABLE_TYPE_UINT16)) {
+        /* upper byte -> 0 */
+        _load_value_to_h(0, file_out);
+      }
+      else if ((t->arg1_var_type == VARIABLE_TYPE_UINT8 || t->arg1_var_type == VARIABLE_TYPE_INT8) &&
+               (t->result_var_type == VARIABLE_TYPE_INT8 || t->result_var_type == VARIABLE_TYPE_UINT8)) {
+      }
+      else {
+        fprintf(stderr, "_generate_asm_array_assignment_z80: Unhandled 8-bit ARG1! Please submit a bug report!\n");
+        return FAILED;
+      }
+    }
+  }
+  
+  /******************************************************************************************************/
+  /* copy data hl -> (ix) */
+  /******************************************************************************************************/
+
+  if (t->result_var_type == VARIABLE_TYPE_INT16 || t->result_var_type == VARIABLE_TYPE_UINT16) {
+    /* 16-bit */
+    _load_l_into_ix(0, file_out);
+    _load_h_into_ix(1, file_out);
+  }
+  else {
+    /* 8-bit */
+    _load_l_into_ix(0, file_out);
+  }
+
+  return SUCCEEDED;
+}
+
+
 int generate_asm_z80(FILE *file_out) {
 
   int i, file_id = -1, line_number = -1;
@@ -1307,6 +1494,10 @@ int generate_asm_z80(FILE *file_out) {
         }
         else if (op == TAC_OP_ARRAY_READ) {
           if (_generate_asm_array_read_z80(t, file_out, function_node) == FAILED)
+            return FAILED;
+        }
+        else if (op == TAC_OP_ARRAY_ASSIGNMENT) {
+          if (_generate_asm_array_assignment_z80(t, file_out, function_node) == FAILED)
             return FAILED;
         }
         else if (op == TAC_OP_JUMP)

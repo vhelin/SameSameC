@@ -393,7 +393,7 @@ struct tac {
 #define TAC_OP_ADD                2 /* DONE */
 #define TAC_OP_SUB                3 /* DONE */
 #define TAC_OP_ASSIGNMENT         4 /* DONE */
-#define TAC_OP_ARRAY_ASSIGNMENT   5
+#define TAC_OP_ARRAY_ASSIGNMENT   5 /* DONE */
 #define TAC_OP_CREATE_VARIABLE    6
 #define TAC_OP_MUL                7
 #define TAC_OP_JUMP               8 /* DONE */

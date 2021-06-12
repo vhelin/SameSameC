@@ -11,27 +11,51 @@
       ; IX - tmp
       ; IY - tmp
       ; =================================================================
-      ; test2.blb:7: int8 var = g_i[g_value];
+      ; test2.blb:7: g_i[1] = 10+g_value+111;
       ; =================================================================
       ; -----------------------------------------------------------------
-      ; TAC: variable "var" size 1 offset 0 type n
+      ; TAC: r0.uint8 (uint8) := 1.uint8 (uint8)
       ; -----------------------------------------------------------------
-      ; -----------------------------------------------------------------
-      ; TAC: var.int8 (int8) := g_i.int8 (int8)[g_value.int8 (int8)]
-      ; -----------------------------------------------------------------
-      LD  IY,g_i
-      LD  IX,g_value
-      LD  C,(IX+0)
-      ; sign extend 8-bit C -> 16-bit BC
-      LD  A,C
-      ADD A,A  ; sign bit of A into carry
-      SBC A,A  ; A = 0 if carry == 0, $FF otherwise
-      LD  B,A  ; now BC is sign extended C
-      ADD IY,BC
-      LD  L,(IY+0)
       ; offset 0
       LD  IX,0
       ADD IX,DE
+      LD  (IX+0),1
+      ; -----------------------------------------------------------------
+      ; TAC: r1.uint8 (uint8) := 10.uint8 (uint8) + g_value.int8 (uint8)
+      ; -----------------------------------------------------------------
+      LD  A,10
+      LD  IX,g_value
+      ADD A,(IX+0)
+      ; offset -1
+      LD  IX,-1
+      ADD IX,DE
+      LD  (IX+0),A
+      ; -----------------------------------------------------------------
+      ; TAC: r2.uint8 (uint8) := r1.uint8 (uint8) + 111.uint8 (uint8)
+      ; -----------------------------------------------------------------
+      ; offset -1
+      LD  IX,-1
+      ADD IX,DE
+      LD  A,(IX+0)
+      ADD A,111
+      ; offset -2
+      LD  IX,-2
+      ADD IX,DE
+      LD  (IX+0),A
+      ; -----------------------------------------------------------------
+      ; TAC: g_i.int8 (int8)[r0.uint8 (uint8)] := r2.uint8 (uint8)
+      ; -----------------------------------------------------------------
+      ; offset 0
+      LD  IX,0
+      ADD IX,DE
+      LD  C,(IX+0)
+      LD  B,0
+      LD  IX,g_i
+      ADD IX,BC
+      ; offset -2
+      LD  IY,-2
+      ADD IY,DE
+      LD  L,(IY+0)
       LD  (IX+0),L
       ; -----------------------------------------------------------------
       ; TAC: return
