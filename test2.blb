@@ -4,5 +4,5 @@ int8 g_value = 1;
 
 void main() {
 
-  g_i[1] = 10+g_value+111;
+  int8 a = g_value << g_value + 1;
 }
