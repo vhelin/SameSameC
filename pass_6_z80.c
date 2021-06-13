@@ -472,9 +472,7 @@ static void _shift_left_hl_by_bc(FILE *file_out) {
   fprintf(file_out, "      LD A,B\n");
   fprintf(file_out, "      OR A,C\n");
   fprintf(file_out, "      JR Z,+\n");
-  fprintf(file_out, "      OR A,A   ; clear carry\n");
-  fprintf(file_out, "      RL L\n");
-  fprintf(file_out, "      RL H\n");
+  fprintf(file_out, "      ADD HL,HL\n");
   fprintf(file_out, "      DEC BC\n");
   fprintf(file_out, "      JR -\n");
 
@@ -489,8 +487,7 @@ static void _shift_right_hl_by_bc(FILE *file_out) {
   fprintf(file_out, "      LD A,B\n");
   fprintf(file_out, "      OR A,C\n");
   fprintf(file_out, "      JR Z,+\n");
-  fprintf(file_out, "      OR A,A   ; clear carry\n");
-  fprintf(file_out, "      RR H\n");
+  fprintf(file_out, "      SRL H\n");
   fprintf(file_out, "      RR L\n");
   fprintf(file_out, "      DEC BC\n");
   fprintf(file_out, "      JR -\n");
@@ -503,9 +500,9 @@ static void _shift_left_b_by_a(FILE *file_out) {
 
   _add_label("-", file_out, YES);
 
-  fprintf(file_out, "      OR A,A   ; also clear carry\n");
+  fprintf(file_out, "      OR A,A\n");
   fprintf(file_out, "      JR Z,+\n");
-  fprintf(file_out, "      RL B\n");
+  fprintf(file_out, "      SLA B\n");
   fprintf(file_out, "      DEC A\n");
   fprintf(file_out, "      JR -\n");
 
@@ -517,9 +514,9 @@ static void _shift_right_b_by_a(FILE *file_out) {
 
   _add_label("-", file_out, YES);
 
-  fprintf(file_out, "      OR A,A   ; also clear carry\n");
+  fprintf(file_out, "      OR A,A\n");
   fprintf(file_out, "      JR Z,+\n");
-  fprintf(file_out, "      RR B\n");
+  fprintf(file_out, "      SRL B\n");
   fprintf(file_out, "      DEC A\n");
   fprintf(file_out, "      JR -\n");
 
@@ -1645,9 +1642,7 @@ static int _generate_asm_shift_left_right_z80_16bit(struct tac *t, FILE *file_ou
       or a, c
       jr z, +
 
-      or a,a ; clear carry
-      rl l
-      rl h
+      add hl,hl
       dec bc
       jr -
       +
@@ -1662,8 +1657,7 @@ static int _generate_asm_shift_left_right_z80_16bit(struct tac *t, FILE *file_ou
       or a, c
       jr z, +
 
-      or a,a ; clear carry
-      rr h
+      srl h
       rr l
       dec bc
       jr -
@@ -1801,10 +1795,10 @@ static int _generate_asm_shift_left_right_z80_8bit(struct tac *t, FILE *file_out
   if (op == TAC_OP_SHIFT_LEFT) {
     /*
       -
-      or a, a ; also clear carry
+      or a, a
       jr z, +
 
-      rl b
+      sla b
       dec a
       jr -
       +
@@ -1815,10 +1809,10 @@ static int _generate_asm_shift_left_right_z80_8bit(struct tac *t, FILE *file_out
   else if (op == TAC_OP_SHIFT_RIGHT) {
     /*
       -
-      or a, a ; also clear carry
+      or a, a
       jr z, +
 
-      rr b
+      srl b
       dec a
       jr -
       +
