@@ -132,115 +132,172 @@ static void _load_label_to_iy(char *label, FILE *file_out) {
 
 static void _load_value_into_ix(int value, int offset, FILE *file_out) {
 
-  fprintf(file_out, "      LD  (IX+%d),%d\n", offset, value);
+  if (offset >= 0)
+    fprintf(file_out, "      LD  (IX+%d),%d\n", offset, value);
+  else
+    fprintf(file_out, "      LD  (IX%d),%d\n", offset, value);
 }
 
 
 static void _load_value_into_iy(int value, int offset, FILE *file_out) {
 
-  fprintf(file_out, "      LD  (IY+%d),%d\n", offset, value);
+  if (offset >= 0)
+    fprintf(file_out, "      LD  (IY+%d),%d\n", offset, value);
+  else
+    fprintf(file_out, "      LD  (IY%d),%d\n", offset, value);
 }
 
 
 static void _load_from_iy_to_a(int offset, FILE *file_out) {
 
-  fprintf(file_out, "      LD  A,(IY+%d)\n", offset);
+  if (offset >= 0)
+    fprintf(file_out, "      LD  A,(IY+%d)\n", offset);
+  else
+    fprintf(file_out, "      LD  A,(IY%d)\n", offset);
 }
 
 
 static void _load_from_iy_to_h(int offset, FILE *file_out) {
 
-  fprintf(file_out, "      LD  H,(IY+%d)\n", offset);
+  if (offset >= 0)
+    fprintf(file_out, "      LD  H,(IY+%d)\n", offset);
+  else
+    fprintf(file_out, "      LD  H,(IY%d)\n", offset);
 }
 
 
 static void _load_from_iy_to_l(int offset, FILE *file_out) {
 
-  fprintf(file_out, "      LD  L,(IY+%d)\n", offset);
+  if (offset >= 0)
+    fprintf(file_out, "      LD  L,(IY+%d)\n", offset);
+  else
+    fprintf(file_out, "      LD  L,(IY%d)\n", offset);
 }
 
 
 static void _load_from_iy_to_b(int offset, FILE *file_out) {
 
-  fprintf(file_out, "      LD  B,(IY+%d)\n", offset);
+  if (offset >= 0)
+    fprintf(file_out, "      LD  B,(IY+%d)\n", offset);
+  else
+    fprintf(file_out, "      LD  B,(IY%d)\n", offset);
 }
 
 
 static void _load_from_iy_to_c(int offset, FILE *file_out) {
 
-  fprintf(file_out, "      LD  C,(IY+%d)\n", offset);
+  if (offset >= 0)
+    fprintf(file_out, "      LD  C,(IY+%d)\n", offset);
+  else
+    fprintf(file_out, "      LD  C,(IY%d)\n", offset);
 }
 
 
 static void _load_from_ix_to_a(int offset, FILE *file_out) {
 
-  fprintf(file_out, "      LD  A,(IX+%d)\n", offset);
+  if (offset >= 0)
+    fprintf(file_out, "      LD  A,(IX+%d)\n", offset);
+  else
+    fprintf(file_out, "      LD  A,(IX%d)\n", offset);
 }
 
 
 static void _load_from_ix_to_b(int offset, FILE *file_out) {
 
-  fprintf(file_out, "      LD  B,(IX+%d)\n", offset);
+  if (offset >= 0)
+    fprintf(file_out, "      LD  B,(IX+%d)\n", offset);
+  else
+    fprintf(file_out, "      LD  B,(IX%d)\n", offset);
 }
 
 
 static void _load_from_ix_to_c(int offset, FILE *file_out) {
 
-  fprintf(file_out, "      LD  C,(IX+%d)\n", offset);
+  if (offset >= 0)
+    fprintf(file_out, "      LD  C,(IX+%d)\n", offset);
+  else
+    fprintf(file_out, "      LD  C,(IX%d)\n", offset);
 }
 
 
 static void _load_from_ix_to_h(int offset, FILE *file_out) {
 
-  fprintf(file_out, "      LD  H,(IX+%d)\n", offset);
+  if (offset >= 0)
+    fprintf(file_out, "      LD  H,(IX+%d)\n", offset);
+  else
+    fprintf(file_out, "      LD  H,(IX%d)\n", offset);
 }
 
 
 static void _load_from_ix_to_l(int offset, FILE *file_out) {
 
-  fprintf(file_out, "      LD  L,(IX+%d)\n", offset);
+  if (offset >= 0)
+    fprintf(file_out, "      LD  L,(IX+%d)\n", offset);
+  else
+    fprintf(file_out, "      LD  L,(IX%d)\n", offset);
 }
 
 
 static void _load_a_into_ix(int offset, FILE *file_out) {
 
-  fprintf(file_out, "      LD  (IX+%d),A\n", offset);
+  if (offset >= 0)
+    fprintf(file_out, "      LD  (IX+%d),A\n", offset);
+  else
+    fprintf(file_out, "      LD  (IX%d),A\n", offset);
 }
 
 
 static void _load_b_into_ix(int offset, FILE *file_out) {
 
-  fprintf(file_out, "      LD  (IX+%d),B\n", offset);
+  if (offset >= 0)
+    fprintf(file_out, "      LD  (IX+%d),B\n", offset);
+  else
+    fprintf(file_out, "      LD  (IX%d),B\n", offset);
 }
 
 
 static void _load_c_into_ix(int offset, FILE *file_out) {
 
-  fprintf(file_out, "      LD  (IX+%d),C\n", offset);
+  if (offset >= 0)
+    fprintf(file_out, "      LD  (IX+%d),C\n", offset);
+  else
+    fprintf(file_out, "      LD  (IX%d),C\n", offset);
 }
 
 
 static void _load_h_into_ix(int offset, FILE *file_out) {
 
-  fprintf(file_out, "      LD  (IX+%d),H\n", offset);
+  if (offset >= 0)
+    fprintf(file_out, "      LD  (IX+%d),H\n", offset);
+  else
+    fprintf(file_out, "      LD  (IX%d),H\n", offset);
 }
 
 
 static void _load_h_into_iy(int offset, FILE *file_out) {
 
-  fprintf(file_out, "      LD  (IY+%d),H\n", offset);
+  if (offset >= 0)
+    fprintf(file_out, "      LD  (IY+%d),H\n", offset);
+  else
+    fprintf(file_out, "      LD  (IY%d),H\n", offset);
 }
 
 
 static void _load_l_into_ix(int offset, FILE *file_out) {
 
-  fprintf(file_out, "      LD  (IX+%d),L\n", offset);
+  if (offset >= 0)
+    fprintf(file_out, "      LD  (IX+%d),L\n", offset);
+  else
+    fprintf(file_out, "      LD  (IX%d),L\n", offset);
 }
 
 
 static void _load_l_into_iy(int offset, FILE *file_out) {
 
-  fprintf(file_out, "      LD  (IY+%d),L\n", offset);
+  if (offset >= 0)
+    fprintf(file_out, "      LD  (IY+%d),L\n", offset);
+  else
+    fprintf(file_out, "      LD  (IY%d),L\n", offset);
 }
 
 
@@ -300,7 +357,10 @@ static void _add_value_to_a(int value, FILE *file_out) {
 
 static void _add_from_ix_to_a(int offset, FILE *file_out) {
 
-  fprintf(file_out, "      ADD A,(IX+%d)\n", offset);
+  if (offset >= 0)
+    fprintf(file_out, "      ADD A,(IX+%d)\n", offset);
+  else
+    fprintf(file_out, "      ADD A,(IX%d)\n", offset);
 }
 
 
@@ -325,7 +385,10 @@ static void _sub_value_from_a(int value, FILE *file_out) {
 
 static void _sub_from_ix_from_a(int offset, FILE *file_out) {
 
-  fprintf(file_out, "      SUB A,(IX+%d)\n", offset);
+  if (offset >= 0)
+    fprintf(file_out, "      SUB A,(IX+%d)\n", offset);
+  else
+    fprintf(file_out, "      SUB A,(IX%d)\n", offset);
 }
 
 
@@ -337,7 +400,10 @@ static void _or_value_from_a(int value, FILE *file_out) {
 
 static void _or_from_ix_from_a(int offset, FILE *file_out) {
 
-  fprintf(file_out, "      OR A,(IX+%d)\n", offset);
+  if (offset >= 0)
+    fprintf(file_out, "      OR A,(IX+%d)\n", offset);
+  else
+    fprintf(file_out, "      OR A,(IX%d)\n", offset);
 }
 
 
@@ -360,7 +426,10 @@ static void _and_value_from_a(int value, FILE *file_out) {
 
 static void _and_from_ix_from_a(int offset, FILE *file_out) {
 
-  fprintf(file_out, "      AND A,(IX+%d)\n", offset);
+  if (offset >= 0)
+    fprintf(file_out, "      AND A,(IX+%d)\n", offset);
+  else
+    fprintf(file_out, "      AND A,(IX%d)\n", offset);
 }
 
 
@@ -431,6 +500,33 @@ static void _sign_extend_a_to_bc(FILE *file_out) {
   fprintf(file_out, "      ADD A,A  ; sign bit of A into carry\n");
   fprintf(file_out, "      SBC A,A  ; A = 0 if carry == 0, $FF otherwise\n");
   fprintf(file_out, "      LD  B,A  ; now BC is sign extended A\n");
+}
+
+
+static void _sign_extend_a_into_ix(int offset, FILE *file_out) {
+
+  /* from https://stackoverflow.com/questions/49070981/z80-assembly-how-to-add-signed-8-bit-value-to-16-bit-register */
+  fprintf(file_out, "      ; sign extend 8-bit A -> (IX)\n");
+  fprintf(file_out, "      ADD A,A  ; sign bit of A into carry\n");
+  fprintf(file_out, "      SBC A,A  ; A = 0 if carry == 0, $FF otherwise\n");
+  if (offset >= 0)
+    fprintf(file_out, "      LD  (IX+%d),A\n", offset);
+  else
+    fprintf(file_out, "      LD  (IX%d),A\n", offset);
+}
+
+
+static void _sign_extend_b_into_ix(int offset, FILE *file_out) {
+
+  /* from https://stackoverflow.com/questions/49070981/z80-assembly-how-to-add-signed-8-bit-value-to-16-bit-register */
+  fprintf(file_out, "      ; sign extend 8-bit B -> (IX)\n");
+  fprintf(file_out, "      LD  A,B\n");
+  fprintf(file_out, "      ADD A,A  ; sign bit of A into carry\n");
+  fprintf(file_out, "      SBC A,A  ; A = 0 if carry == 0, $FF otherwise\n");
+  if (offset >= 0)
+    fprintf(file_out, "      LD  (IX+%d),A\n", offset);
+  else
+    fprintf(file_out, "      LD  (IX%d),A\n", offset);
 }
 
 
@@ -775,11 +871,28 @@ static int _generate_asm_add_sub_or_and_z80_8bit(struct tac *t, FILE *file_out, 
   /* copy data a -> (ix) */
   /******************************************************************************************************/
 
-  /* FIX: */
+  if (t->result_var_type == VARIABLE_TYPE_INT16 || t->result_var_type == VARIABLE_TYPE_UINT16) {
+    /* 16-bit */
 
-  /* 8-bit */
-  _load_a_into_ix(0, file_out);
-  
+    /* lower byte */
+    _load_a_into_ix(0, file_out);
+
+    /* sign extend 8-bit -> 16-bit? */
+    if (t->result_var_type == VARIABLE_TYPE_INT16 && (t->arg1_var_type_promoted == VARIABLE_TYPE_INT8 ||
+                                                      t->arg2_var_type_promoted == VARIABLE_TYPE_INT8)) {
+      /* yes */
+      _sign_extend_a_into_ix(1, file_out);
+    }
+    else {
+      /* upper byte = 0 */
+      _load_value_into_ix(0, 1, file_out);
+    }
+  }
+  else {
+    /* 8-bit */
+    _load_a_into_ix(0, file_out);
+  }
+
   return SUCCEEDED;
 }
 
@@ -1845,10 +1958,27 @@ static int _generate_asm_shift_left_right_z80_8bit(struct tac *t, FILE *file_out
   /* copy data b -> (ix) */
   /******************************************************************************************************/
 
-  /* FIX: */
-  
-  /* 8-bit */
-  _load_b_into_ix(0, file_out);
+  if (t->result_var_type == VARIABLE_TYPE_INT16 || t->result_var_type == VARIABLE_TYPE_UINT16) {
+    /* 16-bit */
+
+    /* lower byte */
+    _load_b_into_ix(0, file_out);
+
+    /* sign extend 8-bit -> 16-bit? */
+    if (t->result_var_type == VARIABLE_TYPE_INT16 && (t->arg1_var_type_promoted == VARIABLE_TYPE_INT8 ||
+                                                      t->arg2_var_type_promoted == VARIABLE_TYPE_INT8)) {
+      /* yes */
+      _sign_extend_b_into_ix(1, file_out);
+    }
+    else {
+      /* upper byte = 0 */
+      _load_value_into_ix(0, 1, file_out);
+    }
+  }
+  else {
+    /* 8-bit */
+    _load_b_into_ix(0, file_out);
+  }
 
   return SUCCEEDED;
 }
@@ -1863,6 +1993,34 @@ static int _generate_asm_shift_left_right_z80(struct tac *t, FILE *file_out, str
   else if ((t->arg1_var_type_promoted == VARIABLE_TYPE_INT16 || t->arg1_var_type_promoted == VARIABLE_TYPE_UINT16) &&
            (t->arg2_var_type_promoted == VARIABLE_TYPE_INT16 || t->arg2_var_type_promoted == VARIABLE_TYPE_UINT16))
     return _generate_asm_shift_left_right_z80_16bit(t, file_out, function_node, op);
+
+  fprintf(stderr, "_generate_asm_shift_left_right_z80(): 8-bit + 16-bit, this shouldn't happen. Please submit a bug report!\n");
+
+  return FAILED;
+}
+
+
+static int _generate_asm_mul_div_z80_16bit(struct tac *t, FILE *file_out, struct tree_node *function_node, int op) {
+
+  return SUCCEEDED;
+}
+
+
+static int _generate_asm_mul_div_z80_8bit(struct tac *t, FILE *file_out, struct tree_node *function_node, int op) {
+
+  return FAILED;
+}
+
+
+static int _generate_asm_mul_div_z80(struct tac *t, FILE *file_out, struct tree_node *function_node, int op) {
+
+  /* 8-bit or 16-bit? */
+  if ((t->arg1_var_type_promoted == VARIABLE_TYPE_INT8 || t->arg1_var_type_promoted == VARIABLE_TYPE_UINT8) &&
+      (t->arg2_var_type_promoted == VARIABLE_TYPE_INT8 || t->arg2_var_type_promoted == VARIABLE_TYPE_UINT8))
+    return _generate_asm_mul_div_z80_8bit(t, file_out, function_node, op);
+  else if ((t->arg1_var_type_promoted == VARIABLE_TYPE_INT16 || t->arg1_var_type_promoted == VARIABLE_TYPE_UINT16) &&
+           (t->arg2_var_type_promoted == VARIABLE_TYPE_INT16 || t->arg2_var_type_promoted == VARIABLE_TYPE_UINT16))
+    return _generate_asm_mul_div_z80_16bit(t, file_out, function_node, op);
 
   fprintf(stderr, "_generate_asm_shift_left_right_z80(): 8-bit + 16-bit, this shouldn't happen. Please submit a bug report!\n");
 
@@ -1958,6 +2116,10 @@ int generate_asm_z80(FILE *file_out) {
         }
         else if (op == TAC_OP_SHIFT_LEFT || op == TAC_OP_SHIFT_RIGHT) {
           if (_generate_asm_shift_left_right_z80(t, file_out, function_node, op) == FAILED)
+            return FAILED;
+        }
+        else if (op == TAC_OP_MUL || op == TAC_OP_DIV) {
+          if (_generate_asm_mul_div_z80(t, file_out, function_node, op) == FAILED)
             return FAILED;
         }
         else if (op == TAC_OP_JUMP)
