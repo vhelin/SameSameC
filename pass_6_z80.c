@@ -220,6 +220,24 @@ static void _load_from_ix_to_c(int offset, FILE *file_out) {
 }
 
 
+static void _load_from_ix_to_d(int offset, FILE *file_out) {
+
+  if (offset >= 0)
+    fprintf(file_out, "      LD  D,(IX+%d)\n", offset);
+  else
+    fprintf(file_out, "      LD  D,(IX%d)\n", offset);
+}
+
+
+static void _load_from_ix_to_e(int offset, FILE *file_out) {
+
+  if (offset >= 0)
+    fprintf(file_out, "      LD  E,(IX+%d)\n", offset);
+  else
+    fprintf(file_out, "      LD  E,(IX%d)\n", offset);
+}
+
+
 static void _load_from_ix_to_h(int offset, FILE *file_out) {
 
   if (offset >= 0)
@@ -450,6 +468,12 @@ static void _load_value_to_bc(int value, FILE *file_out) {
 }
 
 
+static void _load_value_to_de(int value, FILE *file_out) {
+
+  fprintf(file_out, "      LD  DE,%d\n", value);
+}
+
+
 static void _load_value_to_hl(int value, FILE *file_out) {
 
   fprintf(file_out, "      LD  HL,%d\n", value);
@@ -474,6 +498,18 @@ static void _load_value_to_c(int value, FILE *file_out) {
 }
 
 
+static void _load_value_to_d(int value, FILE *file_out) {
+
+  fprintf(file_out, "      LD  D,%d\n", value);
+}
+
+
+static void _load_value_to_e(int value, FILE *file_out) {
+
+  fprintf(file_out, "      LD  E,%d\n", value);
+}
+
+
 static void _load_value_to_h(int value, FILE *file_out) {
 
   fprintf(file_out, "      LD  H,%d\n", value);
@@ -489,6 +525,18 @@ static void _load_value_to_l(int value, FILE *file_out) {
 static void _jump_to(char *label, FILE *file_out) {
 
   fprintf(file_out, "      JP  %s\n", label);
+}
+
+
+static void _push_de(FILE *file_out) {
+
+  fprintf(file_out, "      PUSH DE\n");
+}
+
+
+static void _pop_de(FILE *file_out) {
+
+  fprintf(file_out, "      POP DE\n");
 }
 
 
@@ -541,6 +589,17 @@ static void _sign_extend_c_to_bc(FILE *file_out) {
 }
 
 
+static void _sign_extend_e_to_de(FILE *file_out) {
+
+  /* from https://stackoverflow.com/questions/49070981/z80-assembly-how-to-add-signed-8-bit-value-to-16-bit-register */
+  fprintf(file_out, "      ; sign extend 8-bit E -> 16-bit DE\n");
+  fprintf(file_out, "      LD  A,E\n");
+  fprintf(file_out, "      ADD A,A  ; sign bit of A into carry\n");
+  fprintf(file_out, "      SBC A,A  ; A = 0 if carry == 0, $FF otherwise\n");
+  fprintf(file_out, "      LD  D,A  ; now DE is sign extended E\n");
+}
+
+
 static void _sign_extend_l_to_hl(FILE *file_out) {
 
   /* from https://stackoverflow.com/questions/49070981/z80-assembly-how-to-add-signed-8-bit-value-to-16-bit-register */
@@ -563,14 +622,16 @@ static void _add_label(char *label, FILE *file_out, char is_local) {
 
 static void _shift_left_hl_by_bc(FILE *file_out) {
 
+  fprintf(file_out, "      ; shift left HL by BC\n");
+
   _add_label("-", file_out, YES);
 
-  fprintf(file_out, "      LD A,B\n");
-  fprintf(file_out, "      OR A,C\n");
-  fprintf(file_out, "      JR Z,+\n");
+  fprintf(file_out, "      LD  A,B\n");
+  fprintf(file_out, "      OR  A,C\n");
+  fprintf(file_out, "      JR  Z,+\n");
   fprintf(file_out, "      ADD HL,HL\n");
   fprintf(file_out, "      DEC BC\n");
-  fprintf(file_out, "      JR -\n");
+  fprintf(file_out, "      JR  -\n");
 
   _add_label("+", file_out, YES);
 }
@@ -578,15 +639,17 @@ static void _shift_left_hl_by_bc(FILE *file_out) {
 
 static void _shift_right_hl_by_bc(FILE *file_out) {
 
+  fprintf(file_out, "      ; shift right HL by BC\n");
+
   _add_label("-", file_out, YES);
 
-  fprintf(file_out, "      LD A,B\n");
-  fprintf(file_out, "      OR A,C\n");
-  fprintf(file_out, "      JR Z,+\n");
+  fprintf(file_out, "      LD  A,B\n");
+  fprintf(file_out, "      OR  A,C\n");
+  fprintf(file_out, "      JR  Z,+\n");
   fprintf(file_out, "      SRL H\n");
-  fprintf(file_out, "      RR L\n");
+  fprintf(file_out, "      RR  L\n");
   fprintf(file_out, "      DEC BC\n");
-  fprintf(file_out, "      JR -\n");
+  fprintf(file_out, "      JR  -\n");
 
   _add_label("+", file_out, YES);
 }
@@ -594,13 +657,15 @@ static void _shift_right_hl_by_bc(FILE *file_out) {
 
 static void _shift_left_b_by_a(FILE *file_out) {
 
+  fprintf(file_out, "      ; shift left B by A\n");
+
   _add_label("-", file_out, YES);
 
-  fprintf(file_out, "      OR A,A\n");
-  fprintf(file_out, "      JR Z,+\n");
+  fprintf(file_out, "      OR  A,A\n");
+  fprintf(file_out, "      JR  Z,+\n");
   fprintf(file_out, "      SLA B\n");
   fprintf(file_out, "      DEC A\n");
-  fprintf(file_out, "      JR -\n");
+  fprintf(file_out, "      JR  -\n");
 
   _add_label("+", file_out, YES);
 }
@@ -608,15 +673,61 @@ static void _shift_left_b_by_a(FILE *file_out) {
 
 static void _shift_right_b_by_a(FILE *file_out) {
 
+  fprintf(file_out, "      ; shift right B by A\n");
+
   _add_label("-", file_out, YES);
 
-  fprintf(file_out, "      OR A,A\n");
-  fprintf(file_out, "      JR Z,+\n");
+  fprintf(file_out, "      OR  A,A\n");
+  fprintf(file_out, "      JR  Z,+\n");
   fprintf(file_out, "      SRL B\n");
   fprintf(file_out, "      DEC A\n");
-  fprintf(file_out, "      JR -\n");
+  fprintf(file_out, "      JR  -\n");
 
   _add_label("+", file_out, YES);
+}
+
+
+static void _multiply_h_and_e_to_hl(FILE *file_out) {
+
+  /* from http://map.grauw.nl/articles/mult_div_shifts.php */
+  fprintf(file_out, "      ; multiply H * E -> HL\n");
+  fprintf(file_out, "      LD  D,0\n");
+  fprintf(file_out, "      LD  L,D\n");
+  fprintf(file_out, "      LD  B,8  ; number of bits to process\n");
+
+  _add_label("-", file_out, YES);
+
+  fprintf(file_out, "      ADD HL,HL\n");
+  fprintf(file_out, "      JR  NC,+\n");
+  fprintf(file_out, "      ADD HL,DE\n");
+
+  _add_label("+", file_out, YES);
+
+  fprintf(file_out, "      DJNZ -\n");
+}
+
+
+static void _multiply_bc_and_de_to_hl(FILE *file_out) {
+
+  /* from http://cpctech.cpc-live.com/docs/mult.html */
+  fprintf(file_out, "      ; multiply BC * DE -> HL\n");
+  fprintf(file_out, "      LD  A,16 ; number of bits to process\n");
+  fprintf(file_out, "      LD  HL,0\n");
+
+  _add_label("-", file_out, YES);
+
+  fprintf(file_out, "      SRL B\n");
+  fprintf(file_out, "      RR  C\n");
+  fprintf(file_out, "      JR  NC, +\n");
+  fprintf(file_out, "      ADD HL,DE\n");
+
+  _add_label("+", file_out, YES);
+
+  fprintf(file_out, "      EX  DE,HL\n");
+  fprintf(file_out, "      ADD HL,HL\n");
+  fprintf(file_out, "      EX  DE,HL\n");
+  fprintf(file_out, "      DEC A\n");
+  fprintf(file_out, "      JR  NZ,-\n");
 }
 
 
@@ -2002,13 +2113,360 @@ static int _generate_asm_shift_left_right_z80(struct tac *t, FILE *file_out, str
 
 static int _generate_asm_mul_div_z80_16bit(struct tac *t, FILE *file_out, struct tree_node *function_node, int op) {
 
+  int result_offset = -1, arg1_offset = -1, arg2_offset = -1;
+  
+  /* result */
+
+  if (find_stack_offset(t->result_type, t->result_s, t->result_d, t->result_node, &result_offset, function_node) == FAILED)
+    return FAILED;
+  
+  /* arg1 */
+
+  if (find_stack_offset(t->arg1_type, t->arg1_s, t->arg1_d, t->arg1_node, &arg1_offset, function_node) == FAILED)
+    return FAILED;
+
+  /* arg2 */
+
+  if (find_stack_offset(t->arg2_type, t->arg2_s, t->arg2_d, t->arg2_node, &arg2_offset, function_node) == FAILED)
+    return FAILED;
+    
+  /* generate asm */
+
+  /******************************************************************************************************/
+  /* source address (arg1) -> ix */
+  /******************************************************************************************************/
+  
+  if (t->arg1_type == TAC_ARG_TYPE_CONSTANT) {
+  }
+  else if (t->arg1_type == TAC_ARG_TYPE_LABEL && arg1_offset == 999999) {
+    /* global var */
+    _load_label_to_ix(t->arg1_s, file_out);
+  }
+  else {
+    /* it's a variable in the frame! */
+    fprintf(file_out, "      ; offset %d\n", arg1_offset);
+
+    _load_value_to_ix(arg1_offset, file_out);
+    _add_de_to_ix(file_out);
+  }
+  
+  /******************************************************************************************************/
+  /* copy data (arg1) -> bc */
+  /******************************************************************************************************/
+  
+  if (t->arg1_type == TAC_ARG_TYPE_CONSTANT) {
+    /* 16-bit */
+    _load_value_to_bc((int)t->arg1_d, file_out);
+  }
+  else {
+    if (t->arg1_var_type == VARIABLE_TYPE_INT16 || t->arg1_var_type == VARIABLE_TYPE_UINT16) {
+      /* 16-bit */
+      _load_from_ix_to_c(0, file_out);
+      _load_from_ix_to_b(1, file_out);
+    }
+    else {
+      /* 8-bit */
+      _load_from_ix_to_c(0, file_out);
+
+      /* sign extend 8-bit -> 16-bit? */
+      if (t->arg1_var_type == VARIABLE_TYPE_INT8 && (t->arg1_var_type_promoted == VARIABLE_TYPE_INT16 ||
+                                                     t->arg1_var_type_promoted == VARIABLE_TYPE_UINT16)) {
+        /* yes */
+        _sign_extend_c_to_bc(file_out);
+      }
+      else if (t->arg1_var_type == VARIABLE_TYPE_UINT8 && (t->arg1_var_type_promoted == VARIABLE_TYPE_INT16 ||
+                                                           t->arg1_var_type_promoted == VARIABLE_TYPE_UINT16)) {
+        /* upper byte -> 0 */
+        _load_value_to_b(0, file_out);
+      }
+      else {
+        fprintf(stderr, "_generate_asm_mul_div_z80_16bit(): Unhandled 8-bit ARG1! Please submit a bug report!\n");
+        return FAILED;
+      }
+    }
+  }
+  
+  /******************************************************************************************************/
+  /* source address (arg2) -> ix */
+  /******************************************************************************************************/
+  
+  if (t->arg2_type == TAC_ARG_TYPE_CONSTANT) {
+  }
+  else if (t->arg2_type == TAC_ARG_TYPE_LABEL && arg2_offset == 999999) {
+    /* global var */
+    _load_label_to_ix(t->arg2_s, file_out);
+  }
+  else {
+    /* it's a variable in the frame! */
+    fprintf(file_out, "      ; offset %d\n", arg2_offset);
+
+    _load_value_to_ix(arg2_offset, file_out);
+    _add_de_to_ix(file_out);
+  }
+  
+  /******************************************************************************************************/
+  /* copy data (arg2) -> de */
+  /******************************************************************************************************/
+  
+  /* NOTE!!! */
+  _push_de(file_out);
+
+  if (t->arg2_type == TAC_ARG_TYPE_CONSTANT) {
+    /* 16-bit */
+    _load_value_to_de((int)t->arg2_d, file_out);
+  }
+  else {
+    if (t->arg2_var_type == VARIABLE_TYPE_INT16 || t->arg2_var_type == VARIABLE_TYPE_UINT16) {
+      /* 16-bit */
+      _load_from_ix_to_e(0, file_out);
+      _load_from_ix_to_d(1, file_out);
+    }
+    else {
+      /* 8-bit */
+      _load_from_ix_to_e(0, file_out);
+
+      /* sign extend 8-bit -> 16-bit? */
+      if (t->arg2_var_type == VARIABLE_TYPE_INT8 && (t->arg2_var_type_promoted == VARIABLE_TYPE_INT16 ||
+                                                     t->arg2_var_type_promoted == VARIABLE_TYPE_UINT16)) {
+        /* yes */
+        _sign_extend_e_to_de(file_out);
+      }
+      else if (t->arg2_var_type == VARIABLE_TYPE_UINT8 && (t->arg2_var_type_promoted == VARIABLE_TYPE_INT16 ||
+                                                           t->arg2_var_type_promoted == VARIABLE_TYPE_UINT16)) {
+        /* upper byte -> 0 */
+        _load_value_to_d(0, file_out);
+      }
+      else {
+        fprintf(stderr, "_generate_asm_mul_div_z80_16bit(): Unhandled 8-bit ARG2! Please submit a bug report!\n");
+        return FAILED;
+      }
+    }
+  }
+
+  /******************************************************************************************************/
+  /* bc * de -> hl */
+  /******************************************************************************************************/
+
+  /*
+    ld a,16     ; this is the number of bits of the number to process
+    ld hl,0     ; HL is updated with the partial result, and at the end it will hold 
+                ; the final result.
+  .mul_loop
+    srl b
+    rr c        ;; divide BC by 2 and shifting the state of bit 0 into the carry
+                ;; if carry = 0, then state of bit 0 was 0, (the rightmost digit was 0) 
+                ;; if carry = 1, then state of bit 1 was 1. (the rightmost digit was 1)
+                ;; if rightmost digit was 0, then the result would be 0, and we do the add.
+                ;; if rightmost digit was 1, then the result is DE and we do the add.
+    jr nc,no_add	
+
+    ;; will get to here if carry = 1        
+    add hl,de   
+
+  .no_add
+    ;; at this point BC has already been divided by 2
+
+    ex de,hl    ;; swap DE and HL
+    add hl,hl   ;; multiply DE by 2
+    ex de,hl    ;; swap DE and HL
+
+    ;; at this point DE has been multiplied by 2
+    
+    dec a
+    jr nz,mul_loop  ;; process more bits
+  */
+
+  _multiply_bc_and_de_to_hl(file_out);
+  
+  /* NOTE!!! */
+  _pop_de(file_out);
+
+  /******************************************************************************************************/
+  /* target address -> ix */
+  /******************************************************************************************************/
+  
+  if (t->result_type == TAC_ARG_TYPE_CONSTANT) {
+    fprintf(stderr, "_generate_asm_mul_div_z80_16bit(): Target cannot be a value!\n");
+    return FAILED;
+  }
+  else if (t->result_type == TAC_ARG_TYPE_LABEL && result_offset == 999999) {
+    /* global var */
+    _load_label_to_ix(t->result_s, file_out);
+  }
+  else {
+    /* it's a variable in the frame! */
+    fprintf(file_out, "      ; offset %d\n", result_offset);
+
+    _load_value_to_ix(result_offset, file_out);
+    _add_de_to_ix(file_out);
+  }
+
+  /******************************************************************************************************/
+  /* copy data hl -> (ix) */
+  /******************************************************************************************************/
+
+  if (t->result_var_type == VARIABLE_TYPE_INT16 || t->result_var_type == VARIABLE_TYPE_UINT16) {
+    /* 16-bit */
+    _load_l_into_ix(0, file_out);
+    _load_h_into_ix(1, file_out);
+  }
+  else {
+    /* 8-bit */
+    _load_l_into_ix(0, file_out);
+  }
+
   return SUCCEEDED;
 }
 
 
 static int _generate_asm_mul_div_z80_8bit(struct tac *t, FILE *file_out, struct tree_node *function_node, int op) {
 
-  return FAILED;
+  int result_offset = -1, arg1_offset = -1, arg2_offset = -1;
+  
+  /* result */
+
+  if (find_stack_offset(t->result_type, t->result_s, t->result_d, t->result_node, &result_offset, function_node) == FAILED)
+    return FAILED;
+  
+  /* arg1 */
+
+  if (find_stack_offset(t->arg1_type, t->arg1_s, t->arg1_d, t->arg1_node, &arg1_offset, function_node) == FAILED)
+    return FAILED;
+
+  /* arg2 */
+
+  if (find_stack_offset(t->arg2_type, t->arg2_s, t->arg2_d, t->arg2_node, &arg2_offset, function_node) == FAILED)
+    return FAILED;
+    
+  /* generate asm */
+
+  /******************************************************************************************************/
+  /* source address (arg1) -> ix */
+  /******************************************************************************************************/
+  
+  if (t->arg1_type == TAC_ARG_TYPE_CONSTANT) {
+  }
+  else if (t->arg1_type == TAC_ARG_TYPE_LABEL && arg1_offset == 999999) {
+    /* global var */
+    _load_label_to_ix(t->arg1_s, file_out);
+  }
+  else {
+    /* it's a variable in the frame! */
+    fprintf(file_out, "      ; offset %d\n", arg1_offset);
+
+    _load_value_to_ix(arg1_offset, file_out);
+    _add_de_to_ix(file_out);
+  }
+  
+  /******************************************************************************************************/
+  /* copy data (arg1) -> h */
+  /******************************************************************************************************/
+  
+  if (t->arg1_type == TAC_ARG_TYPE_CONSTANT) {
+    /* 8-bit */
+    _load_value_to_h(((int)t->arg1_d) & 0xff, file_out);
+  }
+  else {
+    /* 8-bit */
+    _load_from_ix_to_h(0, file_out);
+  }
+
+  /******************************************************************************************************/
+  /* source address (arg2) -> ix */
+  /******************************************************************************************************/
+  
+  if (t->arg2_type == TAC_ARG_TYPE_CONSTANT) {
+  }
+  else if (t->arg2_type == TAC_ARG_TYPE_LABEL && arg2_offset == 999999) {
+    /* global var */
+    _load_label_to_ix(t->arg2_s, file_out);
+  }
+  else {
+    /* it's a variable in the frame! */
+    fprintf(file_out, "      ; offset %d\n", arg2_offset);
+
+    _load_value_to_ix(arg2_offset, file_out);
+    _add_de_to_ix(file_out);
+  }
+  
+  /******************************************************************************************************/
+  /* copy data (arg2) -> e */
+  /******************************************************************************************************/
+
+  /* NOTE!!! */
+  _push_de(file_out);
+  
+  if (t->arg2_type == TAC_ARG_TYPE_CONSTANT) {
+    /* 8-bit */
+    _load_value_to_e(((int)t->arg2_d) & 0xff, file_out);
+  }
+  else {
+    /* 8-bit */
+    _load_from_ix_to_e(0, file_out);
+  }
+
+  /******************************************************************************************************/
+  /* h * e -> hl */
+  /******************************************************************************************************/
+
+  /*
+    ;
+    ; Multiply 8-bit values
+    ; In:  Multiply H with E
+    ; Out: HL = result
+    ;
+    Mult8:
+      ld d,0
+      ld l,d
+      ld b,8
+    Mult8_Loop:
+      add hl,hl
+      jr nc,Mult8_NoAdd
+      add hl,de
+    Mult8_NoAdd:
+      djnz Mult8_Loop
+  */
+
+  _multiply_h_and_e_to_hl(file_out);
+  
+  /* NOTE!!! */
+  _pop_de(file_out);
+
+  /******************************************************************************************************/
+  /* target address -> ix */
+  /******************************************************************************************************/
+  
+  if (t->result_type == TAC_ARG_TYPE_CONSTANT) {
+    fprintf(stderr, "_generate_asm_add_sub_or_and_z80_8bit(): Target cannot be a value!\n");
+    return FAILED;
+  }
+  else if (t->result_type == TAC_ARG_TYPE_LABEL && result_offset == 999999) {
+    /* global var */
+    _load_label_to_ix(t->result_s, file_out);
+  }
+  else {
+    /* it's a variable in the frame! */
+    fprintf(file_out, "      ; offset %d\n", result_offset);
+
+    _load_value_to_ix(result_offset, file_out);
+    _add_de_to_ix(file_out);
+  }
+
+  /******************************************************************************************************/
+  /* copy data hl -> (ix) */
+  /******************************************************************************************************/
+
+  if (t->result_var_type == VARIABLE_TYPE_INT16 || t->result_var_type == VARIABLE_TYPE_UINT16) {
+    /* 16-bit */
+    _load_l_into_ix(0, file_out);
+    _load_h_into_ix(1, file_out);
+  }
+  else {
+    /* 8-bit */
+    _load_l_into_ix(0, file_out);
+  }
+
+  return SUCCEEDED;
 }
 
 

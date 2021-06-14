@@ -395,7 +395,7 @@ struct tac {
 #define TAC_OP_ASSIGNMENT         4 /* DONE */
 #define TAC_OP_ARRAY_ASSIGNMENT   5 /* DONE */
 #define TAC_OP_CREATE_VARIABLE    6
-#define TAC_OP_MUL                7
+#define TAC_OP_MUL                7 /* DONE */
 #define TAC_OP_JUMP               8 /* DONE */
 #define TAC_OP_JUMP_EQ            9
 #define TAC_OP_JUMP_LT           10
