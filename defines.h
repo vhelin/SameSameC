@@ -394,7 +394,7 @@ struct tac {
 #define TAC_OP_SUB                3 /* DONE */
 #define TAC_OP_ASSIGNMENT         4 /* DONE */
 #define TAC_OP_ARRAY_ASSIGNMENT   5 /* DONE */
-#define TAC_OP_CREATE_VARIABLE    6
+#define TAC_OP_CREATE_VARIABLE    6 /* DONE */
 #define TAC_OP_MUL                7 /* DONE */
 #define TAC_OP_JUMP               8 /* DONE */
 #define TAC_OP_JUMP_EQ            9
@@ -404,8 +404,8 @@ struct tac {
 #define TAC_OP_JUMP_LTE          13
 #define TAC_OP_JUMP_GTE          14
 #define TAC_OP_ARRAY_READ        15 /* DONE */
-#define TAC_OP_DIV               16
-#define TAC_OP_MOD               17
+#define TAC_OP_DIV               16 /* DONE */
+#define TAC_OP_MOD               17 /* DONE */
 #define TAC_OP_AND               18 /* DONE */
 #define TAC_OP_OR                19 /* DONE */
 #define TAC_OP_SHIFT_LEFT        20 /* DONE */

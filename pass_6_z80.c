@@ -2178,7 +2178,7 @@ static int _generate_asm_shift_left_right_z80(struct tac *t, FILE *file_out, str
 }
 
 
-static int _generate_asm_mul_div_z80_16bit(struct tac *t, FILE *file_out, struct tree_node *function_node, int op) {
+static int _generate_asm_mul_div_mod_z80_16bit(struct tac *t, FILE *file_out, struct tree_node *function_node, int op) {
 
   int result_offset = -1, arg1_offset = -1, arg2_offset = -1;
   
@@ -2247,7 +2247,7 @@ static int _generate_asm_mul_div_z80_16bit(struct tac *t, FILE *file_out, struct
         _load_value_to_b(0, file_out);
       }
       else {
-        fprintf(stderr, "_generate_asm_mul_div_z80_16bit(): Unhandled 8-bit ARG1! Please submit a bug report!\n");
+        fprintf(stderr, "_generate_asm_mul_div_mod_z80_16bit(): Unhandled 8-bit ARG1! Please submit a bug report!\n");
         return FAILED;
       }
     }
@@ -2304,7 +2304,7 @@ static int _generate_asm_mul_div_z80_16bit(struct tac *t, FILE *file_out, struct
         _load_value_to_d(0, file_out);
       }
       else {
-        fprintf(stderr, "_generate_asm_mul_div_z80_16bit(): Unhandled 8-bit ARG2! Please submit a bug report!\n");
+        fprintf(stderr, "_generate_asm_mul_div_mod_z80_16bit(): Unhandled 8-bit ARG2! Please submit a bug report!\n");
         return FAILED;
       }
     }
@@ -2351,7 +2351,7 @@ static int _generate_asm_mul_div_z80_16bit(struct tac *t, FILE *file_out, struct
   /* bc / de -> ca (result), hl (remainder) */
   /******************************************************************************************************/
 
-  if (op == TAC_OP_DIV) {
+  if (op == TAC_OP_DIV || op == TAC_OP_MOD) {
     /*
       ;
       ; Divide 16-bit values (with 16-bit result)
@@ -2401,7 +2401,7 @@ static int _generate_asm_mul_div_z80_16bit(struct tac *t, FILE *file_out, struct
   /******************************************************************************************************/
   
   if (t->result_type == TAC_ARG_TYPE_CONSTANT) {
-    fprintf(stderr, "_generate_asm_mul_div_z80_16bit(): Target cannot be a value!\n");
+    fprintf(stderr, "_generate_asm_mul_div_mod_z80_16bit(): Target cannot be a value!\n");
     return FAILED;
   }
   else if (t->result_type == TAC_ARG_TYPE_LABEL && result_offset == 999999) {
@@ -2436,7 +2436,7 @@ static int _generate_asm_mul_div_z80_16bit(struct tac *t, FILE *file_out, struct
   /* copy data hl -> (ix) */
   /******************************************************************************************************/
 
-  if (op == TAC_OP_MUL) {
+  if (op == TAC_OP_MUL || op == TAC_OP_MOD) {
     if (t->result_var_type == VARIABLE_TYPE_INT16 || t->result_var_type == VARIABLE_TYPE_UINT16) {
       /* 16-bit */
       _load_l_into_ix(0, file_out);
@@ -2452,7 +2452,7 @@ static int _generate_asm_mul_div_z80_16bit(struct tac *t, FILE *file_out, struct
 }
 
 
-static int _generate_asm_mul_div_z80_8bit(struct tac *t, FILE *file_out, struct tree_node *function_node, int op) {
+static int _generate_asm_mul_div_mod_z80_8bit(struct tac *t, FILE *file_out, struct tree_node *function_node, int op) {
 
   int result_offset = -1, arg1_offset = -1, arg2_offset = -1;
   
@@ -2568,7 +2568,7 @@ static int _generate_asm_mul_div_z80_8bit(struct tac *t, FILE *file_out, struct 
   /* h / e -> a (result) and b (reminder) */
   /******************************************************************************************************/
 
-  if (op == TAC_OP_DIV) {
+  if (op == TAC_OP_DIV || op == TAC_OP_MOD) {
     /*
     ;
     ; Divide 8-bit values
@@ -2662,19 +2662,47 @@ static int _generate_asm_mul_div_z80_8bit(struct tac *t, FILE *file_out, struct 
     }
   }
 
+  /******************************************************************************************************/
+  /* copy data b -> (ix) */
+  /******************************************************************************************************/
+
+  if (op == TAC_OP_MOD) {
+    if (t->result_var_type == VARIABLE_TYPE_INT16 || t->result_var_type == VARIABLE_TYPE_UINT16) {
+      /* 16-bit */
+
+      /* lower byte */
+      _load_b_into_ix(0, file_out);
+
+      /* sign extend 8-bit -> 16-bit? */
+      if (t->result_var_type == VARIABLE_TYPE_INT16 && (t->arg1_var_type == VARIABLE_TYPE_INT8 ||
+                                                        t->arg2_var_type == VARIABLE_TYPE_INT8)) {
+        /* yes */
+        _sign_extend_b_into_ix(1, file_out);
+      }
+      else {
+        /* upper byte = 0 */
+        _load_value_into_ix(0, 1, file_out);
+      }
+    }
+    else {
+      /* 8-bit */
+      _load_b_into_ix(0, file_out);
+    }
+  }
+  
   return SUCCEEDED;
 }
 
 
-static int _generate_asm_mul_div_z80(struct tac *t, FILE *file_out, struct tree_node *function_node, int op) {
+static int _generate_asm_mul_div_mod_z80(struct tac *t, FILE *file_out, struct tree_node *function_node, int op) {
 
   /* 8-bit or 16-bit? */
   if ((t->arg1_var_type_promoted == VARIABLE_TYPE_INT8 || t->arg1_var_type_promoted == VARIABLE_TYPE_UINT8) &&
       (t->arg2_var_type_promoted == VARIABLE_TYPE_INT8 || t->arg2_var_type_promoted == VARIABLE_TYPE_UINT8))
-    return _generate_asm_mul_div_z80_8bit(t, file_out, function_node, op);
+    return _generate_asm_mul_div_mod_z80_8bit(t, file_out, function_node, op);
   else if ((t->arg1_var_type_promoted == VARIABLE_TYPE_INT16 || t->arg1_var_type_promoted == VARIABLE_TYPE_UINT16) &&
            (t->arg2_var_type_promoted == VARIABLE_TYPE_INT16 || t->arg2_var_type_promoted == VARIABLE_TYPE_UINT16))
-    return _generate_asm_mul_div_z80_16bit(t, file_out, function_node, op);
+    return _generate_asm_mul_div_mod_z80_16bit(t, file_out, function_node, op);
 
   fprintf(stderr, "_generate_asm_shift_left_right_z80(): 8-bit + 16-bit, this shouldn't happen. Please submit a bug report!\n");
 
@@ -2772,12 +2800,14 @@ int generate_asm_z80(FILE *file_out) {
           if (_generate_asm_shift_left_right_z80(t, file_out, function_node, op) == FAILED)
             return FAILED;
         }
-        else if (op == TAC_OP_MUL || op == TAC_OP_DIV) {
-          if (_generate_asm_mul_div_z80(t, file_out, function_node, op) == FAILED)
+        else if (op == TAC_OP_MUL || op == TAC_OP_DIV || op == TAC_OP_MOD) {
+          if (_generate_asm_mul_div_mod_z80(t, file_out, function_node, op) == FAILED)
             return FAILED;
         }
         else if (op == TAC_OP_JUMP)
           _jump_to(t->result_s, file_out);
+        else if (op == TAC_OP_CREATE_VARIABLE) {
+        }
         else
           fprintf(stderr, "generate_asm_z80(): Unimplemented IL -> Z80 ASM op %d! Please submit a bug report!\n", op);
       }
