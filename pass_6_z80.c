@@ -731,6 +731,73 @@ static void _multiply_bc_and_de_to_hl(FILE *file_out) {
 }
 
 
+static void _divide_bc_by_de_to_ca_hl(FILE *file_out) {
+
+  /* from http://map.grauw.nl/articles/mult_div_shifts.php */
+  fprintf(file_out, "      ; divide BC / DE -> CA (result) & HL (remainder)\n");
+  fprintf(file_out, "      LD  HL,0\n");
+  fprintf(file_out, "      LD  A,B\n");
+  fprintf(file_out, "      LD  B,8\n");
+
+  _add_label("-", file_out, YES);
+
+  fprintf(file_out, "      RLA\n");
+  fprintf(file_out, "      ADC HL,HL\n");
+  fprintf(file_out, "      SBC HL,DE\n");
+  fprintf(file_out, "      JR  NC,+\n");
+  fprintf(file_out, "      ADD HL,DE\n");
+
+  _add_label("+", file_out, YES);
+  
+  fprintf(file_out, "      DJNZ -\n");
+  fprintf(file_out, "      RLA\n");
+  fprintf(file_out, "      CPL\n");
+  fprintf(file_out, "      LD  B,A\n");
+  fprintf(file_out, "      LD  A,C\n");
+  fprintf(file_out, "      LD  C,B\n");
+  fprintf(file_out, "      LD  B,8\n");
+
+  _add_label("-", file_out, YES);
+
+  fprintf(file_out, "      RLA\n");
+  fprintf(file_out, "      ADC HL,HL\n");
+  fprintf(file_out, "      SBC HL,DE\n");
+  fprintf(file_out, "      JR  NC,+\n");
+  fprintf(file_out, "      ADD HL,DE\n");
+
+  _add_label("+", file_out, YES);
+  
+  fprintf(file_out, "      DJNZ -\n");
+  fprintf(file_out, "      RLA\n");
+  fprintf(file_out, "      CPL\n");
+}
+
+
+static void _divide_h_by_e_to_a_b(FILE *file_out) {
+
+  /* from http://map.grauw.nl/articles/mult_div_shifts.php */
+  fprintf(file_out, "      ; divide H / E -> A (result) & B (remainder)\n");  
+  fprintf(file_out, "      XOR A\n");
+  fprintf(file_out, "      LD  B,8\n");
+
+  _add_label("-", file_out, YES);
+    
+  fprintf(file_out, "      RL  H\n");
+  fprintf(file_out, "      RLA\n");
+  fprintf(file_out, "      SUB E\n");
+  fprintf(file_out, "      JR  NC,+\n");
+  fprintf(file_out, "      ADD A,E\n");
+
+  _add_label("+", file_out, YES);
+    
+  fprintf(file_out, "      DJNZ -\n");
+  fprintf(file_out, "      LD  B,A\n");
+  fprintf(file_out, "      LD  A,H\n");
+  fprintf(file_out, "      RLA\n");
+  fprintf(file_out, "      CPL\n");
+}
+
+
 static int _generate_asm_assignment_z80(struct tac *t, FILE *file_out, struct tree_node *function_node) {
 
   int result_offset = -1, arg1_offset = -1;
@@ -989,8 +1056,8 @@ static int _generate_asm_add_sub_or_and_z80_8bit(struct tac *t, FILE *file_out, 
     _load_a_into_ix(0, file_out);
 
     /* sign extend 8-bit -> 16-bit? */
-    if (t->result_var_type == VARIABLE_TYPE_INT16 && (t->arg1_var_type_promoted == VARIABLE_TYPE_INT8 ||
-                                                      t->arg2_var_type_promoted == VARIABLE_TYPE_INT8)) {
+    if (t->result_var_type == VARIABLE_TYPE_INT16 && (t->arg1_var_type == VARIABLE_TYPE_INT8 ||
+                                                      t->arg2_var_type == VARIABLE_TYPE_INT8)) {
       /* yes */
       _sign_extend_a_into_ix(1, file_out);
     }
@@ -2076,8 +2143,8 @@ static int _generate_asm_shift_left_right_z80_8bit(struct tac *t, FILE *file_out
     _load_b_into_ix(0, file_out);
 
     /* sign extend 8-bit -> 16-bit? */
-    if (t->result_var_type == VARIABLE_TYPE_INT16 && (t->arg1_var_type_promoted == VARIABLE_TYPE_INT8 ||
-                                                      t->arg2_var_type_promoted == VARIABLE_TYPE_INT8)) {
+    if (t->result_var_type == VARIABLE_TYPE_INT16 && (t->arg1_var_type == VARIABLE_TYPE_INT8 ||
+                                                      t->arg2_var_type == VARIABLE_TYPE_INT8)) {
       /* yes */
       _sign_extend_b_into_ix(1, file_out);
     }
@@ -2247,37 +2314,85 @@ static int _generate_asm_mul_div_z80_16bit(struct tac *t, FILE *file_out, struct
   /* bc * de -> hl */
   /******************************************************************************************************/
 
-  /*
-    ld a,16     ; this is the number of bits of the number to process
-    ld hl,0     ; HL is updated with the partial result, and at the end it will hold 
-                ; the final result.
-  .mul_loop
-    srl b
-    rr c        ;; divide BC by 2 and shifting the state of bit 0 into the carry
-                ;; if carry = 0, then state of bit 0 was 0, (the rightmost digit was 0) 
-                ;; if carry = 1, then state of bit 1 was 1. (the rightmost digit was 1)
-                ;; if rightmost digit was 0, then the result would be 0, and we do the add.
-                ;; if rightmost digit was 1, then the result is DE and we do the add.
-    jr nc,no_add	
+  if (op == TAC_OP_MUL) {
+    /*
+      ld a,16     ; this is the number of bits of the number to process
+      ld hl,0     ; HL is updated with the partial result, and at the end it will hold 
+                  ; the final result.
+    .mul_loop
+      srl b
+      rr c        ;; divide BC by 2 and shifting the state of bit 0 into the carry
+                  ;; if carry = 0, then state of bit 0 was 0, (the rightmost digit was 0) 
+                  ;; if carry = 1, then state of bit 1 was 1. (the rightmost digit was 1)
+                  ;; if rightmost digit was 0, then the result would be 0, and we do the add.
+                  ;; if rightmost digit was 1, then the result is DE and we do the add.
+      jr nc,no_add	
 
-    ;; will get to here if carry = 1        
-    add hl,de   
+      ;; will get to here if carry = 1        
+      add hl,de   
 
-  .no_add
-    ;; at this point BC has already been divided by 2
+    .no_add
+      ;; at this point BC has already been divided by 2
 
-    ex de,hl    ;; swap DE and HL
-    add hl,hl   ;; multiply DE by 2
-    ex de,hl    ;; swap DE and HL
+      ex de,hl    ;; swap DE and HL
+      add hl,hl   ;; multiply DE by 2
+      ex de,hl    ;; swap DE and HL
 
-    ;; at this point DE has been multiplied by 2
+      ;; at this point DE has been multiplied by 2
     
-    dec a
-    jr nz,mul_loop  ;; process more bits
-  */
+      dec a
+      jr nz,mul_loop  ;; process more bits
+    */
 
-  _multiply_bc_and_de_to_hl(file_out);
-  
+    _multiply_bc_and_de_to_hl(file_out);
+  }
+
+  /******************************************************************************************************/
+  /* bc / de -> ca (result), hl (remainder) */
+  /******************************************************************************************************/
+
+  if (op == TAC_OP_DIV) {
+    /*
+      ;
+      ; Divide 16-bit values (with 16-bit result)
+      ; In: Divide BC by divider DE
+      ; Out: BC = result, HL = rest
+      ;
+      Div16:
+      ld hl,0
+      ld a,b
+      ld b,8
+    Div16_Loop1:
+      rla
+      adc hl,hl
+      sbc hl,de
+      jr nc,Div16_NoAdd1
+      add hl,de
+    Div16_NoAdd1:
+      djnz Div16_Loop1
+      rla
+      cpl
+      ld b,a
+      ld a,c
+      ld c,b
+      ld b,8
+    Div16_Loop2:
+      rla
+      adc hl,hl
+      sbc hl,de
+      jr nc,Div16_NoAdd2
+      add hl,de
+    Div16_NoAdd2:
+      djnz Div16_Loop2
+      rla
+      cpl
+      ;ld b,c
+      ;ld c,a
+    */
+
+    _divide_bc_by_de_to_ca_hl(file_out);
+  }
+    
   /* NOTE!!! */
   _pop_de(file_out);
 
@@ -2302,17 +2417,35 @@ static int _generate_asm_mul_div_z80_16bit(struct tac *t, FILE *file_out, struct
   }
 
   /******************************************************************************************************/
+  /* copy data ca -> (ix) */
+  /******************************************************************************************************/
+
+  if (op == TAC_OP_DIV) {
+    if (t->result_var_type == VARIABLE_TYPE_INT16 || t->result_var_type == VARIABLE_TYPE_UINT16) {
+      /* 16-bit */
+      _load_a_into_ix(0, file_out);
+      _load_c_into_ix(1, file_out);
+    }
+    else {
+      /* 8-bit */
+      _load_a_into_ix(0, file_out);
+    }
+  }
+
+  /******************************************************************************************************/
   /* copy data hl -> (ix) */
   /******************************************************************************************************/
 
-  if (t->result_var_type == VARIABLE_TYPE_INT16 || t->result_var_type == VARIABLE_TYPE_UINT16) {
-    /* 16-bit */
-    _load_l_into_ix(0, file_out);
-    _load_h_into_ix(1, file_out);
-  }
-  else {
-    /* 8-bit */
-    _load_l_into_ix(0, file_out);
+  if (op == TAC_OP_MUL) {
+    if (t->result_var_type == VARIABLE_TYPE_INT16 || t->result_var_type == VARIABLE_TYPE_UINT16) {
+      /* 16-bit */
+      _load_l_into_ix(0, file_out);
+      _load_h_into_ix(1, file_out);
+    }
+    else {
+      /* 8-bit */
+      _load_l_into_ix(0, file_out);
+    }
   }
 
   return SUCCEEDED;
@@ -2409,12 +2542,13 @@ static int _generate_asm_mul_div_z80_8bit(struct tac *t, FILE *file_out, struct 
   /* h * e -> hl */
   /******************************************************************************************************/
 
-  /*
-    ;
-    ; Multiply 8-bit values
-    ; In:  Multiply H with E
-    ; Out: HL = result
-    ;
+  if (op == TAC_OP_MUL) {
+    /*
+      ;
+      ; Multiply 8-bit values
+      ; In:  Multiply H with E
+      ; Out: HL = result
+      ;
     Mult8:
       ld d,0
       ld l,d
@@ -2425,9 +2559,41 @@ static int _generate_asm_mul_div_z80_8bit(struct tac *t, FILE *file_out, struct 
       add hl,de
     Mult8_NoAdd:
       djnz Mult8_Loop
-  */
+    */
 
-  _multiply_h_and_e_to_hl(file_out);
+    _multiply_h_and_e_to_hl(file_out);
+  }
+
+  /******************************************************************************************************/
+  /* h / e -> a (result) and b (reminder) */
+  /******************************************************************************************************/
+
+  if (op == TAC_OP_DIV) {
+    /*
+    ;
+    ; Divide 8-bit values
+    ; In: Divide H by divider E
+    ; Out: A = result, B = rest
+    ;
+  Div8:
+    xor a
+    ld b,8
+  Div8_Loop:
+    rl h
+    rla
+    sub e
+    jr nc,Div8_NoAdd
+    add a,e
+  Div8_NoAdd:
+    djnz Div8_Loop
+    ld b,a
+    ld a,h
+    rla
+    cpl
+    */
+
+    _divide_h_by_e_to_a_b(file_out);
+  }
   
   /* NOTE!!! */
   _pop_de(file_out);
@@ -2456,14 +2622,44 @@ static int _generate_asm_mul_div_z80_8bit(struct tac *t, FILE *file_out, struct 
   /* copy data hl -> (ix) */
   /******************************************************************************************************/
 
-  if (t->result_var_type == VARIABLE_TYPE_INT16 || t->result_var_type == VARIABLE_TYPE_UINT16) {
-    /* 16-bit */
-    _load_l_into_ix(0, file_out);
-    _load_h_into_ix(1, file_out);
+  if (op == TAC_OP_MUL) {
+    if (t->result_var_type == VARIABLE_TYPE_INT16 || t->result_var_type == VARIABLE_TYPE_UINT16) {
+      /* 16-bit */
+      _load_l_into_ix(0, file_out);
+      _load_h_into_ix(1, file_out);
+    }
+    else {
+      /* 8-bit */
+      _load_l_into_ix(0, file_out);
+    }
   }
-  else {
-    /* 8-bit */
-    _load_l_into_ix(0, file_out);
+
+  /******************************************************************************************************/
+  /* copy data a -> (ix) */
+  /******************************************************************************************************/
+
+  if (op == TAC_OP_DIV) {
+    if (t->result_var_type == VARIABLE_TYPE_INT16 || t->result_var_type == VARIABLE_TYPE_UINT16) {
+      /* 16-bit */
+
+      /* lower byte */
+      _load_a_into_ix(0, file_out);
+
+      /* sign extend 8-bit -> 16-bit? */
+      if (t->result_var_type == VARIABLE_TYPE_INT16 && (t->arg1_var_type == VARIABLE_TYPE_INT8 ||
+                                                        t->arg2_var_type == VARIABLE_TYPE_INT8)) {
+        /* yes */
+        _sign_extend_a_into_ix(1, file_out);
+      }
+      else {
+        /* upper byte = 0 */
+        _load_value_into_ix(0, 1, file_out);
+      }
+    }
+    else {
+      /* 8-bit */
+      _load_a_into_ix(0, file_out);
+    }
   }
 
   return SUCCEEDED;

@@ -1,8 +1,8 @@
 
 int8 g_i[8];
-int8 g_value = 1;
+uint8 g_value = 1;
 
 void main() {
 
-  int16 a = g_value * 1111;
+  int16 a = 99 / g_value;
 }

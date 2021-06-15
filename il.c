@@ -450,7 +450,7 @@ int il_stack_calculate(struct stack_item *si, int q, int rresult) {
       }
     }
     /* remove unnecessary + */
-    if (si[k].type == STACK_ITEM_TYPE_OPERATOR && si[k].value == SI_OP_ADD && b == 1) {
+    if (si[k].type == STACK_ITEM_TYPE_OPERATOR && si[k].value == SI_OP_ADD && b == 1) {
       if (si[k + 1].type == STACK_ITEM_TYPE_VALUE || si[k + 1].type == STACK_ITEM_TYPE_STRING)
         si[k].type = STACK_ITEM_TYPE_DELETED;
       else if (si[k + 1].type == STACK_ITEM_TYPE_OPERATOR && si[k + 1].value == SI_OP_LEFT)
@@ -576,7 +576,7 @@ static void _increment_decrement(char *label, int increment) {
 }
 
 
-static struct tac *_add_tac_calculation(int op, int r1, int r2, int rresult, struct stack_item *si[256], double v[256]) {
+static struct tac *_add_tac_calculation(int op, int r1, int r2, int rresult, struct stack_item *si[256], double v[256], struct stack *sta) {
 
   struct tac *t = add_tac();
 
@@ -610,8 +610,18 @@ static struct tac *_add_tac_calculation(int op, int r1, int r2, int rresult, str
       tac_try_find_definition(t, si[r2]->string, NULL, TAC_USE_ARG2);
     }
   }
-  else
+  else {
+    if (op == TAC_OP_MOD && ((int)v[r2]) == 0) {
+      fprintf(stderr, "%s:%d: IL_COMPUTE_STACK: Modulo by zero.\n", get_file_name(sta->filename_id), sta->linenumber);
+      return NULL;
+    }
+    if (op == TAC_OP_DIV && ((int)v[r2]) == 0) {
+      fprintf(stderr, "%s:%d: IL_COMPUTE_STACK: Division by zero.\n", get_file_name(sta->filename_id), sta->linenumber);
+      return NULL;
+    }
+
     tac_set_arg2(t, TAC_ARG_TYPE_CONSTANT, (int)v[r2], NULL);
+  }
 
   /* promote to the maximum of this expression */
   t->result_var_type_promoted = g_max_var_type;
@@ -772,12 +782,16 @@ int il_compute_stack(struct stack *sta, int count, int rresult) {
     else {
       switch ((int)s->value) {
       case SI_OP_ADD:
-        ta = _add_tac_calculation(TAC_OP_ADD, t-2, t-1, g_temp_r++, si, v);
+        ta = _add_tac_calculation(TAC_OP_ADD, t-2, t-1, g_temp_r++, si, v, sta);
+        if (ta == NULL)
+          return FAILED;
         _turn_stack_item_into_a_register(si, sit, t-2, (int)ta->result_d);
         t--;
         break;
       case SI_OP_SUB:
-        ta = _add_tac_calculation(TAC_OP_SUB, t-2, t-1, g_temp_r++, si, v);
+        ta = _add_tac_calculation(TAC_OP_SUB, t-2, t-1, g_temp_r++, si, v, sta);
+        if (ta == NULL)
+          return FAILED;
         _turn_stack_item_into_a_register(si, sit, t-2, (int)ta->result_d);
         t--;
         break;
@@ -950,7 +964,9 @@ int il_compute_stack(struct stack *sta, int count, int rresult) {
           return FAILED;
         }
 
-        ta = _add_tac_calculation(TAC_OP_MUL, t-2, t-1, g_temp_r++, si, v);
+        ta = _add_tac_calculation(TAC_OP_MUL, t-2, t-1, g_temp_r++, si, v, sta);
+        if (ta == NULL)
+          return FAILED;
         _turn_stack_item_into_a_register(si, sit, t-2, (int)ta->result_d);
         t--;
         break;
@@ -1250,7 +1266,9 @@ int il_compute_stack(struct stack *sta, int count, int rresult) {
           return FAILED;
         }
 
-        ta = _add_tac_calculation(TAC_OP_OR, t-2, t-1, g_temp_r++, si, v);
+        ta = _add_tac_calculation(TAC_OP_OR, t-2, t-1, g_temp_r++, si, v, sta);
+        if (ta == NULL)
+          return FAILED;
         _turn_stack_item_into_a_register(si, sit, t-2, (int)ta->result_d);
         t--;
         break;
@@ -1260,35 +1278,33 @@ int il_compute_stack(struct stack *sta, int count, int rresult) {
           return FAILED;
         }
 
-        ta = _add_tac_calculation(TAC_OP_AND, t-2, t-1, g_temp_r++, si, v);
+        ta = _add_tac_calculation(TAC_OP_AND, t-2, t-1, g_temp_r++, si, v, sta);
+        if (ta == NULL)
+          return FAILED;
         _turn_stack_item_into_a_register(si, sit, t-2, (int)ta->result_d);
         t--;
         break;
       case SI_OP_MODULO:
-        if (((int)v[t - 1]) == 0) {
-          fprintf(stderr, "%s:%d: IL_COMPUTE_STACK: Modulo by zero.\n", get_file_name(sta->filename_id), sta->linenumber);
-          return FAILED;
-        }
         if (t <= 1) {
           fprintf(stderr, "%s:%d: IL_COMPUTE_STACK: Modulo is missing an operand.\n", get_file_name(sta->filename_id), sta->linenumber);
           return FAILED;
         }
 
-        ta = _add_tac_calculation(TAC_OP_MOD, t-2, t-1, g_temp_r++, si, v);
+        ta = _add_tac_calculation(TAC_OP_MOD, t-2, t-1, g_temp_r++, si, v, sta);
+        if (ta == NULL)
+          return FAILED;
         _turn_stack_item_into_a_register(si, sit, t-2, (int)ta->result_d);
         t--;
         break;
       case SI_OP_DIVIDE:
-        if (v[t - 1] == 0.0) {
-          fprintf(stderr, "%s:%d: IL_COMPUTE_STACK: Division by zero.\n", get_file_name(sta->filename_id), sta->linenumber);
-          return FAILED;
-        }
         if (t <= 1) {
           fprintf(stderr, "%s:%d: IL_COMPUTE_STACK: Division is missing an operand.\n", get_file_name(sta->filename_id), sta->linenumber);
           return FAILED;
         }
 
-        ta = _add_tac_calculation(TAC_OP_DIV, t-2, t-1, g_temp_r++, si, v);
+        ta = _add_tac_calculation(TAC_OP_DIV, t-2, t-1, g_temp_r++, si, v, sta);
+        if (ta == NULL)
+          return FAILED;
         _turn_stack_item_into_a_register(si, sit, t-2, (int)ta->result_d);
         t--;
         break;
@@ -1309,7 +1325,9 @@ int il_compute_stack(struct stack *sta, int count, int rresult) {
           return FAILED;
         }
 
-        ta = _add_tac_calculation(TAC_OP_SHIFT_LEFT, t-2, t-1, g_temp_r++, si, v);
+        ta = _add_tac_calculation(TAC_OP_SHIFT_LEFT, t-2, t-1, g_temp_r++, si, v, sta);
+        if (ta == NULL)
+          return FAILED;
         _turn_stack_item_into_a_register(si, sit, t-2, (int)ta->result_d);
         t--;
         break;
@@ -1319,7 +1337,9 @@ int il_compute_stack(struct stack *sta, int count, int rresult) {
           return FAILED;
         }
 
-        ta = _add_tac_calculation(TAC_OP_SHIFT_RIGHT, t-2, t-1, g_temp_r++, si, v);
+        ta = _add_tac_calculation(TAC_OP_SHIFT_RIGHT, t-2, t-1, g_temp_r++, si, v, sta);
+        if (ta == NULL)
+          return FAILED;
         _turn_stack_item_into_a_register(si, sit, t-2, (int)ta->result_d);
         t--;
         break;
