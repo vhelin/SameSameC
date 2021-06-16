@@ -4,5 +4,7 @@ int8 g_value = 1;
 
 void main() {
 
-  int16 a = 99 % g_value;
+   if (g_value >= 1) {
+     g_value = 2;
+   }
 }

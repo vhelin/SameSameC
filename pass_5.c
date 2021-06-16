@@ -259,16 +259,14 @@ static int _count_and_allocate_register_usage(int start, int end) {
 }
 
 
-int optimize_il(void) {
+static int _optimize_il_1(int *optimizations_counter) {
 
-  int i;
-  
   /*
     jmp label_* <----- REMOVE
     label_*:
   */
 
-  i = 0;
+  int i = 0;
   while (i < g_tacs_count) {
     int current, next;
 
@@ -281,17 +279,57 @@ int optimize_il(void) {
     if (g_tacs[current].op >= TAC_OP_JUMP && g_tacs[current].op <= TAC_OP_JUMP_GTE && g_tacs[next].op == TAC_OP_LABEL &&
         strcmp(g_tacs[current].result_s, g_tacs[next].result_s) == 0) {
       g_tacs[current].op = TAC_OP_DEAD;
+      (*optimizations_counter)++;
     }
 
     i = next;
   }
 
+  return SUCCEEDED;
+}
+
+
+static int _optimize_il_2(int *optimizations_counter) {
+  
+  /*
+    jmp label_* <----- REMOVE
+    label_@:
+    label_*:
+  */
+
+  int i = 0;
+  while (i < g_tacs_count) {
+    int current, next, last;
+
+    current = _find_next_living_tac(i);
+    next = _find_next_living_tac(current + 1);
+    last = _find_next_living_tac(next + 1);
+
+    if (current < 0 || next < 0 || last < 0)
+      break;
+    
+    if (g_tacs[current].op >= TAC_OP_JUMP && g_tacs[current].op <= TAC_OP_JUMP_GTE &&
+        g_tacs[next].op == TAC_OP_LABEL && g_tacs[last].op == TAC_OP_LABEL &&
+        strcmp(g_tacs[current].result_s, g_tacs[last].result_s) == 0) {
+      g_tacs[current].op = TAC_OP_DEAD;
+      (*optimizations_counter)++;
+    }
+
+    i = next;
+  }
+
+  return SUCCEEDED;
+}
+
+
+static int _optimize_il_3(int *optimizations_counter) {
+  
   /*
     rX = ?  <--- REMOVE rX if rX doesn't appear elsewhere
     ?  = rX <--- REMOVE rX if rX doesn't appear elsewhere
   */
 
-  i = 0;
+  int i = 0;
   while (1) {
     int is_last_function = NO;
     int end = _find_end_of_il_function(i, &is_last_function);
@@ -320,8 +358,9 @@ int optimize_il(void) {
         g_tacs[next].arg1_node = g_tacs[current].arg1_node;
         g_tacs[next].arg1_var_type_promoted = g_tacs[current].arg1_var_type_promoted;
         g_tacs[current].op = TAC_OP_DEAD;
+        (*optimizations_counter)++;
       }
-          
+
       i = next;
     }
 
@@ -329,12 +368,18 @@ int optimize_il(void) {
       break;
   }
 
+  return SUCCEEDED;
+}
+
+
+static int _optimize_il_4(int *optimizations_counter) {
+  
   /*
     rX = &? <--- REMOVE rX if rX doesn't appear elsewhere
     ?  = rX <--- REMOVE rX if rX doesn't appear elsewhere
   */
 
-  i = 0;
+  int i = 0;
   while (1) {
     int is_last_function = NO;
     int end = _find_end_of_il_function(i, &is_last_function);
@@ -363,8 +408,9 @@ int optimize_il(void) {
         g_tacs[current].result_node = g_tacs[next].result_node;
         g_tacs[current].result_var_type_promoted = g_tacs[next].result_var_type_promoted;
         g_tacs[next].op = TAC_OP_DEAD;
+        (*optimizations_counter)++;
       }
-          
+
       i = next;
     }
 
@@ -372,12 +418,18 @@ int optimize_il(void) {
       break;
   }
 
+  return SUCCEEDED;
+}
+
+
+static int _optimize_il_5(int *optimizations_counter) {
+
   /*
     rX = &?[] <--- REMOVE rX if rX doesn't appear elsewhere
     ?  = rX   <--- REMOVE rX if rX doesn't appear elsewhere
   */
 
-  i = 0;
+  int i = 0;
   while (1) {
     int is_last_function = NO;
     int end = _find_end_of_il_function(i, &is_last_function);
@@ -406,8 +458,9 @@ int optimize_il(void) {
         g_tacs[current].result_node = g_tacs[next].result_node;
         g_tacs[current].result_var_type_promoted = g_tacs[next].result_var_type_promoted;
         g_tacs[next].op = TAC_OP_DEAD;
+        (*optimizations_counter)++;
       }
-          
+
       i = next;
     }
 
@@ -415,12 +468,18 @@ int optimize_il(void) {
       break;
   }
 
+  return SUCCEEDED;
+}
+
+
+static int _optimize_il_6(int *optimizations_counter) {
+  
   /*
     rX = ?[]  <--- REMOVE rX if rX doesn't appear elsewhere
     ?  = rX   <--- REMOVE rX if rX doesn't appear elsewhere
   */
 
-  i = 0;
+  int i = 0;
   while (1) {
     int is_last_function = NO;
     int end = _find_end_of_il_function(i, &is_last_function);
@@ -449,8 +508,9 @@ int optimize_il(void) {
         g_tacs[current].result_node = g_tacs[next].result_node;
         g_tacs[current].result_var_type_promoted = g_tacs[next].result_var_type_promoted;
         g_tacs[next].op = TAC_OP_DEAD;
+        (*optimizations_counter)++;
       }
-          
+
       i = next;
     }
 
@@ -458,12 +518,18 @@ int optimize_il(void) {
       break;
   }
 
+  return SUCCEEDED;
+}
+
+
+static int _optimize_il_7(int *optimizations_counter) {
+
   /*
     rX = ?      <--- REMOVE rX if rX doesn't appear elsewhere
     ?  = &?[rX] <--- REMOVE rX if rX doesn't appear elsewhere
   */
 
-  i = 0;
+  int i = 0;
   while (1) {
     int is_last_function = NO;
     int end = _find_end_of_il_function(i, &is_last_function);
@@ -492,6 +558,7 @@ int optimize_il(void) {
         g_tacs[next].arg2_node = g_tacs[current].arg1_node;
         g_tacs[next].arg2_var_type_promoted = g_tacs[current].arg1_var_type_promoted;
         g_tacs[current].op = TAC_OP_DEAD;
+        (*optimizations_counter)++;
       }
 
       i = next;
@@ -501,12 +568,18 @@ int optimize_il(void) {
       break;
   }
 
+  return SUCCEEDED;
+}
+
+
+static int _optimize_il_8(int *optimizations_counter) {
+
   /*
     rX = ?      <--- REMOVE rX if rX doesn't appear elsewhere
     ?  = ?[rX]  <--- REMOVE rX if rX doesn't appear elsewhere
   */
 
-  i = 0;
+  int i = 0;
   while (1) {
     int is_last_function = NO;
     int end = _find_end_of_il_function(i, &is_last_function);
@@ -535,6 +608,7 @@ int optimize_il(void) {
         g_tacs[next].arg2_node = g_tacs[current].arg1_node;
         g_tacs[next].arg2_var_type_promoted = g_tacs[current].arg1_var_type_promoted;
         g_tacs[current].op = TAC_OP_DEAD;
+        (*optimizations_counter)++;
       }
 
       i = next;
@@ -544,12 +618,18 @@ int optimize_il(void) {
       break;
   }
 
+  return SUCCEEDED;
+}
+
+
+static int _optimize_il_9(int *optimizations_counter) {
+  
   /*
     rX   = ?  <--- REMOVE rX if rX doesn't appear elsewhere
     ?[?] = rX <--- REMOVE rX if rX doesn't appear elsewhere
   */
 
-  i = 0;
+  int i = 0;
   while (1) {
     int is_last_function = NO;
     int end = _find_end_of_il_function(i, &is_last_function);
@@ -578,8 +658,9 @@ int optimize_il(void) {
         g_tacs[next].arg1_node = g_tacs[current].arg1_node;
         g_tacs[next].arg1_var_type_promoted = g_tacs[current].arg1_var_type_promoted;
         g_tacs[current].op = TAC_OP_DEAD;
+        (*optimizations_counter)++;
       }
-          
+
       i = next;
     }
 
@@ -587,12 +668,18 @@ int optimize_il(void) {
       break;
   }
 
+  return SUCCEEDED;
+}
+
+
+static int _optimize_il_10(int *optimizations_counter) {
+
   /*
     rX    = ?  <--- REMOVE rX if rX doesn't appear elsewhere
     ?[rX] = ?  <--- REMOVE rX if rX doesn't appear elsewhere
   */
 
-  i = 0;
+  int i = 0;
   while (1) {
     int is_last_function = NO;
     int end = _find_end_of_il_function(i, &is_last_function);
@@ -621,8 +708,9 @@ int optimize_il(void) {
         g_tacs[next].arg2_node = g_tacs[current].arg1_node;
         g_tacs[next].arg2_var_type_promoted = g_tacs[current].arg1_var_type_promoted;
         g_tacs[current].op = TAC_OP_DEAD;
+        (*optimizations_counter)++;
       }
-          
+
       i = next;
     }
 
@@ -630,15 +718,21 @@ int optimize_il(void) {
       break;
   }
 
+  return SUCCEEDED;
+}
+
+
+static int _optimize_il_11(int *optimizations_counter) {
+  
   /*
     X = ?  <--- REMOVE the first assignment
     X = ?  <--- REMOVE the first assignment
   */
 
   /* PS. this is not a very good optimization, doesn't work that often */
-  /* PPS. make this find two assigments with n tacs between them */
+  /* PPS. make this find two assigments with n TACs between them */
   
-  i = 0;
+  int i = 0;
   while (1) {
     int is_last_function = NO;
     int end = _find_end_of_il_function(i, &is_last_function);
@@ -661,21 +755,28 @@ int optimize_il(void) {
            (strcmp(g_tacs[current].result_s, g_tacs[next].result_s) == 0))) {
         /* found match! the first assigment can be ignored! */
         g_tacs[current].op = TAC_OP_DEAD;
+        (*optimizations_counter)++;
       }
-          
+
       i = next;
     }
 
     if (is_last_function == YES)
       break;
   }
+
+  return SUCCEEDED;
+}
+
+
+static int _optimize_il_12(int *optimizations_counter) {
   
   /*
     rX = ?    <--- REMOVE rX if rX doesn't appear elsewhere
     return rX <--- REMOVE rX if rX doesn't appear elsewhere
   */
 
-  i = 0;
+  int i = 0;
   while (1) {
     int is_last_function = NO;
     int end = _find_end_of_il_function(i, &is_last_function);
@@ -704,8 +805,9 @@ int optimize_il(void) {
         g_tacs[next].arg1_node = g_tacs[current].arg1_node;
         g_tacs[next].arg1_var_type_promoted = g_tacs[current].arg1_var_type_promoted;
         g_tacs[current].op = TAC_OP_DEAD;
+        (*optimizations_counter)++;
       }
-          
+
       i = next;
     }
 
@@ -713,12 +815,18 @@ int optimize_il(void) {
       break;
   }
 
+  return SUCCEEDED;
+}
+
+
+static int _optimize_il_13(int *optimizations_counter) {
+
   /*
     rX = rA * rB <--- REMOVE rX if rX doesn't appear elsewhere
      ? = rX      <--- REMOVE rX if rX doesn't appear elsewhere
   */
 
-  i = 0;
+  int i = 0;
   while (1) {
     int is_last_function = NO;
     int end = _find_end_of_il_function(i, &is_last_function);
@@ -756,8 +864,9 @@ int optimize_il(void) {
         g_tacs[current].result_node = g_tacs[next].result_node;
         g_tacs[current].result_var_type_promoted = g_tacs[next].result_var_type_promoted;
         g_tacs[next].op = TAC_OP_DEAD;
+        (*optimizations_counter)++;
       }
-          
+
       i = next;
     }
 
@@ -765,12 +874,18 @@ int optimize_il(void) {
       break;
   }
 
+  return SUCCEEDED;
+}
+
+
+static int _optimize_il_14(int *optimizations_counter) {
+
   /*
     rX = function_call() <--- REMOVE rX if rX doesn't appear elsewhere
     ?  = rX              <--- REMOVE rX if rX doesn't appear elsewhere
   */
 
-  i = 0;
+  int i = 0;
   while (1) {
     int is_last_function = NO;
     int end = _find_end_of_il_function(i, &is_last_function);
@@ -799,8 +914,9 @@ int optimize_il(void) {
         g_tacs[current].result_node = g_tacs[next].result_node;
         g_tacs[current].result_var_type_promoted = g_tacs[next].result_var_type_promoted;
         g_tacs[next].op = TAC_OP_DEAD;
+        (*optimizations_counter)++;
       }
-          
+
       i = next;
     }
 
@@ -808,6 +924,168 @@ int optimize_il(void) {
       break;
   }
   
+  return SUCCEEDED;
+}
+
+
+static int _optimize_il_15(int *optimizations_counter) {
+
+  /*
+    rX    = ?  <--- REMOVE rX if rX doesn't appear elsewhere
+    if rX == ? <--- REMOVE rX if rX doesn't appear elsewhere
+  */
+
+  int i = 0;
+  while (1) {
+    int is_last_function = NO;
+    int end = _find_end_of_il_function(i, &is_last_function);
+    if (end < 0)
+      return FAILED;
+
+    if (_count_and_allocate_register_usage(i, end) == FAILED)
+      return FAILED;
+
+    while (i < end) {
+      int current, next;
+
+      current = _find_next_living_tac(i);
+      next = _find_next_living_tac(current + 1);
+
+      if (current < 0 || next < 0)
+        break;
+
+      if (g_tacs[current].op == TAC_OP_ASSIGNMENT && (g_tacs[next].op == TAC_OP_JUMP_EQ ||
+                                                      g_tacs[next].op == TAC_OP_JUMP_LT ||
+                                                      g_tacs[next].op == TAC_OP_JUMP_GT ||
+                                                      g_tacs[next].op == TAC_OP_JUMP_NEQ ||
+                                                      g_tacs[next].op == TAC_OP_JUMP_LTE ||
+                                                      g_tacs[next].op == TAC_OP_JUMP_GTE) &&
+          g_tacs[current].result_type == TAC_ARG_TYPE_TEMP && g_tacs[next].arg1_type == TAC_ARG_TYPE_TEMP &&
+          (int)g_tacs[current].result_d == (int)g_tacs[next].arg1_d &&
+          g_register_reads[(int)g_tacs[current].result_d] == 1 && g_register_writes[(int)g_tacs[current].result_d] == 1) {
+        /* found match! rX can be skipped! */
+        if (tac_set_arg1(&g_tacs[next], g_tacs[current].arg1_type, g_tacs[current].arg1_d, g_tacs[current].arg1_s) == FAILED)
+          return FAILED;
+        g_tacs[next].arg1_node = g_tacs[current].arg1_node;
+        g_tacs[next].arg1_var_type_promoted = g_tacs[current].arg1_var_type_promoted;
+        g_tacs[current].op = TAC_OP_DEAD;
+        (*optimizations_counter)++;
+      }
+
+      i = next;
+    }
+
+    if (is_last_function == YES)
+      break;
+  }
+
+  return SUCCEEDED;
+}
+
+
+static int _optimize_il_16(int *optimizations_counter) {
+
+  /*
+    rX    = ?  <--- REMOVE rX if rX doesn't appear elsewhere
+    if ? == rX <--- REMOVE rX if rX doesn't appear elsewhere
+  */
+
+  int i = 0;
+  while (1) {
+    int is_last_function = NO;
+    int end = _find_end_of_il_function(i, &is_last_function);
+    if (end < 0)
+      return FAILED;
+
+    if (_count_and_allocate_register_usage(i, end) == FAILED)
+      return FAILED;
+
+    while (i < end) {
+      int current, next;
+
+      current = _find_next_living_tac(i);
+      next = _find_next_living_tac(current + 1);
+
+      if (current < 0 || next < 0)
+        break;
+
+      if (g_tacs[current].op == TAC_OP_ASSIGNMENT && (g_tacs[next].op == TAC_OP_JUMP_EQ ||
+                                                      g_tacs[next].op == TAC_OP_JUMP_LT ||
+                                                      g_tacs[next].op == TAC_OP_JUMP_GT ||
+                                                      g_tacs[next].op == TAC_OP_JUMP_NEQ ||
+                                                      g_tacs[next].op == TAC_OP_JUMP_LTE ||
+                                                      g_tacs[next].op == TAC_OP_JUMP_GTE) &&
+          g_tacs[current].result_type == TAC_ARG_TYPE_TEMP && g_tacs[next].arg2_type == TAC_ARG_TYPE_TEMP &&
+          (int)g_tacs[current].result_d == (int)g_tacs[next].arg2_d &&
+          g_register_reads[(int)g_tacs[current].result_d] == 1 && g_register_writes[(int)g_tacs[current].result_d] == 1) {
+        /* found match! rX can be skipped! */
+        if (tac_set_arg2(&g_tacs[next], g_tacs[current].arg1_type, g_tacs[current].arg1_d, g_tacs[current].arg1_s) == FAILED)
+          return FAILED;
+        g_tacs[next].arg2_node = g_tacs[current].arg1_node;
+        g_tacs[next].arg2_var_type_promoted = g_tacs[current].arg1_var_type_promoted;
+        g_tacs[current].op = TAC_OP_DEAD;
+        (*optimizations_counter)++;
+      }
+
+      i = next;
+    }
+
+    if (is_last_function == YES)
+      break;
+  }
+
+  return SUCCEEDED;
+}
+
+
+int optimize_il(void) {
+
+  int optimizations_counter, loop = 1;
+
+  /* run all optimizations until no optimizations are done */
+  while (1) {
+    optimizations_counter = 0;
+    
+    if (_optimize_il_1(&optimizations_counter) == FAILED)
+      return FAILED;
+    if (_optimize_il_2(&optimizations_counter) == FAILED)
+      return FAILED;
+    if (_optimize_il_3(&optimizations_counter) == FAILED)
+      return FAILED;
+    if (_optimize_il_4(&optimizations_counter) == FAILED)
+      return FAILED;
+    if (_optimize_il_5(&optimizations_counter) == FAILED)
+      return FAILED;
+    if (_optimize_il_6(&optimizations_counter) == FAILED)
+      return FAILED;
+    if (_optimize_il_7(&optimizations_counter) == FAILED)
+      return FAILED;
+    if (_optimize_il_8(&optimizations_counter) == FAILED)
+      return FAILED;
+    if (_optimize_il_9(&optimizations_counter) == FAILED)
+      return FAILED;
+    if (_optimize_il_10(&optimizations_counter) == FAILED)
+      return FAILED;
+    if (_optimize_il_11(&optimizations_counter) == FAILED)
+      return FAILED;
+    if (_optimize_il_12(&optimizations_counter) == FAILED)
+      return FAILED;
+    if (_optimize_il_13(&optimizations_counter) == FAILED)
+      return FAILED;
+    if (_optimize_il_14(&optimizations_counter) == FAILED)
+      return FAILED;
+    if (_optimize_il_15(&optimizations_counter) == FAILED)
+      return FAILED;
+    if (_optimize_il_16(&optimizations_counter) == FAILED)
+      return FAILED;
+
+    fprintf(stderr, "optimize_il(): Loop %d managed to do %d optimizations.\n", loop, optimizations_counter);
+    loop++;
+    
+    if (optimizations_counter == 0)
+      break;
+  }
+
   return SUCCEEDED;
 }
 
