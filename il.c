@@ -709,6 +709,10 @@ static int _add_comparison(struct stack_item *si[256], struct stack_item sit[256
   tac_set_arg2(ta, TAC_ARG_TYPE_TEMP, r2, NULL);
   tac_set_result(ta, TAC_ARG_TYPE_LABEL, 0, generate_temp_label(label_true));
 
+  /* promote to the maximum of this expression */
+  ta->arg1_var_type_promoted = g_max_var_type;
+  ta->arg2_var_type_promoted = g_max_var_type;
+
   /* jump to label false */
   ta = add_tac();
   if (ta == NULL)

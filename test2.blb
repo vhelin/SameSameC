@@ -1,10 +1,10 @@
 
 int8 g_i[8];
-int8 g_value = 1;
+int16 g_value = 1;
 
 void main() {
 
-   if (g_value >= 1) {
+   if (g_value == 1) {
      g_value = 2;
    }
 }

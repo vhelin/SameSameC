@@ -397,12 +397,12 @@ struct tac {
 #define TAC_OP_CREATE_VARIABLE    6 /* DONE */
 #define TAC_OP_MUL                7 /* DONE */
 #define TAC_OP_JUMP               8 /* DONE */
-#define TAC_OP_JUMP_EQ            9
-#define TAC_OP_JUMP_LT           10
-#define TAC_OP_JUMP_GT           11
-#define TAC_OP_JUMP_NEQ          12
-#define TAC_OP_JUMP_LTE          13
-#define TAC_OP_JUMP_GTE          14
+#define TAC_OP_JUMP_EQ            9 /* DONE */
+#define TAC_OP_JUMP_LT           10 /* DONE */
+#define TAC_OP_JUMP_GT           11 /* DONE */
+#define TAC_OP_JUMP_NEQ          12 /* DONE */
+#define TAC_OP_JUMP_LTE          13 /* DONE */
+#define TAC_OP_JUMP_GTE          14 /* DONE */
 #define TAC_OP_ARRAY_READ        15 /* DONE */
 #define TAC_OP_DIV               16 /* DONE */
 #define TAC_OP_MOD               17 /* DONE */

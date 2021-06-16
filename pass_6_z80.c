@@ -382,6 +382,12 @@ static void _add_from_ix_to_a(int offset, FILE *file_out) {
 }
 
 
+static void _sub_b_from_a(FILE *file_out) {
+
+  fprintf(file_out, "      SUB A,B\n");
+}
+
+
 static void _sub_l_from_a(FILE *file_out) {
 
   fprintf(file_out, "      SUB A,L\n");
@@ -525,6 +531,30 @@ static void _load_value_to_l(int value, FILE *file_out) {
 static void _jump_to(char *label, FILE *file_out) {
 
   fprintf(file_out, "      JP  %s\n", label);
+}
+
+
+static void _jump_c_to(char *label, FILE *file_out) {
+
+  fprintf(file_out, "      JP  C,%s\n", label);
+}
+
+
+static void _jump_nc_to(char *label, FILE *file_out) {
+
+  fprintf(file_out, "      JP  NC,%s\n", label);
+}
+
+
+static void _jump_z_to(char *label, FILE *file_out) {
+
+  fprintf(file_out, "      JP  Z,%s\n", label);
+}
+
+
+static void _jump_nz_to(char *label, FILE *file_out) {
+
+  fprintf(file_out, "      JP  NZ,%s\n", label);
 }
 
 
@@ -2710,6 +2740,286 @@ static int _generate_asm_mul_div_mod_z80(struct tac *t, FILE *file_out, struct t
 }
 
 
+static int _generate_asm_jump_eq_lt_gt_neq_lte_gte_z80_16bit(struct tac *t, FILE *file_out, struct tree_node *function_node, int op) {
+
+  int arg1_offset = -1, arg2_offset = -1;
+
+  /* arg1 */
+
+  if (find_stack_offset(t->arg1_type, t->arg1_s, t->arg1_d, t->arg1_node, &arg1_offset, function_node) == FAILED)
+    return FAILED;
+
+  /* arg2 */
+
+  if (find_stack_offset(t->arg2_type, t->arg2_s, t->arg2_d, t->arg2_node, &arg2_offset, function_node) == FAILED)
+    return FAILED;
+    
+  /* generate asm */
+
+  /******************************************************************************************************/
+  /* source address (arg1) -> ix */
+  /******************************************************************************************************/
+  
+  if (t->arg1_type == TAC_ARG_TYPE_CONSTANT) {
+  }
+  else if (t->arg1_type == TAC_ARG_TYPE_LABEL && arg1_offset == 999999) {
+    /* global var */
+    _load_label_to_ix(t->arg1_s, file_out);
+  }
+  else {
+    /* it's a variable in the frame! */
+    fprintf(file_out, "      ; offset %d\n", arg1_offset);
+
+    _load_value_to_ix(arg1_offset, file_out);
+    _add_de_to_ix(file_out);
+  }
+  
+  /******************************************************************************************************/
+  /* copy data (arg1) -> hl */
+  /******************************************************************************************************/
+  
+  if (t->arg1_type == TAC_ARG_TYPE_CONSTANT) {
+    /* 16-bit */
+    _load_value_to_hl((int)t->arg1_d, file_out);
+  }
+  else {
+    if (t->arg1_var_type == VARIABLE_TYPE_INT16 || t->arg1_var_type == VARIABLE_TYPE_UINT16) {
+      /* 16-bit */
+      _load_from_ix_to_l(0, file_out);
+      _load_from_ix_to_h(1, file_out);
+    }
+    else {
+      /* 8-bit */
+      _load_from_ix_to_l(0, file_out);
+
+      /* sign extend 8-bit -> 16-bit? */
+      if (t->arg1_var_type == VARIABLE_TYPE_INT8 && (t->arg1_var_type_promoted == VARIABLE_TYPE_INT16 ||
+                                                     t->arg1_var_type_promoted == VARIABLE_TYPE_UINT16)) {
+        /* yes */
+        _sign_extend_l_to_hl(file_out);
+      }
+      else if (t->arg1_var_type == VARIABLE_TYPE_UINT8 && (t->arg1_var_type_promoted == VARIABLE_TYPE_INT16 ||
+                                                           t->arg1_var_type_promoted == VARIABLE_TYPE_UINT16)) {
+        /* upper byte -> 0 */
+        _load_value_to_h(0, file_out);
+      }
+      else {
+        fprintf(stderr, "_generate_asm_jump_eq_lt_gt_neq_lte_gte_z80_16bit(): Unhandled 8-bit ARG1! Please submit a bug report!\n");
+        return FAILED;
+      }
+    }
+  }
+
+  /******************************************************************************************************/
+  /* source address (arg2) -> ix */
+  /******************************************************************************************************/
+  
+  if (t->arg2_type == TAC_ARG_TYPE_CONSTANT) {
+  }
+  else if (t->arg2_type == TAC_ARG_TYPE_LABEL && arg2_offset == 999999) {
+    /* global var */
+    _load_label_to_ix(t->arg2_s, file_out);
+  }
+  else {
+    /* it's a variable in the frame! */
+    fprintf(file_out, "      ; offset %d\n", arg2_offset);
+
+    _load_value_to_ix(arg2_offset, file_out);
+    _add_de_to_ix(file_out);
+  }
+  
+  /******************************************************************************************************/
+  /* copy data (arg2) -> bc */
+  /******************************************************************************************************/
+  
+  if (t->arg2_type == TAC_ARG_TYPE_CONSTANT) {
+    /* 16-bit */
+    _load_value_to_bc((int)t->arg2_d, file_out);
+  }
+  else {
+    if (t->arg2_var_type == VARIABLE_TYPE_INT16 || t->arg2_var_type == VARIABLE_TYPE_UINT16) {
+      /* 16-bit */
+      _load_from_ix_to_c(0, file_out);
+      _load_from_ix_to_b(1, file_out);
+    }
+    else {
+      /* 8-bit */
+      _load_from_ix_to_c(0, file_out);
+
+      /* sign extend 8-bit -> 16-bit? */
+      if (t->arg2_var_type == VARIABLE_TYPE_INT8 && (t->arg2_var_type_promoted == VARIABLE_TYPE_INT16 ||
+                                                     t->arg2_var_type_promoted == VARIABLE_TYPE_UINT16)) {
+        /* yes */
+        _sign_extend_c_to_bc(file_out);
+      }
+      else if (t->arg2_var_type == VARIABLE_TYPE_UINT8 && (t->arg2_var_type_promoted == VARIABLE_TYPE_INT16 ||
+                                                           t->arg2_var_type_promoted == VARIABLE_TYPE_UINT16)) {
+        /* upper byte -> 0 */
+        _load_value_to_b(0, file_out);
+      }
+      else {
+        fprintf(stderr, "_generate_asm_jump_eq_lt_gt_neq_lte_gte_z80_16bit(): Unhandled 8-bit ARG2! Please submit a bug report!\n");
+        return FAILED;
+      }
+    }
+  }
+
+  /******************************************************************************************************/
+  /* hl = hl - bc */
+  /******************************************************************************************************/
+
+  _sub_bc_from_hl(file_out);
+
+  /******************************************************************************************************/
+  /* jumps */
+  /******************************************************************************************************/
+
+  if (op == TAC_OP_JUMP_EQ)
+    _jump_z_to(t->result_s, file_out);
+  else if (op == TAC_OP_JUMP_NEQ)
+    _jump_nz_to(t->result_s, file_out);
+  else if (op == TAC_OP_JUMP_LT)
+    _jump_c_to(t->result_s, file_out);
+  else if (op == TAC_OP_JUMP_GT)
+    _jump_nc_to(t->result_s, file_out);
+  else if (op == TAC_OP_JUMP_LTE) {
+    _jump_z_to(t->result_s, file_out);
+    _jump_c_to(t->result_s, file_out);
+  }
+  else if (op == TAC_OP_JUMP_GTE) {
+    _jump_z_to(t->result_s, file_out);
+    _jump_nc_to(t->result_s, file_out);
+  }
+
+  return SUCCEEDED;
+}
+
+
+static int _generate_asm_jump_eq_lt_gt_neq_lte_gte_z80_8bit(struct tac *t, FILE *file_out, struct tree_node *function_node, int op) {
+
+  int arg1_offset = -1, arg2_offset = -1;
+  
+  /* arg1 */
+
+  if (find_stack_offset(t->arg1_type, t->arg1_s, t->arg1_d, t->arg1_node, &arg1_offset, function_node) == FAILED)
+    return FAILED;
+
+  /* arg2 */
+
+  if (find_stack_offset(t->arg2_type, t->arg2_s, t->arg2_d, t->arg2_node, &arg2_offset, function_node) == FAILED)
+    return FAILED;
+    
+  /* generate asm */
+
+  /******************************************************************************************************/
+  /* source address (arg1) -> ix */
+  /******************************************************************************************************/
+  
+  if (t->arg1_type == TAC_ARG_TYPE_CONSTANT) {
+  }
+  else if (t->arg1_type == TAC_ARG_TYPE_LABEL && arg1_offset == 999999) {
+    /* global var */
+    _load_label_to_ix(t->arg1_s, file_out);
+  }
+  else {
+    /* it's a variable in the frame! */
+    fprintf(file_out, "      ; offset %d\n", arg1_offset);
+
+    _load_value_to_ix(arg1_offset, file_out);
+    _add_de_to_ix(file_out);
+  }
+  
+  /******************************************************************************************************/
+  /* copy data (arg1) -> a */
+  /******************************************************************************************************/
+  
+  if (t->arg1_type == TAC_ARG_TYPE_CONSTANT) {
+    /* 8-bit */
+    _load_value_to_a(((int)t->arg1_d) & 0xff, file_out);
+  }
+  else {
+    /* 8-bit */
+    _load_from_ix_to_a(0, file_out);
+  }
+
+  /******************************************************************************************************/
+  /* source address (arg2) -> ix */
+  /******************************************************************************************************/
+  
+  if (t->arg2_type == TAC_ARG_TYPE_CONSTANT) {
+  }
+  else if (t->arg2_type == TAC_ARG_TYPE_LABEL && arg2_offset == 999999) {
+    /* global var */
+    _load_label_to_ix(t->arg2_s, file_out);
+  }
+  else {
+    /* it's a variable in the frame! */
+    fprintf(file_out, "      ; offset %d\n", arg2_offset);
+
+    _load_value_to_ix(arg2_offset, file_out);
+    _add_de_to_ix(file_out);
+  }
+
+  /******************************************************************************************************/
+  /* copy data (arg2) -> b */
+  /******************************************************************************************************/
+  
+  if (t->arg2_type == TAC_ARG_TYPE_CONSTANT) {
+    /* 8-bit */
+    _load_value_to_b(((int)t->arg2_d) & 0xff, file_out);
+  }
+  else {
+    /* 8-bit */
+    _load_from_ix_to_b(0, file_out);
+  }
+  
+  /******************************************************************************************************/
+  /* a = a - b */
+  /******************************************************************************************************/
+
+  _sub_b_from_a(file_out);
+
+  /******************************************************************************************************/
+  /* jumps */
+  /******************************************************************************************************/
+
+  if (op == TAC_OP_JUMP_EQ)
+    _jump_z_to(t->result_s, file_out);
+  else if (op == TAC_OP_JUMP_NEQ)
+    _jump_nz_to(t->result_s, file_out);
+  else if (op == TAC_OP_JUMP_LT)
+    _jump_c_to(t->result_s, file_out);
+  else if (op == TAC_OP_JUMP_GT)
+    _jump_nc_to(t->result_s, file_out);
+  else if (op == TAC_OP_JUMP_LTE) {
+    _jump_z_to(t->result_s, file_out);
+    _jump_c_to(t->result_s, file_out);
+  }
+  else if (op == TAC_OP_JUMP_GTE) {
+    _jump_z_to(t->result_s, file_out);
+    _jump_nc_to(t->result_s, file_out);
+  }
+  
+  return SUCCEEDED;
+}
+
+
+static int _generate_asm_jump_eq_lt_gt_neq_lte_gte_z80(struct tac *t, FILE *file_out, struct tree_node *function_node, int op) {
+
+  /* 8-bit or 16-bit? */
+  if ((t->arg1_var_type_promoted == VARIABLE_TYPE_INT8 || t->arg1_var_type_promoted == VARIABLE_TYPE_UINT8) &&
+      (t->arg2_var_type_promoted == VARIABLE_TYPE_INT8 || t->arg2_var_type_promoted == VARIABLE_TYPE_UINT8))
+    return _generate_asm_jump_eq_lt_gt_neq_lte_gte_z80_8bit(t, file_out, function_node, op);
+  else if ((t->arg1_var_type_promoted == VARIABLE_TYPE_INT16 || t->arg1_var_type_promoted == VARIABLE_TYPE_UINT16) &&
+           (t->arg2_var_type_promoted == VARIABLE_TYPE_INT16 || t->arg2_var_type_promoted == VARIABLE_TYPE_UINT16))
+    return _generate_asm_jump_eq_lt_gt_neq_lte_gte_z80_16bit(t, file_out, function_node, op);
+
+  fprintf(stderr, "_generate_asm_shift_left_right_z80(): 8-bit + 16-bit, this shouldn't happen. Please submit a bug report!\n");
+
+  return FAILED;
+}
+
+
 int generate_asm_z80(FILE *file_out) {
 
   int i, file_id = -1, line_number = -1;
@@ -2806,6 +3116,11 @@ int generate_asm_z80(FILE *file_out) {
         }
         else if (op == TAC_OP_JUMP)
           _jump_to(t->result_s, file_out);
+        else if (op == TAC_OP_JUMP_EQ || op == TAC_OP_JUMP_LT || op == TAC_OP_JUMP_GT || op == TAC_OP_JUMP_NEQ ||
+                 op == TAC_OP_JUMP_LTE || op == TAC_OP_JUMP_GTE) {
+          if (_generate_asm_jump_eq_lt_gt_neq_lte_gte_z80(t, file_out, function_node, op) == FAILED)
+            return FAILED;
+        }
         else if (op == TAC_OP_CREATE_VARIABLE) {
         }
         else

@@ -1498,6 +1498,15 @@ int propagate_operand_types(void) {
              op == TAC_OP_JUMP_GT ||
              op == TAC_OP_JUMP_LTE ||
              op == TAC_OP_JUMP_GTE) {
+      if (_find_operand_type(&t->arg1_var_type, t->arg1_type, (int)t->arg1_d, t->arg1_s, t->arg1_node, NO) == FAILED)
+        return FAILED;
+      if (_find_operand_type(&t->arg2_var_type, t->arg2_type, (int)t->arg2_d, t->arg2_s, t->arg2_node, NO) == FAILED)
+        return FAILED;
+
+      if (t->arg1_var_type == VARIABLE_TYPE_NONE)
+        fprintf(stderr, "propagate_operand_types(): Couldn't find type for ARG1!\n");
+      if (t->arg2_var_type == VARIABLE_TYPE_NONE)
+        fprintf(stderr, "propagate_operand_types(): Couldn't find type for ARG2!\n");
     }
     else if (op == TAC_OP_RETURN) {
     }
