@@ -3161,6 +3161,12 @@ static int _generate_asm_return_z80(struct tac *t, FILE *file_out, struct tree_n
 }
 
 
+static int _generate_asm_function_call_z80(struct tac *t, FILE *file_out, struct tree_node *function_node) {
+
+  return SUCCEEDED;
+}
+
+
 int generate_asm_z80(FILE *file_out) {
 
   int i, file_id = -1, line_number = -1;
@@ -3173,13 +3179,16 @@ int generate_asm_z80(FILE *file_out) {
       /* function start! */
       struct tree_node *function_node = t->function_node;
 
-      fprintf(file_out, "  ; =================================================================\n");
-      fprintf(file_out, "  ; %s:%d: ", get_file_name(t->file_id), t->line_number);
-      get_source_line(t->file_id, t->line_number, file_out);
-      fprintf(file_out, "\n");
-      fprintf(file_out, "  ; =================================================================\n");
-      
       fprintf(file_out, "  .SECTION \"%s\" FREE\n", function_node->children[1]->label);
+
+      file_id = t->file_id;
+      line_number = t->line_number;
+
+      fprintf(file_out, "    ; =================================================================\n");
+      fprintf(file_out, "    ; %s:%d: ", get_file_name(file_id), line_number);
+      get_source_line(file_id, line_number, file_out);
+      fprintf(file_out, "\n");
+      fprintf(file_out, "    ; =================================================================\n");
 
       _add_label(function_node->children[1]->label, file_out, NO);
 
@@ -3200,6 +3209,12 @@ int generate_asm_z80(FILE *file_out) {
 
         /* IL -> ASM */
 
+        if (op == TAC_OP_LABEL && t->is_function == YES) {
+          _reset_cpu_z80();
+          i--;
+          break;
+        }
+
         if (t->file_id != file_id || t->line_number != line_number) {
           /* the source code line has changed, print info about the new line */
           file_id = t->file_id;
@@ -3211,12 +3226,6 @@ int generate_asm_z80(FILE *file_out) {
           fprintf(file_out, "      ; =================================================================\n");
         }
         
-        if (op == TAC_OP_LABEL && t->is_function == YES) {
-          _reset_cpu_z80();
-          i--;
-          break;
-        }
-
         fprintf(file_out, "      ; -----------------------------------------------------------------\n");
         print_tac(t, YES, file_out);
         fprintf(file_out, "      ; -----------------------------------------------------------------\n");
@@ -3268,6 +3277,10 @@ int generate_asm_z80(FILE *file_out) {
         }
         else if (op == TAC_OP_RETURN_VALUE) {
           if (_generate_asm_return_value_z80(t, file_out, function_node) == FAILED)
+            return FAILED;
+        }
+        else if (op == TAC_OP_FUNCTION_CALL) {
+          if (_generate_asm_function_call_z80(t, file_out, function_node) == FAILED)
             return FAILED;
         }
         else if (op == TAC_OP_CREATE_VARIABLE) {

@@ -2,9 +2,13 @@
 int8 g_i[8];
 int16 g_value = 1;
 
-int16 main() {
+void main() {
 
-  int8 a = g_value + 1;
-
-  return 111;
+   sum(1, 2);
 }
+
+int8 sum(int8 a, int8 b) {
+
+   return a + b;
+}
+
