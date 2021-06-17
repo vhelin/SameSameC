@@ -534,6 +534,12 @@ static void _jump_to(char *label, FILE *file_out) {
 }
 
 
+static void _jump_to_hl(FILE *file_out) {
+
+  fprintf(file_out, "      JP  (HL)\n");
+}
+
+
 static void _jump_c_to(char *label, FILE *file_out) {
 
   fprintf(file_out, "      JP  C,%s\n", label);
@@ -3020,6 +3026,141 @@ static int _generate_asm_jump_eq_lt_gt_neq_lte_gte_z80(struct tac *t, FILE *file
 }
 
 
+static int _generate_asm_return_value_z80(struct tac *t, FILE *file_out, struct tree_node *function_node) {
+
+  int arg1_offset = -1, return_var_type;
+
+  /* arg1 */
+
+  if (find_stack_offset(t->arg1_type, t->arg1_s, t->arg1_d, t->arg1_node, &arg1_offset, function_node) == FAILED)
+    return FAILED;
+
+  /* return */
+
+  return_var_type = tree_node_get_max_var_type(function_node->children[0]);
+
+  /* generate asm */
+
+  /******************************************************************************************************/
+  /* source address (arg1) -> ix */
+  /******************************************************************************************************/
+
+  if (t->arg1_type == TAC_ARG_TYPE_CONSTANT) {
+  }
+  else if (t->arg1_type == TAC_ARG_TYPE_LABEL && arg1_offset == 999999) {
+    /* global var */
+    _load_label_to_ix(t->arg1_s, file_out);
+  }
+  else {
+    /* it's a variable in the frame! */
+    fprintf(file_out, "      ; offset %d\n", arg1_offset);
+
+    _load_value_to_ix(arg1_offset, file_out);
+    _add_de_to_ix(file_out);
+  }
+  
+  /******************************************************************************************************/
+  /* copy data (arg1) -> hl/l */
+  /******************************************************************************************************/
+  
+  if (t->arg1_type == TAC_ARG_TYPE_CONSTANT) {
+    if (return_var_type == VARIABLE_TYPE_INT16 || return_var_type == VARIABLE_TYPE_UINT16) {
+      /* 16-bit */
+      _load_value_to_hl((int)t->arg1_d, file_out);
+    }
+    else {
+      /* 8-bit */
+      _load_value_to_l(((int)t->arg1_d) & 0xff, file_out);
+    }
+  }
+  else {
+    if (t->arg1_var_type == VARIABLE_TYPE_INT16 || t->arg1_var_type == VARIABLE_TYPE_UINT16) {
+      if (return_var_type == VARIABLE_TYPE_INT16 || return_var_type == VARIABLE_TYPE_UINT16) {
+        /* 16-bit */
+        _load_from_ix_to_l(0, file_out);
+        _load_from_ix_to_h(1, file_out);
+      }
+      else {
+        /* 8-bit */
+        _load_from_ix_to_l(0, file_out);
+      }
+    }
+    else {
+      if (return_var_type == VARIABLE_TYPE_INT16 || return_var_type == VARIABLE_TYPE_UINT16) {
+        /* 8-bit -> 16bit */
+        _load_from_ix_to_l(0, file_out);
+
+        /* sign extend 8-bit -> 16-bit? */
+        if (t->arg1_var_type == VARIABLE_TYPE_INT8) {
+          /* yes */
+          _sign_extend_l_to_hl(file_out);
+        }
+        else if (t->arg1_var_type == VARIABLE_TYPE_UINT8) {
+          /* upper byte -> 0 */
+          _load_value_to_h(0, file_out);
+        }
+        else {
+          fprintf(stderr, "_generate_asm_return_value_z80(): Unhandled 8-bit ARG1! Please submit a bug report!\n");
+          return FAILED;
+        }
+      }
+    }
+  }
+
+  /******************************************************************************************************/
+  /* copy data hl/l -> stack frame */
+  /******************************************************************************************************/
+
+  /* address of return value in stack frame -> ix */
+  _load_value_to_ix(2, file_out);
+  _add_de_to_ix(file_out);
+  
+  if (return_var_type == VARIABLE_TYPE_INT16 || return_var_type == VARIABLE_TYPE_UINT16) {
+    /* 16-bit */
+    _load_l_into_ix(0, file_out);
+    _load_h_into_ix(1, file_out);
+  }
+  else {
+    /* 8-bit */
+    _load_l_into_ix(0, file_out);
+  }
+  
+  /******************************************************************************************************/
+  /* return */
+  /******************************************************************************************************/
+
+  /* address of return address in stack frame -> ix */
+  _load_value_to_ix(0, file_out);
+  _add_de_to_ix(file_out);
+
+  /* return address -> hl */
+  _load_from_ix_to_l(0, file_out);
+  _load_from_ix_to_h(1, file_out);
+
+  /* jump */
+  _jump_to_hl(file_out);
+  
+  return SUCCEEDED;
+}
+
+
+static int _generate_asm_return_z80(struct tac *t, FILE *file_out, struct tree_node *function_node) {
+
+  /* address of return address in stack frame -> ix */
+  _load_value_to_ix(0, file_out);
+  _add_de_to_ix(file_out);
+
+  /* return address -> hl */
+  _load_from_ix_to_l(0, file_out);
+  _load_from_ix_to_h(1, file_out);
+
+  /* jump */
+  _jump_to_hl(file_out);
+  
+  return SUCCEEDED;
+}
+
+
 int generate_asm_z80(FILE *file_out) {
 
   int i, file_id = -1, line_number = -1;
@@ -3119,6 +3260,14 @@ int generate_asm_z80(FILE *file_out) {
         else if (op == TAC_OP_JUMP_EQ || op == TAC_OP_JUMP_LT || op == TAC_OP_JUMP_GT || op == TAC_OP_JUMP_NEQ ||
                  op == TAC_OP_JUMP_LTE || op == TAC_OP_JUMP_GTE) {
           if (_generate_asm_jump_eq_lt_gt_neq_lte_gte_z80(t, file_out, function_node, op) == FAILED)
+            return FAILED;
+        }
+        else if (op == TAC_OP_RETURN) {
+          if (_generate_asm_return_z80(t, file_out, function_node) == FAILED)
+            return FAILED;
+        }
+        else if (op == TAC_OP_RETURN_VALUE) {
+          if (_generate_asm_return_value_z80(t, file_out, function_node) == FAILED)
             return FAILED;
         }
         else if (op == TAC_OP_CREATE_VARIABLE) {

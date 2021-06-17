@@ -410,8 +410,8 @@ struct tac {
 #define TAC_OP_OR                19 /* DONE */
 #define TAC_OP_SHIFT_LEFT        20 /* DONE */
 #define TAC_OP_SHIFT_RIGHT       21 /* DONE */
-#define TAC_OP_RETURN            22
-#define TAC_OP_RETURN_VALUE      23
+#define TAC_OP_RETURN            22 /* DONE */
+#define TAC_OP_RETURN_VALUE      23 /* DONE */
 #define TAC_OP_FUNCTION_CALL     24
 #define TAC_OP_FUNCTION_CALL_USE_RETURN_VALUE 25
 #define TAC_OP_GET_ADDRESS       26 /* DONE */

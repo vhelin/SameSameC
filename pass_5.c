@@ -1612,8 +1612,18 @@ int collect_and_preprocess_local_variables_inside_functions(void) {
       struct tree_node *function_node = t->function_node;
       struct tree_node *local_variables[1024];
       int local_variables_count = 0, register_usage[1024], used_registers = 0, register_sizes[1024];
-      int offset = 0;
+      int offset = 2; /* the first 2 bytes in the stack frame are for return address */
 
+      /* if the function returns a value we'll need to allocate space for that in the stack frame */
+      if (function_node->children[0]->value != VARIABLE_TYPE_NONE) {
+        int type, size;
+        
+        type = tree_node_get_max_var_type(function_node->children[0]);
+        size = get_variable_type_size(type) / 8;
+
+        offset += size;
+      }
+      
       for (j = 0; j < 1024; j++) {
         register_usage[j] = 0;
         register_sizes[j] = 0;
