@@ -897,7 +897,15 @@ static int _generate_asm_assignment_z80(struct tac *t, FILE *file_out, struct tr
     if (t->result_var_type == VARIABLE_TYPE_INT16 || t->result_var_type == VARIABLE_TYPE_UINT16) {
       /* 16-bit */
       _load_value_into_ix(value & 0xff, 0, file_out);
-      _load_value_into_ix((value >> 8) & 0xff, 1, file_out);
+
+      if (result_offset == 999999) {
+        /* global var write */
+        _load_value_into_ix((value >> 8) & 0xff, 1, file_out);
+      }
+      else {
+        /* stack frame write */
+        _load_value_into_ix((value >> 8) & 0xff, -1, file_out);
+      }
     }
     else {
       /* 8-bit */
@@ -910,8 +918,24 @@ static int _generate_asm_assignment_z80(struct tac *t, FILE *file_out, struct tr
       if (t->arg1_var_type == VARIABLE_TYPE_INT16 || t->arg1_var_type == VARIABLE_TYPE_UINT16) {
         _load_from_iy_to_a(0, file_out);
         _load_a_into_ix(0, file_out);
-        _load_from_iy_to_a(1, file_out);
-        _load_a_into_ix(1, file_out);
+
+        if (arg1_offset == 999999) {
+          /* global var read */
+          _load_from_iy_to_a(1, file_out);
+        }
+        else {
+          /* stack frame read */
+          _load_from_iy_to_a(-1, file_out);
+        }
+
+        if (result_offset == 999999) {
+          /* global var write */
+          _load_a_into_ix(1, file_out);
+        }
+        else {
+          /* stack frame write */
+          _load_a_into_ix(-1, file_out);
+        }
       }
       else {
         /* sign extend 8-bit -> 16-bit? */
@@ -920,14 +944,30 @@ static int _generate_asm_assignment_z80(struct tac *t, FILE *file_out, struct tr
           _load_from_iy_to_a(0, file_out);
           _sign_extend_a_to_bc(file_out);
           _load_c_into_ix(0, file_out);
-          _load_b_into_ix(1, file_out);
+
+          if (result_offset == 999999) {
+            /* global var write */
+            _load_b_into_ix(1, file_out);
+          }
+          else {
+            /* stack frame write */
+            _load_b_into_ix(-1, file_out);
+          }
         }
         else {
           /* lower byte */
           _load_from_iy_to_a(0, file_out);
           _load_a_into_ix(0, file_out);
+
           /* upper byte is 0 */
-          _load_value_into_ix(0, 1, file_out);
+          if (result_offset == 999999) {
+            /* global var write */
+            _load_value_into_ix(0, 1, file_out);
+          }
+          else {
+            /* stack frame write */
+            _load_value_into_ix(0, -1, file_out);
+          }
         }
       }
     }
@@ -3104,6 +3144,10 @@ static int _generate_asm_return_value_z80(struct tac *t, FILE *file_out, struct 
           return FAILED;
         }
       }
+      else {
+        /* 8-bit */
+        _load_from_ix_to_l(0, file_out);
+      }
     }
   }
 
@@ -3112,13 +3156,13 @@ static int _generate_asm_return_value_z80(struct tac *t, FILE *file_out, struct 
   /******************************************************************************************************/
 
   /* address of return value in stack frame -> ix */
-  _load_value_to_ix(2, file_out);
+  _load_value_to_ix(-2, file_out);
   _add_de_to_ix(file_out);
   
   if (return_var_type == VARIABLE_TYPE_INT16 || return_var_type == VARIABLE_TYPE_UINT16) {
     /* 16-bit */
     _load_l_into_ix(0, file_out);
-    _load_h_into_ix(1, file_out);
+    _load_h_into_ix(-1, file_out);
   }
   else {
     /* 8-bit */
@@ -3135,8 +3179,12 @@ static int _generate_asm_return_value_z80(struct tac *t, FILE *file_out, struct 
 
   /* return address -> hl */
   _load_from_ix_to_l(0, file_out);
-  _load_from_ix_to_h(1, file_out);
+  _load_from_ix_to_h(-1, file_out);
 
+  /* old stack frame address -> de */
+  _load_from_ix_to_e(-2, file_out);
+  _load_from_ix_to_d(-3, file_out);
+  
   /* jump */
   _jump_to_hl(file_out);
   
@@ -3152,8 +3200,12 @@ static int _generate_asm_return_z80(struct tac *t, FILE *file_out, struct tree_n
 
   /* return address -> hl */
   _load_from_ix_to_l(0, file_out);
-  _load_from_ix_to_h(1, file_out);
+  _load_from_ix_to_h(-1, file_out);
 
+  /* old stack frame address -> de */
+  _load_from_ix_to_e(-2, file_out);
+  _load_from_ix_to_d(-3, file_out);
+  
   /* jump */
   _jump_to_hl(file_out);
   

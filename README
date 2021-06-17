@@ -8,3 +8,12 @@ This is currently under development, and hosted in a private repository. So
 you should not be able to read this. :) Public release comes when it's working
 well enough. BILIBALI is GPL v2 software. Read the LICENSE file for more
 information.
+
+Programmed using
+  - "Basics of Compiler Design"
+    - http://web.archive.org/web/20120915222417/http://www.diku.dk/hjemmesider/ansatte/torbenm/Basics/basics_lulu2.pdf
+  - beer
+  - imagination
+  - emacs
+
+Should compile anywhere ANSI C89 is supported.

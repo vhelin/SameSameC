@@ -1612,17 +1612,26 @@ int collect_and_preprocess_local_variables_inside_functions(void) {
       struct tree_node *function_node = t->function_node;
       struct tree_node *local_variables[1024];
       int local_variables_count = 0, register_usage[1024], used_registers = 0, register_sizes[1024];
-      int offset = 2; /* the first 2 bytes in the stack frame are for return address */
+      int offset = -4; /* the first 2 bytes in the stack frame are for return address, next 2 bytes are old stack frame address */
+      int type, size;
 
-      /* if the function returns a value we'll need to allocate space for that in the stack frame */
-      if (function_node->children[0]->value != VARIABLE_TYPE_NONE) {
+      /* NOTE: if the function returns a value we'll need to allocate space for that in the stack frame */        
+      type = tree_node_get_max_var_type(function_node->children[0]);
+      size = get_variable_type_size(type) / 8;
+      offset -= size;
+
+      /* NOTE: allocate space in the stack frame for arguments to the function */
+      /* NOTE: in pass_2.c when we create function we immediately add function arguments (tree_nodes) thus this is already done */
+      /*
+      for (function_parameter = 2; function_parameter < function_node->added_children; function_parameter += 2) {
         int type, size;
-        
-        type = tree_node_get_max_var_type(function_node->children[0]);
+
+        type = tree_node_get_max_var_type(function_node->children[function_parameter]);
         size = get_variable_type_size(type) / 8;
 
-        offset += size;
+        offset += size;        
       }
+      */
       
       for (j = 0; j < 1024; j++) {
         register_usage[j] = 0;

@@ -9,6 +9,9 @@ void main() {
 
 int8 sum(int8 a, int8 b) {
 
-   return a + b;
+   int8 result = a + b;
+   int8 final = result;
+   
+   return final;
 }
 
