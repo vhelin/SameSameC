@@ -1135,11 +1135,25 @@ static int _generate_asm_add_sub_or_and_z80_8bit(struct tac *t, FILE *file_out, 
     if (t->result_var_type == VARIABLE_TYPE_INT16 && (t->arg1_var_type == VARIABLE_TYPE_INT8 ||
                                                       t->arg2_var_type == VARIABLE_TYPE_INT8)) {
       /* yes */
-      _sign_extend_a_into_ix(1, file_out);
+      if (result_offset == 999999) {
+        /* global var write */
+        _sign_extend_a_into_ix(1, file_out);
+      }
+      else {
+        /* stack frame write */
+        _sign_extend_a_into_ix(-1, file_out);
+      }
     }
     else {
       /* upper byte = 0 */
-      _load_value_into_ix(0, 1, file_out);
+      if (result_offset == 999999) {
+        /* global var write */
+        _load_value_into_ix(0, 1, file_out);
+      }
+      else {
+        /* stack frame write */
+        _load_value_into_ix(0, -1, file_out);
+      }
     }
   }
   else {
@@ -1202,7 +1216,15 @@ static int _generate_asm_add_sub_or_and_z80_16bit(struct tac *t, FILE *file_out,
     if (t->arg1_var_type == VARIABLE_TYPE_INT16 || t->arg1_var_type == VARIABLE_TYPE_UINT16) {
       /* 16-bit */
       _load_from_ix_to_l(0, file_out);
-      _load_from_ix_to_h(1, file_out);
+
+      if (arg1_offset == 999999) {
+        /* global var read */
+        _load_from_ix_to_h(1, file_out);
+      }
+      else {
+        /* stack frame read */
+        _load_from_ix_to_h(-1, file_out);
+      }
     }
     else {
       /* 8-bit */
@@ -1256,7 +1278,15 @@ static int _generate_asm_add_sub_or_and_z80_16bit(struct tac *t, FILE *file_out,
     if (t->arg2_var_type == VARIABLE_TYPE_INT16 || t->arg2_var_type == VARIABLE_TYPE_UINT16) {
       /* 16-bit */
       _load_from_ix_to_c(0, file_out);
-      _load_from_ix_to_b(1, file_out);
+
+      if (arg2_offset == 999999) {
+        /* global var read */
+        _load_from_ix_to_b(1, file_out);
+      }
+      else {
+        /* stack frame read */
+        _load_from_ix_to_b(-1, file_out);
+      }
     }
     else {
       /* 8-bit */
@@ -1324,7 +1354,15 @@ static int _generate_asm_add_sub_or_and_z80_16bit(struct tac *t, FILE *file_out,
   if (t->result_var_type == VARIABLE_TYPE_INT16 || t->result_var_type == VARIABLE_TYPE_UINT16) {
     /* 16-bit */
     _load_l_into_ix(0, file_out);
-    _load_h_into_ix(1, file_out);
+
+    if (result_offset == 999999) {
+      /* global var write */
+      _load_h_into_ix(1, file_out);
+    }
+    else {
+      /* stack frame write */
+      _load_h_into_ix(-1, file_out);
+    }
   }
   else {
     /* 8-bit */
@@ -1427,7 +1465,15 @@ static int _generate_asm_get_address_z80(struct tac *t, FILE *file_out, struct t
       if (t->arg2_var_type == VARIABLE_TYPE_INT16 || t->arg2_var_type == VARIABLE_TYPE_UINT16) {
         /* 16-bit */
         _load_from_ix_to_c(0, file_out);
-        _load_from_ix_to_b(1, file_out);
+
+        if (arg2_offset == 999999) {
+          /* global var read */
+          _load_from_ix_to_b(1, file_out);
+        }
+        else {
+          /* stack frame read */
+          _load_from_ix_to_b(-1, file_out);
+        }
       }
       else {
         /* 8-bit */
@@ -1489,7 +1535,15 @@ static int _generate_asm_get_address_z80(struct tac *t, FILE *file_out, struct t
   if (t->result_var_type == VARIABLE_TYPE_INT16 || t->result_var_type == VARIABLE_TYPE_UINT16) {
     /* 16-bit */
     _load_l_into_ix(0, file_out);
-    _load_h_into_ix(1, file_out);
+
+    if (result_offset == 999999) {
+      /* global var write */
+      _load_h_into_ix(1, file_out);
+    }
+    else {
+      /* stack frame write */
+      _load_h_into_ix(-1, file_out);
+    }
   }
   else {
     fprintf(stderr, "_generate_asm_get_address_z80(): The target cannot be an 8-bit value!\n");
@@ -1571,7 +1625,15 @@ static int _generate_asm_array_read_z80(struct tac *t, FILE *file_out, struct tr
     if (t->arg2_var_type == VARIABLE_TYPE_INT16 || t->arg2_var_type == VARIABLE_TYPE_UINT16) {
       /* 16-bit */
       _load_from_ix_to_c(0, file_out);
-      _load_from_ix_to_b(1, file_out);
+
+      if (arg2_offset == 999999) {
+        /* global var read */
+        _load_from_ix_to_b(1, file_out);
+      }
+      else {
+        /* stack frame read */
+        _load_from_ix_to_b(-1, file_out);
+      }
     }
     else {
       /* 8-bit */
@@ -1617,7 +1679,15 @@ static int _generate_asm_array_read_z80(struct tac *t, FILE *file_out, struct tr
     if (var_type == VARIABLE_TYPE_INT16 || var_type == VARIABLE_TYPE_UINT16) {
       /* 16-bit */
       _load_from_iy_to_l(0, file_out);
-      _load_from_iy_to_h(1, file_out);
+
+      if (arg1_offset == 999999) {
+        /* global var read */
+        _load_from_iy_to_h(1, file_out);
+      }
+      else {
+        /* stack frame read */
+        _load_from_iy_to_h(-1, file_out);
+      }
     }
     else {
       /* 8-bit */
@@ -1671,7 +1741,15 @@ static int _generate_asm_array_read_z80(struct tac *t, FILE *file_out, struct tr
   if (t->result_var_type == VARIABLE_TYPE_INT16 || t->result_var_type == VARIABLE_TYPE_UINT16) {
     /* 16-bit */
     _load_l_into_ix(0, file_out);
-    _load_h_into_ix(1, file_out);
+
+    if (result_offset == 999999) {
+      /* global var write */
+      _load_h_into_ix(1, file_out);
+    }
+    else {
+      /* stack frame write */
+      _load_h_into_ix(-1, file_out);
+    }
   }
   else {
     /* 8-bit */
@@ -1751,7 +1829,15 @@ static int _generate_asm_array_assignment_z80(struct tac *t, FILE *file_out, str
     if (t->arg2_var_type == VARIABLE_TYPE_INT16 || t->arg2_var_type == VARIABLE_TYPE_UINT16) {
       /* 16-bit */
       _load_from_iy_to_c(0, file_out);
-      _load_from_iy_to_b(1, file_out);
+
+      if (arg2_offset == 999999) {
+        /* global var read */
+        _load_from_iy_to_b(1, file_out);
+      }
+      else {
+        /* stack frame read */
+        _load_from_iy_to_b(-1, file_out);
+      }
     }
     else {
       /* 8-bit */
@@ -1811,7 +1897,16 @@ static int _generate_asm_array_assignment_z80(struct tac *t, FILE *file_out, str
     if (t->result_var_type == VARIABLE_TYPE_INT16 || t->result_var_type == VARIABLE_TYPE_UINT16) {
       /* 16-bit */
       _load_value_into_iy(value & 0xff, 0, file_out);
-      _load_value_into_iy((value >> 8) & 0xff, 1, file_out);
+
+      if (result_offset == 999999) {
+        /* global var write */
+        _load_value_into_iy((value >> 8) & 0xff, 1, file_out);
+      }
+      else {
+        /* stack frame write */
+        _load_value_into_iy((value >> 8) & 0xff, -1, file_out);
+      }
+
       return SUCCEEDED;
     }
     else {
@@ -1824,7 +1919,15 @@ static int _generate_asm_array_assignment_z80(struct tac *t, FILE *file_out, str
     if (t->arg1_var_type == VARIABLE_TYPE_INT16 || t->arg1_var_type == VARIABLE_TYPE_UINT16) {
       /* 16-bit */
       _load_from_ix_to_l(0, file_out);
-      _load_from_ix_to_h(1, file_out);
+
+      if (arg1_offset == 999999) {
+        /* global var read */
+        _load_from_ix_to_h(1, file_out);
+      }
+      else {
+        /* stack frame read */
+        _load_from_ix_to_h(-1, file_out);
+      }
     }
     else {
       /* 8-bit */
@@ -1858,7 +1961,15 @@ static int _generate_asm_array_assignment_z80(struct tac *t, FILE *file_out, str
   if (t->result_var_type == VARIABLE_TYPE_INT16 || t->result_var_type == VARIABLE_TYPE_UINT16) {
     /* 16-bit */
     _load_l_into_iy(0, file_out);
-    _load_h_into_iy(1, file_out);
+
+    if (result_offset == 999999) {
+      /* global var write */
+      _load_h_into_iy(1, file_out);
+    }
+    else {
+      /* stack frame write */
+      _load_h_into_iy(-1, file_out);
+    }
   }
   else {
     /* 8-bit */
@@ -1920,7 +2031,15 @@ static int _generate_asm_shift_left_right_z80_16bit(struct tac *t, FILE *file_ou
     if (t->arg1_var_type == VARIABLE_TYPE_INT16 || t->arg1_var_type == VARIABLE_TYPE_UINT16) {
       /* 16-bit */
       _load_from_ix_to_l(0, file_out);
-      _load_from_ix_to_h(1, file_out);
+
+      if (arg1_offset == 999999) {
+        /* global var read */
+        _load_from_ix_to_h(1, file_out);
+      }
+      else {
+        /* stack frame read */
+        _load_from_ix_to_h(-1, file_out);
+      }
     }
     else {
       /* 8-bit */
@@ -1974,7 +2093,15 @@ static int _generate_asm_shift_left_right_z80_16bit(struct tac *t, FILE *file_ou
     if (t->arg2_var_type == VARIABLE_TYPE_INT16 || t->arg2_var_type == VARIABLE_TYPE_UINT16) {
       /* 16-bit */
       _load_from_ix_to_c(0, file_out);
-      _load_from_ix_to_b(1, file_out);
+
+      if (arg2_offset == 999999) {
+        /* global var read */
+        _load_from_ix_to_b(1, file_out);
+      }
+      else {
+        /* stack frame read */
+        _load_from_ix_to_b(-1, file_out);
+      }
     }
     else {
       /* 8-bit */
@@ -2061,7 +2188,15 @@ static int _generate_asm_shift_left_right_z80_16bit(struct tac *t, FILE *file_ou
   if (t->result_var_type == VARIABLE_TYPE_INT16 || t->result_var_type == VARIABLE_TYPE_UINT16) {
     /* 16-bit */
     _load_l_into_ix(0, file_out);
-    _load_h_into_ix(1, file_out);
+
+    if (result_offset == 999999) {
+      /* global var write */
+      _load_h_into_ix(1, file_out);
+    }
+    else {
+      /* stack frame write */
+      _load_h_into_ix(-1, file_out);
+    }
   }
   else {
     /* 8-bit */
@@ -2222,11 +2357,25 @@ static int _generate_asm_shift_left_right_z80_8bit(struct tac *t, FILE *file_out
     if (t->result_var_type == VARIABLE_TYPE_INT16 && (t->arg1_var_type == VARIABLE_TYPE_INT8 ||
                                                       t->arg2_var_type == VARIABLE_TYPE_INT8)) {
       /* yes */
-      _sign_extend_b_into_ix(1, file_out);
+      if (result_offset == 999999) {
+        /* global var write */
+        _sign_extend_b_into_ix(1, file_out);
+      }
+      else {
+        /* stack frame write */
+        _sign_extend_b_into_ix(-1, file_out);
+      }
     }
     else {
       /* upper byte = 0 */
-      _load_value_into_ix(0, 1, file_out);
+      if (result_offset == 999999) {
+        /* global var write */
+        _load_value_into_ix(0, 1, file_out);
+      }
+      else {
+        /* stack frame write */
+        _load_value_into_ix(0, -1, file_out);
+      }
     }
   }
   else {
@@ -2305,7 +2454,15 @@ static int _generate_asm_mul_div_mod_z80_16bit(struct tac *t, FILE *file_out, st
     if (t->arg1_var_type == VARIABLE_TYPE_INT16 || t->arg1_var_type == VARIABLE_TYPE_UINT16) {
       /* 16-bit */
       _load_from_ix_to_c(0, file_out);
-      _load_from_ix_to_b(1, file_out);
+
+      if (arg1_offset == 999999) {
+        /* global var read */
+        _load_from_ix_to_b(1, file_out);
+      }
+      else {
+        /* stack frame read */
+        _load_from_ix_to_b(-1, file_out);
+      }
     }
     else {
       /* 8-bit */
@@ -2362,7 +2519,15 @@ static int _generate_asm_mul_div_mod_z80_16bit(struct tac *t, FILE *file_out, st
     if (t->arg2_var_type == VARIABLE_TYPE_INT16 || t->arg2_var_type == VARIABLE_TYPE_UINT16) {
       /* 16-bit */
       _load_from_ix_to_e(0, file_out);
-      _load_from_ix_to_d(1, file_out);
+
+      if (arg2_offset == 999999) {
+        /* global var read */
+        _load_from_ix_to_d(1, file_out);
+      }
+      else {
+        /* stack frame read */
+        _load_from_ix_to_d(-1, file_out);
+      }
     }
     else {
       /* 8-bit */
@@ -2434,7 +2599,7 @@ static int _generate_asm_mul_div_mod_z80_16bit(struct tac *t, FILE *file_out, st
       ; In: Divide BC by divider DE
       ; Out: BC = result, HL = rest
       ;
-      Div16:
+    Div16:
       ld hl,0
       ld a,b
       ld b,8
@@ -2500,7 +2665,15 @@ static int _generate_asm_mul_div_mod_z80_16bit(struct tac *t, FILE *file_out, st
     if (t->result_var_type == VARIABLE_TYPE_INT16 || t->result_var_type == VARIABLE_TYPE_UINT16) {
       /* 16-bit */
       _load_a_into_ix(0, file_out);
-      _load_c_into_ix(1, file_out);
+
+      if (result_offset == 999999) {
+        /* global var write */
+        _load_c_into_ix(1, file_out);
+      }
+      else {
+        /* stack frame write */
+        _load_c_into_ix(-1, file_out);
+      }
     }
     else {
       /* 8-bit */
@@ -2516,7 +2689,15 @@ static int _generate_asm_mul_div_mod_z80_16bit(struct tac *t, FILE *file_out, st
     if (t->result_var_type == VARIABLE_TYPE_INT16 || t->result_var_type == VARIABLE_TYPE_UINT16) {
       /* 16-bit */
       _load_l_into_ix(0, file_out);
-      _load_h_into_ix(1, file_out);
+
+      if (result_offset == 999999) {
+        /* global var write */
+        _load_h_into_ix(1, file_out);
+      }
+      else {
+        /* stack frame write */
+        _load_h_into_ix(-1, file_out);
+      }
     }
     else {
       /* 8-bit */
@@ -2702,7 +2883,15 @@ static int _generate_asm_mul_div_mod_z80_8bit(struct tac *t, FILE *file_out, str
     if (t->result_var_type == VARIABLE_TYPE_INT16 || t->result_var_type == VARIABLE_TYPE_UINT16) {
       /* 16-bit */
       _load_l_into_ix(0, file_out);
-      _load_h_into_ix(1, file_out);
+
+      if (result_offset == 999999) {
+        /* global var write */
+        _load_h_into_ix(1, file_out);
+      }
+      else {
+        /* stack frame write */
+        _load_h_into_ix(-1, file_out);
+      }
     }
     else {
       /* 8-bit */
@@ -2725,11 +2914,25 @@ static int _generate_asm_mul_div_mod_z80_8bit(struct tac *t, FILE *file_out, str
       if (t->result_var_type == VARIABLE_TYPE_INT16 && (t->arg1_var_type == VARIABLE_TYPE_INT8 ||
                                                         t->arg2_var_type == VARIABLE_TYPE_INT8)) {
         /* yes */
-        _sign_extend_a_into_ix(1, file_out);
+        if (result_offset == 999999) {
+          /* global var write */
+          _sign_extend_a_into_ix(1, file_out);
+        }
+        else {
+          /* stack frame write */
+          _sign_extend_a_into_ix(-1, file_out);
+        }
       }
       else {
         /* upper byte = 0 */
-        _load_value_into_ix(0, 1, file_out);
+        if (result_offset == 999999) {
+          /* global var write */
+          _load_value_into_ix(0, 1, file_out);
+        }
+        else {
+          /* stack frame write */
+          _load_value_into_ix(0, -1, file_out);
+        }
       }
     }
     else {
@@ -2753,11 +2956,25 @@ static int _generate_asm_mul_div_mod_z80_8bit(struct tac *t, FILE *file_out, str
       if (t->result_var_type == VARIABLE_TYPE_INT16 && (t->arg1_var_type == VARIABLE_TYPE_INT8 ||
                                                         t->arg2_var_type == VARIABLE_TYPE_INT8)) {
         /* yes */
-        _sign_extend_b_into_ix(1, file_out);
+        if (result_offset == 999999) {
+          /* global var write */
+          _sign_extend_b_into_ix(1, file_out);
+        }
+        else {
+          /* stack frame write */
+          _sign_extend_b_into_ix(-1, file_out);
+        }
       }
       else {
         /* upper byte = 0 */
-        _load_value_into_ix(0, 1, file_out);
+        if (result_offset == 999999) {
+          /* global var write */
+          _load_value_into_ix(0, 1, file_out);
+        }
+        else {
+          /* stack frame write */
+          _load_value_into_ix(0, -1, file_out);
+        }
       }
     }
     else {
@@ -2780,7 +2997,7 @@ static int _generate_asm_mul_div_mod_z80(struct tac *t, FILE *file_out, struct t
            (t->arg2_var_type_promoted == VARIABLE_TYPE_INT16 || t->arg2_var_type_promoted == VARIABLE_TYPE_UINT16))
     return _generate_asm_mul_div_mod_z80_16bit(t, file_out, function_node, op);
 
-  fprintf(stderr, "_generate_asm_shift_left_right_z80(): 8-bit + 16-bit, this shouldn't happen. Please submit a bug report!\n");
+  fprintf(stderr, "_generate_asm_mul_div_mod_z80(): 8-bit + 16-bit, this shouldn't happen. Please submit a bug report!\n");
 
   return FAILED;
 }
@@ -2832,7 +3049,15 @@ static int _generate_asm_jump_eq_lt_gt_neq_lte_gte_z80_16bit(struct tac *t, FILE
     if (t->arg1_var_type == VARIABLE_TYPE_INT16 || t->arg1_var_type == VARIABLE_TYPE_UINT16) {
       /* 16-bit */
       _load_from_ix_to_l(0, file_out);
-      _load_from_ix_to_h(1, file_out);
+
+      if (arg1_offset == 999999) {
+        /* global var read */
+        _load_from_ix_to_h(1, file_out);
+      }
+      else {
+        /* stack frame read */
+        _load_from_ix_to_h(-1, file_out);
+      }
     }
     else {
       /* 8-bit */
@@ -2886,7 +3111,15 @@ static int _generate_asm_jump_eq_lt_gt_neq_lte_gte_z80_16bit(struct tac *t, FILE
     if (t->arg2_var_type == VARIABLE_TYPE_INT16 || t->arg2_var_type == VARIABLE_TYPE_UINT16) {
       /* 16-bit */
       _load_from_ix_to_c(0, file_out);
-      _load_from_ix_to_b(1, file_out);
+
+      if (arg2_offset == 999999) {
+        /* global var read */
+        _load_from_ix_to_b(1, file_out);
+      }
+      else {
+        /* stack frame read */
+        _load_from_ix_to_b(-1, file_out);
+      }
     }
     else {
       /* 8-bit */
@@ -3060,7 +3293,7 @@ static int _generate_asm_jump_eq_lt_gt_neq_lte_gte_z80(struct tac *t, FILE *file
            (t->arg2_var_type_promoted == VARIABLE_TYPE_INT16 || t->arg2_var_type_promoted == VARIABLE_TYPE_UINT16))
     return _generate_asm_jump_eq_lt_gt_neq_lte_gte_z80_16bit(t, file_out, function_node, op);
 
-  fprintf(stderr, "_generate_asm_shift_left_right_z80(): 8-bit + 16-bit, this shouldn't happen. Please submit a bug report!\n");
+  fprintf(stderr, "_generate_asm_jump_eq_lt_gt_neq_lte_gte_z80(): 8-bit + 16-bit, this shouldn't happen. Please submit a bug report!\n");
 
   return FAILED;
 }
@@ -3118,7 +3351,15 @@ static int _generate_asm_return_value_z80(struct tac *t, FILE *file_out, struct 
       if (return_var_type == VARIABLE_TYPE_INT16 || return_var_type == VARIABLE_TYPE_UINT16) {
         /* 16-bit */
         _load_from_ix_to_l(0, file_out);
-        _load_from_ix_to_h(1, file_out);
+
+        if (arg1_offset == 999999) {
+          /* global var read */
+          _load_from_ix_to_h(1, file_out);
+        }
+        else {
+          /* stack frame read */
+          _load_from_ix_to_h(-1, file_out);
+        }
       }
       else {
         /* 8-bit */
