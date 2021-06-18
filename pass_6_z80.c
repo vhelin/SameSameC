@@ -28,6 +28,7 @@ extern int g_tacs_count, g_tacs_max;
 extern char g_tmp[4096], g_error_message[sizeof(g_tmp) + MAX_NAME_LENGTH + 1 + 1024];
 
 static struct cpu_z80 g_cpu_z80;
+static int g_return_id = 1;
 
 
 static void _reset_cpu_z80(void) {
@@ -468,6 +469,36 @@ static void _and_bc_to_hl(FILE *file_out) {
 }
 
 
+static void _load_de_to_sp(FILE *file_out) {
+
+  fprintf(file_out, "      LD  H,D\n");
+  fprintf(file_out, "      LD  L,E\n");
+  fprintf(file_out, "      LD  SP,HL\n");
+}
+
+
+static void _load_de_to_bc(FILE *file_out) {
+
+  fprintf(file_out, "      LD  B,D\n");
+  fprintf(file_out, "      LD  C,E\n");
+}
+
+
+static void _load_ix_to_sp(FILE *file_out) {
+
+  fprintf(file_out, "      LD  SP,IX\n");
+}
+
+
+static void _load_sp_to_de(FILE *file_out) {
+
+  fprintf(file_out, "      LD  HL,0\n");
+  fprintf(file_out, "      ADD HL,SP\n");
+  fprintf(file_out, "      LD  D,H\n");
+  fprintf(file_out, "      LD  E,L\n");
+}
+
+
 static void _load_value_to_bc(int value, FILE *file_out) {
 
   fprintf(file_out, "      LD  BC,%d\n", value);
@@ -573,6 +604,12 @@ static void _push_de(FILE *file_out) {
 static void _pop_de(FILE *file_out) {
 
   fprintf(file_out, "      POP DE\n");
+}
+
+
+static void _dec_sp(FILE *file_out) {
+
+  fprintf(file_out, "      DEC SP\n");
 }
 
 
@@ -3422,10 +3459,6 @@ static int _generate_asm_return_value_z80(struct tac *t, FILE *file_out, struct 
   _load_from_ix_to_l(0, file_out);
   _load_from_ix_to_h(-1, file_out);
 
-  /* old stack frame address -> de */
-  _load_from_ix_to_e(-2, file_out);
-  _load_from_ix_to_d(-3, file_out);
-  
   /* jump */
   _jump_to_hl(file_out);
   
@@ -3442,10 +3475,6 @@ static int _generate_asm_return_z80(struct tac *t, FILE *file_out, struct tree_n
   /* return address -> hl */
   _load_from_ix_to_l(0, file_out);
   _load_from_ix_to_h(-1, file_out);
-
-  /* old stack frame address -> de */
-  _load_from_ix_to_e(-2, file_out);
-  _load_from_ix_to_d(-3, file_out);
   
   /* jump */
   _jump_to_hl(file_out);
@@ -3456,6 +3485,60 @@ static int _generate_asm_return_z80(struct tac *t, FILE *file_out, struct tree_n
 
 static int _generate_asm_function_call_z80(struct tac *t, FILE *file_out, struct tree_node *function_node) {
 
+  char return_label[256];
+  int i;
+  
+  /* de -> bc */
+  _load_de_to_bc(file_out);
+  
+  /* sp -> de (the new stack frame address) */
+  _load_sp_to_de(file_out);
+
+  /* build the new stack frame */
+  
+  /* address of return address in stack frame -> ix */
+  _load_value_to_ix(0, file_out);
+  _add_de_to_ix(file_out);
+
+  /* return address -> (ix) */
+  snprintf(return_label, sizeof(return_label), "_return_%d", g_return_id++);
+  _load_label_to_hl(return_label, file_out);
+  _load_l_into_ix(0, file_out);
+  _load_h_into_ix(-1, file_out);
+  
+  /* old stack frame address -> (ix) */
+  _load_c_into_ix(-2, file_out);
+  _load_b_into_ix(-3, file_out);
+
+  i = -4;
+
+  /* copy arguments */
+  
+
+  /* update sp */
+  _load_value_to_ix(i, file_out);
+  _add_de_to_ix(file_out);  
+  _load_ix_to_sp(file_out);
+
+  /* jump! */
+  _jump_to(t->arg1_node->children[1]->label, file_out);
+
+  /* return address */
+  _add_label(return_label, file_out, NO);
+
+  /* go back to the old stack frame */
+
+  /* current stack frame address -> sp */
+  _load_de_to_sp(file_out);
+  
+  /* stack frame -> ix */
+  _load_value_to_ix(0, file_out);
+  _add_de_to_ix(file_out);
+
+  /* old stack frame address -> de */
+  _load_from_ix_to_e(-2, file_out);
+  _load_from_ix_to_d(-3, file_out);
+  
   return SUCCEEDED;
 }
 

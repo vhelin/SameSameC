@@ -7,11 +7,10 @@ void main() {
    sum(1, 2);
 }
 
-int8 sum(int8 a, int8 b) {
+void sum(int8 a, int8 b) {
 
-   int8 result = a + b;
-   int8 final = result;
-   
-   return final;
+   int16 c = 1;
+
+   return;
 }
 
