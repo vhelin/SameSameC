@@ -296,10 +296,12 @@ struct temp_register {
 };
 
 struct local_variables {
+  int arguments_count;
   int local_variables_count;
   struct local_variable *local_variables;
   int temp_registers_count;
   struct temp_register *temp_registers;
+  int offset_to_fp_total;
 };
 
 struct tree_node {
@@ -412,7 +414,7 @@ struct tac {
 #define TAC_OP_SHIFT_RIGHT       21 /* DONE */
 #define TAC_OP_RETURN            22 /* DONE */
 #define TAC_OP_RETURN_VALUE      23 /* DONE */
-#define TAC_OP_FUNCTION_CALL     24
+#define TAC_OP_FUNCTION_CALL     24 /* DONE */
 #define TAC_OP_FUNCTION_CALL_USE_RETURN_VALUE 25
 #define TAC_OP_GET_ADDRESS       26 /* DONE */
 #define TAC_OP_GET_ADDRESS_ARRAY 27 /* DONE */

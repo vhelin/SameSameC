@@ -4,6 +4,7 @@ int16 g_value = 1;
 
 void main() {
 
+   int8 var = 1 + g_value + 2 + 3;
    sum(1, 2);
 }
 

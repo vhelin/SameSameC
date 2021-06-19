@@ -1599,6 +1599,10 @@ static int _get_variable_size(struct tree_node *node) {
 }
 
 
+#define LOCAL_VAR_COUNT 1024
+#define REG_COUNT (1024*8)
+
+
 int collect_and_preprocess_local_variables_inside_functions(void) {
 
   int i, j, k;
@@ -1610,8 +1614,8 @@ int collect_and_preprocess_local_variables_inside_functions(void) {
     if (op == TAC_OP_LABEL && t->is_function == YES) {
       /* function start! */
       struct tree_node *function_node = t->function_node;
-      struct tree_node *local_variables[1024];
-      int local_variables_count = 0, register_usage[1024], used_registers = 0, register_sizes[1024];
+      struct tree_node *local_variables[LOCAL_VAR_COUNT];
+      int local_variables_count = 0, register_usage[REG_COUNT], used_registers = 0, register_sizes[REG_COUNT], arguments_count = 0;
       int offset = -4; /* the first 2 bytes in the stack frame are for return address, next 2 bytes are old stack frame address */
       int type, size;
 
@@ -1633,7 +1637,7 @@ int collect_and_preprocess_local_variables_inside_functions(void) {
       }
       */
       
-      for (j = 0; j < 1024; j++) {
+      for (j = 0; j < REG_COUNT; j++) {
         register_usage[j] = 0;
         register_sizes[j] = 0;
       }
@@ -1648,12 +1652,16 @@ int collect_and_preprocess_local_variables_inside_functions(void) {
           break;
         }
         else if (op == TAC_OP_CREATE_VARIABLE) {
-          if (local_variables_count >= 1024) {
+          if (local_variables_count >= LOCAL_VAR_COUNT) {
             fprintf(stderr, "collect_local_variables_inside_functions(): Out of space! Make variables array bigger and recompile!\n");
             return FAILED;
           }
 
           local_variables[local_variables_count++] = t->result_node;
+
+          /* is this a function argument? */
+          if (t->result_node->type == TREE_NODE_TYPE_CREATE_VARIABLE_FUNCTION_ARGUMENT)
+            arguments_count++;
         }
         else if (op == TAC_OP_DEAD) {
         }
@@ -1667,8 +1675,11 @@ int collect_and_preprocess_local_variables_inside_functions(void) {
               fprintf(stderr, "collect_local_variables_inside_functions(): Register r%d size is 0!\n", index);
             
             register_usage[index] = 1;
-            if (size > register_sizes[index])
+            if (size != register_sizes[index]) {
+              if (register_sizes[index] != 0)
+                fprintf(stderr, "collect_local_variables_inside_functions(): Register r%d size changed from %d to %d!\n", index, register_sizes[index], size);
               register_sizes[index] = size;
+            }
           }
           if (t->arg2_type == TAC_ARG_TYPE_TEMP) {
             int index = (int)t->arg2_d;
@@ -1678,8 +1689,11 @@ int collect_and_preprocess_local_variables_inside_functions(void) {
               fprintf(stderr, "collect_local_variables_inside_functions(): Register r%d size is 0!\n", index);
 
             register_usage[index] = 1;
-            if (size > register_sizes[index])
+            if (size != register_sizes[index]) {
+              if (register_sizes[index] != 0)
+                fprintf(stderr, "collect_local_variables_inside_functions(): Register r%d size changed from %d to %d!\n", index, register_sizes[index], size);
               register_sizes[index] = size;
+            }
           }
           if (t->result_type == TAC_ARG_TYPE_TEMP) {
             int index = (int)t->result_d;
@@ -1689,8 +1703,11 @@ int collect_and_preprocess_local_variables_inside_functions(void) {
               fprintf(stderr, "collect_local_variables_inside_functions(): Register r%d size is 0!\n", index);
 
             register_usage[index] = 1;
-            if (size > register_sizes[index])
+            if (size != register_sizes[index]) {
+              if (register_sizes[index] != 0)
+                fprintf(stderr, "collect_local_variables_inside_functions(): Register r%d size changed from %d to %d!\n", index, register_sizes[index], size);
               register_sizes[index] = size;
+            }
           }
         }
 
@@ -1699,7 +1716,7 @@ int collect_and_preprocess_local_variables_inside_functions(void) {
       }
 
       /* count the used registers */
-      for (j = 0; j < 1024; j++) {
+      for (j = 0; j < REG_COUNT; j++) {
         if (register_usage[j] > 0)
           used_registers++;
       }
@@ -1711,10 +1728,12 @@ int collect_and_preprocess_local_variables_inside_functions(void) {
         return FAILED;
       }
 
+      function_node->local_variables->arguments_count = 0;
       function_node->local_variables->local_variables_count = 0;
       function_node->local_variables->local_variables = NULL;
       function_node->local_variables->temp_registers_count = 0;
       function_node->local_variables->temp_registers = NULL;      
+      function_node->local_variables->offset_to_fp_total = 0;
       
       function_node->local_variables->local_variables = (struct local_variable *)calloc(sizeof(struct local_variable) * local_variables_count, 1);
       if (function_node->local_variables->local_variables == NULL) {
@@ -1722,6 +1741,7 @@ int collect_and_preprocess_local_variables_inside_functions(void) {
         return FAILED;
       }
       function_node->local_variables->local_variables_count = local_variables_count;
+      function_node->local_variables->arguments_count = arguments_count;
 
       function_node->local_variables->temp_registers = (struct temp_register *)calloc(sizeof(struct temp_register) * used_registers, 1);
       if (function_node->local_variables->temp_registers == NULL) {
@@ -1746,7 +1766,7 @@ int collect_and_preprocess_local_variables_inside_functions(void) {
 
       k = 0;
       for (j = 0; j < used_registers; j++) {
-        while (k < 1024) {
+        while (k < REG_COUNT) {
           if (register_usage[k] > 0)
             break;
           k++;
@@ -1760,6 +1780,10 @@ int collect_and_preprocess_local_variables_inside_functions(void) {
         
         k++;
       }
+
+      function_node->local_variables->offset_to_fp_total = offset;
+
+      fprintf(stderr, "FUNCTION %s LOCAL VARIABLES %d (%d are arguments) TEMP REGISTERS %d\n", function_node->children[1]->label, local_variables_count, arguments_count, used_registers);
     }
   }
   

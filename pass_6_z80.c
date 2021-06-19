@@ -3485,9 +3485,9 @@ static int _generate_asm_return_z80(struct tac *t, FILE *file_out, struct tree_n
 
 static int _generate_asm_function_call_z80(struct tac *t, FILE *file_out, struct tree_node *function_node) {
 
-  char return_label[256];
-  int i;
-  
+  char return_label[32];
+  int j, argument = 0, reset_iy = YES;
+
   /* de -> bc */
   _load_de_to_bc(file_out);
   
@@ -3510,13 +3510,135 @@ static int _generate_asm_function_call_z80(struct tac *t, FILE *file_out, struct
   _load_c_into_ix(-2, file_out);
   _load_b_into_ix(-3, file_out);
 
-  i = -4;
+  /* copy arguments to stack frame */
+  for (j = 2; j < t->arg1_node->added_children; j += 2) {
+    struct tree_node *type_node = t->arg1_node->children[j];
 
-  /* copy arguments */
+    if (type_node->type == TREE_NODE_TYPE_BLOCK) {
+      /* the end of arguments */
+      if (argument != t->arg1_node->local_variables->arguments_count) {
+        fprintf(stderr, "_generate_asm_function_call_z80(): Function \"%s\" was not called with enough arguments! Please submit a bug report!\n", t->arg1_node->children[1]->label);
+        return FAILED;
+      }
+
+      /* all done */
+      break;
+    }
+    else if (type_node->type == TREE_NODE_TYPE_VARIABLE_TYPE) {
+      struct tree_node *name_node = t->arg1_node->children[j+1];
+      struct local_variable *local_variable;
+      int r, reg_var_type, reg, reg_offset, arg_var_type, arg_offset;
+
+      if (name_node->type != TREE_NODE_TYPE_VALUE_STRING) {
+        fprintf(stderr, "_generate_asm_function_call_z80(): Corrupted function \"%s\" definition (A)! Please submit a bug report!\n", t->arg1_node->children[1]->label);
+        return FAILED;
+      }
+      if (argument >= t->arg1_node->local_variables->arguments_count) {
+        fprintf(stderr, "_generate_asm_function_call_z80(): Trying to access local variable number %d, but the function \"%s\" is defined to have only %d arguments! Please submit a bug report!\n", argument + 1, t->arg1_node->children[1]->label, t->arg1_node->local_variables->arguments_count);
+        return FAILED;
+      }
+
+      local_variable = &(t->arg1_node->local_variables->local_variables[argument]);
+
+      if (strcmp(name_node->label, local_variable->node->children[1]->label) != 0) {
+        fprintf(stderr, "_generate_asm_function_call_z80(): Corrupted function \"%s\" definition (C)! Was expecting that argument %d was \"%s\", but it was \"%s\" instead. Please submit a bug report!\n", t->arg1_node->children[1]->label, argument + 1, name_node->label, local_variable->node->children[1]->label);
+        return FAILED;
+      }
+
+      /* start copying the argument to new stack frame */
+      reg_var_type = t->registers_types[argument];
+      reg = t->registers[argument];
+      arg_var_type = tree_node_get_max_var_type(local_variable->node->children[0]);
+      arg_offset = local_variable->offset_to_fp;
+
+      /* find the offset of the register in the old stack frame */
+      for (r = 0; r < function_node->local_variables->temp_registers_count; r++) {
+        if (function_node->local_variables->temp_registers[r].register_index == reg)
+          break;
+      }
+
+      if (r == function_node->local_variables->temp_registers_count) {
+        fprintf(stderr, "_generate_asm_function_call_z80(): Register %d in function \"%s\" has gone missing! Please submit a bug report!\n", reg, t->arg1_node->children[1]->label);
+        return FAILED;
+      }
+
+      reg_offset = function_node->local_variables->temp_registers[r].offset_to_fp;
+
+      fprintf(stderr, "SANITY: OFFSET %d -> OFFSET %d\n", reg_offset, arg_offset);
+      
+      if (reset_iy == YES && reg_offset > -127) {
+        /* load the old stack frame address -> iy */
+        reset_iy = NO;
+        
+        _load_value_to_iy(0, file_out);
+        _add_bc_to_iy(file_out);
+      }
+
+      /******************************************************************************************************/
+      /* copy data (reg) -> hl */
+      /******************************************************************************************************/
+
+      /* NOTE! if the offset is < -126 then we need extra instructions */
+      if (reg_offset < -126) {
+        /* load the old stack frame address -> iy */
+        reset_iy = YES;
+        
+        _load_value_to_iy(reg_offset, file_out);
+        _add_bc_to_iy(file_out);
+
+        reg_offset = 0;
+      }
+      
+      if (reg_var_type == VARIABLE_TYPE_INT16 || reg_var_type == VARIABLE_TYPE_UINT16) {
+        /* 16-bit */        
+        _load_from_iy_to_l(reg_offset, file_out);
+        /* stack frame read */
+        _load_from_iy_to_h(reg_offset - 1, file_out);
+      }
+      else {
+        /* 8-bit */
+        _load_from_iy_to_l(reg_offset, file_out);
+
+        /* sign extend 8-bit -> 16-bit? */
+        if (reg_var_type == VARIABLE_TYPE_INT8 && (arg_var_type == VARIABLE_TYPE_INT16 ||
+                                                   arg_var_type == VARIABLE_TYPE_UINT16)) {
+          /* yes */
+          _sign_extend_l_to_hl(file_out);
+        }
+        else if (reg_var_type == VARIABLE_TYPE_UINT8 && (arg_var_type == VARIABLE_TYPE_INT16 ||
+                                                         arg_var_type == VARIABLE_TYPE_UINT16)) {
+          /* upper byte -> 0 */
+          _load_value_to_h(0, file_out);
+        }
+      }
+
+      /******************************************************************************************************/
+      /* copy data hl -> (ix) */
+      /******************************************************************************************************/
+
+      if (arg_var_type == VARIABLE_TYPE_INT16 || arg_var_type == VARIABLE_TYPE_UINT16) {
+        /* 16-bit */
+        _load_l_into_ix(arg_offset, file_out);
+        /* stack frame write */
+        _load_h_into_ix(arg_offset - 1, file_out);
+      }
+      else {
+        /* 8-bit */
+        _load_l_into_ix(arg_offset, file_out);
+      }
+
+      argument++;
+    }
+    else {
+      fprintf(stderr, "_generate_asm_function_call_z80(): Corrupted function \"%s\" definition (B)! Please submit a bug report!\n", t->arg1_node->children[1]->label);
+      return FAILED;
+    }
+  }
+
+  fprintf(stderr, "FUNCTION CALL %s TOTAL OFFSET %d\n", t->arg1_node->children[1]->label, t->arg1_node->local_variables->offset_to_fp_total);
   
-
   /* update sp */
-  _load_value_to_ix(i, file_out);
+  _load_value_to_ix(t->arg1_node->local_variables->offset_to_fp_total, file_out);
   _add_de_to_ix(file_out);  
   _load_ix_to_sp(file_out);
 
@@ -3665,7 +3787,7 @@ int generate_asm_z80(FILE *file_out) {
           fprintf(stderr, "generate_asm_z80(): Unimplemented IL -> Z80 ASM op %d! Please submit a bug report!\n", op);
       }
       
-      fprintf(file_out, "  .ENDS\n");
+      fprintf(file_out, "  .ENDS\n\n");
     }
   }
   
