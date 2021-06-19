@@ -18,6 +18,7 @@
 
 extern int g_current_line_number, g_current_filename_id;
 extern int g_temp_r, g_temp_label_id;
+extern char g_tmp[4096], g_error_message[sizeof(g_tmp) + MAX_NAME_LENGTH + 1 + 1024], g_label[MAX_NAME_LENGTH + 1];
 
 static int g_max_var_type = VARIABLE_TYPE_NONE, g_max_var_types[256], g_max_var_type_index = 0;
 
@@ -287,6 +288,7 @@ int il_stack_calculate_expression(struct tree_node *node, int calculate_max_var_
     }
     else if (child->type == TREE_NODE_TYPE_FUNCTION_CALL) {
       struct tac *t = generate_il_create_function_call(child);
+      int return_var_type;
 
       if (t == NULL)
         return FAILED;
@@ -299,6 +301,18 @@ int il_stack_calculate_expression(struct tree_node *node, int calculate_max_var_
       /* find the definition */
       if (tac_try_find_definition(t, child->children[0]->label, child, TAC_USE_ARG1) == FAILED)
         return FAILED;
+
+      /* does the function really return a value? */
+      return_var_type = tree_node_get_max_var_type(t->arg1_node->children[0]);
+      
+      if (return_var_type == VARIABLE_TYPE_NONE || return_var_type == VARIABLE_TYPE_VOID) {
+        snprintf(g_error_message, sizeof(g_error_message), "Function \"%s\" doesn't return a value yet we are trying to use the return value!\n", t->arg1_node->children[1]->label);
+        print_error(g_error_message, ERROR_STC);
+        return FAILED;
+      }
+
+      /* promote to the maximum of this expression */
+      t->result_var_type_promoted = g_max_var_type;
       
       si[z].type = STACK_ITEM_TYPE_OPERATOR;
       si[z].value = SI_OP_USE_REGISTER;

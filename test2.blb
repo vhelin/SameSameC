@@ -4,14 +4,11 @@ int16 g_value = 1;
 
 void main() {
 
-   int8 var = 1 + g_value + 2 + 3;
-   sum(1, 2);
+   int8 var = sum(1, 2);
 }
 
-void sum(int8 a, int8 b) {
+int16 sum(int8 a, int8 b) {
 
-   int16 c = 1;
-
-   return;
+  return a + b;
 }
 

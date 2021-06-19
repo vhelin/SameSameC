@@ -415,7 +415,7 @@ struct tac {
 #define TAC_OP_RETURN            22 /* DONE */
 #define TAC_OP_RETURN_VALUE      23 /* DONE */
 #define TAC_OP_FUNCTION_CALL     24 /* DONE */
-#define TAC_OP_FUNCTION_CALL_USE_RETURN_VALUE 25
+#define TAC_OP_FUNCTION_CALL_USE_RETURN_VALUE 25 /* DONE */
 #define TAC_OP_GET_ADDRESS       26 /* DONE */
 #define TAC_OP_GET_ADDRESS_ARRAY 27 /* DONE */
 
