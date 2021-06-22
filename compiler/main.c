@@ -7,15 +7,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <time.h>
-
-#ifdef UNIX
-#include <unistd.h>
-#elif defined(WIN32)
-/* Windows.h can't be included since it relies on compiler extensions */
-typedef unsigned long DWORD;
-DWORD __stdcall GetCurrentProcessId(void);
-#endif
 
 #include "main.h"
 #include "defines.h"
@@ -91,7 +82,7 @@ int main(int argc, char *argv[]) {
   FILE *file_out;
   
   if (sizeof(double) != 8) {
-    fprintf(stderr, "MAIN: sizeof(double) == %d != 8. BILIBALI will not work properly.\n", (int)sizeof(double));
+    fprintf(stderr, "MAIN: sizeof(double) == %d != 8. BILIBALI-COMPILER will not work properly.\n", (int)sizeof(double));
     return -1;
   }
 
@@ -110,35 +101,29 @@ int main(int argc, char *argv[]) {
 #endif
   
   parse_flags_result = FAILED;
-  if (argc >= 2)
+  if (argc >= 5)
     parse_flags_result = parse_flags(argv, argc);
   
-  if (argc < 2 || parse_flags_result == FAILED) {
+  if (argc < 5 || parse_flags_result == FAILED || g_backend == BACKEND_NONE) {
     printf("\nBILIBALI Compiler v1.0a. Written by Ville Helin in 2021+\n");
 #ifdef BILIBALI_DEBUG
     printf("*** BILIBALI_DEBUG defined - this executable is running in DEBUG mode ***\n");
 #endif
     printf("%s\n\n", g_version_string);
-    printf("USAGE: %s [OPTIONS] <OUTPUT> <ASM FILE>\n\n", argv[0]);
+    printf("USAGE: %s <ARCHITECTURE> [OPTIONS] -o <ASM FILE> <SOURCE FILE>\n\n", argv[0]);
     printf("Options:\n");
     printf("-q       Quiet\n");
     printf("-v       Verbose messages\n");
-    printf("-bZ80    Compile for Z80 CPU\n");
     printf("-I <DIR> Include directory\n");
     printf("-D <DEF> Declare definition\n\n");
-    printf("Output:\n");
-    printf("-o <FILE> Output WLA DX ASM file\n\n");
-    printf("EXAMPLE: %s -bZ80 -D VERSION=1 -D TWO=2 -v -o main.asm main.blb\n\n", argv[0]);
+    printf("Achitectures:\n");
+    printf("-cZ80    Compile for Z80 CPU\n\n");
+    printf("EXAMPLE: %s -cZ80 -D VERSION=1 -D TWO=2 -v -o main.asm main.blb\n\n", argv[0]);
     return 0;
   }
 
   if (strcmp(g_asm_name, g_final_name) == 0) {
     fprintf(stderr, "MAIN: Input and output files have the same name!\n");
-    return 1;
-  }
-
-  if (g_backend == BACKEND_NONE) {
-    fprintf(stderr, "MAIN: No target CPU selected.\n");
     return 1;
   }
 
@@ -256,7 +241,7 @@ int parse_flags(char **flags, int flagc) {
       g_quiet = YES;
       continue;
     }
-    else if (!strcmp(flags[count], "-bZ80")) {
+    else if (!strcmp(flags[count], "-cZ80")) {
       g_backend = BACKEND_Z80;
       continue;
     }    

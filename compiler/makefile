@@ -64,6 +64,7 @@ symbol_table.o: symbol_table.c defines.h symbol_table.h makefile
 source_line_manager.o: source_line_manager.c defines.h source_line_manager.h makefile
 	$(CC) $(CFLAGS) source_line_manager.c
 
+
 $(OFILES): $(HFILES)
 
 
