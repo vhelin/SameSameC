@@ -39,7 +39,7 @@ DWORD __stdcall GetCurrentProcessId(void);
 __near long __stack = 200000;
 #endif
 
-char g_version_string[] = "$VER: bilibali-compiler 1.0a (21.5.2021)";
+char g_version_string[] = "$VER: bilibali-compiler 1.0a (22.6.2021)";
 char g_bilibali_version[] = "1.0";
 
 char *g_tmp_name = NULL;
@@ -70,10 +70,11 @@ extern struct tac *g_tacs;
 extern int g_tacs_count;
 
 int g_line_count_status = ON;
-int g_output_format = OUTPUT_NONE, g_verbose_mode = OFF, g_test_mode = OFF;
+int g_verbose_mode = OFF, g_test_mode = OFF;
 int g_extra_definitions = OFF, g_commandline_parsing = ON, g_makefile_rules = NO;
 int g_listfile_data = NO, g_quiet = NO, g_use_incdir = NO, g_little_endian = YES;
 int g_create_sizeof_definitions = YES;
+int g_output = OUTPUT_NONE, g_backend = BACKEND_NONE;
 
 char *g_final_name = NULL, *g_asm_name = NULL;
 char g_tmp[4096], g_error_message[sizeof(g_tmp) + MAX_NAME_LENGTH + 1 + 1024];
@@ -120,18 +121,24 @@ int main(int argc, char *argv[]) {
     printf("%s\n\n", g_version_string);
     printf("USAGE: %s [OPTIONS] <OUTPUT> <ASM FILE>\n\n", argv[0]);
     printf("Options:\n");
-    printf("-q  Quiet\n");
-    printf("-v  Verbose messages\n");
-    printf("-I <DIR>  Include directory\n");
-    printf("-D <DEF>  Declare definition\n\n");
+    printf("-q       Quiet\n");
+    printf("-v       Verbose messages\n");
+    printf("-bZ80    Compile for Z80 CPU\n");
+    printf("-I <DIR> Include directory\n");
+    printf("-D <DEF> Declare definition\n\n");
     printf("Output:\n");
     printf("-o <FILE> Output WLA DX ASM file\n\n");
-    printf("EXAMPLE: %s -D VERSION=1 -D TWO=2 -v -o main.asm main.blb\n\n", argv[0]);
+    printf("EXAMPLE: %s -bZ80 -D VERSION=1 -D TWO=2 -v -o main.asm main.blb\n\n", argv[0]);
     return 0;
   }
 
   if (strcmp(g_asm_name, g_final_name) == 0) {
     fprintf(stderr, "MAIN: Input and output files have the same name!\n");
+    return 1;
+  }
+
+  if (g_backend == BACKEND_NONE) {
+    fprintf(stderr, "MAIN: No target CPU selected.\n");
     return 1;
   }
 
@@ -169,9 +176,11 @@ int main(int argc, char *argv[]) {
   file_out = fopen(g_final_name, "wb");
   
   /* generate ASM */
-  if (pass_6_z80(file_out) == FAILED) {
-    fclose(file_out);
-    return FAILED;
+  if (g_backend == BACKEND_Z80) {
+    if (pass_6_z80(file_out) == FAILED) {
+      fclose(file_out);
+      return FAILED;
+    }
   }
 
   fclose(file_out);
@@ -187,9 +196,9 @@ int parse_flags(char **flags, int flagc) {
   
   for (count = 1; count < flagc; count++) {
     if (!strcmp(flags[count], "-o")) {
-      if (g_output_format != OUTPUT_NONE)
+      if (g_output != OUTPUT_NONE)
         return FAILED;
-      g_output_format = OUTPUT_OBJECT;
+      g_output = OUTPUT_ASM;
       if (count + 1 < flagc) {
         /* set output */
         g_final_name = calloc(strlen(flags[count+1])+1, 1);
@@ -247,6 +256,10 @@ int parse_flags(char **flags, int flagc) {
       g_quiet = YES;
       continue;
     }
+    else if (!strcmp(flags[count], "-bZ80")) {
+      g_backend = BACKEND_Z80;
+      continue;
+    }    
     else {
       if (count == flagc - 1) {
         g_asm_name = calloc(strlen(flags[count]) + 1, 1);

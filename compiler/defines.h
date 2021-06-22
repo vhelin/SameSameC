@@ -2,9 +2,11 @@
 #ifndef _DEFINES_H
 #define _DEFINES_H
 
-#define OUTPUT_OBJECT  0
-#define OUTPUT_LIBRARY 1
-#define OUTPUT_NONE    2
+#define BACKEND_NONE 0
+#define BACKEND_Z80  1
+
+#define OUTPUT_NONE  0
+#define OUTPUT_ASM   1
 
 #define STACK_RETURN_LABEL             1024
 #define STACK_CALCULATE_DELAY          2048
@@ -390,34 +392,34 @@ struct tac {
   int line_number;
 };
 
-#define TAC_OP_DEAD               0 /* DONE */
-#define TAC_OP_LABEL              1 /* DONE */
-#define TAC_OP_ADD                2 /* DONE */
-#define TAC_OP_SUB                3 /* DONE */
-#define TAC_OP_ASSIGNMENT         4 /* DONE */
-#define TAC_OP_ARRAY_ASSIGNMENT   5 /* DONE */
-#define TAC_OP_CREATE_VARIABLE    6 /* DONE */
-#define TAC_OP_MUL                7 /* DONE */
-#define TAC_OP_JUMP               8 /* DONE */
-#define TAC_OP_JUMP_EQ            9 /* DONE */
-#define TAC_OP_JUMP_LT           10 /* DONE */
-#define TAC_OP_JUMP_GT           11 /* DONE */
-#define TAC_OP_JUMP_NEQ          12 /* DONE */
-#define TAC_OP_JUMP_LTE          13 /* DONE */
-#define TAC_OP_JUMP_GTE          14 /* DONE */
-#define TAC_OP_ARRAY_READ        15 /* DONE */
-#define TAC_OP_DIV               16 /* DONE */
-#define TAC_OP_MOD               17 /* DONE */
-#define TAC_OP_AND               18 /* DONE */
-#define TAC_OP_OR                19 /* DONE */
-#define TAC_OP_SHIFT_LEFT        20 /* DONE */
-#define TAC_OP_SHIFT_RIGHT       21 /* DONE */
-#define TAC_OP_RETURN            22 /* DONE */
-#define TAC_OP_RETURN_VALUE      23 /* DONE */
-#define TAC_OP_FUNCTION_CALL     24 /* DONE */
-#define TAC_OP_FUNCTION_CALL_USE_RETURN_VALUE 25 /* DONE */
-#define TAC_OP_GET_ADDRESS       26 /* DONE */
-#define TAC_OP_GET_ADDRESS_ARRAY 27 /* DONE */
+#define TAC_OP_DEAD               0
+#define TAC_OP_LABEL              1
+#define TAC_OP_ADD                2
+#define TAC_OP_SUB                3
+#define TAC_OP_ASSIGNMENT         4
+#define TAC_OP_ARRAY_ASSIGNMENT   5
+#define TAC_OP_CREATE_VARIABLE    6
+#define TAC_OP_MUL                7
+#define TAC_OP_JUMP               8
+#define TAC_OP_JUMP_EQ            9
+#define TAC_OP_JUMP_LT           10
+#define TAC_OP_JUMP_GT           11
+#define TAC_OP_JUMP_NEQ          12
+#define TAC_OP_JUMP_LTE          13
+#define TAC_OP_JUMP_GTE          14
+#define TAC_OP_ARRAY_READ        15
+#define TAC_OP_DIV               16
+#define TAC_OP_MOD               17
+#define TAC_OP_AND               18
+#define TAC_OP_OR                19
+#define TAC_OP_SHIFT_LEFT        20
+#define TAC_OP_SHIFT_RIGHT       21
+#define TAC_OP_RETURN            22
+#define TAC_OP_RETURN_VALUE      23
+#define TAC_OP_FUNCTION_CALL     24
+#define TAC_OP_FUNCTION_CALL_USE_RETURN_VALUE 25
+#define TAC_OP_GET_ADDRESS       26
+#define TAC_OP_GET_ADDRESS_ARRAY 27
 
 #define TAC_ARG_TYPE_NONE     0
 #define TAC_ARG_TYPE_CONSTANT 1
