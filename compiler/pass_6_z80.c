@@ -40,11 +40,14 @@ static void _reset_cpu_z80(void) {
 }
 
 
-int pass_6_z80(FILE *file_out) {
+int pass_6_z80(char *file_name, FILE *file_out) {
 
   if (g_verbose_mode == ON)
     printf("Pass 6 (Z80)...\n");
 
+  if (generate_global_variables_z80(file_name, file_out) == FAILED)
+    return FAILED;
+  
   _reset_cpu_z80();
   
   if (generate_asm_z80(file_out) == FAILED)
@@ -128,6 +131,12 @@ static void _load_label_to_ix(char *label, FILE *file_out) {
 static void _load_label_to_iy(char *label, FILE *file_out) {
 
   fprintf(file_out, "      LD  IY,%s\n", label);
+}
+
+
+static void _load_value_into_hl(int value, FILE *file_out) {
+
+  fprintf(file_out, "      LD  (HL),%d\n", value);
 }
 
 
@@ -574,6 +583,12 @@ static void _push_de(FILE *file_out) {
 static void _pop_de(FILE *file_out) {
 
   fprintf(file_out, "      POP DE\n");
+}
+
+
+static void _inc_hl(FILE *file_out) {
+
+  fprintf(file_out, "      INC HL\n");
 }
 
 
@@ -3833,6 +3848,128 @@ int generate_asm_z80(FILE *file_out) {
       fprintf(file_out, "  .ENDS\n\n");
     }
   }
+  
+  return SUCCEEDED;
+}
+
+
+int generate_global_variables_z80(char *file_name, FILE *file_out) {
+
+  int i, j, global_variables_found = 0, length, max_length = 0, elements, element_size, element_type, value;
+  char label_tmp[MAX_NAME_LENGTH + 1];
+  
+  fprintf(file_out, "\n");
+  
+  for (i = 0; i < g_global_nodes->added_children; i++) {
+    struct tree_node *node = g_global_nodes->children[i];
+    if (node != NULL && (node->type == TREE_NODE_TYPE_CREATE_VARIABLE)) {
+      length = strlen(node->children[1]->label);
+      if (length > max_length)
+        max_length = length;
+      global_variables_found++;
+    }
+  }
+
+  /* no global variables? */
+  if (global_variables_found == 0)
+    return SUCCEEDED;
+
+  /* create .RAMSECTION */
+  fprintf(file_out, "  .RAMSECTION \"global_variables_%s_ram\" FREE\n", file_name);
+
+  for (i = 0; i < g_global_nodes->added_children; i++) {
+    struct tree_node *node = g_global_nodes->children[i];
+    if (node != NULL && (node->type == TREE_NODE_TYPE_CREATE_VARIABLE)) {
+      length = strlen(node->children[1]->label);
+
+      fprintf(file_out, "    %s", node->children[1]->label);
+
+      for (j = length; j < max_length + 1; j++)
+        fprintf(file_out, " ");
+
+      elements = node->added_children - 2;
+      element_type = tree_node_get_max_var_type(node->children[0]);
+      element_size = get_variable_type_size(element_type);
+
+      if (element_size != 8 && element_size != 16) {
+        fprintf(stderr, "generate_global_variables_z80(): Unsupported global variable \"%s\" size %d! Please submit a bug report!\n", node->children[1]->label, element_size);
+        return FAILED;
+      }
+      
+      if (elements == 1) {
+        /* not an array */
+        if (element_size == 8)
+          fprintf(file_out, "DB");
+        else if (element_size == 16)
+          fprintf(file_out, "DW");
+      }
+      else {
+        /* an array */
+        if (element_size == 8)
+          fprintf(file_out, "DSB %d", elements);
+        else if (element_size == 16)
+          fprintf(file_out, "DSW %d", elements);
+      }
+        
+      fprintf(file_out, "\n");
+    }
+  }
+  
+  fprintf(file_out, "  .ENDS\n\n");  
+
+  /* create .SECTION that initializes .RAMSECTION */
+  fprintf(file_out, "  .SECTION \"global_variables_%s_init\" FREE\n", file_name);
+
+  snprintf(label_tmp, sizeof(label_tmp), "global_variables_%s_init", file_name);
+  _add_label(label_tmp, file_out, NO);  
+
+  for (i = 0; i < g_global_nodes->added_children; i++) {
+    struct tree_node *node = g_global_nodes->children[i];
+    if (node != NULL && (node->type == TREE_NODE_TYPE_CREATE_VARIABLE)) {
+      elements = node->added_children - 2;
+      element_type = tree_node_get_max_var_type(node->children[0]);
+      element_size = get_variable_type_size(element_type);
+
+      fprintf(file_out, "      ; initialize \"%s\"\n", node->children[1]->label);
+
+      /* target address -> hl */
+      _load_label_to_hl(node->children[1]->label, file_out);
+
+      if (elements == 1) {
+        /* not an array */
+        
+        if (node->children[2]->type == TREE_NODE_TYPE_VALUE_INT)
+          value = node->children[2]->value;
+        else if (node->children[2]->type != TREE_NODE_TYPE_VALUE_DOUBLE)
+          value = (int)node->children[2]->value_double;
+        else {
+          fprintf(stderr, "generate_global_variables_z80(): Global variable (\"%s\") can only be initialized with an immediate number!\n", node->children[1]->label);
+          return FAILED;
+        }
+        
+        /* load value -> (hl) */
+        if (element_size == 8) {
+          _load_value_into_hl(value & 0xff, file_out);
+        }
+        else if (element_size == 16) {
+          _load_value_into_hl(value & 0xff, file_out);
+          _inc_hl(file_out);
+          _load_value_into_hl((value >> 8) & 0xff, file_out);
+        }
+      }
+      else {
+        /* an array */
+        /*
+        if (element_size == 8)
+          fprintf(file_out, "DSB %d", elements);
+        else if (element_size == 16)
+          fprintf(file_out, "DSW %d", elements);
+        */
+      }
+    }
+  }
+  
+  fprintf(file_out, "  .ENDS\n\n");
   
   return SUCCEEDED;
 }

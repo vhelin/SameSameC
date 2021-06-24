@@ -2154,8 +2154,8 @@ int create_block(struct tree_node *open_function_definition, int expect_curly_br
 
 struct tree_node *create_array(double pointer_depth, int variable_type, char *name) {
 
-  struct tree_node *node;
   int array_size = 0, added_items = 0;
+  struct tree_node *node;
 
   node = allocate_tree_node_with_children(TREE_NODE_TYPE_CREATE_VARIABLE, 16);
   if (node == NULL)

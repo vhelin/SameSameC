@@ -1,6 +1,23 @@
+
+  .RAMSECTION "global_variables_test2_ram" FREE
+    g_i     DSB 8
+    g_value DW
+  .ENDS
+
+  .SECTION "global_variables_test2_init" FREE
+    global_variables_test2_init:
+      ; initialize "g_i"
+      LD  HL,g_i
+      ; initialize "g_value"
+      LD  HL,g_value
+      LD  (HL),1
+      INC HL
+      LD  (HL),0
+  .ENDS
+
   .SECTION "main" FREE
     ; =================================================================
-    ; test2.blb:5: void main() {
+    ; ../test2.blb:5: void main() {
     ; =================================================================
     main:
       ; A  - tmp
@@ -11,7 +28,7 @@
       ; IX - tmp
       ; IY - tmp
       ; =================================================================
-      ; test2.blb:7: int8 var = sum(1, 2);
+      ; ../test2.blb:7: int8 var = sum(1, 2);
       ; =================================================================
       ; -----------------------------------------------------------------
       ; TAC: variable "var" size 1 offset -4 type n
@@ -82,7 +99,7 @@
 
   .SECTION "sum" FREE
     ; =================================================================
-    ; test2.blb:10: int16 sum(int8 a, int8 b) {
+    ; ../test2.blb:10: int16 sum(int8 a, int8 b) {
     ; =================================================================
     sum:
       ; A  - tmp
@@ -99,7 +116,7 @@
       ; TAC: variable "b" size 1 offset -7 type a
       ; -----------------------------------------------------------------
       ; =================================================================
-      ; test2.blb:12: return a + b;
+      ; ../test2.blb:12: return a + b;
       ; =================================================================
       ; -----------------------------------------------------------------
       ; TAC: r0.int8 (int8) := a.int8 (int8) + b.int8 (int8)

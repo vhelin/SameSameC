@@ -63,7 +63,7 @@ extern int g_tacs_count;
 int g_line_count_status = ON;
 int g_verbose_mode = OFF, g_test_mode = OFF;
 int g_extra_definitions = OFF, g_commandline_parsing = ON, g_makefile_rules = NO;
-int g_listfile_data = NO, g_quiet = NO, g_use_incdir = NO, g_little_endian = YES;
+int g_listfile_data = NO, g_quiet = NO, g_use_incdir = NO;
 int g_create_sizeof_definitions = YES;
 int g_output = OUTPUT_NONE, g_backend = BACKEND_NONE;
 
@@ -76,9 +76,32 @@ struct label_def *g_label_tmp = NULL, *g_labels = NULL;
 
 
 
+static void _get_plain_filename(char *output, int output_size, char *input) {
+
+  int length, i, start, j;
+
+  length = strlen(input);
+
+  /* find the starting point */
+  start = 0;
+  for (i = 0; i < length; i++) {
+    if (input[i] == '/' || input[i] == '\\')
+      start = i + 1;
+  }
+  
+  for (j = 0, i = start; i < length; i++) {
+    if (input[i] == '.')
+      break;
+    output[j++] = input[i];
+  }
+  output[j] = 0;
+}
+
+
 int main(int argc, char *argv[]) {
 
   int parse_flags_result, include_size = 0;
+  char final_name_no_extension[MAX_NAME_LENGTH + 1];
   FILE *file_out;
   
   if (sizeof(double) != 8) {
@@ -93,13 +116,6 @@ int main(int argc, char *argv[]) {
   g_ext_incdirs.names = NULL;
   g_ext_incdirs.max_name_size_bytes = MAX_NAME_LENGTH + 1;
 
-  /* select little/big endianess */
-#if defined(MC6800) || defined(MC6801) || defined(MC6809)
-  g_little_endian = NO;
-#else
-  g_little_endian = YES;
-#endif
-  
   parse_flags_result = FAILED;
   if (argc >= 5)
     parse_flags_result = parse_flags(argv, argc);
@@ -117,8 +133,8 @@ int main(int argc, char *argv[]) {
     printf("-I <DIR> Include directory\n");
     printf("-D <DEF> Declare definition\n\n");
     printf("Achitectures:\n");
-    printf("-cZ80    Compile for Z80 CPU\n\n");
-    printf("EXAMPLE: %s -cZ80 -D VERSION=1 -D TWO=2 -v -o main.asm main.blb\n\n", argv[0]);
+    printf("-aZ80    Compile for Z80 CPU\n\n");
+    printf("EXAMPLE: %s -aZ80 -D VERSION=1 -D TWO=2 -v -o main.asm main.blb\n\n", argv[0]);
     return 0;
   }
 
@@ -159,10 +175,12 @@ int main(int argc, char *argv[]) {
     return 1;
 
   file_out = fopen(g_final_name, "wb");
+
+  _get_plain_filename(final_name_no_extension, sizeof(final_name_no_extension), g_final_name);
   
   /* generate ASM */
   if (g_backend == BACKEND_Z80) {
-    if (pass_6_z80(file_out) == FAILED) {
+    if (pass_6_z80(final_name_no_extension, file_out) == FAILED) {
       fclose(file_out);
       return FAILED;
     }
@@ -241,7 +259,7 @@ int parse_flags(char **flags, int flagc) {
       g_quiet = YES;
       continue;
     }
-    else if (!strcmp(flags[count], "-cZ80")) {
+    else if (!strcmp(flags[count], "-aZ80")) {
       g_backend = BACKEND_Z80;
       continue;
     }    
