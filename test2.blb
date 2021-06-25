@@ -1,14 +1,7 @@
 
-int8 g_i[8];
-int16 g_value = 1;
 
 void main() {
 
-   int8 var = sum(1, 2);
+  while (1) {
+  }
 }
-
-int16 sum(int8 a, int8 b) {
-
-  return a + b;
-}
-

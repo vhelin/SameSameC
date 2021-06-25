@@ -29,8 +29,12 @@
 
 struct file {
   char name[MAX_NAME_LENGTH+1];
+  char name_no_extension[MAX_NAME_LENGTH+1];
+  char global_variables_init_function[MAX_NAME_LENGTH+1];
   char *data;
   int  size;
+  int  position_sections;
+  int  position_ramsections;
   struct file *next;
 };
 

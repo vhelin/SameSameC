@@ -610,6 +610,12 @@ static void _djnz_to(char *label, FILE *file_out) {
 }
 
 
+static void _ret(FILE *file_out) {
+
+  fprintf(file_out, "      RET\n");
+}
+
+
 static void _push_de(FILE *file_out) {
 
   fprintf(file_out, "      PUSH DE\n");
@@ -4041,7 +4047,7 @@ int generate_global_variables_z80(char *file_name, FILE *file_out) {
         _load_value_to_b(bytes, file_out);
       
       /* the copy loop */
-      _add_label("-", file_out, YES);
+      _add_label("_copy", file_out, NO);
 
       _load_from_de_to_a(file_out);
       _load_a_into_hl(file_out);
@@ -4052,10 +4058,12 @@ int generate_global_variables_z80(char *file_name, FILE *file_out) {
         _dec_bc(file_out);
         _load_b_to_a(file_out);
         _or_c_to_a(file_out);
-        _jr_nz_to("-", file_out);
+        _jr_nz_to("_copy", file_out);
       }
       else
-        _djnz_to("-", file_out);
+        _djnz_to("_copy", file_out);
+
+      _ret(file_out);
       
       break;
     }

@@ -76,7 +76,7 @@ struct label_def *g_label_tmp = NULL, *g_labels = NULL;
 
 
 
-static void _get_plain_filename(char *output, int output_size, char *input) {
+static int _get_plain_filename(char *output, int output_size, char *input) {
 
   int length, i, start, j;
 
@@ -88,13 +88,21 @@ static void _get_plain_filename(char *output, int output_size, char *input) {
     if (input[i] == '/' || input[i] == '\\')
       start = i + 1;
   }
-  
-  for (j = 0, i = start; i < length; i++) {
+
+  for (j = 0, i = start; j < output_size && i < length; i++) {
     if (input[i] == '.')
       break;
     output[j++] = input[i];
   }
+
+  if (j == output_size) {
+    fprintf(stderr, "_get_plain_filename(): Output buffer is too small. Please submit a bug report!\n");
+    return FAILED;
+  }
+
   output[j] = 0;
+
+  return SUCCEEDED;
 }
 
 
@@ -106,7 +114,7 @@ int main(int argc, char *argv[]) {
   
   if (sizeof(double) != 8) {
     fprintf(stderr, "MAIN: sizeof(double) == %d != 8. BILIBALI-COMPILER will not work properly.\n", (int)sizeof(double));
-    return -1;
+    return 1;
   }
 
   atexit(procedures_at_exit);
@@ -174,10 +182,11 @@ int main(int argc, char *argv[]) {
   if (pass_5() == FAILED)
     return 1;
 
+  if (_get_plain_filename(final_name_no_extension, sizeof(final_name_no_extension), g_final_name) == FAILED)
+    return 1;
+  
   file_out = fopen(g_final_name, "wb");
 
-  _get_plain_filename(final_name_no_extension, sizeof(final_name_no_extension), g_final_name);
-  
   /* generate ASM */
   if (g_backend == BACKEND_Z80) {
     if (pass_6_z80(final_name_no_extension, file_out) == FAILED) {
