@@ -2,6 +2,12 @@
 
 void main() {
 
+  __z80_out[0xBF] = 0x00;
+  __z80_out[0xBF] = 0xC0;
+
+  __z80_out[0xBE] = 0x00;
+  __z80_out[0xBE] = 0x3F;
+
   while (1) {
   }
 }

@@ -225,6 +225,11 @@ int get_next_token(void) {
     }
   }
 
+  if (c == '0' && g_buffer[g_source_pointer+1] == 'x') {
+    g_source_pointer += 2;
+    g_parsed_int = 1;
+  }
+
   if (c == '$' || g_parsed_int == 1) {
     g_source_pointer++;
     if (g_parsed_int == 1)
@@ -248,6 +253,21 @@ int get_next_token(void) {
 
     g_parsed_double = (double)g_parsed_int;
     
+    return GET_NEXT_TOKEN_INT;
+  }
+
+  if (c == '0' && g_buffer[g_source_pointer+1] == 'b') {
+    g_source_pointer += 2;
+    for (g_parsed_int = 0, k = 0; k < 32; k++, g_source_pointer++) {
+      c = g_buffer[g_source_pointer];
+      if (c == '0' || c == '1')
+        g_parsed_int = (g_parsed_int << 1) + c - '0';
+      else
+        break;
+    }
+
+    g_parsed_double = (double)g_parsed_int;
+
     return GET_NEXT_TOKEN_INT;
   }
 
@@ -313,23 +333,6 @@ int get_next_token(void) {
 
     return GET_NEXT_TOKEN_INT;
   }
-
-  /*
-  if (c == '%') {
-    g_source_pointer++;
-    for (g_parsed_int = 0, k = 0; k < 32; k++, g_source_pointer++) {
-      c = g_buffer[g_source_pointer];
-      if (c == '0' || c == '1')
-        g_parsed_int = (g_parsed_int << 1) + c - '0';
-      else
-        break;
-    }
-
-    g_parsed_double = (double)g_parsed_int;
-
-    return GET_NEXT_TOKEN_INT;
-  }
-  */
 
   if (c == '\'') {
     g_source_pointer++;
