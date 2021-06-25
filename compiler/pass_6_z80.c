@@ -104,6 +104,12 @@ int find_stack_offset(int type, char *name, int value, struct tree_node *node, i
 }
 
 
+static void _load_b_to_a(FILE *file_out) {
+
+  fprintf(file_out, "      LD  A,B\n");
+}
+
+
 static void _load_value_to_ix(int value, FILE *file_out) {
 
   fprintf(file_out, "      LD  IX,%d\n", value);
@@ -113,6 +119,12 @@ static void _load_value_to_ix(int value, FILE *file_out) {
 static void _load_value_to_iy(int value, FILE *file_out) {
 
   fprintf(file_out, "      LD  IY,%d\n", value);
+}
+
+
+static void _load_label_to_de(char *label, FILE *file_out) {
+
+  fprintf(file_out, "      LD  DE,%s\n", label);
 }
 
 
@@ -134,12 +146,6 @@ static void _load_label_to_iy(char *label, FILE *file_out) {
 }
 
 
-static void _load_value_into_hl(int value, FILE *file_out) {
-
-  fprintf(file_out, "      LD  (HL),%d\n", value);
-}
-
-
 static void _load_value_into_ix(int value, int offset, FILE *file_out) {
 
   if (offset >= 0)
@@ -155,6 +161,12 @@ static void _load_value_into_iy(int value, int offset, FILE *file_out) {
     fprintf(file_out, "      LD  (IY+%d),%d\n", offset, value);
   else
     fprintf(file_out, "      LD  (IY%d),%d\n", offset, value);
+}
+
+
+static void _load_from_de_to_a(FILE *file_out) {
+
+  fprintf(file_out, "      LD  A,(DE)\n");
 }
 
 
@@ -263,6 +275,12 @@ static void _load_from_ix_to_l(int offset, FILE *file_out) {
     fprintf(file_out, "      LD  L,(IX+%d)\n", offset);
   else
     fprintf(file_out, "      LD  L,(IX%d)\n", offset);
+}
+
+
+static void _load_a_into_hl(FILE *file_out) {
+
+  fprintf(file_out, "      LD  (HL),A\n");
 }
 
 
@@ -402,29 +420,35 @@ static void _sub_from_ix_from_a(int offset, FILE *file_out) {
 }
 
 
-static void _or_value_from_a(int value, FILE *file_out) {
+static void _or_c_to_a(FILE *file_out) {
 
-  fprintf(file_out, "      OR A,%d\n", value);
+  fprintf(file_out, "      OR  A,C\n");
 }
 
 
-static void _or_from_ix_from_a(int offset, FILE *file_out) {
+static void _or_value_to_a(int value, FILE *file_out) {
+
+  fprintf(file_out, "      OR  A,%d\n", value);
+}
+
+
+static void _or_from_ix_to_a(int offset, FILE *file_out) {
 
   if (offset >= 0)
-    fprintf(file_out, "      OR A,(IX+%d)\n", offset);
+    fprintf(file_out, "      OR  A,(IX+%d)\n", offset);
   else
-    fprintf(file_out, "      OR A,(IX%d)\n", offset);
+    fprintf(file_out, "      OR  A,(IX%d)\n", offset);
 }
 
 
 static void _or_bc_to_hl(FILE *file_out) {
 
-  fprintf(file_out, "      LD A,B\n");
-  fprintf(file_out, "      OR A,H\n");
-  fprintf(file_out, "      LD H,A\n");
-  fprintf(file_out, "      LD A,C\n");
-  fprintf(file_out, "      OR A,L\n");
-  fprintf(file_out, "      LD L,A\n");
+  fprintf(file_out, "      LD  A,B\n");
+  fprintf(file_out, "      OR  A,H\n");
+  fprintf(file_out, "      LD  H,A\n");
+  fprintf(file_out, "      LD  A,C\n");
+  fprintf(file_out, "      OR  A,L\n");
+  fprintf(file_out, "      LD  L,A\n");
 }
 
 
@@ -445,12 +469,12 @@ static void _and_from_ix_from_a(int offset, FILE *file_out) {
 
 static void _and_bc_to_hl(FILE *file_out) {
 
-  fprintf(file_out, "      LD A,B\n");
+  fprintf(file_out, "      LD  A,B\n");
   fprintf(file_out, "      AND A,H\n");
-  fprintf(file_out, "      LD H,A\n");
-  fprintf(file_out, "      LD A,C\n");
+  fprintf(file_out, "      LD  H,A\n");
+  fprintf(file_out, "      LD  A,C\n");
   fprintf(file_out, "      AND A,L\n");
-  fprintf(file_out, "      LD L,A\n");
+  fprintf(file_out, "      LD  L,A\n");
 }
 
 
@@ -574,6 +598,18 @@ static void _jump_nz_to(char *label, FILE *file_out) {
 }
 
 
+static void _jr_nz_to(char *label, FILE *file_out) {
+
+  fprintf(file_out, "      JR  NZ,%s\n", label);
+}
+
+
+static void _djnz_to(char *label, FILE *file_out) {
+
+  fprintf(file_out, "      DJNZ %s\n", label);
+}
+
+
 static void _push_de(FILE *file_out) {
 
   fprintf(file_out, "      PUSH DE\n");
@@ -586,9 +622,21 @@ static void _pop_de(FILE *file_out) {
 }
 
 
+static void _inc_de(FILE *file_out) {
+
+  fprintf(file_out, "      INC DE\n");
+}
+
+
 static void _inc_hl(FILE *file_out) {
 
   fprintf(file_out, "      INC HL\n");
+}
+
+
+static void _dec_bc(FILE *file_out) {
+
+  fprintf(file_out, "      DEC BC\n");
 }
 
 
@@ -1095,11 +1143,11 @@ static int _generate_asm_add_sub_or_and_z80_8bit(struct tac *t, FILE *file_out, 
   else if (op == TAC_OP_OR) {
     if (t->arg2_type == TAC_ARG_TYPE_CONSTANT) {
       /* 8-bit */
-      _or_value_from_a(((int)t->arg2_d) & 0xff, file_out);
+      _or_value_to_a(((int)t->arg2_d) & 0xff, file_out);
     }
     else {
       /* 8-bit */
-      _or_from_ix_from_a(0, file_out);
+      _or_from_ix_to_a(0, file_out);
     }
   }
   else if (op == TAC_OP_AND) {
@@ -3855,7 +3903,7 @@ int generate_asm_z80(FILE *file_out) {
 
 int generate_global_variables_z80(char *file_name, FILE *file_out) {
 
-  int i, j, global_variables_found = 0, length, max_length = 0, elements, element_size, element_type, value;
+  int i, j, global_variables_found = 0, length, max_length = 0, elements, element_size, element_type, bytes = 0;
   char label_tmp[MAX_NAME_LENGTH + 1];
   
   fprintf(file_out, "\n");
@@ -3874,7 +3922,7 @@ int generate_global_variables_z80(char *file_name, FILE *file_out) {
   if (global_variables_found == 0)
     return SUCCEEDED;
 
-  /* create .RAMSECTION */
+  /* create .RAMSECTION for global variables */
   fprintf(file_out, "  .RAMSECTION \"global_variables_%s_ram\" FREE\n", file_name);
 
   for (i = 0; i < g_global_nodes->added_children; i++) {
@@ -3895,7 +3943,22 @@ int generate_global_variables_z80(char *file_name, FILE *file_out) {
         fprintf(stderr, "generate_global_variables_z80(): Unsupported global variable \"%s\" size %d! Please submit a bug report!\n", node->children[1]->label, element_size);
         return FAILED;
       }
-      
+
+      bytes += elements * element_size / 8;
+
+      /* check element types */
+      for (j = 2; j < node->added_children; j++) {
+        if (node->children[j]->type != TREE_NODE_TYPE_VALUE_INT && 
+            node->children[j]->type != TREE_NODE_TYPE_VALUE_DOUBLE) {
+          g_current_filename_id = node->file_id;
+          g_current_line_number = node->line_number;
+          snprintf(g_error_message, sizeof(g_error_message), "generate_global_variables_z80(): Global variable (\"%s\") can only be initialized with an immediate number!\n", node->children[1]->label);
+          print_error(g_error_message, ERROR_ERR);
+
+          return FAILED;
+        }
+      }
+
       if (elements == 1) {
         /* not an array */
         if (element_size == 8)
@@ -3917,7 +3980,45 @@ int generate_global_variables_z80(char *file_name, FILE *file_out) {
   
   fprintf(file_out, "  .ENDS\n\n");  
 
-  /* create .SECTION that initializes .RAMSECTION */
+  /* create .SECTION for global variables */
+  fprintf(file_out, "  .SECTION \"global_variables_%s_rom\" FREE\n", file_name);  
+
+  snprintf(label_tmp, sizeof(label_tmp), "global_variables_%s_rom", file_name);
+  _add_label(label_tmp, file_out, NO);  
+
+  for (i = 0; i < g_global_nodes->added_children; i++) {
+    struct tree_node *node = g_global_nodes->children[i];
+    if (node != NULL && (node->type == TREE_NODE_TYPE_CREATE_VARIABLE)) {
+      length = strlen(node->children[1]->label);
+
+      fprintf(file_out, "      ; %s\n", node->children[1]->label);
+
+      elements = node->added_children - 2;
+      element_type = tree_node_get_max_var_type(node->children[0]);
+      element_size = get_variable_type_size(element_type);
+
+      if (element_size == 8)
+        fprintf(file_out, "      .DB ");
+      else if (element_size == 16)
+        fprintf(file_out, "      .DW ");
+
+      for (j = 2; j < node->added_children; j++) {
+        if (j > 2)
+          fprintf(file_out, ", ");
+        
+        if (node->children[j]->type == TREE_NODE_TYPE_VALUE_INT)
+          fprintf(file_out, "%d", node->children[j]->value);
+        if (node->children[j]->type == TREE_NODE_TYPE_VALUE_DOUBLE)
+          fprintf(file_out, "%d", (int)(node->children[j]->value));
+      }
+
+      fprintf(file_out, "\n");
+    }
+  }
+  
+  fprintf(file_out, "  .ENDS\n\n");  
+  
+  /* create .SECTION that copies data from .SECTION to .RAMSECTION */
   fprintf(file_out, "  .SECTION \"global_variables_%s_init\" FREE\n", file_name);
 
   snprintf(label_tmp, sizeof(label_tmp), "global_variables_%s_init", file_name);
@@ -3926,46 +4027,37 @@ int generate_global_variables_z80(char *file_name, FILE *file_out) {
   for (i = 0; i < g_global_nodes->added_children; i++) {
     struct tree_node *node = g_global_nodes->children[i];
     if (node != NULL && (node->type == TREE_NODE_TYPE_CREATE_VARIABLE)) {
-      elements = node->added_children - 2;
-      element_type = tree_node_get_max_var_type(node->children[0]);
-      element_size = get_variable_type_size(element_type);
-
-      fprintf(file_out, "      ; initialize \"%s\"\n", node->children[1]->label);
-
       /* target address -> hl */
       _load_label_to_hl(node->children[1]->label, file_out);
 
-      if (elements == 1) {
-        /* not an array */
-        
-        if (node->children[2]->type == TREE_NODE_TYPE_VALUE_INT)
-          value = node->children[2]->value;
-        else if (node->children[2]->type != TREE_NODE_TYPE_VALUE_DOUBLE)
-          value = (int)node->children[2]->value_double;
-        else {
-          fprintf(stderr, "generate_global_variables_z80(): Global variable (\"%s\") can only be initialized with an immediate number!\n", node->children[1]->label);
-          return FAILED;
-        }
-        
-        /* load value -> (hl) */
-        if (element_size == 8) {
-          _load_value_into_hl(value & 0xff, file_out);
-        }
-        else if (element_size == 16) {
-          _load_value_into_hl(value & 0xff, file_out);
-          _inc_hl(file_out);
-          _load_value_into_hl((value >> 8) & 0xff, file_out);
-        }
+      /* source address -> de */
+      snprintf(label_tmp, sizeof(label_tmp), "global_variables_%s_rom", file_name);
+      _load_label_to_de(label_tmp, file_out);
+
+      /* counter -> bc/b */
+      if (bytes > 255)
+        _load_value_to_bc(bytes, file_out);
+      else
+        _load_value_to_b(bytes, file_out);
+      
+      /* the copy loop */
+      _add_label("-", file_out, YES);
+
+      _load_from_de_to_a(file_out);
+      _load_a_into_hl(file_out);
+      _inc_de(file_out);
+      _inc_hl(file_out);
+
+      if (bytes > 255) {
+        _dec_bc(file_out);
+        _load_b_to_a(file_out);
+        _or_c_to_a(file_out);
+        _jr_nz_to("-", file_out);
       }
-      else {
-        /* an array */
-        /*
-        if (element_size == 8)
-          fprintf(file_out, "DSB %d", elements);
-        else if (element_size == 16)
-          fprintf(file_out, "DSW %d", elements);
-        */
-      }
+      else
+        _djnz_to("-", file_out);
+      
+      break;
     }
   }
   

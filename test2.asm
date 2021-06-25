@@ -4,15 +4,25 @@
     g_value DW
   .ENDS
 
+  .SECTION "global_variables_test2_rom" FREE
+    global_variables_test2_rom:
+      ; g_i
+      .DB 0, 0, 0, 0, 0, 0, 0, 0
+      ; g_value
+      .DW 1
+  .ENDS
+
   .SECTION "global_variables_test2_init" FREE
     global_variables_test2_init:
-      ; initialize "g_i"
       LD  HL,g_i
-      ; initialize "g_value"
-      LD  HL,g_value
-      LD  (HL),1
+      LD  DE,global_variables_test2_rom
+      LD  B,10
+    -
+      LD  A,(DE)
+      LD  (HL),A
+      INC DE
       INC HL
-      LD  (HL),0
+      DJNZ -
   .ENDS
 
   .SECTION "main" FREE
