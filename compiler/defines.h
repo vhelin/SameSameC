@@ -349,6 +349,7 @@ struct tree_node {
 #define TREE_NODE_TYPE_GET_ADDRESS_ARRAY   26
 #define TREE_NODE_TYPE_LABEL               27
 #define TREE_NODE_TYPE_GOTO                28
+#define TREE_NODE_TYPE_DEAD                29
 
 struct symbol_table_item {
   int level;

@@ -562,6 +562,30 @@ static void _load_value_to_l(int value, FILE *file_out) {
 }
 
 
+static void _in_a_from_value(int value, FILE *file_out) {
+
+  fprintf(file_out, "      IN  A,($%.2X)\n", value);
+}
+
+
+static void _in_a_from_c(FILE *file_out) {
+
+  fprintf(file_out, "      IN  A,(C)\n");
+}
+
+
+static void _out_a_into_value(int value, FILE *file_out) {
+
+  fprintf(file_out, "      OUT ($%.2X),A\n", value);
+}
+
+
+static void _out_a_into_c(FILE *file_out) {
+
+  fprintf(file_out, "      OUT (C),A\n");
+}
+
+
 static void _jump_to(char *label, FILE *file_out) {
 
   fprintf(file_out, "      JP  %s\n", label);
@@ -1624,10 +1648,123 @@ static int _generate_asm_get_address_z80(struct tac *t, FILE *file_out, struct t
 }
 
 
+static int _generate_asm_z80_in_read_z80(struct tac *t, FILE *file_out, struct tree_node *function_node) {
+
+  int result_offset = -1, arg2_offset = -1;
+
+  /* result */
+
+  if (find_stack_offset(t->result_type, t->result_s, t->result_d, t->result_node, &result_offset, function_node) == FAILED)
+    return FAILED;
+  
+  /* arg2 */
+
+  if (find_stack_offset(t->arg2_type, t->arg2_s, t->arg2_d, t->arg2_node, &arg2_offset, function_node) == FAILED)
+    return FAILED;
+  
+  /* generate asm */
+
+  /******************************************************************************************************/
+  /* index address (arg2) -> ix */
+  /******************************************************************************************************/
+  
+  if (t->arg2_type == TAC_ARG_TYPE_CONSTANT) {
+  }
+  else if (t->arg2_type == TAC_ARG_TYPE_LABEL && arg2_offset == 999999) {
+    /* global var */
+    _load_label_to_ix(t->arg2_s, file_out);
+  }
+  else {
+    /* it's a variable in the frame! */
+    fprintf(file_out, "      ; offset %d\n", arg2_offset);
+
+    _load_value_to_ix(arg2_offset, file_out);
+    _add_de_to_ix(file_out);
+  }
+
+  /******************************************************************************************************/
+  /* copy data (ix) -> c */
+  /******************************************************************************************************/
+  
+  if (t->arg2_type == TAC_ARG_TYPE_CONSTANT) {
+  }
+  else {
+    _load_from_ix_to_c(0, file_out);
+  }
+
+  /******************************************************************************************************/
+  /* in a, (?) / in a, (c) */
+  /******************************************************************************************************/
+
+  if (t->arg2_type == TAC_ARG_TYPE_CONSTANT)
+    _in_a_from_value(((int)t->arg2_d) & 0xff, file_out);
+  else
+    _in_a_from_c(file_out);
+
+  /******************************************************************************************************/
+  /* target address -> ix */
+  /******************************************************************************************************/
+  
+  if (t->result_type == TAC_ARG_TYPE_CONSTANT) {
+    fprintf(stderr, "_generate_asm_array_read_z80(): Target cannot be a value!\n");
+    return FAILED;
+  }
+  else if (t->result_type == TAC_ARG_TYPE_LABEL && result_offset == 999999) {
+    /* global var */
+    _load_label_to_ix(t->result_s, file_out);
+  }
+  else {
+    /* it's a variable in the frame! */
+    fprintf(file_out, "      ; offset %d\n", result_offset);
+
+    _load_value_to_ix(result_offset, file_out);
+    _add_de_to_ix(file_out);
+  }
+
+  /******************************************************************************************************/
+  /* copy data a -> (ix) */
+  /******************************************************************************************************/
+
+  if (t->result_var_type == VARIABLE_TYPE_INT16 || t->result_var_type == VARIABLE_TYPE_UINT16) {
+    /* 16-bit */
+    _load_a_into_ix(0, file_out);
+
+    if (result_offset == 999999) {
+      /* global var write */
+      _load_value_into_ix(0, 1, file_out);
+    }
+    else {
+      /* stack frame write */
+      _load_value_into_ix(0, -1, file_out);
+    }
+  }
+  else {
+    /* 8-bit */
+    _load_a_into_ix(0, file_out);
+  }
+  
+  return SUCCEEDED;
+}
+
+
 static int _generate_asm_array_read_z80(struct tac *t, FILE *file_out, struct tree_node *function_node) {
 
   int result_offset = -1, arg1_offset = -1, arg2_offset = -1, var_type;
 
+  /* OVERRIDE for __z80_in */
+  if (t->arg1_type == TAC_ARG_TYPE_LABEL && strcmp(t->arg1_s, "__z80_in") == 0)
+    return _generate_asm_z80_in_read_z80(t, file_out, function_node);
+
+  /* error for a read from __z80_out */
+  if (t->arg1_type == TAC_ARG_TYPE_LABEL && strcmp(t->arg1_s, "__z80_out") == 0) {
+    g_current_filename_id = t->file_id;
+    g_current_line_number = t->line_number;
+    snprintf(g_error_message, sizeof(g_error_message), "_generate_arm_array_read_z80(): You cannot read from \"__z80_out\"!\n");
+    print_error(g_error_message, ERROR_ERR);
+
+    return FAILED;
+  }
+  
   /* result */
 
   if (find_stack_offset(t->result_type, t->result_s, t->result_d, t->result_node, &result_offset, function_node) == FAILED)
@@ -1830,10 +1967,110 @@ static int _generate_asm_array_read_z80(struct tac *t, FILE *file_out, struct tr
 }
 
 
+static int _generate_asm_z80_out_write_z80(struct tac *t, FILE *file_out, struct tree_node *function_node) {
+
+  int arg1_offset = -1, arg2_offset = -1;
+
+  /* arg1 */
+
+  if (find_stack_offset(t->arg1_type, t->arg1_s, t->arg1_d, t->arg1_node, &arg1_offset, function_node) == FAILED)
+    return FAILED;
+
+  /* arg2 */
+
+  if (find_stack_offset(t->arg2_type, t->arg2_s, t->arg2_d, t->arg2_node, &arg2_offset, function_node) == FAILED)
+    return FAILED;
+  
+  /* generate asm */
+
+  /******************************************************************************************************/
+  /* source address (arg1) -> ix */
+  /******************************************************************************************************/
+  
+  if (t->arg1_type == TAC_ARG_TYPE_CONSTANT) {
+  }
+  else if (t->arg1_type == TAC_ARG_TYPE_LABEL && arg1_offset == 999999) {
+    /* global var */
+    _load_label_to_ix(t->arg1_s, file_out);
+  }
+  else {
+    /* it's a variable in the frame! */
+    fprintf(file_out, "      ; offset %d\n", arg1_offset);
+
+    _load_value_to_ix(arg1_offset, file_out);
+    _add_de_to_ix(file_out);
+  }
+
+  /******************************************************************************************************/
+  /* copy data (ix) -> a */
+  /******************************************************************************************************/
+  
+  if (t->arg1_type == TAC_ARG_TYPE_CONSTANT) {
+    _load_value_to_a(((int)t->arg1_d) & 0xff, file_out);
+  }
+  else {
+    _load_from_ix_to_a(0, file_out);
+  }
+
+  /******************************************************************************************************/
+  /* index address (arg2) -> ix */
+  /******************************************************************************************************/
+  
+  if (t->arg2_type == TAC_ARG_TYPE_CONSTANT) {
+  }
+  else if (t->arg2_type == TAC_ARG_TYPE_LABEL && arg2_offset == 999999) {
+    /* global var */
+    _load_label_to_ix(t->arg2_s, file_out);
+  }
+  else {
+    /* it's a variable in the frame! */
+    fprintf(file_out, "      ; offset %d\n", arg2_offset);
+
+    _load_value_to_ix(arg2_offset, file_out);
+    _add_de_to_ix(file_out);
+  }
+
+  /******************************************************************************************************/
+  /* copy data (ix) -> c */
+  /******************************************************************************************************/
+  
+  if (t->arg2_type == TAC_ARG_TYPE_CONSTANT) {
+  }
+  else {
+    _load_from_ix_to_c(0, file_out);
+  }
+
+  /******************************************************************************************************/
+  /* out (?), a / out (c), a */
+  /******************************************************************************************************/
+
+  if (t->arg2_type == TAC_ARG_TYPE_CONSTANT)
+    _out_a_into_value(((int)t->arg2_d) & 0xff, file_out);
+  else
+    _out_a_into_c(file_out);  
+
+  return SUCCEEDED;
+}
+
+
 static int _generate_asm_array_assignment_z80(struct tac *t, FILE *file_out, struct tree_node *function_node) {
 
   int result_offset = -1, arg1_offset = -1, arg2_offset = -1;
 
+  /* OVERRIDE for __z80_out */
+  if (t->result_type == TAC_ARG_TYPE_LABEL && strcmp(t->result_s, "__z80_out") == 0)
+    return _generate_asm_z80_out_write_z80(t, file_out, function_node);
+
+  /* error for a write to __z80_in */
+  if (t->result_type == TAC_ARG_TYPE_LABEL && strcmp(t->result_s, "__z80_in") == 0) {
+    g_current_filename_id = t->file_id;
+    g_current_line_number = t->line_number;
+    snprintf(g_error_message, sizeof(g_error_message), "_generate_arm_array_assignment_z80(): You cannot write to \"__z80_in\"!\n");
+    print_error(g_error_message, ERROR_ERR);
+
+    return FAILED;
+  }
+  
   /* result */
 
   if (find_stack_offset(t->result_type, t->result_s, t->result_d, t->result_node, &result_offset, function_node) == FAILED)
@@ -3907,11 +4144,30 @@ int generate_asm_z80(FILE *file_out) {
 }
 
 
+static void _kill_z80_in_out(void) {
+
+  int i;
+
+  /* we don't want to output __z80_in and __z80_out as normal arrays so we kill them here */
+  for (i = 0; i < g_global_nodes->added_children; i++) {
+    struct tree_node *node = g_global_nodes->children[i];
+    if (node != NULL && (node->type == TREE_NODE_TYPE_CREATE_VARIABLE)) {
+      if (strcmp(node->children[1]->label, "__z80_in") == 0 ||
+          strcmp(node->children[1]->label, "__z80_out") == 0)
+        node->type = TREE_NODE_TYPE_DEAD;
+    }
+  }
+}
+
+
 int generate_global_variables_z80(char *file_name, FILE *file_out) {
 
   int i, j, global_variables_found = 0, length, max_length = 0, elements, element_size, element_type, bytes = 0;
   char label_tmp[MAX_NAME_LENGTH + 1];
   
+  /* kill __z80_out and __z80_in as they are not normal arrays */
+  _kill_z80_in_out();
+
   fprintf(file_out, "\n");
   
   for (i = 0; i < g_global_nodes->added_children; i++) {

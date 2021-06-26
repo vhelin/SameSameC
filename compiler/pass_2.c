@@ -19,7 +19,7 @@
 
 
 extern int g_input_float_mode, g_parsed_int;
-extern int g_verbose_mode, g_latest_stack;
+extern int g_verbose_mode, g_latest_stack, g_backend;
 extern char g_mem_insert_action[MAX_NAME_LENGTH*3 + 1024], g_tmp[4096];
 extern double g_parsed_double;
 extern char g_tmp[4096], g_error_message[sizeof(g_tmp) + MAX_NAME_LENGTH + 1 + 1024], g_label[MAX_NAME_LENGTH + 1];
@@ -309,6 +309,71 @@ static struct tree_node *_get_current_open_block() {
 }
 
 
+static struct tree_node *_create_z80_in_out(char *name) {
+
+  struct tree_node *node;
+  int i;
+
+  node = allocate_tree_node_with_children(TREE_NODE_TYPE_CREATE_VARIABLE, 3);
+  if (node == NULL)
+    return NULL;
+
+  tree_node_add_child(node, allocate_tree_node_variable_type(VARIABLE_TYPE_UINT8));
+  tree_node_add_child(node, allocate_tree_node_value_string(name));
+
+  for (i = 0; i < 256; i++) {
+    struct tree_node *empty_node = allocate_tree_node_value_int(0);
+
+    if (empty_node == NULL) {
+      free_tree_node(node);
+      return NULL;
+    }
+
+    tree_node_add_child(node, empty_node);
+  }
+
+  /* set array size */
+  node->value = 256;
+
+  return node;
+}
+
+
+static int _pass_2_z80_init(void) {
+
+  /* create global arrays __z80_out[] and __z80_in[] */
+  struct tree_node *node;
+
+  /* __z80_out */
+  node = _create_z80_in_out("__z80_out");
+  if (node == NULL)
+    return FAILED;
+
+  if (symbol_table_add_symbol(node, node->children[1]->label, g_block_level) == FAILED) {
+    free_tree_node(node);
+    return FAILED;
+  }
+
+  if (tree_node_add_child(g_global_nodes, node) == FAILED)
+    return FAILED;
+
+  /* __z80_in */
+  node = _create_z80_in_out("__z80_in");
+  if (node == NULL)
+    return FAILED;
+
+  if (symbol_table_add_symbol(node, node->children[1]->label, g_block_level) == FAILED) {
+    free_tree_node(node);
+    return FAILED;
+  }
+
+  if (tree_node_add_child(g_global_nodes, node) == FAILED)
+    return FAILED;
+
+  return SUCCEEDED;
+}
+
+
 int pass_2(void) {
 
   struct tree_node *node;
@@ -324,6 +389,12 @@ int pass_2(void) {
   g_global_nodes = allocate_tree_node_with_children(TREE_NODE_TYPE_GLOBAL_NODES, 256);
   if (g_global_nodes == NULL)
     return FAILED;
+
+  /* Z80 special */
+  if (g_backend == BACKEND_Z80) {
+    if (_pass_2_z80_init() == FAILED)
+      return FAILED;
+  }
   
   g_token_current = g_token_first;
   while (g_token_current != NULL) {
