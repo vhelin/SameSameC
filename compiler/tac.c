@@ -64,7 +64,7 @@ static void _print_tac_arg(int type, double d, char *s, int var_type, int var_ty
 
 char *generate_temp_label(int id) {
 
-  snprintf(g_temp_label, sizeof(g_temp_label), "label_%d", id);
+  snprintf(g_temp_label, sizeof(g_temp_label), "_label_%d", id);
 
   return g_temp_label;
 }
