@@ -31,6 +31,7 @@ extern char g_tmp[4096], g_error_message[sizeof(g_tmp) + MAX_NAME_LENGTH + 1 + 1
 
 int *g_register_reads = NULL, *g_register_writes = NULL;
 
+static struct label *g_removed_jump_destinations_first = NULL, *g_removed_jump_destinations_last = NULL;
 static int g_register_reads_and_writes_count = 0;
 
 
@@ -259,6 +260,44 @@ static int _count_and_allocate_register_usage(int start, int end) {
 }
 
 
+static int _remember_a_removed_jump_destination(char *label) {
+
+  struct label *l;
+
+  /* these labels will be processed in _optimize_il_19() */
+
+  /* is it in memory already? */
+  l = g_removed_jump_destinations_first;
+  while (l != NULL) {
+    if (strcmp(l->label, label) == 0)
+      return SUCCEEDED;
+    l = l->next;
+  }
+
+  /* add a new memory */
+  l = calloc(sizeof(struct label), 1);
+  if (l == NULL) {
+    fprintf(stderr, "_remember_a_removed_jump_destination(): Out of memory error.\n");
+    return FAILED;
+  }
+
+  strcpy(l->label, label);
+  l->next = NULL;
+  l->references = 0;
+
+  if (g_removed_jump_destinations_first == NULL) {
+    g_removed_jump_destinations_first = l;
+    g_removed_jump_destinations_last = l;
+  }
+  else {
+    g_removed_jump_destinations_last->next = l;
+    g_removed_jump_destinations_last = l;
+  }
+  
+  return SUCCEEDED;
+}
+
+
 static int _optimize_il_1(int *optimizations_counter) {
 
   /*
@@ -267,6 +306,7 @@ static int _optimize_il_1(int *optimizations_counter) {
   */
 
   int i = 0;
+
   while (i < g_tacs_count) {
     int current, next;
 
@@ -298,6 +338,7 @@ static int _optimize_il_2(int *optimizations_counter) {
   */
 
   int i = 0;
+
   while (i < g_tacs_count) {
     int current, next, last;
 
@@ -313,6 +354,10 @@ static int _optimize_il_2(int *optimizations_counter) {
         strcmp(g_tacs[current].result_s, g_tacs[last].result_s) == 0) {
       g_tacs[current].op = TAC_OP_DEAD;
       (*optimizations_counter)++;
+
+      /* remember the jump target label - perhaps it can be optimized away if there are no other jumps to it? */
+      if (_remember_a_removed_jump_destination(g_tacs[current].result_s) == FAILED)
+        return FAILED;
     }
 
     i = next;
@@ -330,6 +375,7 @@ static int _optimize_il_3(int *optimizations_counter) {
   */
 
   int i = 0;
+
   while (1) {
     int is_last_function = NO;
     int end = _find_end_of_il_function(i, &is_last_function);
@@ -380,6 +426,7 @@ static int _optimize_il_4(int *optimizations_counter) {
   */
 
   int i = 0;
+
   while (1) {
     int is_last_function = NO;
     int end = _find_end_of_il_function(i, &is_last_function);
@@ -430,6 +477,7 @@ static int _optimize_il_5(int *optimizations_counter) {
   */
 
   int i = 0;
+
   while (1) {
     int is_last_function = NO;
     int end = _find_end_of_il_function(i, &is_last_function);
@@ -480,6 +528,7 @@ static int _optimize_il_6(int *optimizations_counter) {
   */
 
   int i = 0;
+
   while (1) {
     int is_last_function = NO;
     int end = _find_end_of_il_function(i, &is_last_function);
@@ -530,6 +579,7 @@ static int _optimize_il_7(int *optimizations_counter) {
   */
 
   int i = 0;
+
   while (1) {
     int is_last_function = NO;
     int end = _find_end_of_il_function(i, &is_last_function);
@@ -580,6 +630,7 @@ static int _optimize_il_8(int *optimizations_counter) {
   */
 
   int i = 0;
+
   while (1) {
     int is_last_function = NO;
     int end = _find_end_of_il_function(i, &is_last_function);
@@ -630,6 +681,7 @@ static int _optimize_il_9(int *optimizations_counter) {
   */
 
   int i = 0;
+
   while (1) {
     int is_last_function = NO;
     int end = _find_end_of_il_function(i, &is_last_function);
@@ -680,6 +732,7 @@ static int _optimize_il_10(int *optimizations_counter) {
   */
 
   int i = 0;
+
   while (1) {
     int is_last_function = NO;
     int end = _find_end_of_il_function(i, &is_last_function);
@@ -733,6 +786,7 @@ static int _optimize_il_11(int *optimizations_counter) {
   /* PPS. make this find two assigments with n TACs between them */
   
   int i = 0;
+
   while (1) {
     int is_last_function = NO;
     int end = _find_end_of_il_function(i, &is_last_function);
@@ -777,6 +831,7 @@ static int _optimize_il_12(int *optimizations_counter) {
   */
 
   int i = 0;
+
   while (1) {
     int is_last_function = NO;
     int end = _find_end_of_il_function(i, &is_last_function);
@@ -827,6 +882,7 @@ static int _optimize_il_13(int *optimizations_counter) {
   */
 
   int i = 0;
+
   while (1) {
     int is_last_function = NO;
     int end = _find_end_of_il_function(i, &is_last_function);
@@ -886,6 +942,7 @@ static int _optimize_il_14(int *optimizations_counter) {
   */
 
   int i = 0;
+
   while (1) {
     int is_last_function = NO;
     int end = _find_end_of_il_function(i, &is_last_function);
@@ -936,6 +993,7 @@ static int _optimize_il_15(int *optimizations_counter) {
   */
 
   int i = 0;
+
   while (1) {
     int is_last_function = NO;
     int end = _find_end_of_il_function(i, &is_last_function);
@@ -991,6 +1049,7 @@ static int _optimize_il_16(int *optimizations_counter) {
   */
 
   int i = 0;
+
   while (1) {
     int is_last_function = NO;
     int end = _find_end_of_il_function(i, &is_last_function);
@@ -1045,6 +1104,7 @@ static int _optimize_il_17(int *optimizations_counter) {
   */
 
   int i = 0;
+
   while (1) {
     int is_last_function = NO;
     int end = _find_end_of_il_function(i, &is_last_function);
@@ -1082,6 +1142,10 @@ static int _optimize_il_17(int *optimizations_counter) {
             (op == TAC_OP_JUMP_GTE && !(arg1 >= arg2))) {            
           g_tacs[current].op = TAC_OP_DEAD;
           (*optimizations_counter)++;
+
+          /* remember the jump target label - perhaps it can be optimized away if there are no other jumps to it? */
+          if (_remember_a_removed_jump_destination(g_tacs[current].result_s) == FAILED)
+            return FAILED;
         }
       }
 
@@ -1103,6 +1167,7 @@ static int _optimize_il_18(int *optimizations_counter) {
   */
 
   int i = 0;
+
   while (1) {
     int is_last_function = NO;
     int end = _find_end_of_il_function(i, &is_last_function);
@@ -1154,6 +1219,153 @@ static int _optimize_il_18(int *optimizations_counter) {
 }
 
 
+static int _optimize_il_19(int *optimizations_counter) {
+
+  /* if we removed a jump to a label in _optimize_il_2() or _optimize_il_17() then here we look
+     for other references to those labels and if we find none then we remove the labels as well */
+
+  struct label *l;
+  int i = 0;
+
+  /* find references to labels */
+  while (1) {
+    int is_last_function = NO;
+    int end = _find_end_of_il_function(i, &is_last_function);
+    if (end < 0)
+      return FAILED;
+
+    if (_count_and_allocate_register_usage(i, end) == FAILED)
+      return FAILED;
+
+    while (i < end) {
+      int current, next;
+
+      current = _find_next_living_tac(i);
+      next = _find_next_living_tac(current + 1);
+      
+      if (current < 0)
+        break;
+
+      if (g_tacs[current].op == TAC_OP_JUMP ||
+          g_tacs[current].op == TAC_OP_JUMP_EQ ||
+          g_tacs[current].op == TAC_OP_JUMP_LT ||
+          g_tacs[current].op == TAC_OP_JUMP_GT ||
+          g_tacs[current].op == TAC_OP_JUMP_NEQ ||
+          g_tacs[current].op == TAC_OP_JUMP_LTE ||
+          g_tacs[current].op == TAC_OP_JUMP_GTE) {
+        l = g_removed_jump_destinations_first;
+        while (l != NULL) {
+          if (strcmp(l->label, g_tacs[current].result_s) == 0)
+            l->references++;
+          l = l->next;
+        }
+      }
+
+      /*
+          g_tacs[current].op = TAC_OP_DEAD;
+          (*optimizations_counter)++;
+        }
+      }
+      */
+
+      i = next;
+    }
+
+    if (is_last_function == YES)
+      break;
+  }
+
+  i = 0;
+
+  /* remove unreferences labels */
+  while (1) {
+    int is_last_function = NO;
+    int end = _find_end_of_il_function(i, &is_last_function);
+    if (end < 0)
+      return FAILED;
+
+    if (_count_and_allocate_register_usage(i, end) == FAILED)
+      return FAILED;
+
+    while (i < end) {
+      int current, next;
+
+      current = _find_next_living_tac(i);
+      next = _find_next_living_tac(current + 1);
+      
+      if (current < 0)
+        break;
+
+      if (g_tacs[current].op == TAC_OP_LABEL) {
+        l = g_removed_jump_destinations_first;
+        while (l != NULL) {
+          if (strcmp(l->label, g_tacs[current].result_s) == 0 && l->references == 0) {
+            /* no references to this label -> can be removed! */
+            g_tacs[current].op = TAC_OP_DEAD;
+            (*optimizations_counter)++;
+            break;
+          }
+          l = l->next;
+        }
+      }
+
+      i = next;
+    }
+
+    if (is_last_function == YES)
+      break;
+  }
+
+  /* free all jump destinations from _optimize_il_17() from memory */
+  l = g_removed_jump_destinations_first;
+  while (l != NULL) {
+    struct label *l1;
+
+    l1 = l->next;
+    free(l);
+    l = l1;
+  }
+
+  g_removed_jump_destinations_first = NULL;
+  g_removed_jump_destinations_last = NULL;
+  
+  return SUCCEEDED;
+}
+
+
+static int _optimize_il_20(int *optimizations_counter) {
+  
+  /*
+    jmp label_*
+    return       <----- REMOVE if this is function's last TAC
+  */
+
+  int i = 0;
+
+  while (i < g_tacs_count) {
+    int current, next, last;
+
+    current = _find_next_living_tac(i);
+    next = _find_next_living_tac(current + 1);
+    last = _find_next_living_tac(next + 1);
+
+    if (current < 0 || next < 0)
+      break;
+    
+    if (g_tacs[current].op == TAC_OP_JUMP &&
+        g_tacs[next].op == TAC_OP_RETURN &&
+        (last < 0 || (g_tacs[last].op == TAC_OP_LABEL && g_tacs[last].is_function == YES))) {
+      g_tacs[next].op = TAC_OP_DEAD;
+      (*optimizations_counter)++;
+    }
+
+    i = next;
+  }
+
+  return SUCCEEDED;
+}
+
+
 int optimize_il(void) {
 
   int optimizations_counter, loop = 1;
@@ -1197,6 +1409,10 @@ int optimize_il(void) {
     if (_optimize_il_17(&optimizations_counter) == FAILED)
       return FAILED;
     if (_optimize_il_18(&optimizations_counter) == FAILED)
+      return FAILED;
+    if (_optimize_il_19(&optimizations_counter) == FAILED)
+      return FAILED;
+    if (_optimize_il_20(&optimizations_counter) == FAILED)
       return FAILED;
     
     fprintf(stderr, "optimize_il(): Loop %d managed to do %d optimizations.\n", loop, optimizations_counter);

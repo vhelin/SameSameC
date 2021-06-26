@@ -132,11 +132,10 @@
 #define STACK_POSITION_DEFINITION 0
 #define STACK_POSITION_CODE       1
 
-struct label_sizeof {
-  char name[MAX_NAME_LENGTH + 1];
-  int size;
-  int file_id;
-  struct label_sizeof *next;
+struct label {
+  char label[MAX_NAME_LENGTH + 1];
+  int  references;
+  struct label *next;
 };
 
 struct definition {
