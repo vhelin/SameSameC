@@ -3,13 +3,14 @@
 void main() {
 
   uint8 color = 0;
+  uint8 i;
 
   while (1) {
     __z80_out[0xBF] = 0x00;
     __z80_out[0xBF] = 0xC0;
-
-    __z80_out[0xBE] = color;
-
+    for (i = 0; i < 32; i++) {
+      __z80_out[0xBE] = color;
+    }
     color++;
   }
 }
