@@ -800,9 +800,6 @@ static int _generate_il_create_while(struct tree_node *node) {
   /* label of condition */
   add_tac_label(generate_temp_label(label_condition));
 
-  /* reset the temp register counter */
-  g_temp_r = 0;
-  
   /* condition */
   if (_generate_il_create_condition(node->children[0], label_exit) == FAILED)
     return FAILED;
@@ -842,9 +839,6 @@ static int _generate_il_create_for(struct tree_node *node) {
   /* label of condition */
   add_tac_label(generate_temp_label(label_condition));
 
-  /* reset the temp register counter */
-  g_temp_r = 0;
-  
   /* condition */
   if (_generate_il_create_condition(node->children[1], label_exit) == FAILED)
     return FAILED;
