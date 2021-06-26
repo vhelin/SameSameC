@@ -221,7 +221,7 @@ static int _open_expression_pop() {
 static struct tree_node *_get_current_open_expression() {
 
   if (g_open_expression_current_id < 0) {
-    print_error("Trying to get the current open expression, but there is none! Please submit a bug report!\n", ERROR_DIR);
+    print_error("Trying to get the current open expression, but there is none! Please submit a bug report!\n", ERROR_ERR);
     return NULL;
   }
   
@@ -261,7 +261,7 @@ static int _open_condition_pop() {
 static struct tree_node *_get_current_open_condition() {
 
   if (g_open_condition_current_id < 0) {
-    print_error("Trying to get the current open condition, but there is none! Please submit a bug report!\n", ERROR_DIR);
+    print_error("Trying to get the current open condition, but there is none! Please submit a bug report!\n", ERROR_ERR);
     return NULL;
   }
   
@@ -301,7 +301,7 @@ static int _open_block_pop() {
 static struct tree_node *_get_current_open_block() {
 
   if (g_open_block_current_id < 0) {
-    print_error("Trying to get the current open block, but there is none! Please submit a bug report!\n", ERROR_DIR);
+    print_error("Trying to get the current open block, but there is none! Please submit a bug report!\n", ERROR_ERR);
     return NULL;
   }
   
@@ -376,7 +376,6 @@ static int _pass_2_z80_init(void) {
 
 int pass_2(void) {
 
-  struct tree_node *node;
   int i;
   
   if (g_verbose_mode == ON)
@@ -400,8 +399,7 @@ int pass_2(void) {
   while (g_token_current != NULL) {
     if (g_token_current->id == TOKEN_ID_VARIABLE_TYPE) {
       _print_token(g_token_current);
-      node = create_variable_or_function();
-      if (node == NULL)
+      if (create_variable_or_function() == FAILED)
         return FAILED;
 
       if (g_block_level != 0) {
@@ -409,21 +407,6 @@ int pass_2(void) {
         print_error(g_error_message, ERROR_ERR);
         return FAILED;
       }
-      
-      if (node->type == TREE_NODE_TYPE_CREATE_VARIABLE || node->type == TREE_NODE_TYPE_FUNCTION_DEFINITION || node->type == TREE_NODE_TYPE_FUNCTION_PROTOTYPE) {
-        if (symbol_table_add_symbol(node, node->children[1]->label, g_block_level) == FAILED) {
-          free_tree_node(node);
-          return FAILED;
-        }
-      }
-      else {
-        snprintf(g_error_message, sizeof(g_error_message), "Unknown top level node type %d! Please submit a bug report!\n", node->type);
-        print_error(g_error_message, ERROR_ERR);
-        return FAILED;
-      }
-      
-      if (tree_node_add_child(g_global_nodes, node) == FAILED)
-        return FAILED;
     }
     else if (g_token_current->id == TOKEN_ID_DEFINE) {
       _print_token(g_token_current);
@@ -674,8 +657,10 @@ int create_factor(void) {
       return SUCCEEDED;
     }
   }
-  else if (g_token_current->id == TOKEN_ID_VALUE_INT)
+  else if (g_token_current->id == TOKEN_ID_VALUE_INT) {
+    fprintf(stderr, "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx %d\n", g_token_current->value);
     node = allocate_tree_node_value_int(g_token_current->value);
+  }
   else if (g_token_current->id == TOKEN_ID_VALUE_DOUBLE)
     node = allocate_tree_node_value_double(g_token_current->value_double);
   else if (g_token_current->id == TOKEN_ID_SYMBOL && (g_token_current->value == SYMBOL_INCREMENT || g_token_current->value == SYMBOL_DECREMENT)) {
@@ -1039,143 +1024,167 @@ int create_statement(void) {
 
   if (g_token_current->id == TOKEN_ID_VARIABLE_TYPE) {
     /* variable creation */
-    int variable_type = g_token_current->value;
+    int variable_type, pointer_depth;
     char name[MAX_NAME_LENGTH + 1];
-    int pointer_depth = 0;
 
+    variable_type = g_token_current->value;
+    
     /* next token */
     _next_token();
 
-    while (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == '*') {
-      pointer_depth++;
-
-      /* next token */
-      _next_token();
-    }
+    while (1) {
+      pointer_depth = 0;
     
-    if (g_token_current->id != TOKEN_ID_VALUE_STRING) {
-      snprintf(g_error_message, sizeof(g_error_message), "%s must be followed by a variable name.\n", g_variable_types[variable_type]);
-      print_error(g_error_message, ERROR_ERR);
-      return FAILED;
-    }
+      while (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == '*') {
+        pointer_depth++;
 
-    strncpy(name, g_token_current->label, MAX_NAME_LENGTH);
-
-    /* next token */
-    _next_token();
-
-    if (g_token_current->id != TOKEN_ID_SYMBOL || (g_token_current->value != '=' &&
-                                                   g_token_current->value != '[' &&
-                                                   g_token_current->value != ';')) {
-      snprintf(g_error_message, sizeof(g_error_message), "%s must be followed by a ';', '[' or '='.\n", name);
-      print_error(g_error_message, ERROR_ERR);
-      return FAILED;
-    }
-
-    symbol = g_token_current->value;
-
-    if (symbol != ';') {
-      /* next token */
-      _next_token();
-    }
+        /* next token */
+        _next_token();
+      }
     
-    /* create_expression() will put all tree_nodes it parses to g_open_expression */
-    if (_open_expression_push() == FAILED)
-      return FAILED;
-
-    if (symbol == '=') {
-      /* possibly parse a calculation */
-      fprintf(stderr, "create_statement():\n");
-
-      if (create_expression() == FAILED)
-        return FAILED;
-
-      fprintf(stderr, "- create_expression() - create_statement()\n");
-
-      /*
-      result = stack_calculate_tokens(&g_parsed_int);
-
-      fprintf(stderr, "GOT FROM STACK CALCULATE: ");
-
-      if (result == SUCCEEDED)
-        fprintf(stderr, "INT: %d\n", g_parsed_int);
-      else if (result == INPUT_NUMBER_FLOAT)
-        fprintf(stderr, "DOUBLE: %g\n", g_parsed_double);
-      else if (result == INPUT_NUMBER_STRING)
-        fprintf(stderr, "STRING: %s\n", g_label);
-      else if (result == INPUT_NUMBER_STACK)
-        fprintf(stderr, "STACK: %d\n", g_latest_stack);
-      */
-    }
-    else if (symbol == '[') {
-      /* array */
-
-      /* TODO: do this nicer */
-      free_tree_node(_get_current_open_expression());
-      _open_expression_pop();
-
-      node = create_array(pointer_depth, variable_type, name);
-      if (node == NULL)
-        return FAILED;
-
-      tree_node_add_child(_get_current_open_block(), node);
-
-      if (!(g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == ';')) {
-        snprintf(g_error_message, sizeof(g_error_message), "Expected ';', but got %s.\n", _get_token_simple(g_token_current));
+      if (g_token_current->id != TOKEN_ID_VALUE_STRING) {
+        snprintf(g_error_message, sizeof(g_error_message), "\"%s\" must be followed by a variable name.\n", g_variable_types[variable_type]);
         print_error(g_error_message, ERROR_ERR);
         return FAILED;
       }
+
+      strncpy(name, g_token_current->label, MAX_NAME_LENGTH);
+
+      /* next token */
+      _next_token();
+
+      if (g_token_current->id != TOKEN_ID_SYMBOL || (g_token_current->value != '=' &&
+                                                     g_token_current->value != '[' &&
+                                                     g_token_current->value != ',' &&
+                                                     g_token_current->value != ';')) {
+        snprintf(g_error_message, sizeof(g_error_message), "\"%s\" must be followed by a ';', ',', '[' or '='.\n", name);
+        print_error(g_error_message, ERROR_ERR);
+        return FAILED;
+      }
+
+      symbol = g_token_current->value;
+
+      /* next token */
+      _next_token();
+    
+      /* create_expression() will put all tree_nodes it parses to g_open_expression */
+      if (_open_expression_push() == FAILED)
+        return FAILED;
+
+      if (symbol == '=') {
+        /* possibly parse a calculation */
+        fprintf(stderr, "create_statement():\n");
+
+        if (create_expression() == FAILED)
+          return FAILED;
+
+        fprintf(stderr, "- create_expression() - create_statement()\n");
+
+        /*
+          result = stack_calculate_tokens(&g_parsed_int);
+
+          fprintf(stderr, "GOT FROM STACK CALCULATE: ");
+
+          if (result == SUCCEEDED)
+          fprintf(stderr, "INT: %d\n", g_parsed_int);
+          else if (result == INPUT_NUMBER_FLOAT)
+          fprintf(stderr, "DOUBLE: %g\n", g_parsed_double);
+          else if (result == INPUT_NUMBER_STRING)
+          fprintf(stderr, "STRING: %s\n", g_label);
+          else if (result == INPUT_NUMBER_STACK)
+          fprintf(stderr, "STACK: %d\n", g_latest_stack);
+        */
+      }
+      else if (symbol == '[') {
+        /* array */
+
+        /* TODO: do this nicer */
+        free_tree_node(_get_current_open_expression());
+        _open_expression_pop();
+
+        node = create_array(pointer_depth, variable_type, name);
+        if (node == NULL)
+          return FAILED;
+
+        tree_node_add_child(_get_current_open_block(), node);
+
+        if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == ',') {
+          /* next token */
+          _next_token();
+
+          continue;
+        }
+        
+        if (!(g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == ';')) {
+          snprintf(g_error_message, sizeof(g_error_message), "Expected ';', but got %s.\n", _get_token_simple(g_token_current));
+          print_error(g_error_message, ERROR_ERR);
+          return FAILED;
+        }
+
+        /* add to symbol table */
+        if (symbol_table_add_symbol(node, name, g_block_level) == FAILED)
+          return FAILED;
+
+        /* next token */
+        _next_token();
+
+        return SUCCEEDED;
+      }
+      else {
+        if (variable_type == VARIABLE_TYPE_INT8 || variable_type == VARIABLE_TYPE_INT16 || variable_type == VARIABLE_TYPE_UINT8 || variable_type == VARIABLE_TYPE_UINT16) {
+          tree_node_add_child(_get_current_open_expression(), allocate_tree_node_value_int(0));
+          if (_get_current_open_expression()->children[0] == NULL)
+            return FAILED;
+        }
+      }
+
+      node = allocate_tree_node_with_children(TREE_NODE_TYPE_CREATE_VARIABLE, 3);
+      if (node == NULL)
+        return FAILED;
+
+      tree_node_add_child(node, allocate_tree_node_variable_type(variable_type));
+      tree_node_add_child(node, allocate_tree_node_value_string(name));
+      tree_node_add_child(node, _get_current_open_expression());
+      _open_expression_pop();
+
+      /* store the pointer depth (0 - not a pointer, 1+ - is a pointer) */
+      node->children[0]->value_double = pointer_depth;
+    
+      if (node->children[0] == NULL || node->children[1] == NULL || node->children[2] == NULL) {
+        free_tree_node(node);
+        return FAILED;
+      }
+    
+      tree_node_add_child(_get_current_open_block(), node);
 
       /* add to symbol table */
       if (symbol_table_add_symbol(node, name, g_block_level) == FAILED)
         return FAILED;
 
+      if (symbol == ',')
+        continue;
+
+      if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == ',') {
+        /* next token */
+        _next_token();
+
+        continue;
+      }
+
+      if (symbol == ';')
+        return SUCCEEDED;
+      
+      if (!(g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == ';')) {
+        snprintf(g_error_message, sizeof(g_error_message), "Expected ';' or ',', but got %s.\n", _get_token_simple(g_token_current));
+        print_error(g_error_message, ERROR_ERR);
+        return FAILED;
+      }
+
       /* next token */
       _next_token();
-    
-      return SUCCEEDED;      
+      
+      return SUCCEEDED;
     }
-    else {
-      if (variable_type == VARIABLE_TYPE_INT8 || variable_type == VARIABLE_TYPE_INT16 || variable_type == VARIABLE_TYPE_UINT8 || variable_type == VARIABLE_TYPE_UINT16) {
-        tree_node_add_child(_get_current_open_expression(), allocate_tree_node_value_int(0));
-        if (_get_current_open_expression()->children[0] == NULL)
-          return FAILED;
-      }
-    }
-
-    node = allocate_tree_node_with_children(TREE_NODE_TYPE_CREATE_VARIABLE, 3);
-    if (node == NULL)
-      return FAILED;
-
-    tree_node_add_child(node, allocate_tree_node_variable_type(variable_type));
-    tree_node_add_child(node, allocate_tree_node_value_string(name));
-    tree_node_add_child(node, _get_current_open_expression());
-    _open_expression_pop();
-
-    /* store the pointer depth (0 - not a pointer, 1+ - is a pointer) */
-    node->children[0]->value_double = pointer_depth;
-    
-    if (node->children[0] == NULL || node->children[1] == NULL || node->children[2] == NULL) {
-      free_tree_node(node);
-      return FAILED;
-    }
-    
-    tree_node_add_child(_get_current_open_block(), node);
-
-    /* add to symbol table */
-    if (symbol_table_add_symbol(node, name, g_block_level) == FAILED)
-      return FAILED;
-    
-    if (!(g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == ';')) {
-      snprintf(g_error_message, sizeof(g_error_message), "Expected ';', but got %s.\n", _get_token_simple(g_token_current));
-      print_error(g_error_message, ERROR_ERR);
-      return FAILED;
-    }
-
-    /* next token */
-    _next_token();
-    
-    return SUCCEEDED;
   }
   else if (g_token_current->id == TOKEN_ID_VALUE_STRING) {
     /* assignment, a function call, increment or decrement */
@@ -1225,7 +1234,7 @@ int create_statement(void) {
                                                    g_token_current->value != ':' &&
                                                    g_token_current->value != SYMBOL_INCREMENT &&
                                                    g_token_current->value != SYMBOL_DECREMENT)) {
-      snprintf(g_error_message, sizeof(g_error_message), "%s must be followed by '=' / '[' / '(' / '++' / '--'.\n", name);
+      snprintf(g_error_message, sizeof(g_error_message), "\"%s\" must be followed by '=' / '[' / '(' / '++' / '--'.\n", name);
       print_error(g_error_message, ERROR_ERR);
       return FAILED;
     }
@@ -2272,6 +2281,8 @@ struct tree_node *create_array(double pointer_depth, int variable_type, char *na
 
   if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == ';') {
   }
+  else if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == ',') {
+  }
   else {
     /* read the items */
     
@@ -2324,6 +2335,8 @@ struct tree_node *create_array(double pointer_depth, int variable_type, char *na
       tree_node_add_child(node, _get_current_open_expression());
       _open_expression_pop();
 
+      fprintf(stderr, "xxxxxxxxxxxxxxxxxxx WE GOT IT!\n");
+      
       added_items++;
 
       if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == ',') {
@@ -2363,253 +2376,317 @@ struct tree_node *create_array(double pointer_depth, int variable_type, char *na
 
   /* store the size of the array */
   node->value = array_size;
-  
+
   return node;
 }
 
 
-struct tree_node *create_variable_or_function(void) {
+int create_variable_or_function(void) {
 
-  int variable_type = g_token_current->value;
+  int variable_type, pointer_depth;
   char name[MAX_NAME_LENGTH + 1];
   struct tree_node *node = NULL;
-  int pointer_depth = 0;
+
+  variable_type = g_token_current->value;
 
   /* next token */
   _next_token();
 
-  while (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == '*') {
-    pointer_depth++;
-
-    /* next token */
-    _next_token();
-  }
-
-  if (g_token_current->id != TOKEN_ID_VALUE_STRING) {
-    snprintf(g_error_message, sizeof(g_error_message), "%s must be followed by a variable or function name.\n", g_variable_types[variable_type]);
-    print_error(g_error_message, ERROR_ERR);
-    return NULL;
-  }
-
-  strncpy(name, g_token_current->label, MAX_NAME_LENGTH);
-
-  /* next token */
-  _next_token();
-
-  if (g_token_current->id != TOKEN_ID_SYMBOL || (g_token_current->value != '=' &&
-                                                 g_token_current->value != ';' &&
-                                                 g_token_current->value != '[' &&
-                                                 g_token_current->value != '(')) {
-    snprintf(g_error_message, sizeof(g_error_message), "%s must be followed by a ';', '=', '[' or '('.\n", name);
-    print_error(g_error_message, ERROR_ERR);
-    return NULL;
-  }
-
-  if (g_token_current->value == '=' || g_token_current->value == ';' || g_token_current->value == '[') {
-    /* a variable definition */
-    int symbol = g_token_current->value;
-
-    /* next token */
-    _next_token();
-
-    /* create_expression() will put all tree_nodes it parses to g_open_expression */
-    if (_open_expression_push() == FAILED)
-      return NULL;
-
-    if (symbol == '=') {
-      /* possibly parse a calculation */
-      if (create_expression() == FAILED)
-        return NULL;
-
-      fprintf(stderr, "- create_expression() - create_variable_or_function()\n");
-
-      /*
-      result = stack_calculate_tokens(&g_parsed_int);
-
-      fprintf(stderr, "GOT FROM STACK CALCULATE: ");
-
-      if (result == SUCCEEDED)
-        fprintf(stderr, "INT: %d\n", g_parsed_int);
-      else if (result == INPUT_NUMBER_FLOAT)
-        fprintf(stderr, "DOUBLE: %g\n", g_parsed_double);
-      else if (result == INPUT_NUMBER_STRING)
-        fprintf(stderr, "STRING: %s\n", g_label);
-      else if (result == INPUT_NUMBER_STACK)
-        fprintf(stderr, "STACK: %d\n", g_latest_stack);
-      */
+  while (1) {
+    if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == ',') {
+      /* next token */
+      _next_token();
     }
-    else if (symbol == '[') {
-      /* array */
+    
+    pointer_depth = 0;
+    
+    while (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == '*') {
+      pointer_depth++;
 
-      /* TODO: do this nicer */
-      free_tree_node(_get_current_open_expression());
+      /* next token */
+      _next_token();
+    }
+
+    if (g_token_current->id != TOKEN_ID_VALUE_STRING) {
+      snprintf(g_error_message, sizeof(g_error_message), "\"%s\" must be followed by a variable or function name.\n", g_variable_types[variable_type]);
+      print_error(g_error_message, ERROR_ERR);
+      return FAILED;
+    }
+
+    strncpy(name, g_token_current->label, MAX_NAME_LENGTH);
+
+    /* next token */
+    _next_token();
+
+    if (g_token_current->id != TOKEN_ID_SYMBOL || (g_token_current->value != '=' &&
+                                                   g_token_current->value != ';' &&
+                                                   g_token_current->value != ',' &&
+                                                   g_token_current->value != '[' &&
+                                                   g_token_current->value != '(')) {
+      snprintf(g_error_message, sizeof(g_error_message), "\"%s\" must be followed by a ';', ',', '=', '[' or '('.\n", name);
+      print_error(g_error_message, ERROR_ERR);
+      return FAILED;
+    }
+
+    if (g_token_current->value == '=' || g_token_current->value == ';' || g_token_current->value == '[' || g_token_current->value == ',') {
+      /* a variable definition */
+      int symbol = g_token_current->value;
+
+      /* next token */
+      _next_token();
+
+      /* create_expression() will put all tree_nodes it parses to g_open_expression */
+      if (_open_expression_push() == FAILED)
+        return FAILED;
+
+      if (symbol == '=') {
+        /* possibly parse a calculation */
+        if (create_expression() == FAILED)
+          return FAILED;
+
+        fprintf(stderr, "- create_expression() - create_variable_or_function()\n");
+
+        /*
+          result = stack_calculate_tokens(&g_parsed_int);
+
+          fprintf(stderr, "GOT FROM STACK CALCULATE: ");
+
+          if (result == SUCCEEDED)
+          fprintf(stderr, "INT: %d\n", g_parsed_int);
+          else if (result == INPUT_NUMBER_FLOAT)
+          fprintf(stderr, "DOUBLE: %g\n", g_parsed_double);
+          else if (result == INPUT_NUMBER_STRING)
+          fprintf(stderr, "STRING: %s\n", g_label);
+          else if (result == INPUT_NUMBER_STACK)
+          fprintf(stderr, "STACK: %d\n", g_latest_stack);
+        */
+      }
+      else if (symbol == '[') {
+        /* array */
+
+        /* TODO: do this nicer */
+        free_tree_node(_get_current_open_expression());
+        _open_expression_pop();
+
+        node = create_array(pointer_depth, variable_type, name);
+
+        /* add to global lists */
+        if (symbol_table_add_symbol(node, node->children[1]->label, g_block_level) == FAILED) {
+          free_tree_node(node);
+          return FAILED;
+        }
+      
+        if (tree_node_add_child(g_global_nodes, node) == FAILED)
+          return FAILED;
+
+        if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == ';') {
+          /* next token */
+          _next_token();
+
+          return SUCCEEDED;
+        }
+
+        continue;
+      }
+      else {
+        if (variable_type == VARIABLE_TYPE_INT8 || variable_type == VARIABLE_TYPE_INT16 || variable_type == VARIABLE_TYPE_UINT8 || variable_type == VARIABLE_TYPE_UINT16) {
+          tree_node_add_child(_get_current_open_expression(), allocate_tree_node_value_int(0));
+          if (_get_current_open_expression()->children[0] == NULL)
+            return FAILED;
+        }
+      }
+
+      node = allocate_tree_node_with_children(TREE_NODE_TYPE_CREATE_VARIABLE, 3);
+      if (node == NULL)
+        return FAILED;
+
+      tree_node_add_child(node, allocate_tree_node_variable_type(variable_type));
+      tree_node_add_child(node, allocate_tree_node_value_string(name));
+      tree_node_add_child(node, _get_current_open_expression());
       _open_expression_pop();
 
-      return create_array(pointer_depth, variable_type, name);
+      if (node->children[0] == NULL || node->children[1] == NULL || node->children[2] == NULL) {
+        free_tree_node(node);
+        return FAILED;
+      }
+
+      /* store the pointer depth (0 - not a pointer, 1+ - is a pointer) */
+      node->children[0]->value_double = pointer_depth;
+
+      /* add to global lists */
+      if (symbol_table_add_symbol(node, node->children[1]->label, g_block_level) == FAILED) {
+        free_tree_node(node);
+        return FAILED;
+      }
+      
+      if (tree_node_add_child(g_global_nodes, node) == FAILED)
+        return FAILED;
+
+      if (symbol == ';')
+        return SUCCEEDED;
+
+      if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == ';') {
+        /* next token */
+        _next_token();
+
+        return SUCCEEDED;
+      }
     }
     else {
-      if (variable_type == VARIABLE_TYPE_INT8 || variable_type == VARIABLE_TYPE_INT16 || variable_type == VARIABLE_TYPE_UINT8 || variable_type == VARIABLE_TYPE_UINT16) {
-        tree_node_add_child(_get_current_open_expression(), allocate_tree_node_value_int(0));
-        if (_get_current_open_expression()->children[0] == NULL)
-          return NULL;
+      /* a function definition */
+    
+      /* this token is '(' */
+      _next_token();
+
+      /* start collecting the argument types and names */
+
+      g_open_function_definition = allocate_tree_node_with_children(TREE_NODE_TYPE_FUNCTION_DEFINITION, 16);
+      if (g_open_function_definition == NULL)
+        return FAILED;
+
+      tree_node_add_child(g_open_function_definition, allocate_tree_node_variable_type(variable_type));
+      tree_node_add_child(g_open_function_definition, allocate_tree_node_value_string(name));
+
+      if (g_open_function_definition->children[0] == NULL || g_open_function_definition->children[1] == NULL) {
+        free_tree_node(g_open_function_definition);
+        g_open_function_definition = NULL;
+        return FAILED;
       }
-    }
 
-    node = allocate_tree_node_with_children(TREE_NODE_TYPE_CREATE_VARIABLE, 3);
-    if (node == NULL)
-      return NULL;
-
-    tree_node_add_child(node, allocate_tree_node_variable_type(variable_type));
-    tree_node_add_child(node, allocate_tree_node_value_string(name));
-    tree_node_add_child(node, _get_current_open_expression());
-    _open_expression_pop();
-
-    if (node->children[0] == NULL || node->children[1] == NULL || node->children[2] == NULL) {
-      free_tree_node(node);
-      return NULL;
-    }
-
-    /* store the pointer depth (0 - not a pointer, 1+ - is a pointer) */
-    node->children[0]->value_double = pointer_depth;
+      /* store the pointer depth (0 - not a pointer, 1+ - is a pointer) */
+      g_open_function_definition->children[0]->value_double = pointer_depth;
     
-    return node;
-  }
-  else {
-    /* a function definition */
-    
-    /* this token is '(' */
-    _next_token();
+      while (1) {
+        if (g_token_current->id == TOKEN_ID_VARIABLE_TYPE) {
+          struct tree_node *node;
 
-    /* start collecting the argument types and names */
-
-    g_open_function_definition = allocate_tree_node_with_children(TREE_NODE_TYPE_FUNCTION_DEFINITION, 16);
-    if (g_open_function_definition == NULL)
-      return NULL;
-
-    tree_node_add_child(g_open_function_definition, allocate_tree_node_variable_type(variable_type));
-    tree_node_add_child(g_open_function_definition, allocate_tree_node_value_string(name));
-
-    if (g_open_function_definition->children[0] == NULL || g_open_function_definition->children[1] == NULL) {
-      free_tree_node(g_open_function_definition);
-      g_open_function_definition = NULL;
-      return NULL;
-    }
-
-    /* store the pointer depth (0 - not a pointer, 1+ - is a pointer) */
-    g_open_function_definition->children[0]->value_double = pointer_depth;
-    
-    while (1) {
-      if (g_token_current->id == TOKEN_ID_VARIABLE_TYPE) {
-        struct tree_node *node;
-
-        node = allocate_tree_node_variable_type(g_token_current->value);
-        if (node == NULL) {
-          free_tree_node(g_open_function_definition);
-          g_open_function_definition = NULL;
-          return NULL;
-        }
+          node = allocate_tree_node_variable_type(g_token_current->value);
+          if (node == NULL) {
+            free_tree_node(g_open_function_definition);
+            g_open_function_definition = NULL;
+            return FAILED;
+          }
         
-        /* next token */
-        _next_token();
+          /* next token */
+          _next_token();
 
-        pointer_depth = 0;
+          pointer_depth = 0;
         
-        while (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == '*') {
-          pointer_depth++;
+          while (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == '*') {
+            pointer_depth++;
+
+            /* next token */
+            _next_token();
+          }
+
+          /* store the pointer depth (0 - not a pointer, 1+ - is a pointer) */
+          node->value_double = pointer_depth;
+
+          if (node->value == VARIABLE_TYPE_VOID && pointer_depth == 0 && g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == ')') {
+            /* this function has a "void" argument and nothing else -> ignore "void" */
+            free_tree_node(node);
+            continue;
+          }
+
+          tree_node_add_child(g_open_function_definition, node);
+        
+          if (g_token_current->id != TOKEN_ID_VALUE_STRING) {
+            snprintf(g_error_message, sizeof(g_error_message), "Expected an argument name, but got %s.\n", _get_token_simple(g_token_current));
+            print_error(g_error_message, ERROR_ERR);
+            free_tree_node(g_open_function_definition);
+            g_open_function_definition = NULL;
+            return FAILED;
+          }
+
+          node = allocate_tree_node_value_string(g_token_current->label);
+          if (node == NULL) {
+            free_tree_node(g_open_function_definition);
+            g_open_function_definition = NULL;
+            return FAILED;
+          }
+
+          tree_node_add_child(g_open_function_definition, node);
 
           /* next token */
           _next_token();
+
+          if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == ',') {
+            /* next token */
+            _next_token();
+          }
         }
-
-        /* store the pointer depth (0 - not a pointer, 1+ - is a pointer) */
-        node->value_double = pointer_depth;
-
-        if (node->value == VARIABLE_TYPE_VOID && pointer_depth == 0 && g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == ')') {
-          /* this function has a "void" argument and nothing else -> ignore "void" */
-          free_tree_node(node);
-          continue;
-        }
-
-        tree_node_add_child(g_open_function_definition, node);
+        else if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == ')') {
+          /* the end of arguments */
         
-        if (g_token_current->id != TOKEN_ID_VALUE_STRING) {
-          snprintf(g_error_message, sizeof(g_error_message), "Expected an argument name, but got %s.\n", _get_token_simple(g_token_current));
-          print_error(g_error_message, ERROR_ERR);
-          free_tree_node(g_open_function_definition);
-          g_open_function_definition = NULL;
-          return NULL;
-        }
-
-        node = allocate_tree_node_value_string(g_token_current->label);
-        if (node == NULL) {
-          free_tree_node(g_open_function_definition);
-          g_open_function_definition = NULL;
-          return NULL;          
-        }
-
-        tree_node_add_child(g_open_function_definition, node);
-
-        /* next token */
-        _next_token();
-
-        if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == ',') {
-          /* next token */
+          /* this token is ')' */
           _next_token();
-        }
-      }
-      else if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == ')') {
-        /* the end of arguments */
-        
-        /* this token is ')' */
-        _next_token();
 
-        /* is it actually a function prototype? */
-        if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == ';') {
+          /* is it actually a function prototype? */
+          if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == ';') {
+            node = g_open_function_definition;
+            g_open_function_definition = NULL;
+
+            node->type = TREE_NODE_TYPE_FUNCTION_PROTOTYPE;
+
+            /* this token is ';' */
+            _next_token();
+
+            /* add to global lists */
+            if (symbol_table_add_symbol(node, node->children[1]->label, g_block_level) == FAILED) {
+              free_tree_node(node);
+              return FAILED;
+            }
+      
+            if (tree_node_add_child(g_global_nodes, node) == FAILED)
+              return FAILED;
+            
+            return SUCCEEDED;
+          }
+        
+          /* start parsing the function */
+
+          if (_open_block_push() == FAILED) {
+            free_tree_node(g_open_function_definition);
+            g_open_function_definition = NULL;
+            return FAILED;
+          }
+
+          /* parse the function */
+          if (create_block(g_open_function_definition, YES) == FAILED) {
+            free_tree_node(_get_current_open_block());
+            _open_block_pop();
+            return FAILED;
+          }
+
+          tree_node_add_child(g_open_function_definition, _get_current_open_block());
+          _open_block_pop();
+
+          fprintf(stderr, "- create_block() - create_variable_or_function()\n");
+
           node = g_open_function_definition;
           g_open_function_definition = NULL;
 
-          node->type = TREE_NODE_TYPE_FUNCTION_PROTOTYPE;
-
-          /* this token is ';' */
-          _next_token();
+          /* add to global lists */
+          if (symbol_table_add_symbol(node, node->children[1]->label, g_block_level) == FAILED) {
+            free_tree_node(node);
+            return FAILED;
+          }
+      
+          if (tree_node_add_child(g_global_nodes, node) == FAILED)
+            return FAILED;
           
-          return node;
+          return SUCCEEDED;
         }
-        
-        /* start parsing the function */
-
-        if (_open_block_push() == FAILED) {
-          free_tree_node(g_open_function_definition);
-          g_open_function_definition = NULL;
-          return NULL;
+        else {
+          snprintf(g_error_message, sizeof(g_error_message), "Expected a variable type or a ')', but got %s.\n", _get_token_simple(g_token_current));
+          print_error(g_error_message, ERROR_ERR);
+          return FAILED;
         }
-
-        /* parse the function */
-        if (create_block(g_open_function_definition, YES) == FAILED) {
-          free_tree_node(_get_current_open_block());
-          _open_block_pop();
-          return NULL;
-        }
-
-        tree_node_add_child(g_open_function_definition, _get_current_open_block());
-        _open_block_pop();
-
-        fprintf(stderr, "- create_block() - create_variable_or_function()\n");
-            
-        node = g_open_function_definition;
-        g_open_function_definition = NULL;
-
-        return node;
-      }
-      else {
-        snprintf(g_error_message, sizeof(g_error_message), "Expected a variable type or a ')', but got %s.\n", _get_token_simple(g_token_current));
-        print_error(g_error_message, ERROR_ERR);
-        return NULL;
       }
     }
   }
   
-  return NULL;
+  return FAILED;
 }
 
 
@@ -2624,7 +2701,7 @@ int create_definition() {
   _next_token();
   
   if (g_token_current->id != TOKEN_ID_VALUE_STRING) {
-    snprintf(g_error_message, sizeof(g_error_message), "%s must be followed by a definition name.\n", name);
+    snprintf(g_error_message, sizeof(g_error_message), "\"%s\" must be followed by a definition name.\n", name);
     print_error(g_error_message, ERROR_ERR);
     return FAILED;
   }

@@ -53,7 +53,7 @@ int tree_node_flatten(struct tree_node *node) {
 
   children = calloc(sizeof(struct tree_node *) * items, 1);
   if (children == NULL) {
-    print_error("Out of memory while flattening an expression tree node.\n", ERROR_DIR);
+    print_error("Out of memory while flattening an expression tree node.\n", ERROR_ERR);
     return FAILED;
   }
 
@@ -209,7 +209,7 @@ int tree_node_does_contain_expressions(struct tree_node *node) {
 int tree_node_add_child(struct tree_node *node, struct tree_node *child) {
 
   if (child == NULL) {
-    print_error("Trying to add a NULL child to a node!\n", ERROR_DIR);
+    print_error("Trying to add a NULL child to a node!\n", ERROR_ERR);
     return FAILED;
   }
 
@@ -220,7 +220,7 @@ int tree_node_add_child(struct tree_node *node, struct tree_node *child) {
 
     node->children = realloc(node->children, sizeof(struct tree_node *) * new_children_max);
     if (node->children == NULL) {    
-      print_error("Cannot increase node's child list!\n", ERROR_DIR);
+      print_error("Cannot increase node's child list!\n", ERROR_ERR);
       return FAILED;
     }
 
@@ -287,7 +287,7 @@ struct tree_node *allocate_tree_node(int type) {
   struct tree_node *node = calloc(sizeof(struct tree_node), 1);
 
   if (node == NULL) {
-    print_error("Out of memory while allocating a new tree node.\n", ERROR_DIR);
+    print_error("Out of memory while allocating a new tree node.\n", ERROR_ERR);
     return NULL;
   }
 
@@ -359,7 +359,7 @@ struct tree_node *allocate_tree_node_with_children(int type, int children_max) {
   
   node->children = calloc(sizeof(struct tree_node *) * children_max, 1);
   if (node->children == NULL) {
-    print_error("Out of memory while allocating a new tree node.\n", ERROR_DIR);
+    print_error("Out of memory while allocating a new tree node.\n", ERROR_ERR);
     free(node);
     return NULL;
   }
@@ -441,7 +441,7 @@ int tree_node_set_string(struct tree_node *node, char *string) {
   
   node->label = calloc(strlen(string) + 1, 1);
   if (node->label == NULL) {
-    print_error("Out of memory while allocating a string for a tree node.\n", ERROR_DIR);
+    print_error("Out of memory while allocating a string for a tree node.\n", ERROR_ERR);
     return FAILED;
   }
 
