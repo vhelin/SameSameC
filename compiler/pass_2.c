@@ -2508,8 +2508,6 @@ struct tree_node *create_variable_or_function(void) {
           g_open_function_definition = NULL;
           return NULL;
         }
-
-        tree_node_add_child(g_open_function_definition, node);
         
         /* next token */
         _next_token();
@@ -2525,6 +2523,14 @@ struct tree_node *create_variable_or_function(void) {
 
         /* store the pointer depth (0 - not a pointer, 1+ - is a pointer) */
         node->value_double = pointer_depth;
+
+        if (node->value == VARIABLE_TYPE_VOID && pointer_depth == 0 && g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == ')') {
+          /* this function has a "void" argument and nothing else -> ignore "void" */
+          free_tree_node(node);
+          continue;
+        }
+
+        tree_node_add_child(g_open_function_definition, node);
         
         if (g_token_current->id != TOKEN_ID_VALUE_STRING) {
           snprintf(g_error_message, sizeof(g_error_message), "Expected an argument name, but got %s.\n", _get_token_simple(g_token_current));
