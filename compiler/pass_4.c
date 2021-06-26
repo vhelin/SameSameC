@@ -238,6 +238,11 @@ static int _generate_il_create_expression(struct tree_node *node) {
       if (tac_try_find_definition(t, node->label, node, TAC_USE_ARG1) == FAILED)
         return FAILED;
       
+      /* set promotions */
+      type = tree_node_get_max_var_type(node->definition->children[0]);
+      tac_promote_argument(t, type, TAC_USE_ARG1);
+      tac_promote_argument(t, type, TAC_USE_RESULT);
+
       /* increment/decrement */
       if (_generate_il_create_increment_decrement(node) == FAILED)
         return FAILED;
@@ -891,7 +896,7 @@ static int _generate_il_create_increment_decrement(struct tree_node *node) {
   tac_try_find_definition(t, node->label, NULL, TAC_USE_RESULT);
 
   /* set promotions */
-  type = tree_node_get_max_var_type(t->result_node);
+  type = tree_node_get_max_var_type(t->result_node->children[0]);
   tac_promote_argument(t, type, TAC_USE_ARG1);
   tac_promote_argument(t, type, TAC_USE_ARG2);
   tac_promote_argument(t, type, TAC_USE_RESULT);
