@@ -652,6 +652,12 @@ static void _pop_de(FILE *file_out) {
 }
 
 
+static void _inc_a(FILE *file_out) {
+
+  fprintf(file_out, "      INC A\n");
+}
+
+
 static void _inc_de(FILE *file_out) {
 
   fprintf(file_out, "      INC DE\n");
@@ -664,9 +670,21 @@ static void _inc_hl(FILE *file_out) {
 }
 
 
+static void _dec_a(FILE *file_out) {
+
+  fprintf(file_out, "      DEC A\n");
+}
+
+
 static void _dec_bc(FILE *file_out) {
 
   fprintf(file_out, "      DEC BC\n");
+}
+
+
+static void _dec_hl(FILE *file_out) {
+
+  fprintf(file_out, "      DEC HL\n");
 }
 
 
@@ -1153,7 +1171,10 @@ static int _generate_asm_add_sub_or_and_z80_8bit(struct tac *t, FILE *file_out, 
   if (op == TAC_OP_ADD) {
     if (t->arg2_type == TAC_ARG_TYPE_CONSTANT) {
       /* 8-bit */
-      _add_value_to_a(((int)t->arg2_d) & 0xff, file_out);
+      if (((int)t->arg2_d) == 1)
+        _inc_a(file_out);
+      else
+        _add_value_to_a(((int)t->arg2_d) & 0xff, file_out);
     }
     else {
       /* 8-bit */
@@ -1163,7 +1184,10 @@ static int _generate_asm_add_sub_or_and_z80_8bit(struct tac *t, FILE *file_out, 
   else if (op == TAC_OP_SUB) {
     if (t->arg2_type == TAC_ARG_TYPE_CONSTANT) {
       /* 8-bit */
-      _sub_value_from_a(((int)t->arg2_d) & 0xff, file_out);
+      if (((int)t->arg2_d) == 1)
+        _dec_a(file_out);
+      else
+        _sub_value_from_a(((int)t->arg2_d) & 0xff, file_out);
     }
     else {
       /* 8-bit */
@@ -1366,7 +1390,10 @@ static int _generate_asm_add_sub_or_and_z80_16bit(struct tac *t, FILE *file_out,
   
   if (t->arg2_type == TAC_ARG_TYPE_CONSTANT) {
     /* 16-bit */
-    _load_value_to_bc((int)t->arg2_d, file_out);
+    if ((op == TAC_OP_ADD || op == TAC_OP_SUB) && ((int)t->arg2_d) == 1) {
+    }
+    else
+      _load_value_to_bc((int)t->arg2_d, file_out);
   }
   else {
     if (t->arg2_var_type == VARIABLE_TYPE_INT16 || t->arg2_var_type == VARIABLE_TYPE_UINT16) {
@@ -1408,10 +1435,18 @@ static int _generate_asm_add_sub_or_and_z80_16bit(struct tac *t, FILE *file_out,
   /* add/sub data bc -> hl */
   /******************************************************************************************************/
 
-  if (op == TAC_OP_ADD)
-    _add_bc_to_hl(file_out);
-  else if (op == TAC_OP_SUB)
-    _sub_bc_from_hl(file_out);
+  if (op == TAC_OP_ADD) {
+    if (t->arg2_type == TAC_ARG_TYPE_CONSTANT && ((int)t->arg2_d) == 1)
+      _inc_hl(file_out);
+    else
+      _add_bc_to_hl(file_out);
+  }
+  else if (op == TAC_OP_SUB) {
+    if (t->arg2_type == TAC_ARG_TYPE_CONSTANT && ((int)t->arg2_d) == 1)
+      _dec_hl(file_out);
+    else
+      _sub_bc_from_hl(file_out);
+  }
   else if (op == TAC_OP_OR)
     _or_bc_to_hl(file_out);
   else if (op == TAC_OP_AND)
@@ -4064,13 +4099,18 @@ int generate_asm_z80(FILE *file_out) {
 
         if (t->file_id != file_id || t->line_number != line_number) {
           /* the source code line has changed, print info about the new line */
-          file_id = t->file_id;
-          line_number = t->line_number;
-          fprintf(file_out, "      ; =================================================================\n");
-          fprintf(file_out, "      ; %s:%d: ", get_file_name(t->file_id), t->line_number);
-          get_source_line(t->file_id, t->line_number, file_out);
-          fprintf(file_out, "\n");
-          fprintf(file_out, "      ; =================================================================\n");
+          if (t->file_id == file_id && t->line_number < line_number) {
+            /* we don't go back in the same file */
+          }
+          else {
+            file_id = t->file_id;
+            line_number = t->line_number;
+            fprintf(file_out, "      ; =================================================================\n");
+            fprintf(file_out, "      ; %s:%d: ", get_file_name(t->file_id), t->line_number);
+            get_source_line(t->file_id, t->line_number, file_out);
+            fprintf(file_out, "\n");
+            fprintf(file_out, "      ; =================================================================\n");
+          }
         }
         
         fprintf(file_out, "      ; -----------------------------------------------------------------\n");
