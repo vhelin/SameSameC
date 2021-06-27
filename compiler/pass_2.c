@@ -101,12 +101,9 @@ char *_get_token_simple(struct token *t) {
 }
 
 
+/*
 static void _print_token(struct token *t) {
 
-  /*
-  fprintf(stderr, "FILE %d: LINE %.3d: ", t->file_id, t->line_number);
-  */
-  
   if (t->id == TOKEN_ID_VARIABLE_TYPE)
     fprintf(stderr, "TOKEN: VARIABLE_TYPE: %s\n", g_variable_types[t->value]);
   else if (t->id == TOKEN_ID_SYMBOL) {
@@ -145,14 +142,14 @@ static void _print_token(struct token *t) {
     fprintf(stderr, "TOKEN: CASE         : case\n");
   else if (t->id == TOKEN_ID_DEFAULT)
     fprintf(stderr, "TOKEN: DEFAULT      : default\n");
-  
-  /*
+#if defined(ABCXYZ)
   else if (t->id == TOKEN_ID_CHANGE_FILE)
     fprintf(stderr, "TOKEN: CHANGE FILE  : %s\n", get_file_name(t->value));
   else if (t->id == TOKEN_ID_LINE_NUMBER)
     fprintf(stderr, "TOKEN: LINE NUMBER  : %d\n", t->value);
-  */
+#endif
 }
+*/
 
 
 static int _print_loose_token_error(struct token *t) {
@@ -386,7 +383,6 @@ int pass_2(void) {
   g_token_current = g_token_first;
   while (g_token_current != NULL) {
     if (g_token_current->id == TOKEN_ID_VARIABLE_TYPE) {
-      _print_token(g_token_current);
       if (create_variable_or_function() == FAILED)
         return FAILED;
 
@@ -397,13 +393,11 @@ int pass_2(void) {
       }
     }
     else if (g_token_current->id == TOKEN_ID_DEFINE) {
-      _print_token(g_token_current);
       if (create_definition() == FAILED)
         return FAILED;
     }
     else if (g_token_current->id == TOKEN_ID_NO_OP) {
       /* no operation */
-      _print_token(g_token_current);
     
       /* next token */
       g_token_current = g_token_current->next;
@@ -415,7 +409,6 @@ int pass_2(void) {
       g_token_current = g_token_current->next;
     }
     else {
-      _print_token(g_token_current);
       return _print_loose_token_error(g_token_current);
     }
   }
@@ -457,7 +450,9 @@ static void _next_token() {
   g_current_filename_id = g_token_current->file_id;
   g_current_line_number = g_token_current->line_number;
 
+  /*
   _print_token(g_token_current);
+  */
 }
 
 
@@ -466,10 +461,6 @@ int create_factor(void) {
   struct symbol_table_item *item;
   struct tree_node *node = NULL;
   int result;
-  
-  fprintf(stderr, "+ create_factor()\n");
-
-  _print_token(g_token_current);  
   
   if (g_token_current->id == TOKEN_ID_VALUE_STRING) {
     /* a loose variable name, a function call, var++ or var-- */
@@ -495,13 +486,9 @@ int create_factor(void) {
 
       tree_node_add_child(node, function_name_node);
 
-      fprintf(stderr, "FUNCTION CALL\n");
-
       while (1) {
-        if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == ')') {
-          fprintf(stderr, "create_factor(): GOT ')' - 1!\n");
+        if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == ')')
           break;
-        }
       
         /* create_expression() will put all tree_nodes it parses to g_open_expression */
         if (_open_expression_push() == FAILED) {
@@ -509,16 +496,12 @@ int create_factor(void) {
           return FAILED;
         }
 
-        fprintf(stderr, "create_factor():\n");
-            
         /* possibly parse a calculation */
         result = create_expression();
         if (result == FAILED) {
           free_tree_node(node);
           return FAILED;
         }
-
-        fprintf(stderr, "- create_expression() - create_factor()\n");
 
         tree_node_add_child(node, _get_current_open_expression());
         _open_expression_pop();
@@ -532,8 +515,6 @@ int create_factor(void) {
       item = symbol_table_find_symbol(node->children[0]->label);
       if (item != NULL)
         node->definition = item->node;
-
-      fprintf(stderr, "ABC: FUNCTION CALL: %s %d\n", node->children[0]->label, node->added_children);
     }
     else if (g_token_current->id == TOKEN_ID_SYMBOL && (g_token_current->value == SYMBOL_INCREMENT || g_token_current->value == SYMBOL_DECREMENT)) {
       /* var++ or var-- */
@@ -567,8 +548,6 @@ int create_factor(void) {
       /* change the TREE_NODE_TYPE_VALUE_STRING to TREE_NODE_TYPE_ARRAY_ITEM */
       node->type = TREE_NODE_TYPE_ARRAY_ITEM;
 
-      fprintf(stderr, "create_factor():\n");
-
       /* create_expression() will put all tree_nodes it parses to g_open_expression */
       if (_open_expression_push() == FAILED) {
         free_tree_node(node);
@@ -584,8 +563,6 @@ int create_factor(void) {
       tree_node_add_child(node, _get_current_open_expression());
       _open_expression_pop();
     
-      fprintf(stderr, "- create_expression() - create_factor()\n");
-
       if (g_token_current->id != TOKEN_ID_SYMBOL || g_token_current->value != ']') {
         snprintf(g_error_message, sizeof(g_error_message), "Expected ']', but got %s.\n", _get_token_simple(g_token_current));
         print_error(g_error_message, ERROR_ERR);
@@ -614,8 +591,6 @@ int create_factor(void) {
 
       if (d != NULL) {
         /* yes! substitute! */
-        fprintf(stderr, "%s is a definition! SUBSTITUTE!\n", node->label);
-
         free_tree_node(node);
 
         if (d->type == DEFINITION_TYPE_VALUE) {
@@ -646,7 +621,6 @@ int create_factor(void) {
     }
   }
   else if (g_token_current->id == TOKEN_ID_VALUE_INT) {
-    fprintf(stderr, "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx %d\n", g_token_current->value);
     node = allocate_tree_node_value_int(g_token_current->value);
   }
   else if (g_token_current->id == TOKEN_ID_VALUE_DOUBLE)
@@ -726,13 +700,9 @@ int create_factor(void) {
       if (_open_expression_push() == FAILED)
         return FAILED;    
 
-      fprintf(stderr, "create_factor():\n");
-
       /* possibly parse a calculation */
       if (create_expression() == FAILED)
         return FAILED;
-
-      fprintf(stderr, "- create_expression() - create_factor()\n");
 
       tree_node_add_child(node, _get_current_open_expression());
       _open_expression_pop();
@@ -766,8 +736,6 @@ int create_factor(void) {
     /* next token */
     _next_token();
 
-    fprintf(stderr, "create_factor():\n");
-
     /* create_expression() will put all tree_nodes it parses to g_open_expression */
     if (_open_expression_push() == FAILED)
       return FAILED;
@@ -779,8 +747,6 @@ int create_factor(void) {
     expression = _get_current_open_expression();
     _open_expression_pop();
     
-    fprintf(stderr, "- create_expression() - create_factor()\n");
-
     if (g_token_current->id != TOKEN_ID_SYMBOL || g_token_current->value != ')') {
       snprintf(g_error_message, sizeof(g_error_message), "Expected ')', but got %s.\n", _get_token_simple(g_token_current));
       print_error(g_error_message, ERROR_ERR);
@@ -788,8 +754,6 @@ int create_factor(void) {
       return FAILED;
     }
 
-    fprintf(stderr, "create_factor(): GOT ')' - 2!\n");
-    
     node = allocate_tree_node_symbol(g_token_current->value);
     if (node == NULL) {
       free_tree_node(expression);
@@ -842,8 +806,6 @@ int create_term(void) {
   struct tree_node *node = NULL;
   int result;
 
-  fprintf(stderr, "+ create_term()\n");
-
   if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == '!') {
     node = allocate_tree_node_symbol(g_token_current->value);
     if (node == NULL)
@@ -859,8 +821,6 @@ int create_term(void) {
   result = create_factor();
   if (result != SUCCEEDED)
     return result;
-
-  fprintf(stderr, "- create_factor() - create_term()\n");
 
   while (g_token_current->id == TOKEN_ID_SYMBOL && (g_token_current->value == '*' ||
                                                     g_token_current->value == '/' ||
@@ -902,8 +862,6 @@ int create_term(void) {
     result = create_factor();
     if (result != SUCCEEDED)
       return result;
-
-    fprintf(stderr, "- create_factor() - create_term()\n");
   }
 
   return SUCCEEDED;
@@ -914,8 +872,6 @@ int create_expression(void) {
 
   struct tree_node *node = NULL;
   int result;
-
-  fprintf(stderr, "+ create_expression()\n");
 
   if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == ';') {
     /* next token */
@@ -943,14 +899,10 @@ int create_expression(void) {
     _next_token();
   }
 
-  fprintf(stderr, "create_expression():\n");
-  
   result = create_term();
   if (result != SUCCEEDED)
     return result;
 
-  fprintf(stderr, "- create_term() - create_expression()\n");
-    
   while (g_token_current->id == TOKEN_ID_SYMBOL && (g_token_current->value == '-' || g_token_current->value == '+')) {
     node = allocate_tree_node_symbol(g_token_current->value);
     if (node == NULL)
@@ -962,13 +914,9 @@ int create_expression(void) {
     /* next token */
     _next_token();
 
-    fprintf(stderr, "create_expression():\n");
-      
     result = create_term();
     if (result != SUCCEEDED)
       return result;
-
-    fprintf(stderr, "- create_term() - create_expression()\n");
   }  
   
   return SUCCEEDED;
@@ -985,14 +933,10 @@ int create_condition(void) {
     return FAILED;
   }
 
-  fprintf(stderr, "create_condition():\n");
-
   /* possibly parse a calculation */
   if (create_expression() == FAILED) {
     return FAILED;
   }
-
-  fprintf(stderr, "- create_expression() - create_condition()\n");
 
   node = _get_current_open_expression();
   _open_expression_pop();
@@ -1008,8 +952,6 @@ int create_statement(void) {
   struct tree_node *node;
   int symbol;
   
-  fprintf(stderr, "+ create_statement()\n");
-
   if (g_token_current->id == TOKEN_ID_VARIABLE_TYPE) {
     /* variable creation */
     int variable_type, pointer_depth;
@@ -1061,12 +1003,8 @@ int create_statement(void) {
           return FAILED;
 
         /* possibly parse a calculation */
-        fprintf(stderr, "create_statement():\n");
-
         if (create_expression() == FAILED)
           return FAILED;
-
-        fprintf(stderr, "- create_expression() - create_statement()\n");
 
         /*
           result = stack_calculate_tokens(&g_parsed_int);
@@ -1285,13 +1223,9 @@ int create_statement(void) {
         if (_open_expression_push() == FAILED)
           return FAILED;    
 
-        fprintf(stderr, "create_statement():\n");
-
         /* possibly parse a calculation */
         if (create_expression() == FAILED)
           return FAILED;
-
-        fprintf(stderr, "- create_expression() - create_statement()\n");
 
         node_index = _get_current_open_expression();
         _open_expression_pop();
@@ -1321,13 +1255,9 @@ int create_statement(void) {
       if (_open_expression_push() == FAILED)
         return FAILED;    
 
-      fprintf(stderr, "create_statement():\n");
-
       /* possibly parse a calculation */
       if (create_expression() == FAILED)
         return FAILED;
-
-      fprintf(stderr, "- create_expression() - create_statement()\n");
 
       node = allocate_tree_node_with_children(TREE_NODE_TYPE_ASSIGNMENT, 3);
       if (node == NULL)
@@ -1374,16 +1304,12 @@ int create_statement(void) {
           return FAILED;
         }
 
-        fprintf(stderr, "create_statement():\n");
-
         /* possibly parse a calculation */
         if (create_expression() == FAILED) {
           free_tree_node(node);
           return FAILED;
         }
 
-        fprintf(stderr, "- create_expression() - create_statement()\n");
-              
         tree_node_add_child(node, _get_current_open_expression());
         _open_expression_pop();
 
@@ -1392,8 +1318,6 @@ int create_statement(void) {
           _next_token();
         }
       }
-
-      fprintf(stderr, "XYZ: FUNCTION CALL %s %d\n", node->children[0]->label, node->added_children);
 
       item = symbol_table_find_symbol(name);
       if (item != NULL)
@@ -1447,16 +1371,12 @@ int create_statement(void) {
       return FAILED;
     }
 
-    fprintf(stderr, "create_statement(): SWITCH\n");
-
     /* possibly parse a calculation */
     if (create_expression() == FAILED) {
       free_tree_node(node);
       return FAILED;
     }
 
-    fprintf(stderr, "- create_expression() - create_statement()\n");
-              
     tree_node_add_child(node, _get_current_open_expression());
     _open_expression_pop();
 
@@ -1512,16 +1432,12 @@ int create_statement(void) {
           return FAILED;
         }
 
-        fprintf(stderr, "create_statement(): CASE\n");
-
         /* possibly parse a calculation */
         if (create_expression() == FAILED) {
           free_tree_node(node);
           return FAILED;
         }
 
-        fprintf(stderr, "- create_expression() - create_statement()\n");
-              
         tree_node_add_child(node, _get_current_open_expression());
         _open_expression_pop();
       }
@@ -1543,15 +1459,11 @@ int create_statement(void) {
         return FAILED;
       }
 
-      fprintf(stderr, "create_statement(): SWITCH\n");
-      
       if (create_block(NULL, NO) == FAILED) {
         free_tree_node(node);
         return FAILED;
       }
 
-      fprintf(stderr, "- create_block() - create_statement()\n");
-            
       tree_node_add_child(node, _get_current_open_block());
       _open_block_pop();
 
@@ -1597,15 +1509,11 @@ int create_statement(void) {
         return FAILED;
       }
 
-      fprintf(stderr, "create_statement(): IF\n");
-      
       if (create_condition() == FAILED) {
         _open_condition_pop();
         free_tree_node(node);
         return FAILED;
       }
-
-      fprintf(stderr, "- create_condition() - create_statement()\n");
 
       tree_node_add_child(node, _get_current_open_condition());
       _open_condition_pop();
@@ -1634,15 +1542,11 @@ int create_statement(void) {
         return FAILED;
       }
 
-      fprintf(stderr, "create_statement(): IF\n");
-      
       if (create_block(NULL, YES) == FAILED) {
         free_tree_node(node);
         return FAILED;
       }
 
-      fprintf(stderr, "- create_block() - create_statement()\n");
-            
       tree_node_add_child(node, _get_current_open_block());
       _open_block_pop();
 
@@ -1664,14 +1568,10 @@ int create_statement(void) {
           return FAILED;
         }
 
-        fprintf(stderr, "create_statement(): ELSE\n");
-
         if (create_block(NULL, YES) == FAILED) {
           free_tree_node(node);
           return FAILED;
         }
-
-        fprintf(stderr, "- create_block() - create_statement()\n");
 
         tree_node_add_child(node, _get_current_open_block());
         _open_block_pop();
@@ -1767,15 +1667,11 @@ int create_statement(void) {
       return FAILED;
     }
 
-    fprintf(stderr, "create_statement(): WHILE\n");
-      
     if (create_condition() == FAILED) {
       _open_condition_pop();
       free_tree_node(node);
       return FAILED;
     }
-
-    fprintf(stderr, "- create_condition() - create_statement()\n");
 
     tree_node_add_child(node, _get_current_open_condition());
     _open_condition_pop();
@@ -1804,14 +1700,10 @@ int create_statement(void) {
       return FAILED;
     }
 
-    fprintf(stderr, "create_statement(): WHILE\n");
-
     if (create_block(NULL, YES) == FAILED) {
       free_tree_node(node);
       return FAILED;
     }
-
-    fprintf(stderr, "- create_block() - create_statement()\n");
 
     tree_node_add_child(node, _get_current_open_block());
     _open_block_pop();
@@ -1859,12 +1751,8 @@ int create_statement(void) {
       if (g_token_previous->id == TOKEN_ID_SYMBOL && g_token_previous->value == ';')
         break;
 
-      fprintf(stderr, "create_statement():\n");
-    
       result = create_statement();
 
-      fprintf(stderr, "- create_statement() - create_statement()\n");
-      
       if (result == FAILED) {
         free_tree_node(node);
         return result;
@@ -1884,15 +1772,11 @@ int create_statement(void) {
       return FAILED;
     }
 
-    fprintf(stderr, "create_statement(): IF\n");
-      
     if (create_condition() == FAILED) {
       _open_condition_pop();
       free_tree_node(node);
       return FAILED;
     }
-
-    fprintf(stderr, "- create_condition() - create_statement()\n");
 
     tree_node_add_child(node, _get_current_open_condition());
     _open_condition_pop();
@@ -1926,12 +1810,8 @@ int create_statement(void) {
       if (g_token_previous->id == TOKEN_ID_SYMBOL && g_token_previous->value == ')')
         break;
       
-      fprintf(stderr, "create_statement():\n");
-    
       result = create_statement();
 
-      fprintf(stderr, "- create_statement() - create_statement()\n");
-      
       if (result == FAILED) {
         free_tree_node(node);
         return result;
@@ -1957,15 +1837,11 @@ int create_statement(void) {
       return FAILED;
     }
 
-    fprintf(stderr, "create_statement(): IF\n");
-
     if (create_block(NULL, YES) == FAILED) {
       free_tree_node(node);
       return FAILED;
     }
 
-    fprintf(stderr, "- create_block() - create_statement()\n");
-            
     tree_node_add_child(node, _get_current_open_block());
     _open_block_pop();
 
@@ -2014,15 +1890,11 @@ int create_statement(void) {
         return FAILED;
       }
 
-      fprintf(stderr, "create_statement():\n");
-
       /* possibly parse a calculation */
       if (create_expression() == FAILED) {
         free_tree_node(node);
         return FAILED;
       }
-
-      fprintf(stderr, "- create_expression() - create_statement()\n");
 
       tree_node_add_child(node, _get_current_open_expression());
       _open_expression_pop();
@@ -2094,8 +1966,6 @@ int create_statement(void) {
 int create_block(struct tree_node *open_function_definition, int expect_curly_braces) {
 
   int result, i;
-
-  fprintf(stderr, "+ create_block()\n");
 
   g_block_level++;
 
@@ -2175,11 +2045,7 @@ int create_block(struct tree_node *open_function_definition, int expect_curly_br
   }
 
   while (1) {
-    fprintf(stderr, "create_block():\n");
-    
     result = create_statement();
-
-    fprintf(stderr, "- create_statement() - create_block()\n");
 
     if (result == FAILED) {
       free_symbol_table_items(g_block_level);
@@ -2302,8 +2168,6 @@ struct tree_node *create_array(double pointer_depth, int variable_type, char *na
       }
 
       /* possibly parse a calculation */
-      fprintf(stderr, "create_array():\n");
-
       if (create_expression() == FAILED) {
         free_tree_node(_get_current_open_expression());
         _open_expression_pop();
@@ -2311,13 +2175,9 @@ struct tree_node *create_array(double pointer_depth, int variable_type, char *na
         return NULL;
       }
 
-      fprintf(stderr, "- create_expression() - create_array()\n");
-
       tree_node_add_child(node, _get_current_open_expression());
       _open_expression_pop();
 
-      fprintf(stderr, "xxxxxxxxxxxxxxxxxxx WE GOT IT!\n");
-      
       added_items++;
 
       if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == ',') {
@@ -2411,8 +2271,6 @@ int create_variable_or_function(void) {
         /* possibly parse a calculation */
         if (create_expression() == FAILED)
           return FAILED;
-
-        fprintf(stderr, "- create_expression() - create_variable_or_function()\n");
 
         /*
           result = stack_calculate_tokens(&g_parsed_int);
@@ -2618,8 +2476,6 @@ int create_variable_or_function(void) {
 
           tree_node_add_child(g_open_function_definition, _get_current_open_block());
           _open_block_pop();
-
-          fprintf(stderr, "- create_block() - create_variable_or_function()\n");
 
           node = g_open_function_definition;
           g_open_function_definition = NULL;

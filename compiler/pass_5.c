@@ -21,6 +21,11 @@
 #include "tac.h"
 
 
+/* define this for DEBUG */
+
+#define DEBUG_PASS_5 1
+
+
 extern struct tree_node *g_global_nodes;
 extern int g_verbose_mode, g_input_float_mode, g_current_filename_id, g_current_line_number;
 extern char *g_variable_types[4], *g_two_char_symbols[10], g_label[MAX_NAME_LENGTH + 1];
@@ -40,6 +45,10 @@ int pass_5(void) {
   if (g_verbose_mode == ON)
     printf("Pass 5...\n");
 
+#if defined(DEBUG_PASS_5)
+  print_tacs();
+#endif
+  
   if (optimize_il() == FAILED)
     return FAILED;
   if (compress_register_names() == FAILED)
@@ -58,7 +67,13 @@ int pass_5(void) {
   if (make_sure_all_tacs_have_definition_nodes() == FAILED)
     return FAILED;
 
+#if defined(DEBUG_PASS_5)
+  fprintf(stderr, ">------------------------------ OPTIMIZED IL ------------------------------>\n");
+#endif
+  
+#if defined(DEBUG_PASS_5)
   print_tacs();
+#endif
   
   return SUCCEEDED;
 }
@@ -1892,34 +1907,27 @@ static int _get_variable_size(struct tree_node *node) {
   /* value_double - pointer_depth (0 - not a pointer, 1+ is a pointer)
      value - is_array (0 - not an array, 1+ array size) */
 
-  fprintf(stderr, "VAR: %s: ", node->children[1]->label);
-  
   if (node->children[0]->value_double >= 1.0) {
     /* all pointers are two bytes in size */
     size = 16;
-    fprintf(stderr, "16 (POINTER)");
   }
   else {
     int type = node->children[0]->value;
 
     if (type == VARIABLE_TYPE_INT8) {
       size = 8;
-      fprintf(stderr, "8 (8BIT)");
     }
     else if (type == VARIABLE_TYPE_UINT8) {
       size = 8;
-      fprintf(stderr, "8 (8BIT)");
     }
     else if (type == VARIABLE_TYPE_INT16) {
       size = 16;
-      fprintf(stderr, "16 (16BIT)");
     }
     else if (type == VARIABLE_TYPE_UINT16) {
       size = 16;
-      fprintf(stderr, "16 (16BIT)");
     }
     else {
-      fprintf(stderr, "\n_get_variable_size(): Cannot determine the variable size of variable \"%s\".\n", node->children[1]->label);
+      fprintf(stderr, "_get_variable_size(): Cannot determine the variable size of variable \"%s\".\n", node->children[1]->label);
       return -1;
     }
   }
@@ -1928,11 +1936,8 @@ static int _get_variable_size(struct tree_node *node) {
   if (node->value > 0) {
     /* yes */
     size *= node->value;
-    fprintf(stderr, " * %d", node->value);
   }
 
-  fprintf(stderr, "\n");
-  
   return size;
 }
 
@@ -2121,7 +2126,9 @@ int collect_and_preprocess_local_variables_inside_functions(void) {
 
       function_node->local_variables->offset_to_fp_total = offset;
 
+      /*
       fprintf(stderr, "FUNCTION %s LOCAL VARIABLES %d (%d are arguments) TEMP REGISTERS %d\n", function_node->children[1]->label, local_variables_count, arguments_count, used_registers);
+      */
     }
   }
   

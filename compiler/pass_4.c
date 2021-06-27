@@ -122,8 +122,6 @@ int pass_4(void) {
   if (make_sure_all_tacs_have_definition_nodes() == FAILED)
     return FAILED;
 
-  print_tacs();
-  
   return SUCCEEDED;
 }
 
@@ -1106,7 +1104,6 @@ int generate_il(void) {
   for (i = 0; i < g_global_nodes->added_children; i++) {
     struct tree_node *node = g_global_nodes->children[i];
     if (node->type == TREE_NODE_TYPE_FUNCTION_PROTOTYPE) {
-      fprintf(stderr, "ADDED SYMBOL %s\n", node->children[1]->label);
       if (symbol_table_add_symbol(node, node->children[1]->label, g_block_level) == FAILED)
         return FAILED;
     }
@@ -1115,7 +1112,6 @@ int generate_il(void) {
   for (i = 0; i < g_global_nodes->added_children; i++) {
     struct tree_node *node = g_global_nodes->children[i];
     if (node != NULL && (node->type == TREE_NODE_TYPE_CREATE_VARIABLE || node->type == TREE_NODE_TYPE_CREATE_VARIABLE_FUNCTION_ARGUMENT)) {
-      fprintf(stderr, "ADDED SYMBOL %s\n", node->children[1]->label);
       if (symbol_table_add_symbol(node, node->children[1]->label, g_block_level) == FAILED)
         return FAILED;
     }
@@ -1124,7 +1120,6 @@ int generate_il(void) {
   for (i = 0; i < g_global_nodes->added_children; i++) {
     struct tree_node *node = g_global_nodes->children[i];
     if (node != NULL && node->type == TREE_NODE_TYPE_FUNCTION_DEFINITION) {
-      fprintf(stderr, "ADDED SYMBOL %s\n", node->children[1]->label);
       if (symbol_table_add_symbol(node, node->children[1]->label, g_block_level) == FAILED)
         return FAILED;
     }

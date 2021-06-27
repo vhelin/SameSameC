@@ -47,6 +47,7 @@ int pass_1(void) {
     if (q == FAILED)
       break;
 
+    /*
     if (q == GET_NEXT_TOKEN_INT)
       fprintf(stderr, "%d: TOKEN: %d\n", q, g_parsed_int);
     else if (q == GET_NEXT_TOKEN_DOUBLE)
@@ -55,6 +56,7 @@ int pass_1(void) {
       fprintf(stderr, "%d: TOKEN: %d\n", q, g_latest_stack);
     else
       fprintf(stderr, "%d: TOKEN: %s\n", q, g_tmp);
+    */
 
     q = evaluate_token(q);
 

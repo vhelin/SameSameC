@@ -25,12 +25,11 @@
 
 
 /* amiga specific definitions */
-
 #ifdef AMIGA
 __near long __stack = 200000;
 #endif
 
-char g_version_string[] = "$VER: bilibali-compiler 1.0a (22.6.2021)";
+char g_version_string[] = "$VER: bilibali-compiler 1.0a (28.6.2021)";
 char g_bilibali_version[] = "1.0";
 
 char *g_tmp_name = NULL;

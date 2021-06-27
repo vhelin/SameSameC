@@ -16,6 +16,11 @@
 #include "stack.h"
 
 
+/* define this for DEBUG */
+/*
+#define DEBUG_IL 1
+*/
+
 extern int g_current_line_number, g_current_filename_id;
 extern int g_temp_r, g_temp_label_id;
 extern char g_tmp[4096], g_error_message[sizeof(g_tmp) + MAX_NAME_LENGTH + 1 + 1024], g_label[MAX_NAME_LENGTH + 1];
@@ -71,37 +76,51 @@ int il_stack_calculate_expression(struct tree_node *node, int calculate_max_var_
     if (child->type == TREE_NODE_TYPE_SYMBOL && child->value == '-') {
       si[z].type = STACK_ITEM_TYPE_OPERATOR;
       si[z].value = SI_OP_SUB;
+#if defined(DEBUG_IL)
       fprintf(stderr, "GOT STACK ITEM -\n");
+#endif
     }
     else if (child->type == TREE_NODE_TYPE_SYMBOL && child->value == '+') {
       si[z].type = STACK_ITEM_TYPE_OPERATOR;
       si[z].value = SI_OP_ADD;
+#if defined(DEBUG_IL)
       fprintf(stderr, "GOT STACK ITEM +\n");
+#endif
     }
     else if (child->type == TREE_NODE_TYPE_SYMBOL && child->value == '*') {
       si[z].type = STACK_ITEM_TYPE_OPERATOR;
       si[z].value = SI_OP_MULTIPLY;
+#if defined(DEBUG_IL)
       fprintf(stderr, "GOT STACK ITEM *\n");
+#endif
     }
     else if (child->type == TREE_NODE_TYPE_SYMBOL && child->value == '/') {
       si[z].type = STACK_ITEM_TYPE_OPERATOR;
       si[z].value = SI_OP_DIVIDE;
+#if defined(DEBUG_IL)
       fprintf(stderr, "GOT STACK ITEM /\n");
+#endif
     }
     else if (child->type == TREE_NODE_TYPE_SYMBOL && child->value == '|') {
       si[z].type = STACK_ITEM_TYPE_OPERATOR;
       si[z].value = SI_OP_OR;
+#if defined(DEBUG_IL)
       fprintf(stderr, "GOT STACK ITEM |\n");
+#endif
     }
     else if (child->type == TREE_NODE_TYPE_SYMBOL && child->value == '&') {
       si[z].type = STACK_ITEM_TYPE_OPERATOR;
       si[z].value = SI_OP_AND;
+#if defined(DEBUG_IL)
       fprintf(stderr, "GOT STACK ITEM &\n");
+#endif
     }
     else if (child->type == TREE_NODE_TYPE_SYMBOL && child->value == '^') {
       si[z].type = STACK_ITEM_TYPE_OPERATOR;
       si[z].value = SI_OP_POWER;
+#if defined(DEBUG_IL)
       fprintf(stderr, "GOT STACK ITEM ^\n");
+#endif
     }
     else if (child->type == TREE_NODE_TYPE_SYMBOL && child->value == '%') {
       if (q == 0) {
@@ -110,48 +129,66 @@ int il_stack_calculate_expression(struct tree_node *node, int calculate_max_var_
       }
       si[z].type = STACK_ITEM_TYPE_OPERATOR;
       si[z].value = SI_OP_MODULO;
+#if defined(DEBUG_IL)
       fprintf(stderr, "GOT STACK ITEM %%\n");
+#endif
     }
     else if (child->type == TREE_NODE_TYPE_SYMBOL && child->value == SYMBOL_LOGICAL_OR) {
       si[z].type = STACK_ITEM_TYPE_OPERATOR;
       si[z].value = SI_OP_LOGICAL_OR;
+#if defined(DEBUG_IL)
       fprintf(stderr, "GOT STACK ITEM ||\n");
+#endif
     }
     else if (child->type == TREE_NODE_TYPE_SYMBOL && child->value == SYMBOL_LOGICAL_AND) {
       si[z].type = STACK_ITEM_TYPE_OPERATOR;
       si[z].value = SI_OP_LOGICAL_AND;
+#if defined(DEBUG_IL)
       fprintf(stderr, "GOT STACK ITEM &&\n");
+#endif
     }
     else if (child->type == TREE_NODE_TYPE_SYMBOL && child->value == SYMBOL_SHIFT_LEFT) {
       si[z].type = STACK_ITEM_TYPE_OPERATOR;
       si[z].value = SI_OP_SHIFT_LEFT;
+#if defined(DEBUG_IL)
       fprintf(stderr, "GOT STACK ITEM <<\n");
+#endif
     }
     else if (child->type == TREE_NODE_TYPE_SYMBOL && child->value == SYMBOL_SHIFT_RIGHT) {
       si[z].type = STACK_ITEM_TYPE_OPERATOR;
       si[z].value = SI_OP_SHIFT_RIGHT;
+#if defined(DEBUG_IL)
       fprintf(stderr, "GOT STACK ITEM >>\n");
+#endif
     }
     else if (child->type == TREE_NODE_TYPE_SYMBOL && child->value == '~') {
       si[z].type = STACK_ITEM_TYPE_OPERATOR;
       si[z].value = SI_OP_XOR;
+#if defined(DEBUG_IL)
       fprintf(stderr, "GOT STACK ITEM ~\n");
+#endif
     }
     else if (child->type == TREE_NODE_TYPE_SYMBOL && child->value == '!') {
       si[z].type = STACK_ITEM_TYPE_OPERATOR;
       si[z].value = SI_OP_NOT;
+#if defined(DEBUG_IL)
       fprintf(stderr, "GOT STACK ITEM !\n");
+#endif
     }
     else if (child->type == TREE_NODE_TYPE_SYMBOL && child->value == ':') {
       si[z].type = STACK_ITEM_TYPE_OPERATOR;
       si[z].value = SI_OP_BANK;
+#if defined(DEBUG_IL)
       fprintf(stderr, "GOT STACK ITEM :\n");
+#endif
     }
     else if (child->type == TREE_NODE_TYPE_SYMBOL && child->value == '(') {
       si[z].type = STACK_ITEM_TYPE_OPERATOR;
       si[z].value = SI_OP_LEFT;
       b++;
+#if defined(DEBUG_IL)
       fprintf(stderr, "GOT STACK ITEM (\n");
+#endif
     }
     else if (child->type == TREE_NODE_TYPE_SYMBOL && child->value == ')') {
       si[z].type = STACK_ITEM_TYPE_OPERATOR;
@@ -160,37 +197,51 @@ int il_stack_calculate_expression(struct tree_node *node, int calculate_max_var_
       if (b == 0)
         break;
       b--;
+#if defined(DEBUG_IL)
       fprintf(stderr, "GOT STACK ITEM )\n");
+#endif
     }
     else if (child->type == TREE_NODE_TYPE_SYMBOL && child->value == '<') {
       si[z].type = STACK_ITEM_TYPE_OPERATOR;
       si[z].value = SI_OP_COMPARE_LT;
+#if defined(DEBUG_IL)
       fprintf(stderr, "GOT STACK ITEM <\n");
+#endif
     }
     else if (child->type == TREE_NODE_TYPE_SYMBOL && child->value == '>') {
       si[z].type = STACK_ITEM_TYPE_OPERATOR;
       si[z].value = SI_OP_COMPARE_GT;
+#if defined(DEBUG_IL)
       fprintf(stderr, "GOT STACK ITEM >\n");
+#endif
     }
     else if (child->type == TREE_NODE_TYPE_SYMBOL && child->value == SYMBOL_EQUAL) {
       si[z].type = STACK_ITEM_TYPE_OPERATOR;
       si[z].value = SI_OP_COMPARE_EQ;
+#if defined(DEBUG_IL)
       fprintf(stderr, "GOT STACK ITEM ==\n");
+#endif
     }
     else if (child->type == TREE_NODE_TYPE_SYMBOL && child->value == SYMBOL_UNEQUAL) {
       si[z].type = STACK_ITEM_TYPE_OPERATOR;
       si[z].value = SI_OP_COMPARE_NEQ;
+#if defined(DEBUG_IL)
       fprintf(stderr, "GOT STACK ITEM !=\n");
+#endif
     }
     else if (child->type == TREE_NODE_TYPE_SYMBOL && child->value == SYMBOL_LTE) {
       si[z].type = STACK_ITEM_TYPE_OPERATOR;
       si[z].value = SI_OP_COMPARE_LTE;
+#if defined(DEBUG_IL)
       fprintf(stderr, "GOT STACK ITEM <=\n");
+#endif
     }
     else if (child->type == TREE_NODE_TYPE_SYMBOL && child->value == SYMBOL_GTE) {
       si[z].type = STACK_ITEM_TYPE_OPERATOR;
       si[z].value = SI_OP_COMPARE_GTE;
+#if defined(DEBUG_IL)
       fprintf(stderr, "GOT STACK ITEM >=\n");
+#endif
     }
     else if (child->type == TREE_NODE_TYPE_SYMBOL && child->value == ',')
       break;
@@ -200,19 +251,25 @@ int il_stack_calculate_expression(struct tree_node *node, int calculate_max_var_
       si[z].type = STACK_ITEM_TYPE_VALUE;
       si[z].value = child->value;
       si[z].sign = SI_SIGN_POSITIVE;
+#if defined(DEBUG_IL)
       fprintf(stderr, "GOT STACK ITEM %d\n", (int)si[z].value);
+#endif
     }
     else if (child->type == TREE_NODE_TYPE_VALUE_DOUBLE) {
       si[z].type = STACK_ITEM_TYPE_VALUE;
       si[z].value = child->value_double;
       si[z].sign = SI_SIGN_POSITIVE;
+#if defined(DEBUG_IL)
       fprintf(stderr, "GOT STACK ITEM %f\n", si[z].value);
+#endif
     }
     else if (child->type == TREE_NODE_TYPE_VALUE_STRING) {
       si[z].sign = SI_SIGN_POSITIVE;
       strncpy(si[z].string, child->label, MAX_NAME_LENGTH);
       si[z].type = STACK_ITEM_TYPE_STRING;
+#if defined(DEBUG_IL)
       fprintf(stderr, "GOT STACK ITEM %s\n", si[z].string);
+#endif
     }
     else if (child->type == TREE_NODE_TYPE_INCREMENT_DECREMENT) {
       si[z].type = STACK_ITEM_TYPE_OPERATOR;
@@ -222,22 +279,30 @@ int il_stack_calculate_expression(struct tree_node *node, int calculate_max_var_
         /* post or pre? */
         if (child->value_double > 0.0) {
           si[z].value = SI_OP_POST_INC;
+#if defined(DEBUG_IL)
           fprintf(stderr, "GOT STACK ITEM %s++\n", child->label);
+#endif
         }
         else {
           si[z].value = SI_OP_PRE_INC;
+#if defined(DEBUG_IL)
           fprintf(stderr, "GOT STACK ITEM ++%s\n", child->label);
+#endif
         }
       }
       else {
         /* post or pre? */
         if (child->value_double > 0.0) {
           si[z].value = SI_OP_POST_DEC;
+#if defined(DEBUG_IL)
           fprintf(stderr, "GOT STACK ITEM %s--\n", child->label);
+#endif
         }
         else {
           si[z].value = SI_OP_PRE_DEC;
+#if defined(DEBUG_IL)
           fprintf(stderr, "GOT STACK ITEM --%s\n", child->label);
+#endif
         }
       }
 
@@ -251,8 +316,10 @@ int il_stack_calculate_expression(struct tree_node *node, int calculate_max_var_
     else if (child->type == TREE_NODE_TYPE_GET_ADDRESS) {
       si[z].type = STACK_ITEM_TYPE_OPERATOR;
       si[z].value = SI_OP_GET_ADDRESS;
+#if defined(DEBUG_IL)
       fprintf(stderr, "GOT STACK ITEM &%s\n", child->label);
-
+#endif
+      
       z++;
 
       si[z].sign = SI_SIGN_POSITIVE;
@@ -266,8 +333,10 @@ int il_stack_calculate_expression(struct tree_node *node, int calculate_max_var_
       if (t == NULL)
         return FAILED;
 
+#if defined(DEBUG_IL)
       fprintf(stderr, "GOT STACK ITEM &%s[]\n", child->label);
-
+#endif
+      
       tac_set_result(t, TAC_ARG_TYPE_TEMP, g_temp_r++, NULL);
 
       /* find the definition */
@@ -327,8 +396,10 @@ int il_stack_calculate_expression(struct tree_node *node, int calculate_max_var_
       int rindex = g_temp_r, index_max_var_type;
       struct tac *t;
       
+#if defined(DEBUG_IL)
       fprintf(stderr, "GOT STACK ITEM %s[]\n", child->label);
-
+#endif
+      
       /* calculate the index */
       if (g_max_var_type_index >= 255) {
         fprintf(stderr, "_il_stack_calculate_expression(): Out of recursive call stack! Please submit a bug report!\n");

@@ -17,6 +17,11 @@
 #include "tree_node.h"
 
 
+/* define this for DEBUG */
+
+#define DEBUG_PASS_3 1
+
+
 extern struct tree_node *g_global_nodes, *g_label_definition;
 extern int g_verbose_mode, g_input_float_mode;
 extern char *g_variable_types[4], *g_two_char_symbols[10], g_label[MAX_NAME_LENGTH + 1];
@@ -510,23 +515,49 @@ static void _print_global_node(struct tree_node *node) {
 }
 
 
-int pass_3(void) {
+#if defined(DEBUG_PASS_3)
+
+static void _print_global_nodes(void) {
 
   int i;
+
+  fprintf(stderr, "///////////////////////////////////////////////////////////////////////\n");
+  fprintf(stderr, "// TREE NODES\n");
+  fprintf(stderr, "///////////////////////////////////////////////////////////////////////\n");
+
+  for (i = 0; i < g_global_nodes->added_children; i++)
+    _print_global_node(g_global_nodes->children[i]);
+}
+
+#endif
+
+
+int pass_3(void) {
   
   if (g_verbose_mode == ON)
     printf("Pass 3...\n");
 
+#if defined(DEBUG_PASS_3)
   /* print out what we have parsed so far */
-  for (i = 0; i < g_global_nodes->added_children; i++)
-    _print_global_node(g_global_nodes->children[i]);
-
+  _print_global_nodes();
+#endif
+  
   simplify_expressions();
 
+#if defined(DEBUG_PASS_3)
+  fprintf(stderr, ">------------------------------ SIMPLIFIED ------------------------------>\n");
+#endif
+  
+#if defined(DEBUG_PASS_3)
   /* print out everything again to see if we were able to simplify anything */
-  for (i = 0; i < g_global_nodes->added_children; i++)
-    _print_global_node(g_global_nodes->children[i]);
+  _print_global_nodes();
+#endif
 
+  /* keep the compiler silent */
+  if (0) {
+    _print_global_node(g_global_nodes->children[0]);
+  }
+  
   return SUCCEEDED;
 }
 
@@ -820,8 +851,6 @@ int simplify_expressions(void) {
 
   int i;
 
-  fprintf(stderr, "--->\n");
-  
   for (i = 0; i < g_global_nodes->added_children; i++)
     _simplify_expressions_global_node(g_global_nodes->children[i]);
   

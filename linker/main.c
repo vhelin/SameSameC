@@ -22,11 +22,12 @@
 
 extern struct file *g_files_first;
 
-char g_version_string[] = "$VER: bilibali-linker 1.0a (22.6.2021)";
+char g_version_string[] = "$VER: bilibali-linker 1.0a (28.6.2021)";
 char g_bilibali_version[] = "1.0";
 
 int g_verbose = NO, g_quiet = NO, g_target = TARGET_NONE, g_final_name_index = -1;
 char g_asm_file_name[MAX_NAME_LENGTH+1], g_object_file_name[MAX_NAME_LENGTH+1], g_link_file_name[MAX_NAME_LENGTH+1];
+
 
 
 int main(int argc, char *argv[]) {
@@ -158,7 +159,7 @@ int main(int argc, char *argv[]) {
   /* link */
 
   if (g_target == TARGET_SMS) {
-    snprintf(command, sizeof(command), "wlalink %s %s", g_link_file_name, argv[g_final_name_index]);
+    snprintf(command, sizeof(command), "wlalink -v %s %s", g_link_file_name, argv[g_final_name_index]);
     command_result = system(command);
   }
 

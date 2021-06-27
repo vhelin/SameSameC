@@ -15,6 +15,11 @@
 #include "definitions.h"
 
 
+/* define this for DEBUG */
+/*
+#define DEBUG_STACK 1
+*/
+
 extern int g_input_number_error_msg, g_bankheader_status, g_input_float_mode;
 extern int g_source_pointer, g_size, g_parsed_int, g_string_size, g_parse_floats;
 extern char g_xyz[512], *g_buffer, g_tmp[4096], g_label[MAX_NAME_LENGTH + 1];
@@ -74,7 +79,7 @@ static int _break_before_value_or_string(int i, struct stack_item *si) {
 }
 
 
-#if BILIBALI_DEBUG
+#if DEBUG_STACK
 
 static void _debug_print_stack(int line_number, int stack_id, struct stack_item *ta, int count, int id) {
 
@@ -164,37 +169,51 @@ int stack_calculate_tree_node(struct tree_node *node, int *value) {
     if (child->type == TREE_NODE_TYPE_SYMBOL && child->value == '-') {
       si[q].type = STACK_ITEM_TYPE_OPERATOR;
       si[q].value = SI_OP_SUB;
+#if DEBUG_STACK
       fprintf(stderr, "GOT STACK ITEM -\n");
+#endif
     }
     else if (child->type == TREE_NODE_TYPE_SYMBOL && child->value == '+') {
       si[q].type = STACK_ITEM_TYPE_OPERATOR;
       si[q].value = SI_OP_ADD;
+#if DEBUG_STACK
       fprintf(stderr, "GOT STACK ITEM +\n");
+#endif
     }
     else if (child->type == TREE_NODE_TYPE_SYMBOL && child->value == '*') {
       si[q].type = STACK_ITEM_TYPE_OPERATOR;
       si[q].value = SI_OP_MULTIPLY;
+#if DEBUG_STACK
       fprintf(stderr, "GOT STACK ITEM *\n");
+#endif
     }
     else if (child->type == TREE_NODE_TYPE_SYMBOL && child->value == '/') {
       si[q].type = STACK_ITEM_TYPE_OPERATOR;
       si[q].value = SI_OP_DIVIDE;
+#if DEBUG_STACK
       fprintf(stderr, "GOT STACK ITEM /\n");
+#endif
     }
     else if (child->type == TREE_NODE_TYPE_SYMBOL && child->value == '|') {
       si[q].type = STACK_ITEM_TYPE_OPERATOR;
       si[q].value = SI_OP_OR;
+#if DEBUG_STACK
       fprintf(stderr, "GOT STACK ITEM |\n");
+#endif
     }
     else if (child->type == TREE_NODE_TYPE_SYMBOL && child->value == '&') {
       si[q].type = STACK_ITEM_TYPE_OPERATOR;
       si[q].value = SI_OP_AND;
+#if DEBUG_STACK
       fprintf(stderr, "GOT STACK ITEM &\n");
+#endif
     }
     else if (child->type == TREE_NODE_TYPE_SYMBOL && child->value == '^') {
       si[q].type = STACK_ITEM_TYPE_OPERATOR;
       si[q].value = SI_OP_POWER;
+#if DEBUG_STACK
       fprintf(stderr, "GOT STACK ITEM ^\n");
+#endif
     }
     else if (child->type == TREE_NODE_TYPE_SYMBOL && child->value == '%') {
       if (q == 0) {
@@ -204,27 +223,37 @@ int stack_calculate_tree_node(struct tree_node *node, int *value) {
       }
       si[q].type = STACK_ITEM_TYPE_OPERATOR;
       si[q].value = SI_OP_MODULO;
+#if DEBUG_STACK
       fprintf(stderr, "GOT STACK ITEM %%\n");
+#endif
     }
     else if (child->type == TREE_NODE_TYPE_SYMBOL && child->value == SYMBOL_LOGICAL_OR) {
       si[q].type = STACK_ITEM_TYPE_OPERATOR;
       si[q].value = SI_OP_LOGICAL_OR;
+#if DEBUG_STACK
       fprintf(stderr, "GOT STACK ITEM ||\n");
+#endif
     }
     else if (child->type == TREE_NODE_TYPE_SYMBOL && child->value == SYMBOL_LOGICAL_AND) {
       si[q].type = STACK_ITEM_TYPE_OPERATOR;
       si[q].value = SI_OP_LOGICAL_AND;
+#if DEBUG_STACK
       fprintf(stderr, "GOT STACK ITEM &&\n");
+#endif
     }
     else if (child->type == TREE_NODE_TYPE_SYMBOL && child->value == SYMBOL_LOGICAL_AND) {
       si[q].type = STACK_ITEM_TYPE_OPERATOR;
       si[q].value = SI_OP_LOGICAL_AND;
+#if DEBUG_STACK
       fprintf(stderr, "GOT STACK ITEM &&\n");
+#endif
     }
     else if (child->type == TREE_NODE_TYPE_SYMBOL && child->value == SYMBOL_SHIFT_LEFT) {
       si[q].type = STACK_ITEM_TYPE_OPERATOR;
       si[q].value = SI_OP_SHIFT_LEFT;
+#if DEBUG_STACK
       fprintf(stderr, "GOT STACK ITEM <<\n");
+#endif
     }
     /*
     else if (*in == '<') {
@@ -243,7 +272,9 @@ int stack_calculate_tree_node(struct tree_node *node, int *value) {
     else if (child->type == TREE_NODE_TYPE_SYMBOL && child->value == SYMBOL_SHIFT_RIGHT) {
       si[q].type = STACK_ITEM_TYPE_OPERATOR;
       si[q].value = SI_OP_SHIFT_RIGHT;
+#if DEBUG_STACK
       fprintf(stderr, "GOT STACK ITEM >>\n");
+#endif
     }
     /*
     else if (*in == '>') {
@@ -262,23 +293,31 @@ int stack_calculate_tree_node(struct tree_node *node, int *value) {
     else if (child->type == TREE_NODE_TYPE_SYMBOL && child->value == '!') {
       si[q].type = STACK_ITEM_TYPE_OPERATOR;
       si[q].value = SI_OP_NOT;
+#if DEBUG_STACK
       fprintf(stderr, "GOT STACK ITEM !\n");
+#endif
     }
     else if (child->type == TREE_NODE_TYPE_SYMBOL && child->value == '~') {
       si[q].type = STACK_ITEM_TYPE_OPERATOR;
       si[q].value = SI_OP_XOR;
+#if DEBUG_STACK
       fprintf(stderr, "GOT STACK ITEM ~\n");
+#endif
     }
     else if (child->type == TREE_NODE_TYPE_SYMBOL && child->value == ':') {
       si[q].type = STACK_ITEM_TYPE_OPERATOR;
       si[q].value = SI_OP_BANK;
+#if DEBUG_STACK
       fprintf(stderr, "GOT STACK ITEM :\n");
+#endif
     }
     else if (child->type == TREE_NODE_TYPE_SYMBOL && child->value == '(') {
       si[q].type = STACK_ITEM_TYPE_OPERATOR;
       si[q].value = SI_OP_LEFT;
       b++;
+#if DEBUG_STACK
       fprintf(stderr, "GOT STACK ITEM (\n");
+#endif
     }
     else if (child->type == TREE_NODE_TYPE_SYMBOL && child->value == ')') {
       si[q].type = STACK_ITEM_TYPE_OPERATOR;
@@ -287,37 +326,51 @@ int stack_calculate_tree_node(struct tree_node *node, int *value) {
       if (b == 0)
         break;
       b--;
+#if DEBUG_STACK
       fprintf(stderr, "GOT STACK ITEM )\n");
+#endif
     }
     else if (child->type == TREE_NODE_TYPE_SYMBOL && child->value == '<') {
       si[q].type = STACK_ITEM_TYPE_OPERATOR;
       si[q].value = SI_OP_COMPARE_LT;
+#if DEBUG_STACK
       fprintf(stderr, "GOT STACK ITEM <\n");
+#endif
     }
     else if (child->type == TREE_NODE_TYPE_SYMBOL && child->value == '>') {
       si[q].type = STACK_ITEM_TYPE_OPERATOR;
       si[q].value = SI_OP_COMPARE_GT;
+#if DEBUG_STACK
       fprintf(stderr, "GOT STACK ITEM >\n");
+#endif
     }
     else if (child->type == TREE_NODE_TYPE_SYMBOL && child->value == SYMBOL_EQUAL) {
       si[q].type = STACK_ITEM_TYPE_OPERATOR;
       si[q].value = SI_OP_COMPARE_EQ;
+#if DEBUG_STACK
       fprintf(stderr, "GOT STACK ITEM ==\n");
+#endif
     }
     else if (child->type == TREE_NODE_TYPE_SYMBOL && child->value == SYMBOL_UNEQUAL) {
       si[q].type = STACK_ITEM_TYPE_OPERATOR;
       si[q].value = SI_OP_COMPARE_NEQ;
+#if DEBUG_STACK
       fprintf(stderr, "GOT STACK ITEM !=\n");
+#endif
     }
     else if (child->type == TREE_NODE_TYPE_SYMBOL && child->value == SYMBOL_LTE) {
       si[q].type = STACK_ITEM_TYPE_OPERATOR;
       si[q].value = SI_OP_COMPARE_LTE;
+#if DEBUG_STACK
       fprintf(stderr, "GOT STACK ITEM <=\n");
+#endif
     }
     else if (child->type == TREE_NODE_TYPE_SYMBOL && child->value == SYMBOL_GTE) {
       si[q].type = STACK_ITEM_TYPE_OPERATOR;
       si[q].value = SI_OP_COMPARE_GTE;
+#if DEBUG_STACK
       fprintf(stderr, "GOT STACK ITEM >=\n");
+#endif
     }
     else if (child->type == TREE_NODE_TYPE_SYMBOL && child->value == ',')
       break;
@@ -331,7 +384,9 @@ int stack_calculate_tree_node(struct tree_node *node, int *value) {
       si[q].type = STACK_ITEM_TYPE_VALUE;
       si[q].value = child->value;
       si[q].sign = SI_SIGN_POSITIVE;
+#if DEBUG_STACK
       fprintf(stderr, "GOT STACK ITEM %d\n", (int)si[q].value);
+#endif
     }
     else if (child->type == TREE_NODE_TYPE_VALUE_DOUBLE) {
       /* we'll break if the previous item in the stack was a value or a string */
@@ -341,7 +396,9 @@ int stack_calculate_tree_node(struct tree_node *node, int *value) {
       si[q].type = STACK_ITEM_TYPE_VALUE;
       si[q].value = child->value_double;
       si[q].sign = SI_SIGN_POSITIVE;
+#if DEBUG_STACK
       fprintf(stderr, "GOT STACK ITEM %f\n", si[q].value);
+#endif
     }
     else if (child->type == TREE_NODE_TYPE_VALUE_STRING) {
       /* we'll break if the previous item in the stack was a value or a string */
@@ -351,7 +408,9 @@ int stack_calculate_tree_node(struct tree_node *node, int *value) {
       si[q].sign = SI_SIGN_POSITIVE;
       strncpy(si[q].string, child->label, MAX_NAME_LENGTH);
       si[q].type = STACK_ITEM_TYPE_STRING;
+#if DEBUG_STACK
       fprintf(stderr, "GOT STACK ITEM %s\n", si[q].string);
+#endif
     }
     else if (child->type == TREE_NODE_TYPE_INCREMENT_DECREMENT) {
       /* increment/decrement cannot be calculated here, only on the target machine... */
@@ -409,37 +468,51 @@ int stack_calculate_tokens(int *value) {
     if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == '-') {
       si[q].type = STACK_ITEM_TYPE_OPERATOR;
       si[q].value = SI_OP_SUB;
+#if DEBUG_STACK
       fprintf(stderr, "GOT STACK ITEM -\n");
+#endif
     }
     else if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == '+') {
       si[q].type = STACK_ITEM_TYPE_OPERATOR;
       si[q].value = SI_OP_ADD;
+#if DEBUG_STACK
       fprintf(stderr, "GOT STACK ITEM +\n");
+#endif
     }
     else if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == '*') {
       si[q].type = STACK_ITEM_TYPE_OPERATOR;
       si[q].value = SI_OP_MULTIPLY;
+#if DEBUG_STACK
       fprintf(stderr, "GOT STACK ITEM *\n");
+#endif
     }
     else if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == '/') {
       si[q].type = STACK_ITEM_TYPE_OPERATOR;
       si[q].value = SI_OP_DIVIDE;
+#if DEBUG_STACK
       fprintf(stderr, "GOT STACK ITEM /\n");
+#endif
     }
     else if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == '|') {
       si[q].type = STACK_ITEM_TYPE_OPERATOR;
       si[q].value = SI_OP_OR;
+#if DEBUG_STACK
       fprintf(stderr, "GOT STACK ITEM |\n");
+#endif
     }
     else if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == '&') {
       si[q].type = STACK_ITEM_TYPE_OPERATOR;
       si[q].value = SI_OP_AND;
+#if DEBUG_STACK
       fprintf(stderr, "GOT STACK ITEM &\n");
+#endif
     }
     else if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == '^') {
       si[q].type = STACK_ITEM_TYPE_OPERATOR;
       si[q].value = SI_OP_POWER;
+#if DEBUG_STACK
       fprintf(stderr, "GOT STACK ITEM ^\n");
+#endif
     }
     else if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == '%') {
       if (q == 0) {
@@ -449,22 +522,30 @@ int stack_calculate_tokens(int *value) {
       }
       si[q].type = STACK_ITEM_TYPE_OPERATOR;
       si[q].value = SI_OP_MODULO;
+#if DEBUG_STACK
       fprintf(stderr, "GOT STACK ITEM %%\n");
+#endif
     }
     else if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == SYMBOL_LOGICAL_OR) {
       si[q].type = STACK_ITEM_TYPE_OPERATOR;
       si[q].value = SI_OP_LOGICAL_OR;
+#if DEBUG_STACK
       fprintf(stderr, "GOT STACK ITEM ||\n");
+#endif
     }
     else if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == SYMBOL_LOGICAL_AND) {
       si[q].type = STACK_ITEM_TYPE_OPERATOR;
       si[q].value = SI_OP_LOGICAL_AND;
+#if DEBUG_STACK
       fprintf(stderr, "GOT STACK ITEM &&\n");
+#endif
     }
     else if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == SYMBOL_SHIFT_LEFT) {
       si[q].type = STACK_ITEM_TYPE_OPERATOR;
       si[q].value = SI_OP_SHIFT_LEFT;
+#if DEBUG_STACK
       fprintf(stderr, "GOT STACK ITEM <<\n");
+#endif
     }
     /*
     else if (*in == '<') {
@@ -483,7 +564,9 @@ int stack_calculate_tokens(int *value) {
     else if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == SYMBOL_SHIFT_RIGHT) {
       si[q].type = STACK_ITEM_TYPE_OPERATOR;
       si[q].value = SI_OP_SHIFT_RIGHT;
+#if DEBUG_STACK
       fprintf(stderr, "GOT STACK ITEM >>\n");
+#endif
     }
     /*
     else if (*in == '>') {
@@ -502,23 +585,31 @@ int stack_calculate_tokens(int *value) {
     else if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == '!') {
       si[q].type = STACK_ITEM_TYPE_OPERATOR;
       si[q].value = SI_OP_NOT;
+#if DEBUG_STACK
       fprintf(stderr, "GOT STACK ITEM !\n");
+#endif
     }
     else if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == '~') {
       si[q].type = STACK_ITEM_TYPE_OPERATOR;
       si[q].value = SI_OP_XOR;
+#if DEBUG_STACK
       fprintf(stderr, "GOT STACK ITEM ~\n");
+#endif
     }
     else if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == ':') {
       si[q].type = STACK_ITEM_TYPE_OPERATOR;
       si[q].value = SI_OP_BANK;
+#if DEBUG_STACK
       fprintf(stderr, "GOT STACK ITEM :\n");
+#endif
     }
     else if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == '(') {
       si[q].type = STACK_ITEM_TYPE_OPERATOR;
       si[q].value = SI_OP_LEFT;
       b++;
+#if DEBUG_STACK
       fprintf(stderr, "GOT STACK ITEM (\n");
+#endif
     }
     else if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == ')') {
       si[q].type = STACK_ITEM_TYPE_OPERATOR;
@@ -527,37 +618,51 @@ int stack_calculate_tokens(int *value) {
       if (b == 0)
         break;
       b--;
+#if DEBUG_STACK
       fprintf(stderr, "GOT STACK ITEM )\n");
+#endif
     }
     else if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == '<') {
       si[q].type = STACK_ITEM_TYPE_OPERATOR;
       si[q].value = SI_OP_COMPARE_LT;
+#if DEBUG_STACK
       fprintf(stderr, "GOT STACK ITEM <\n");
+#endif
     }
     else if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == '>') {
       si[q].type = STACK_ITEM_TYPE_OPERATOR;
       si[q].value = SI_OP_COMPARE_GT;
+#if DEBUG_STACK
       fprintf(stderr, "GOT STACK ITEM >\n");
+#endif
     }
     else if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == SYMBOL_EQUAL) {
       si[q].type = STACK_ITEM_TYPE_OPERATOR;
       si[q].value = SI_OP_COMPARE_EQ;
+#if DEBUG_STACK
       fprintf(stderr, "GOT STACK ITEM ==\n");
+#endif
     }
     else if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == SYMBOL_UNEQUAL) {
       si[q].type = STACK_ITEM_TYPE_OPERATOR;
       si[q].value = SI_OP_COMPARE_NEQ;
+#if DEBUG_STACK
       fprintf(stderr, "GOT STACK ITEM !=\n");
+#endif
     }
     else if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == SYMBOL_LTE) {
       si[q].type = STACK_ITEM_TYPE_OPERATOR;
       si[q].value = SI_OP_COMPARE_LTE;
+#if DEBUG_STACK
       fprintf(stderr, "GOT STACK ITEM <=\n");
+#endif
     }
     else if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == SYMBOL_GTE) {
       si[q].type = STACK_ITEM_TYPE_OPERATOR;
       si[q].value = SI_OP_COMPARE_GTE;
+#if DEBUG_STACK
       fprintf(stderr, "GOT STACK ITEM >=\n");
+#endif
     }
     else if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == ',')
       break;
@@ -576,7 +681,9 @@ int stack_calculate_tokens(int *value) {
       si[q].type = STACK_ITEM_TYPE_VALUE;
       si[q].value = g_token_current->value;
       si[q].sign = SI_SIGN_POSITIVE;
+#if DEBUG_STACK
       fprintf(stderr, "GOT STACK ITEM %d\n", (int)si[q].value);
+#endif
     }
     else if (g_token_current->id == TOKEN_ID_VALUE_DOUBLE) {
       /* we'll break if the previous item in the stack was a value or a string */
@@ -586,7 +693,9 @@ int stack_calculate_tokens(int *value) {
       si[q].type = STACK_ITEM_TYPE_VALUE;
       si[q].value = g_token_current->value_double;
       si[q].sign = SI_SIGN_POSITIVE;
+#if DEBUG_STACK
       fprintf(stderr, "GOT STACK ITEM %f\n", si[q].value);
+#endif
     }
     else if (g_token_current->id == TOKEN_ID_VALUE_STRING) {
       /* we'll break if the previous item in the stack was a value or a string */
@@ -596,7 +705,9 @@ int stack_calculate_tokens(int *value) {
       si[q].sign = SI_SIGN_POSITIVE;
       strncpy(si[q].string, g_token_current->label, MAX_NAME_LENGTH);
       si[q].type = STACK_ITEM_TYPE_STRING;
+#if DEBUG_STACK
       fprintf(stderr, "GOT STACK ITEM %s\n", si[q].string);
+#endif
     }
     else
       break;
@@ -918,7 +1029,7 @@ int stack_calculate(int *value, struct stack_item *si, int q, int save_if_cannot
     }
   }
 
-#if BILIBALI_DEBUG
+#if DEBUG_STACK
   _debug_print_stack(g_stacks_tmp->linenumber, g_stack_id, g_stacks_tmp->stack, d, 0);
 #endif
 
@@ -1239,7 +1350,7 @@ int stack_create_label_stack(char *label) {
   g_stacks_tmp->stack[0].sign = SI_SIGN_POSITIVE;
   strcpy(g_stacks_tmp->stack[0].string, label);
 
-#if BILIBALI_DEBUG
+#if DEBUG_STACK
   _debug_print_stack(g_stacks_tmp->linenumber, g_stack_id, g_stacks_tmp->stack, 1, 1);
 #endif
   
@@ -1281,7 +1392,7 @@ int stack_create_stack_stack(int stack_id) {
   g_stacks_tmp->stack[0].value = stack_id;
   g_stacks_tmp->stack[0].sign = SI_SIGN_POSITIVE;
 
-#if BILIBALI_DEBUG
+#if DEBUG_STACK
   _debug_print_stack(g_stacks_tmp->linenumber, stack_id, g_stacks_tmp->stack, 1, 2);
 #endif
 
