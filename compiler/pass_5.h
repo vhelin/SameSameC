@@ -7,5 +7,6 @@ int optimize_il(void);
 int compress_register_names(void);
 int propagate_operand_types(void);
 int collect_and_preprocess_local_variables_inside_functions(void);
+int reorder_global_variables(void);
 
 #endif

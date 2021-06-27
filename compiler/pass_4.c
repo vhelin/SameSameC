@@ -314,6 +314,10 @@ static int _generate_il_create_variable(struct tree_node *node) {
   
   /* make assignment(s) */
 
+  /* no initializations? */
+  if (node->added_children - 2 <= 0)
+    return SUCCEEDED;
+  
   if (node->value == 0) {
     /* single value assignment, not an array */
     int r1 = g_temp_r, type;
@@ -343,7 +347,7 @@ static int _generate_il_create_variable(struct tree_node *node) {
     /* array copy */
     int i;
 
-    for (i = 0; i < node->value; i++) {
+    for (i = 0; i < node->added_children - 2; i++) {
       int r2 = g_temp_r, type;
 
       if (_generate_il_create_expression(node->children[2 + i]) == FAILED)

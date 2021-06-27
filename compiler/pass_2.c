@@ -312,7 +312,6 @@ static struct tree_node *_get_current_open_block() {
 static struct tree_node *_create_z80_in_out(char *name) {
 
   struct tree_node *node;
-  int i;
 
   node = allocate_tree_node_with_children(TREE_NODE_TYPE_CREATE_VARIABLE, 3);
   if (node == NULL)
@@ -320,17 +319,6 @@ static struct tree_node *_create_z80_in_out(char *name) {
 
   tree_node_add_child(node, allocate_tree_node_variable_type(VARIABLE_TYPE_UINT8));
   tree_node_add_child(node, allocate_tree_node_value_string(name));
-
-  for (i = 0; i < 256; i++) {
-    struct tree_node *empty_node = allocate_tree_node_value_int(0);
-
-    if (empty_node == NULL) {
-      free_tree_node(node);
-      return NULL;
-    }
-
-    tree_node_add_child(node, empty_node);
-  }
 
   /* set array size */
   node->value = 256;
@@ -1067,11 +1055,11 @@ int create_statement(void) {
       /* next token */
       _next_token();
     
-      /* create_expression() will put all tree_nodes it parses to g_open_expression */
-      if (_open_expression_push() == FAILED)
-        return FAILED;
-
       if (symbol == '=') {
+        /* create_expression() will put all tree_nodes it parses to g_open_expression */
+        if (_open_expression_push() == FAILED)
+          return FAILED;
+
         /* possibly parse a calculation */
         fprintf(stderr, "create_statement():\n");
 
@@ -1097,11 +1085,6 @@ int create_statement(void) {
       }
       else if (symbol == '[') {
         /* array */
-
-        /* TODO: do this nicer */
-        free_tree_node(_get_current_open_expression());
-        _open_expression_pop();
-
         node = create_array(pointer_depth, variable_type, name);
         if (node == NULL)
           return FAILED;
@@ -1116,7 +1099,7 @@ int create_statement(void) {
         }
         
         if (!(g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == ';')) {
-          snprintf(g_error_message, sizeof(g_error_message), "Expected ';', but got %s.\n", _get_token_simple(g_token_current));
+          snprintf(g_error_message, sizeof(g_error_message), "Expected ';' or ',', but got %s.\n", _get_token_simple(g_token_current));
           print_error(g_error_message, ERROR_ERR);
           return FAILED;
         }
@@ -1131,11 +1114,6 @@ int create_statement(void) {
         return SUCCEEDED;
       }
       else {
-        if (variable_type == VARIABLE_TYPE_INT8 || variable_type == VARIABLE_TYPE_INT16 || variable_type == VARIABLE_TYPE_UINT8 || variable_type == VARIABLE_TYPE_UINT16) {
-          tree_node_add_child(_get_current_open_expression(), allocate_tree_node_value_int(0));
-          if (_get_current_open_expression()->children[0] == NULL)
-            return FAILED;
-        }
       }
 
       node = allocate_tree_node_with_children(TREE_NODE_TYPE_CREATE_VARIABLE, 3);
@@ -1144,13 +1122,16 @@ int create_statement(void) {
 
       tree_node_add_child(node, allocate_tree_node_variable_type(variable_type));
       tree_node_add_child(node, allocate_tree_node_value_string(name));
-      tree_node_add_child(node, _get_current_open_expression());
-      _open_expression_pop();
+      if (symbol == '=') {
+        tree_node_add_child(node, _get_current_open_expression());
+        _open_expression_pop();
+      }
 
       /* store the pointer depth (0 - not a pointer, 1+ - is a pointer) */
       node->children[0]->value_double = pointer_depth;
-    
-      if (node->children[0] == NULL || node->children[1] == NULL || node->children[2] == NULL) {
+
+      if (node->children[0] == NULL || node->children[1] == NULL || (symbol == '=' && node->children[2] == NULL)) {
+        print_error("_create_statement(): Out of memory error.\n", ERROR_ERR);
         free_tree_node(node);
         return FAILED;
       }
@@ -2361,19 +2342,6 @@ struct tree_node *create_array(double pointer_depth, int variable_type, char *na
     array_size = added_items;
   }
 
-  /* empty fill the rest of the array */
-  while (added_items < array_size) {
-    struct tree_node *empty_node = allocate_tree_node_value_int(0);
-
-    if (empty_node == NULL) {
-      free_tree_node(node);
-      return NULL;
-    }
-
-    tree_node_add_child(node, empty_node);
-    added_items++;
-  }
-
   /* store the size of the array */
   node->value = array_size;
 
@@ -2435,11 +2403,11 @@ int create_variable_or_function(void) {
       /* next token */
       _next_token();
 
-      /* create_expression() will put all tree_nodes it parses to g_open_expression */
-      if (_open_expression_push() == FAILED)
-        return FAILED;
-
       if (symbol == '=') {
+        /* create_expression() will put all tree_nodes it parses to g_open_expression */
+        if (_open_expression_push() == FAILED)
+          return FAILED;
+
         /* possibly parse a calculation */
         if (create_expression() == FAILED)
           return FAILED;
@@ -2463,11 +2431,6 @@ int create_variable_or_function(void) {
       }
       else if (symbol == '[') {
         /* array */
-
-        /* TODO: do this nicer */
-        free_tree_node(_get_current_open_expression());
-        _open_expression_pop();
-
         node = create_array(pointer_depth, variable_type, name);
 
         /* add to global lists */
@@ -2488,13 +2451,6 @@ int create_variable_or_function(void) {
 
         continue;
       }
-      else {
-        if (variable_type == VARIABLE_TYPE_INT8 || variable_type == VARIABLE_TYPE_INT16 || variable_type == VARIABLE_TYPE_UINT8 || variable_type == VARIABLE_TYPE_UINT16) {
-          tree_node_add_child(_get_current_open_expression(), allocate_tree_node_value_int(0));
-          if (_get_current_open_expression()->children[0] == NULL)
-            return FAILED;
-        }
-      }
 
       node = allocate_tree_node_with_children(TREE_NODE_TYPE_CREATE_VARIABLE, 3);
       if (node == NULL)
@@ -2502,10 +2458,12 @@ int create_variable_or_function(void) {
 
       tree_node_add_child(node, allocate_tree_node_variable_type(variable_type));
       tree_node_add_child(node, allocate_tree_node_value_string(name));
-      tree_node_add_child(node, _get_current_open_expression());
-      _open_expression_pop();
+      if (symbol == '=') {
+        tree_node_add_child(node, _get_current_open_expression());
+        _open_expression_pop();
+      }
 
-      if (node->children[0] == NULL || node->children[1] == NULL || node->children[2] == NULL) {
+      if (node->children[0] == NULL || node->children[1] == NULL || (symbol == '=' && node->children[2] == NULL)) {
         free_tree_node(node);
         return FAILED;
       }

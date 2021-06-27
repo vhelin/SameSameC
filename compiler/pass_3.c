@@ -185,18 +185,23 @@ static void _print_create_variable(struct tree_node *node) {
 
   if (node->value == 0) {
     /* not an array */
-    fprintf(stderr, " = ");
-    print_expression(node->children[2]);
+    if (node->added_children > 2) {
+      fprintf(stderr, " = ");
+      print_expression(node->children[2]);
+    }
   }
   else {
     /* an array */
-    fprintf(stderr, "[%d] = { ", node->value);
-    for (i = 2; i < node->added_children; i++) {
-      if (i > 2)
-        fprintf(stderr, ", ");
-      print_expression(node->children[i]);
+    fprintf(stderr, "[%d]", node->value);
+    if (node->added_children > 2) {
+      fprintf(stderr, " = { ");
+      for (i = 2; i < node->added_children; i++) {
+        if (i > 2)
+          fprintf(stderr, ", ");
+        print_expression(node->children[i]);
+      }
+      fprintf(stderr, " }");
     }
-    fprintf(stderr, " }");
   }
 
   fprintf(stderr, ";\n");

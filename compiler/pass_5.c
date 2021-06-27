@@ -51,7 +51,9 @@ int pass_5(void) {
     return FAILED;
   if (collect_and_preprocess_local_variables_inside_functions() == FAILED)
     return FAILED;
-
+  if (reorder_global_variables() == FAILED)
+    return FAILED;
+  
   /* double check that this is still true */
   if (make_sure_all_tacs_have_definition_nodes() == FAILED)
     return FAILED;
@@ -2122,6 +2124,91 @@ int collect_and_preprocess_local_variables_inside_functions(void) {
       fprintf(stderr, "FUNCTION %s LOCAL VARIABLES %d (%d are arguments) TEMP REGISTERS %d\n", function_node->children[1]->label, local_variables_count, arguments_count, used_registers);
     }
   }
+  
+  return SUCCEEDED;
+}
+
+
+int reorder_global_variables(void) {
+
+  int i, global_variables = 0, indices[1024], index;
+  struct tree_node *nodes[1024];
+  
+  /* we want to reorder global variables so that first come variables that are fully initialized, then come
+     those that are partially initialized, and last come uninitialized variables. this ordering will make
+     the global variable initializer generator to produce less code */
+
+  for (i = 0; i < g_global_nodes->added_children; i++) {
+    struct tree_node *node = g_global_nodes->children[i];
+    if (node != NULL && node->type == TREE_NODE_TYPE_CREATE_VARIABLE) {
+      if (global_variables >= 1024) {
+        fprintf(stderr, "reorder_global_variables(): You have more than 1024 global variables, and we ran out of buffer! Please submit a bug report!\n");
+        return FAILED;
+      }
+      indices[global_variables] = i;
+      global_variables++;
+    }
+  }
+
+  /* 1. collect fully initialized variables */
+  index = 0;
+  for (i = 0; i < g_global_nodes->added_children; i++) {
+    struct tree_node *node = g_global_nodes->children[i];
+    if (node != NULL && node->type == TREE_NODE_TYPE_CREATE_VARIABLE) {
+      if (node->value == 0) {
+        /* not an array */
+        if (node->added_children > 2)
+          nodes[index++] = node;
+      }
+      else {
+        /* an array */
+        int inits = node->added_children - 2;
+        if (inits == node->value)
+          nodes[index++] = node;
+      }
+    }
+  }
+
+  /* 2. collect partially initialized variables */
+  for (i = 0; i < g_global_nodes->added_children; i++) {
+    struct tree_node *node = g_global_nodes->children[i];
+    if (node != NULL && node->type == TREE_NODE_TYPE_CREATE_VARIABLE) {
+      if (node->value > 0) {
+        /* an array */
+        int inits = node->added_children - 2;
+        if (inits < node->value && inits > 0)
+          nodes[index++] = node;
+      }
+    }
+  }
+
+  /* 3. collect uninitialized variables */
+  for (i = 0; i < g_global_nodes->added_children; i++) {
+    struct tree_node *node = g_global_nodes->children[i];
+    if (node != NULL && node->type == TREE_NODE_TYPE_CREATE_VARIABLE) {
+      if (node->value == 0) {
+        /* not an array */
+        if (node->added_children == 2)
+          nodes[index++] = node;
+      }
+      else {
+        /* an array */
+        int inits = node->added_children - 2;
+        if (inits == 0)
+          nodes[index++] = node;
+      }
+    }
+  }
+
+  /* sanity check */
+  if (index != global_variables) {
+    fprintf(stderr, "reorder_global_variables(): We counted %d global variables, but captured %d! These values should match! Please submit a bug report!\n", global_variables, index);
+    return FAILED;
+  }
+
+  /* reorder the global variables */
+  for (i = 0; i < global_variables; i++)
+    g_global_nodes->children[indices[i]] = nodes[i];
   
   return SUCCEEDED;
 }
