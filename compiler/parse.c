@@ -96,7 +96,7 @@ void skip_whitespace(void) {
 
 int is_char_a_symbol(char c) {
 
-  if (c == '=' || c == '>' || c == '<' || c == '!' || c == '+' || c == '-' || c == '*' || c == '%' || c == '/' || c == '(' || c == ')' || c == '&' || c == '|' || c == ';' || c == ':' || c == '~' || c == '#' || c == '^' || c == '{' || c == '}' || c == '[' || c == ']' || c == ',')
+  if (c == '=' || c == '>' || c == '<' || c == '!' || c == '+' || c == '-' || c == '*' || c == '%' || c == '/' || c == '(' || c == ')' || c == '&' || c == '|' || c == ';' || c == ':' || c == '~' || c == '^' || c == '{' || c == '}' || c == '[' || c == ']' || c == ',')
     return YES;
   else
     return NO;
@@ -194,8 +194,10 @@ int get_next_token(void) {
   }
 
   /* a string? */
-  if (is_char_a_letter(c) == YES) {
-    for (g_ss = 0; is_char_a_letter(g_buffer[g_source_pointer]) == YES || is_char_a_number(g_buffer[g_source_pointer]) == YES; g_source_pointer++, g_ss++)
+  if (is_char_a_letter(c) == YES || c == '#') {
+    g_tmp[0] = c;
+    g_source_pointer++;
+    for (g_ss = 1; is_char_a_letter(g_buffer[g_source_pointer]) == YES || is_char_a_number(g_buffer[g_source_pointer]) == YES; g_source_pointer++, g_ss++)
       g_tmp[g_ss] = g_buffer[g_source_pointer];
     g_tmp[g_ss] = 0;
 

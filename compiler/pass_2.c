@@ -391,8 +391,17 @@ int pass_2(void) {
     if (_pass_2_z80_init() == FAILED)
       return FAILED;
   }
-  
+
+  /* start from the very first token */
   g_token_current = g_token_first;
+  g_token_previous = NULL;
+  g_current_filename_id = g_token_current->file_id;
+  g_current_line_number = g_token_current->line_number;
+
+#if defined(DEBUG_PASS_2)
+  _print_token(g_token_current);
+#endif
+
   while (g_token_current != NULL) {
     if (g_token_current->id == TOKEN_ID_VARIABLE_TYPE) {
       if (create_variable_or_function() == FAILED)
@@ -455,7 +464,7 @@ int pass_2(void) {
 }
 
 
-static void _next_token() {
+static void _next_token(void) {
 
   g_token_previous = g_token_current;
   g_token_current = g_token_current->next;
@@ -1120,7 +1129,7 @@ int create_statement(void) {
   else if (g_token_current->id == TOKEN_ID_VALUE_STRING) {
     /* assignment, a function call, increment or decrement */
     char name[MAX_NAME_LENGTH + 1];
-
+    
     strncpy(name, g_token_current->label, MAX_NAME_LENGTH);
 
     /* next token */
@@ -1129,6 +1138,7 @@ int create_statement(void) {
     if (strcmp(name, "goto") == 0) {
       /* goto */
       if (g_token_current->id != TOKEN_ID_VALUE_STRING) {
+        g_current_line_number = g_token_previous->line_number;
         print_error("\"goto\" needs a label to go to.\n", ERROR_ERR);
         return FAILED;
       }
@@ -1148,6 +1158,7 @@ int create_statement(void) {
       tree_node_add_child(_get_current_open_block(), node);
 
       if (!(g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == ';'))  {
+        g_current_line_number = g_token_previous->line_number;
         snprintf(g_error_message, sizeof(g_error_message), "Expected ';', but got %s.\n", _get_token_simple(g_token_current));
         print_error(g_error_message, ERROR_ERR);
         return FAILED;
@@ -1165,6 +1176,7 @@ int create_statement(void) {
                                                    g_token_current->value != ':' &&
                                                    g_token_current->value != SYMBOL_INCREMENT &&
                                                    g_token_current->value != SYMBOL_DECREMENT)) {
+      g_current_line_number = g_token_previous->line_number;
       snprintf(g_error_message, sizeof(g_error_message), "\"%s\" must be followed by '=' / '[' / '(' / '++' / '--'.\n", name);
       print_error(g_error_message, ERROR_ERR);
       return FAILED;

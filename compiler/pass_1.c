@@ -102,6 +102,14 @@ int add_token(int id, int value, double value_double, char *label) {
     t->line_number = g_active_file_info_last->line_current;
   }
   else {
+    if (id != TOKEN_ID_NO_OP) {
+      if (label == NULL)
+        snprintf(g_error_message, sizeof(g_error_message), "We are adding a token ID %d to the system, but there is no open file! Please submit a bug report!\n", id);
+      else
+        snprintf(g_error_message, sizeof(g_error_message), "We are adding token \"%s\" to the system, but there is no open file! Please submit a bug report!\n", label);
+      print_error(g_error_message, ERROR_WRN);
+    }
+    
     t->file_id = -1;
     t->line_number = -1;
   }
@@ -241,9 +249,25 @@ int evaluate_token(int type) {
     /* default */
     if (strcaselesscmp(g_tmp, "default") == 0)
       return add_token(TOKEN_ID_DEFAULT, 0, 0.0, NULL);
-    
-    /* .DEFINE/.DEF/.EQU */
-    if (strcaselesscmp(g_tmp, ".DEFINE") == 0 || strcaselesscmp(g_tmp, ".DEF") == 0 || strcaselesscmp(g_tmp, ".EQU") == 0)
+
+    /* #include */
+    if (strcaselesscmp(g_tmp, "#include") == 0) {
+      int include_size;
+      
+      q = get_next_token();
+      if (q != GET_NEXT_TOKEN_STRING) {
+        print_error("#include needs a file name.\n", ERROR_DIR);
+        return FAILED;
+      }
+
+      if (include_file(g_tmp, &include_size, NULL) == FAILED)
+        return FAILED;
+
+      return SUCCEEDED;
+    }
+          
+    /* .DEFINE */
+    if (strcaselesscmp(g_tmp, ".DEFINE") == 0)
       return add_token(TOKEN_ID_DEFINE, 0, 0.0, g_tmp);
       
     /* .CHANGEFILE (INTERNAL) */
