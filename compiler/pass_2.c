@@ -994,6 +994,7 @@ int create_statement(void) {
       }
     
       if (g_token_current->id != TOKEN_ID_VALUE_STRING) {
+        g_current_line_number = g_token_previous->line_number;
         snprintf(g_error_message, sizeof(g_error_message), "\"%s\" must be followed by a variable name.\n", g_variable_types[variable_type]);
         print_error(g_error_message, ERROR_ERR);
         return FAILED;
@@ -1008,6 +1009,7 @@ int create_statement(void) {
                                                      g_token_current->value != '[' &&
                                                      g_token_current->value != ',' &&
                                                      g_token_current->value != ';')) {
+        g_current_line_number = g_token_previous->line_number;
         snprintf(g_error_message, sizeof(g_error_message), "\"%s\" must be followed by a ';', ',', '[' or '='.\n", name);
         print_error(g_error_message, ERROR_ERR);
         return FAILED;
@@ -2260,6 +2262,7 @@ int create_variable_or_function(void) {
     }
 
     if (g_token_current->id != TOKEN_ID_VALUE_STRING) {
+      g_current_line_number = g_token_previous->line_number;
       snprintf(g_error_message, sizeof(g_error_message), "\"%s\" must be followed by a variable or function name.\n", g_variable_types[variable_type]);
       print_error(g_error_message, ERROR_ERR);
       return FAILED;
@@ -2275,6 +2278,7 @@ int create_variable_or_function(void) {
                                                    g_token_current->value != ',' &&
                                                    g_token_current->value != '[' &&
                                                    g_token_current->value != '(')) {
+      g_current_line_number = g_token_previous->line_number;
       snprintf(g_error_message, sizeof(g_error_message), "\"%s\" must be followed by a ';', ',', '=', '[' or '('.\n", name);
       print_error(g_error_message, ERROR_ERR);
       return FAILED;
@@ -2539,6 +2543,7 @@ int create_definition() {
   _next_token();
   
   if (g_token_current->id != TOKEN_ID_VALUE_STRING) {
+    g_current_line_number = g_token_previous->line_number;
     snprintf(g_error_message, sizeof(g_error_message), "\"%s\" must be followed by a definition name.\n", name);
     print_error(g_error_message, ERROR_ERR);
     return FAILED;
