@@ -18,6 +18,11 @@
 #include "symbol_table.h"
 
 
+/* define this for DEBUG */
+/*
+#define DEBUG_PASS_2 1
+*/
+
 extern int g_input_float_mode, g_parsed_int;
 extern int g_verbose_mode, g_latest_stack, g_backend;
 extern char g_mem_insert_action[MAX_NAME_LENGTH*3 + 1024], g_tmp[4096];
@@ -101,7 +106,8 @@ char *_get_token_simple(struct token *t) {
 }
 
 
-/*
+#if defined(DEBUG_PASS_2)
+
 static void _print_token(struct token *t) {
 
   if (t->id == TOKEN_ID_VARIABLE_TYPE)
@@ -142,14 +148,20 @@ static void _print_token(struct token *t) {
     fprintf(stderr, "TOKEN: CASE         : case\n");
   else if (t->id == TOKEN_ID_DEFAULT)
     fprintf(stderr, "TOKEN: DEFAULT      : default\n");
-#if defined(ABCXYZ)
+  /*
   else if (t->id == TOKEN_ID_CHANGE_FILE)
     fprintf(stderr, "TOKEN: CHANGE FILE  : %s\n", get_file_name(t->value));
   else if (t->id == TOKEN_ID_LINE_NUMBER)
     fprintf(stderr, "TOKEN: LINE NUMBER  : %d\n", t->value);
-#endif
+  */
+
+  /*
+  if (t->id != TOKEN_ID_NO_OP)
+    fprintf(stderr, "   %s:%d\n", get_file_name(t->file_id), t->line_number);
+  */
 }
-*/
+
+#endif
 
 
 static int _print_loose_token_error(struct token *t) {
@@ -450,9 +462,9 @@ static void _next_token() {
   g_current_filename_id = g_token_current->file_id;
   g_current_line_number = g_token_current->line_number;
 
-  /*
+#if defined(DEBUG_PASS_2)
   _print_token(g_token_current);
-  */
+#endif
 }
 
 
@@ -1167,15 +1179,6 @@ int create_statement(void) {
       /* increment / decrement */
       struct symbol_table_item *item;
 
-      if (!(g_token_current->id == TOKEN_ID_SYMBOL && (g_token_current->value == ';' || g_token_current->value == ')')))  {
-        snprintf(g_error_message, sizeof(g_error_message), "Expected ')' / ';', but got %s.\n", _get_token_simple(g_token_current));
-        print_error(g_error_message, ERROR_ERR);
-        return FAILED;
-      }
-
-      /* next token */
-      _next_token();
-
       node = allocate_tree_node_value_string(name);
       if (node == NULL)
         return FAILED;
@@ -1192,6 +1195,15 @@ int create_statement(void) {
       item = symbol_table_find_symbol(name);
       if (item != NULL)
         node->definition = item->node;
+
+      if (!(g_token_current->id == TOKEN_ID_SYMBOL && (g_token_current->value == ';' || g_token_current->value == ')')))  {
+        snprintf(g_error_message, sizeof(g_error_message), "Expected ')' / ';', but got %s.\n", _get_token_simple(g_token_current));
+        print_error(g_error_message, ERROR_ERR);
+        return FAILED;
+      }
+
+      /* next token */
+      _next_token();
       
       return SUCCEEDED;
     }
