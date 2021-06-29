@@ -383,7 +383,7 @@ static int _generate_il_create_variable(struct tree_node *node) {
 static int _generate_il_create_assignment(struct tree_node *node) {
 
   struct tac *t;
-  int r1;
+  int r1, is_array_assignment = NO;
 
   /* update file id and line number for all TACs and error messages */
   g_current_filename_id = node->file_id;
@@ -397,6 +397,8 @@ static int _generate_il_create_assignment(struct tree_node *node) {
   if (node->added_children == 3) {
     int r2 = g_temp_r, type;
 
+    is_array_assignment = YES;
+    
     if (_generate_il_create_expression(node->children[2]) == FAILED)
       return FAILED;
 
@@ -445,6 +447,15 @@ static int _generate_il_create_assignment(struct tree_node *node) {
   if (tac_try_find_definition(t, node->children[0]->label, node, TAC_USE_RESULT) == FAILED)
     return FAILED;
 
+  if ((is_array_assignment == NO && node->children[0]->definition->children[0]->value_double == 0 && (node->children[0]->definition->flags & TREE_NODE_FLAG_CONST_1) == TREE_NODE_FLAG_CONST_1) ||
+      (is_array_assignment == NO && node->children[0]->definition->children[0]->value_double > 0 && (node->children[0]->definition->flags & TREE_NODE_FLAG_CONST_2) == TREE_NODE_FLAG_CONST_2) ||
+      (is_array_assignment == YES && (node->children[0]->definition->flags & TREE_NODE_FLAG_CONST_1) == TREE_NODE_FLAG_CONST_1)) {    
+    snprintf(g_error_message, sizeof(g_error_message), "_generate_il_create_assignment(): Variable \"%s\" was declared \"const\". Cannot modify.\n", node->children[0]->label);
+    print_error(g_error_message, ERROR_ERR);
+
+    return FAILED;
+  }
+  
   return SUCCEEDED;
 }
 
@@ -725,7 +736,8 @@ static int _generate_il_create_switch(struct tree_node *node) {
       j++;
 
       /* block */
-      _generate_il_create_block(node->children[i+1]);
+      if (_generate_il_create_block(node->children[i+1]) == FAILED)
+        return FAILED;
     }
     else {
       /* default */
@@ -734,7 +746,8 @@ static int _generate_il_create_switch(struct tree_node *node) {
       add_tac_label(generate_temp_label(labels[j]));
 
       /* block */
-      _generate_il_create_block(node->children[i]);
+      if (_generate_il_create_block(node->children[i]) == FAILED)
+        return FAILED;
     }
   }
   
@@ -770,7 +783,8 @@ static int _generate_il_create_if(struct tree_node *node) {
         return FAILED;
 
       /* main block */
-      _generate_il_create_block(node->children[i+1]);
+      if (_generate_il_create_block(node->children[i+1]) == FAILED)
+        return FAILED;
 
       /* jump to exit */
       add_tac_jump(generate_temp_label(label_exit));
@@ -782,7 +796,8 @@ static int _generate_il_create_if(struct tree_node *node) {
       /* else */
       
       /* main block */
-      _generate_il_create_block(node->children[i]);
+      if (_generate_il_create_block(node->children[i]) == FAILED)
+        return FAILED;
     }
   }
 
@@ -814,7 +829,8 @@ static int _generate_il_create_while(struct tree_node *node) {
   _enter_breakable(label_exit, label_condition);
   
   /* main block */
-  _generate_il_create_block(node->children[1]);
+  if (_generate_il_create_block(node->children[1]) == FAILED)
+    return FAILED;
 
   _exit_breakable();
   
@@ -841,7 +857,8 @@ static int _generate_il_create_for(struct tree_node *node) {
   label_exit = ++g_temp_label_id;
   
   /* initialization of for() */
-  _generate_il_create_block(node->children[0]);
+  if (_generate_il_create_block(node->children[0]) == FAILED)
+    return FAILED;
 
   /* label of condition */
   add_tac_label(generate_temp_label(label_condition));
@@ -853,13 +870,15 @@ static int _generate_il_create_for(struct tree_node *node) {
   _enter_breakable(label_exit, label_increments);
   
   /* main block */
-  _generate_il_create_block(node->children[3]);
+  if (_generate_il_create_block(node->children[3]) == FAILED)
+    return FAILED;
 
   _exit_breakable();
   
   /* increments of for() */
   add_tac_label(generate_temp_label(label_increments));
-  _generate_il_create_block(node->children[2]);
+  if (_generate_il_create_block(node->children[2]) == FAILED)
+    return FAILED;
   
   /* jump back to condition */
   add_tac_jump(generate_temp_label(label_condition));
@@ -897,6 +916,14 @@ static int _generate_il_create_increment_decrement(struct tree_node *node) {
   tac_try_find_definition(t, node->label, NULL, TAC_USE_ARG1);
   tac_try_find_definition(t, node->label, NULL, TAC_USE_RESULT);
 
+  if ((node->definition->children[0]->value_double == 0 && (node->definition->flags & TREE_NODE_FLAG_CONST_1) == TREE_NODE_FLAG_CONST_1) ||
+      (node->definition->children[0]->value_double > 0 && (node->definition->flags & TREE_NODE_FLAG_CONST_2) == TREE_NODE_FLAG_CONST_2)) {
+    snprintf(g_error_message, sizeof(g_error_message), "_generate_il_create_increment_decrement(): Variable \"%s\" was declared \"const\". Cannot modify.\n", node->label);
+    print_error(g_error_message, ERROR_ERR);
+
+    return FAILED;
+  }
+  
   /* set promotions */
   type = tree_node_get_max_var_type(t->result_node->children[0]);
   tac_promote_argument(t, type, TAC_USE_ARG1);
@@ -914,7 +941,7 @@ static int _generate_il_create_break(struct tree_node *node) {
   g_current_line_number = node->line_number;
 
   if (g_breakable_stack_items_level < 0) {
-    snprintf(g_error_message, sizeof(g_error_message), "_generate_il_create_break(): break does nothing here, nothing to break from.\n");
+    snprintf(g_error_message, sizeof(g_error_message), "_generate_il_create_break(): \"break\" does nothing here, nothing to break from.\n");
     print_error(g_error_message, ERROR_ERR);
 
     return FAILED;

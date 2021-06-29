@@ -2143,7 +2143,8 @@ int reorder_global_variables(void) {
   
   /* we want to reorder global variables so that first come variables that are fully initialized, then come
      those that are partially initialized, and last come uninitialized variables. this ordering will make
-     the global variable initializer generator to produce less code */
+     the global variable initializer generator to produce less code. const variables are also put last
+     as they are not copied to RAM. */
 
   for (i = 0; i < g_global_nodes->added_children; i++) {
     struct tree_node *node = g_global_nodes->children[i];
@@ -2157,11 +2158,11 @@ int reorder_global_variables(void) {
     }
   }
 
-  /* 1. collect fully initialized variables */
+  /* 1. collect fully initialized non-const variables */
   index = 0;
   for (i = 0; i < g_global_nodes->added_children; i++) {
     struct tree_node *node = g_global_nodes->children[i];
-    if (node != NULL && node->type == TREE_NODE_TYPE_CREATE_VARIABLE) {
+    if (node != NULL && node->type == TREE_NODE_TYPE_CREATE_VARIABLE && (node->flags & TREE_NODE_FLAG_CONST_1) == 0) {
       if (node->value == 0) {
         /* not an array */
         if (node->added_children > 2)
@@ -2176,10 +2177,10 @@ int reorder_global_variables(void) {
     }
   }
 
-  /* 2. collect partially initialized variables */
+  /* 2. collect partially initialized non-const variables */
   for (i = 0; i < g_global_nodes->added_children; i++) {
     struct tree_node *node = g_global_nodes->children[i];
-    if (node != NULL && node->type == TREE_NODE_TYPE_CREATE_VARIABLE) {
+    if (node != NULL && node->type == TREE_NODE_TYPE_CREATE_VARIABLE && (node->flags & TREE_NODE_FLAG_CONST_1) == 0) {
       if (node->value > 0) {
         /* an array */
         int inits = node->added_children - 2;
@@ -2189,19 +2190,19 @@ int reorder_global_variables(void) {
     }
   }
 
-  /* 3. collect uninitialized variables */
+  /* 3. collect uninitialized and const variables */
   for (i = 0; i < g_global_nodes->added_children; i++) {
     struct tree_node *node = g_global_nodes->children[i];
     if (node != NULL && node->type == TREE_NODE_TYPE_CREATE_VARIABLE) {
       if (node->value == 0) {
         /* not an array */
-        if (node->added_children == 2)
+        if (node->added_children == 2 || (node->flags & TREE_NODE_FLAG_CONST_1) == TREE_NODE_FLAG_CONST_1)
           nodes[index++] = node;
       }
       else {
         /* an array */
         int inits = node->added_children - 2;
-        if (inits == 0)
+        if (inits == 0 || (node->flags & TREE_NODE_FLAG_CONST_1) == TREE_NODE_FLAG_CONST_1)
           nodes[index++] = node;
       }
     }

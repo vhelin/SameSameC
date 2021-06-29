@@ -283,6 +283,7 @@ struct token {
 #define VARIABLE_TYPE_INT16  3
 #define VARIABLE_TYPE_UINT8  4
 #define VARIABLE_TYPE_UINT16 5
+#define VARIABLE_TYPE_CONST  6
 
 struct local_variable {
   struct tree_node *node;
@@ -317,7 +318,11 @@ struct tree_node {
   int children_max;
   struct tree_node **children;
   struct local_variables *local_variables;
+  char flags;
 };
+
+#define TREE_NODE_FLAG_CONST_1 (1 << 0)
+#define TREE_NODE_FLAG_CONST_2 (1 << 1)
 
 #define TREE_NODE_TYPE_CREATE_VARIABLE      0
 #define TREE_NODE_TYPE_ASSIGNMENT           1

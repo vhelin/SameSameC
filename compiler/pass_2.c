@@ -33,7 +33,7 @@ extern struct stack *g_stacks_first, *g_stacks_tmp, *g_stacks_last, *g_stacks_he
 extern struct token *g_token_first, *g_token_last;
 
 int g_current_filename_id = -1, g_current_line_number = -1;
-char *g_variable_types[6] = { "none", "void", "int8", "int16", "uint8", "uint16" };
+char *g_variable_types[7] = { "none", "void", "int8", "int16", "uint8", "uint16", "const" };
 char *g_two_char_symbols[10] = { "||", "&&", "<=", ">=", "==", "!=", "<<", ">>", "++", "--" };
 
 static struct tree_node *g_open_function_definition = NULL;
@@ -975,7 +975,7 @@ int create_statement(void) {
   
   if (g_token_current->id == TOKEN_ID_VARIABLE_TYPE) {
     /* variable creation */
-    int variable_type, pointer_depth;
+    int variable_type, pointer_depth, is_const_1 = NO;
     char name[MAX_NAME_LENGTH + 1];
 
     variable_type = g_token_current->value;
@@ -983,7 +983,31 @@ int create_statement(void) {
     /* next token */
     _next_token();
 
+    if (variable_type == VARIABLE_TYPE_CONST) {
+      is_const_1 = YES;
+
+      /* get the real variable type */
+      if (g_token_current->id != TOKEN_ID_VARIABLE_TYPE) {
+        g_current_line_number = g_token_previous->line_number;
+        print_error("\"const\" must be followed by a variable type.\n", ERROR_ERR);
+        return FAILED;
+      }
+
+      variable_type = g_token_current->value;
+
+      if (variable_type == VARIABLE_TYPE_CONST) {
+        g_current_line_number = g_token_previous->line_number;
+        print_error("\"const const\" doesn't make any sense.\n", ERROR_ERR);
+        return FAILED;
+      }
+
+      /* next token */
+      _next_token();
+    }
+    
     while (1) {
+      int is_const_2 = NO;
+      
       pointer_depth = 0;
     
       while (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == '*') {
@@ -993,6 +1017,13 @@ int create_statement(void) {
         _next_token();
       }
     
+      if (pointer_depth > 0 && g_token_current->id == TOKEN_ID_VARIABLE_TYPE && g_token_current->value == VARIABLE_TYPE_CONST) {
+        is_const_2 = YES;
+
+        /* next token */
+        _next_token();
+      }
+
       if (g_token_current->id != TOKEN_ID_VALUE_STRING) {
         g_current_line_number = g_token_previous->line_number;
         snprintf(g_error_message, sizeof(g_error_message), "\"%s\" must be followed by a variable name.\n", g_variable_types[variable_type]);
@@ -1052,6 +1083,12 @@ int create_statement(void) {
 
         tree_node_add_child(_get_current_open_block(), node);
 
+        /* store const flags */
+        if (is_const_1 == YES)
+          node->flags |= TREE_NODE_FLAG_CONST_1;
+        if (is_const_2 == YES)
+          node->flags |= TREE_NODE_FLAG_CONST_2;
+
         if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == ',') {
           /* next token */
           _next_token();
@@ -1074,8 +1111,6 @@ int create_statement(void) {
 
         return SUCCEEDED;
       }
-      else {
-      }
 
       node = allocate_tree_node_with_children(TREE_NODE_TYPE_CREATE_VARIABLE, 3);
       if (node == NULL)
@@ -1090,6 +1125,12 @@ int create_statement(void) {
 
       /* store the pointer depth (0 - not a pointer, 1+ - is a pointer) */
       node->children[0]->value_double = pointer_depth;
+
+      /* store const flags */
+      if (is_const_1 == YES)
+        node->flags |= TREE_NODE_FLAG_CONST_1;
+      if (is_const_2 == YES)
+        node->flags |= TREE_NODE_FLAG_CONST_2;
 
       if (node->children[0] == NULL || node->children[1] == NULL || (symbol == '=' && node->children[2] == NULL)) {
         print_error("_create_statement(): Out of memory error.\n", ERROR_ERR);
@@ -2237,7 +2278,7 @@ struct tree_node *create_array(double pointer_depth, int variable_type, char *na
 
 int create_variable_or_function(void) {
 
-  int variable_type, pointer_depth;
+  int variable_type, pointer_depth, is_const_1 = NO;
   char name[MAX_NAME_LENGTH + 1];
   struct tree_node *node = NULL;
 
@@ -2246,7 +2287,31 @@ int create_variable_or_function(void) {
   /* next token */
   _next_token();
 
+  if (variable_type == VARIABLE_TYPE_CONST) {
+    is_const_1 = YES;
+
+    /* get the real variable type */
+    if (g_token_current->id != TOKEN_ID_VARIABLE_TYPE) {
+      g_current_line_number = g_token_previous->line_number;
+      print_error("\"const\" must be followed by a variable type.\n", ERROR_ERR);
+      return FAILED;
+    }
+
+    variable_type = g_token_current->value;
+
+    if (variable_type == VARIABLE_TYPE_CONST) {
+      g_current_line_number = g_token_previous->line_number;
+      print_error("\"const const\" doesn't make any sense.\n", ERROR_ERR);
+      return FAILED;
+    }
+    
+    /* next token */
+    _next_token();
+  }
+  
   while (1) {
+    int is_const_2 = NO;
+    
     if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == ',') {
       /* next token */
       _next_token();
@@ -2261,6 +2326,13 @@ int create_variable_or_function(void) {
       _next_token();
     }
 
+    if (pointer_depth > 0 && g_token_current->id == TOKEN_ID_VARIABLE_TYPE && g_token_current->value == VARIABLE_TYPE_CONST) {
+      is_const_2 = YES;
+
+      /* next token */
+      _next_token();
+    }
+    
     if (g_token_current->id != TOKEN_ID_VALUE_STRING) {
       g_current_line_number = g_token_previous->line_number;
       snprintf(g_error_message, sizeof(g_error_message), "\"%s\" must be followed by a variable or function name.\n", g_variable_types[variable_type]);
@@ -2328,6 +2400,12 @@ int create_variable_or_function(void) {
         if (tree_node_add_child(g_global_nodes, node) == FAILED)
           return FAILED;
 
+        /* store const flags */
+        if (is_const_1 == YES)
+          node->flags |= TREE_NODE_FLAG_CONST_1;
+        if (is_const_2 == YES)
+          node->flags |= TREE_NODE_FLAG_CONST_2;
+
         if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == ';') {
           /* next token */
           _next_token();
@@ -2357,6 +2435,12 @@ int create_variable_or_function(void) {
       /* store the pointer depth (0 - not a pointer, 1+ - is a pointer) */
       node->children[0]->value_double = pointer_depth;
 
+      /* store const flags */
+      if (is_const_1 == YES)
+        node->flags |= TREE_NODE_FLAG_CONST_1;
+      if (is_const_2 == YES)
+        node->flags |= TREE_NODE_FLAG_CONST_2;
+      
       /* add to global lists */
       if (symbol_table_add_symbol(node, node->children[1]->label, g_block_level) == FAILED) {
         free_tree_node(node);
@@ -2597,7 +2681,7 @@ static void _check_ast_check_definition(struct tree_node *node) {
     int args_caller, args_callee;
     
     if (node->definition->type != TREE_NODE_TYPE_FUNCTION_DEFINITION && node->definition->type != TREE_NODE_TYPE_FUNCTION_PROTOTYPE) {
-      snprintf(g_error_message, sizeof(g_error_message), "%s is not a function!\n", node->children[0]->label);
+      snprintf(g_error_message, sizeof(g_error_message), "\"%s\" is not a function!\n", node->children[0]->label);
       print_error(g_error_message, ERROR_ERR);
       g_check_ast_failed = YES;
       return;
@@ -2607,7 +2691,7 @@ static void _check_ast_check_definition(struct tree_node *node) {
     args_callee = (node->definition->added_children - 2) / 2;
 
     if (args_caller != args_callee) {
-      snprintf(g_error_message, sizeof(g_error_message), "Calling %s with %d arguments, but it takes %d!\n", node->children[0]->label, args_caller, args_callee);
+      snprintf(g_error_message, sizeof(g_error_message), "Calling \"%s\" with %d arguments, but it takes %d!\n", node->children[0]->label, args_caller, args_callee);
       print_error(g_error_message, ERROR_ERR);
       g_check_ast_failed = YES;
       return;
@@ -2633,7 +2717,7 @@ static void _check_ast_check_definition(struct tree_node *node) {
     }
     
     if (is_ok == NO) {
-      snprintf(g_error_message, sizeof(g_error_message), "%s is not a pointer / an array!\n", node->label);
+      snprintf(g_error_message, sizeof(g_error_message), "\"%s\" is not a pointer / an array!\n", node->label);
       print_error(g_error_message, ERROR_ERR);
       g_check_ast_failed = YES;
       return;
@@ -2656,7 +2740,7 @@ static void _check_ast_check_definition(struct tree_node *node) {
     }
     
     if (is_ok == NO) {
-      snprintf(g_error_message, sizeof(g_error_message), "%s cannot be incremented / decremented!\n", node->label);
+      snprintf(g_error_message, sizeof(g_error_message), "\"%s\" cannot be incremented / decremented!\n", node->label);
       print_error(g_error_message, ERROR_ERR);
       g_check_ast_failed = YES;
       return;
@@ -2786,7 +2870,7 @@ static void _check_ast_assignment(struct tree_node *node) {
     }
 
     if (is_ok == NO) {
-      snprintf(g_error_message, sizeof(g_error_message), "This assignment to %s doesn't work!\n", node->children[0]->label);
+      snprintf(g_error_message, sizeof(g_error_message), "This assignment to \"%s\" doesn't work!\n", node->children[0]->label);
       print_error(g_error_message, ERROR_ERR);
       g_check_ast_failed = YES;
       return;
@@ -2810,7 +2894,7 @@ static void _check_ast_assignment(struct tree_node *node) {
     }
 
     if (is_ok == NO) {
-      snprintf(g_error_message, sizeof(g_error_message), "%s is not a pointer / an array!\n", node->children[0]->label);
+      snprintf(g_error_message, sizeof(g_error_message), "\"%s\" is not a pointer / an array!\n", node->children[0]->label);
       print_error(g_error_message, ERROR_ERR);
       g_check_ast_failed = YES;
       return;

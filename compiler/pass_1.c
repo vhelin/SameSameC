@@ -210,6 +210,10 @@ int evaluate_token(int type) {
     if (strcaselesscmp(g_tmp, "void") == 0)
       return add_token(TOKEN_ID_VARIABLE_TYPE, VARIABLE_TYPE_VOID, 0.0, NULL);
 
+    /* const */
+    if (strcaselesscmp(g_tmp, "const") == 0)
+      return add_token(TOKEN_ID_VARIABLE_TYPE, VARIABLE_TYPE_CONST, 0.0, NULL);
+
     /* return */
     if (strcaselesscmp(g_tmp, "return") == 0)
       return add_token(TOKEN_ID_RETURN, 0, 0.0, NULL);

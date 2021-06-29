@@ -4235,7 +4235,7 @@ int generate_global_variables_z80(char *file_name, FILE *file_out) {
   
   for (i = 0; i < g_global_nodes->added_children; i++) {
     struct tree_node *node = g_global_nodes->children[i];
-    if (node != NULL && node->type == TREE_NODE_TYPE_CREATE_VARIABLE) {
+    if (node != NULL && node->type == TREE_NODE_TYPE_CREATE_VARIABLE && (node->flags & TREE_NODE_FLAG_CONST_1) == 0) {
       length = strlen(node->children[1]->label);
       if (length > max_length)
         max_length = length;
@@ -4252,7 +4252,7 @@ int generate_global_variables_z80(char *file_name, FILE *file_out) {
 
   for (i = 0; i < g_global_nodes->added_children; i++) {
     struct tree_node *node = g_global_nodes->children[i];
-    if (node != NULL && node->type == TREE_NODE_TYPE_CREATE_VARIABLE) {
+    if (node != NULL && node->type == TREE_NODE_TYPE_CREATE_VARIABLE && (node->flags & TREE_NODE_FLAG_CONST_1) == 0) {
       length = strlen(node->children[1]->label);
 
       fprintf(file_out, "    %s", node->children[1]->label);
@@ -4313,7 +4313,10 @@ int generate_global_variables_z80(char *file_name, FILE *file_out) {
     if (node != NULL && node->type == TREE_NODE_TYPE_CREATE_VARIABLE) {
       length = strlen(node->children[1]->label);
 
-      snprintf(label_tmp, sizeof(label_tmp), "global_variable_rom_%s", node->children[1]->label);
+      if ((node->flags & TREE_NODE_FLAG_CONST_1) == 0)
+        snprintf(label_tmp, sizeof(label_tmp), "global_variable_rom_%s", node->children[1]->label);
+      else
+        snprintf(label_tmp, sizeof(label_tmp), "%s", node->children[1]->label);
       _add_label(label_tmp, file_out, NO);
 
       elements = node->added_children - 2;
@@ -4349,11 +4352,11 @@ int generate_global_variables_z80(char *file_name, FILE *file_out) {
   snprintf(label_tmp, sizeof(label_tmp), "global_variables_%s_init", file_name);
   _add_label(label_tmp, file_out, NO);  
 
-  /* 1. copy the data of all fully initialized global variables in one call */
+  /* 1. copy the data of all fully initialized non-const global variables in one call */
   total_bytes = 0;
   for (i = 0; i < g_global_nodes->added_children; i++) {
     struct tree_node *node = g_global_nodes->children[i];
-    if (node != NULL && node->type == TREE_NODE_TYPE_CREATE_VARIABLE) {
+    if (node != NULL && node->type == TREE_NODE_TYPE_CREATE_VARIABLE && (node->flags & TREE_NODE_FLAG_CONST_1) == 0) {
       if (node_1st == NULL)
         node_1st = node;
       
@@ -4382,10 +4385,10 @@ int generate_global_variables_z80(char *file_name, FILE *file_out) {
     _call_to("_copy_bytes", file_out);
   }
 
-  /* 2. copy the data of all partially initialized global variables in multiple calls */
+  /* 2. copy the data of all partially initialized non_const global variables in multiple calls */
   for (; i < g_global_nodes->added_children; i++) {
     struct tree_node *node = g_global_nodes->children[i];
-    if (node != NULL && node->type == TREE_NODE_TYPE_CREATE_VARIABLE) {
+    if (node != NULL && node->type == TREE_NODE_TYPE_CREATE_VARIABLE && (node->flags & TREE_NODE_FLAG_CONST_1) == 0) {
       if (node_1st == NULL)
         node_1st = node;
       

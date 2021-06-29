@@ -634,12 +634,12 @@ int il_stack_calculate(struct stack_item *si, int q, int rresult) {
 }
 
 
-static void _increment_decrement(char *label, int increment) {
+static int _increment_decrement(char *label, int increment) {
 
   struct tac *t = add_tac();
 
   if (t == NULL)
-    return;
+    return FAILED;
 
   if (increment == YES)
     t->op = TAC_OP_ADD;
@@ -654,10 +654,20 @@ static void _increment_decrement(char *label, int increment) {
   tac_try_find_definition(t, label, NULL, TAC_USE_ARG1);
   tac_try_find_definition(t, label, NULL, TAC_USE_RESULT);
 
+  if ((t->arg1_node->children[0]->value_double == 0 && (t->arg1_node->flags & TREE_NODE_FLAG_CONST_1) == TREE_NODE_FLAG_CONST_1) ||
+      (t->arg1_node->children[0]->value_double > 0 && (t->arg1_node->flags & TREE_NODE_FLAG_CONST_2) == TREE_NODE_FLAG_CONST_2)) {
+    snprintf(g_error_message, sizeof(g_error_message), "_increment_decrement(): Variable \"%s\" was declared \"const\". Cannot modify.\n", label);
+    print_error(g_error_message, ERROR_ERR);
+
+    return FAILED;
+  }
+
   /* promote to the maximum of this expression */
   t->result_var_type_promoted = t->result_node->children[0]->value;
   t->arg1_var_type_promoted = t->result_node->children[0]->value;
   t->arg2_var_type_promoted = t->result_node->children[0]->value;
+
+  return SUCCEEDED;
 }
 
 
@@ -907,7 +917,8 @@ int il_compute_stack(struct stack *sta, int count, int rresult) {
         break;
       case SI_OP_PRE_INC:
         /* increment */
-        _increment_decrement(si[t-1]->string, YES);
+        if (_increment_decrement(si[t-1]->string, YES) == FAILED)
+          return FAILED;
 
         /* have the result in the latest register */
         ta = add_tac();
@@ -931,7 +942,8 @@ int il_compute_stack(struct stack *sta, int count, int rresult) {
         break;
       case SI_OP_PRE_DEC:
         /* decrement */
-        _increment_decrement(si[t-1]->string, NO);
+        if (_increment_decrement(si[t-1]->string, NO) == FAILED)
+          return FAILED;
 
         /* have the result in the latest register */
         ta = add_tac();
@@ -974,7 +986,8 @@ int il_compute_stack(struct stack *sta, int count, int rresult) {
           return FAILED;
         
         /* increment */
-        _increment_decrement(si[t-1]->string, YES);
+        if (_increment_decrement(si[t-1]->string, YES) == FAILED)
+          return FAILED;
 
         /* have the result in the latest register */
         ta = add_tac();
@@ -1013,7 +1026,8 @@ int il_compute_stack(struct stack *sta, int count, int rresult) {
           return FAILED;
         
         /* decrement */
-        _increment_decrement(si[t-1]->string, NO);
+        if (_increment_decrement(si[t-1]->string, NO) == FAILED)
+          return FAILED;
 
         /* have the result in the latest register */
         ta = add_tac();
