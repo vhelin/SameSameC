@@ -610,3 +610,33 @@ int tac_promote_argument(struct tac *t, int type, int tac_use) {
 
   return SUCCEEDED;
 }
+
+
+void tac_swap_args(struct tac *t) {
+
+  unsigned char type, var_type, var_type_promoted;
+  struct tree_node *node;
+  double d;
+  char *s;
+
+  type = t->arg1_type;
+  d = t->arg1_d;
+  s = t->arg1_s;
+  var_type = t->arg1_var_type;
+  var_type_promoted = t->arg1_var_type_promoted;
+  node = t->arg1_node;
+
+  t->arg1_type = t->arg2_type;
+  t->arg1_d = t->arg2_d;
+  t->arg1_s = t->arg2_s;
+  t->arg1_var_type = t->arg2_var_type;
+  t->arg1_var_type_promoted = t->arg2_var_type_promoted;
+  t->arg1_node = t->arg2_node;
+
+  t->arg2_type = type;
+  t->arg2_d = d;
+  t->arg2_s = s;
+  t->arg2_var_type = var_type;
+  t->arg2_var_type_promoted = var_type_promoted;
+  t->arg2_node = node;
+}

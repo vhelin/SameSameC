@@ -48,7 +48,9 @@ int pass_5(void) {
 #if defined(DEBUG_PASS_5)
   print_tacs();
 #endif
-  
+
+  if (optimize_for_inc() == FAILED)
+    return FAILED;  
   if (optimize_il() == FAILED)
     return FAILED;
   if (compress_register_names() == FAILED)
@@ -2131,6 +2133,23 @@ int collect_and_preprocess_local_variables_inside_functions(void) {
       */
     }
   }
+  
+  return SUCCEEDED;
+}
+
+
+int optimize_for_inc(void) {
+
+  int i;
+  
+  /* here we go through TACs and if we find TAC_OP_ADD with 1 in arg1 we'll swap arg1 and arg2 */
+
+  for (i = 0; i < g_tacs_count; i++) {
+    struct tac *t = &g_tacs[i];
+    if (t->op == TAC_OP_ADD && t->arg1_type == TAC_ARG_TYPE_CONSTANT && ((int)t->arg1_d) == 1)
+      tac_swap_args(t);
+  }
+
   
   return SUCCEEDED;
 }

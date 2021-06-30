@@ -12,6 +12,6 @@ void main(void) {
       __z80_out[0xBE] = g_color;
     }
     g_color--;
-    i++;
+    i = 1 + i;
   }
 }
