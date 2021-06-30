@@ -174,6 +174,10 @@ static char *_get_pointer_stars(struct tree_node *node) {
     return "";
   if (node->value_double == 1)
     return "*";
+  if (node->value_double == 2)
+    return "**";
+  if (node->value_double == 3)
+    return "***";
 
   return "?";
 }
@@ -186,7 +190,16 @@ static void _print_create_variable(struct tree_node *node) {
   if (node == NULL)
     return;
 
-  fprintf(stderr, "%s%s %s%s", _get_current_indentation(), g_variable_types[node->children[0]->value], _get_pointer_stars(node->children[0]), node->children[1]->label);
+  fprintf(stderr, "%s", _get_current_indentation());
+  if ((node->flags & TREE_NODE_FLAG_CONST_1) == TREE_NODE_FLAG_CONST_1)
+    fprintf(stderr, "const ");
+  
+  fprintf(stderr, "%s %s", g_variable_types[node->children[0]->value], _get_pointer_stars(node->children[0]));
+
+  if ((node->flags & TREE_NODE_FLAG_CONST_2) == TREE_NODE_FLAG_CONST_2)
+    fprintf(stderr, " const ");
+  
+  fprintf(stderr, "%s", node->children[1]->label);
 
   if (node->value == 0) {
     /* not an array */
