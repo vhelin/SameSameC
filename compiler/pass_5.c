@@ -2158,21 +2158,33 @@ int reorder_global_variables(void) {
     }
   }
 
+  /* 0. mark all const data */
+  for (i = 0; i < g_global_nodes->added_children; i++) {
+    struct tree_node *node = g_global_nodes->children[i];
+    if (node != NULL && node->type == TREE_NODE_TYPE_CREATE_VARIABLE) {
+      if ((node->children[0]->value_double == 0 && (node->flags & TREE_NODE_FLAG_CONST_1) == TREE_NODE_FLAG_CONST_1) ||
+          (node->children[0]->value_double > 0 && (node->flags & TREE_NODE_FLAG_CONST_2) == TREE_NODE_FLAG_CONST_2))
+        node->flags |= TREE_NODE_FLAG_DATA_IS_CONST;
+    }
+  }
+  
   /* 1. collect fully initialized non-const variables */
   index = 0;
   for (i = 0; i < g_global_nodes->added_children; i++) {
     struct tree_node *node = g_global_nodes->children[i];
-    if (node != NULL && node->type == TREE_NODE_TYPE_CREATE_VARIABLE && (node->flags & TREE_NODE_FLAG_CONST_1) == 0) {
-      if (node->value == 0) {
-        /* not an array */
-        if (node->added_children > 2)
-          nodes[index++] = node;
-      }
-      else {
-        /* an array */
-        int inits = node->added_children - 2;
-        if (inits == node->value)
-          nodes[index++] = node;
+    if (node != NULL && node->type == TREE_NODE_TYPE_CREATE_VARIABLE) {
+      if ((node->flags & TREE_NODE_FLAG_DATA_IS_CONST) == 0) {
+        if (node->value == 0) {
+          /* not an array */
+          if (node->added_children > 2)
+            nodes[index++] = node;
+        }
+        else {
+          /* an array */
+          int inits = node->added_children - 2;
+          if (inits == node->value)
+            nodes[index++] = node;
+        }
       }
     }
   }
@@ -2180,12 +2192,14 @@ int reorder_global_variables(void) {
   /* 2. collect partially initialized non-const variables */
   for (i = 0; i < g_global_nodes->added_children; i++) {
     struct tree_node *node = g_global_nodes->children[i];
-    if (node != NULL && node->type == TREE_NODE_TYPE_CREATE_VARIABLE && (node->flags & TREE_NODE_FLAG_CONST_1) == 0) {
-      if (node->value > 0) {
-        /* an array */
-        int inits = node->added_children - 2;
-        if (inits < node->value && inits > 0)
-          nodes[index++] = node;
+    if (node != NULL && node->type == TREE_NODE_TYPE_CREATE_VARIABLE) {
+      if ((node->flags & TREE_NODE_FLAG_DATA_IS_CONST) == 0) {
+        if (node->value > 0) {
+          /* an array */
+          int inits = node->added_children - 2;
+          if (inits < node->value && inits > 0)
+            nodes[index++] = node;
+        }
       }
     }
   }
@@ -2196,13 +2210,13 @@ int reorder_global_variables(void) {
     if (node != NULL && node->type == TREE_NODE_TYPE_CREATE_VARIABLE) {
       if (node->value == 0) {
         /* not an array */
-        if (node->added_children == 2 || (node->flags & TREE_NODE_FLAG_CONST_1) == TREE_NODE_FLAG_CONST_1)
+        if (node->added_children == 2 || (node->flags & TREE_NODE_FLAG_DATA_IS_CONST) == TREE_NODE_FLAG_DATA_IS_CONST)
           nodes[index++] = node;
       }
       else {
         /* an array */
         int inits = node->added_children - 2;
-        if (inits == 0 || (node->flags & TREE_NODE_FLAG_CONST_1) == TREE_NODE_FLAG_CONST_1)
+        if (inits == 0 || (node->flags & TREE_NODE_FLAG_DATA_IS_CONST) == TREE_NODE_FLAG_DATA_IS_CONST)
           nodes[index++] = node;
       }
     }

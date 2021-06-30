@@ -4235,11 +4235,13 @@ int generate_global_variables_z80(char *file_name, FILE *file_out) {
   
   for (i = 0; i < g_global_nodes->added_children; i++) {
     struct tree_node *node = g_global_nodes->children[i];
-    if (node != NULL && node->type == TREE_NODE_TYPE_CREATE_VARIABLE && (node->flags & TREE_NODE_FLAG_CONST_1) == 0) {
-      length = strlen(node->children[1]->label);
-      if (length > max_length)
-        max_length = length;
-      global_variables_found++;
+    if (node != NULL && node->type == TREE_NODE_TYPE_CREATE_VARIABLE) {
+      if ((node->flags & TREE_NODE_FLAG_DATA_IS_CONST) == 0) {
+        length = strlen(node->children[1]->label);
+        if (length > max_length)
+          max_length = length;
+        global_variables_found++;
+      }
     }
   }
 
@@ -4252,54 +4254,56 @@ int generate_global_variables_z80(char *file_name, FILE *file_out) {
 
   for (i = 0; i < g_global_nodes->added_children; i++) {
     struct tree_node *node = g_global_nodes->children[i];
-    if (node != NULL && node->type == TREE_NODE_TYPE_CREATE_VARIABLE && (node->flags & TREE_NODE_FLAG_CONST_1) == 0) {
-      length = strlen(node->children[1]->label);
+    if (node != NULL && node->type == TREE_NODE_TYPE_CREATE_VARIABLE) {
+      if ((node->flags & TREE_NODE_FLAG_DATA_IS_CONST) == 0) {
+        length = strlen(node->children[1]->label);
 
-      fprintf(file_out, "    %s", node->children[1]->label);
+        fprintf(file_out, "    %s", node->children[1]->label);
 
-      for (j = length; j < max_length + 1; j++)
-        fprintf(file_out, " ");
+        for (j = length; j < max_length + 1; j++)
+          fprintf(file_out, " ");
 
-      elements = node->value;
-      if (elements == 0)
-        elements = 1;
-      element_type = tree_node_get_max_var_type(node->children[0]);
-      element_size = get_variable_type_size(element_type);
+        elements = node->value;
+        if (elements == 0)
+          elements = 1;
+        element_type = tree_node_get_max_var_type(node->children[0]);
+        element_size = get_variable_type_size(element_type);
 
-      if (element_size != 8 && element_size != 16) {
-        fprintf(stderr, "generate_global_variables_z80(): Unsupported global variable \"%s\" size %d! Please submit a bug report!\n", node->children[1]->label, element_size);
-        return FAILED;
-      }
-
-      /* check element types */
-      for (j = 2; j < node->added_children; j++) {
-        if (node->children[j]->type != TREE_NODE_TYPE_VALUE_INT && 
-            node->children[j]->type != TREE_NODE_TYPE_VALUE_DOUBLE) {
-          g_current_filename_id = node->file_id;
-          g_current_line_number = node->line_number;
-          snprintf(g_error_message, sizeof(g_error_message), "generate_global_variables_z80(): Global variable (\"%s\") can only be initialized with an immediate number!\n", node->children[1]->label);
-          print_error(g_error_message, ERROR_ERR);
-
+        if (element_size != 8 && element_size != 16) {
+          fprintf(stderr, "generate_global_variables_z80(): Unsupported global variable \"%s\" size %d! Please submit a bug report!\n", node->children[1]->label, element_size);
           return FAILED;
         }
-      }
 
-      if (elements == 1) {
-        /* not an array */
-        if (element_size == 8)
-          fprintf(file_out, "DB");
-        else if (element_size == 16)
-          fprintf(file_out, "DW");
-      }
-      else {
-        /* an array */
-        if (element_size == 8)
-          fprintf(file_out, "DSB %d", elements);
-        else if (element_size == 16)
-          fprintf(file_out, "DSW %d", elements);
-      }
+        /* check element types */
+        for (j = 2; j < node->added_children; j++) {
+          if (node->children[j]->type != TREE_NODE_TYPE_VALUE_INT && 
+              node->children[j]->type != TREE_NODE_TYPE_VALUE_DOUBLE) {
+            g_current_filename_id = node->file_id;
+            g_current_line_number = node->line_number;
+            snprintf(g_error_message, sizeof(g_error_message), "generate_global_variables_z80(): Global variable (\"%s\") can only be initialized with an immediate number!\n", node->children[1]->label);
+            print_error(g_error_message, ERROR_ERR);
+
+            return FAILED;
+          }
+        }
+
+        if (elements == 1) {
+          /* not an array */
+          if (element_size == 8)
+            fprintf(file_out, "DB");
+          else if (element_size == 16)
+            fprintf(file_out, "DW");
+        }
+        else {
+          /* an array */
+          if (element_size == 8)
+            fprintf(file_out, "DSB %d", elements);
+          else if (element_size == 16)
+            fprintf(file_out, "DSW %d", elements);
+        }
         
-      fprintf(file_out, "\n");
+        fprintf(file_out, "\n");
+      }
     }
   }
   
@@ -4313,7 +4317,7 @@ int generate_global_variables_z80(char *file_name, FILE *file_out) {
     if (node != NULL && node->type == TREE_NODE_TYPE_CREATE_VARIABLE) {
       length = strlen(node->children[1]->label);
 
-      if ((node->flags & TREE_NODE_FLAG_CONST_1) == 0)
+      if ((node->flags & TREE_NODE_FLAG_DATA_IS_CONST) == 0)
         snprintf(label_tmp, sizeof(label_tmp), "global_variable_rom_%s", node->children[1]->label);
       else
         snprintf(label_tmp, sizeof(label_tmp), "%s", node->children[1]->label);
@@ -4356,15 +4360,17 @@ int generate_global_variables_z80(char *file_name, FILE *file_out) {
   total_bytes = 0;
   for (i = 0; i < g_global_nodes->added_children; i++) {
     struct tree_node *node = g_global_nodes->children[i];
-    if (node != NULL && node->type == TREE_NODE_TYPE_CREATE_VARIABLE && (node->flags & TREE_NODE_FLAG_CONST_1) == 0) {
-      if (node_1st == NULL)
-        node_1st = node;
+    if (node != NULL && node->type == TREE_NODE_TYPE_CREATE_VARIABLE) {
+      if ((node->flags & TREE_NODE_FLAG_DATA_IS_CONST) == 0) {
+        if (node_1st == NULL)
+          node_1st = node;
       
-      _get_variable_initialized_size(node, &bytes, &is_fully_initialized);
-      if (is_fully_initialized == NO)
-        break;
+        _get_variable_initialized_size(node, &bytes, &is_fully_initialized);
+        if (is_fully_initialized == NO)
+          break;
 
-      total_bytes += bytes;
+        total_bytes += bytes;
+      }
     }
   }
 
@@ -4388,26 +4394,28 @@ int generate_global_variables_z80(char *file_name, FILE *file_out) {
   /* 2. copy the data of all partially initialized non_const global variables in multiple calls */
   for (; i < g_global_nodes->added_children; i++) {
     struct tree_node *node = g_global_nodes->children[i];
-    if (node != NULL && node->type == TREE_NODE_TYPE_CREATE_VARIABLE && (node->flags & TREE_NODE_FLAG_CONST_1) == 0) {
-      if (node_1st == NULL)
-        node_1st = node;
+    if (node != NULL && node->type == TREE_NODE_TYPE_CREATE_VARIABLE) {
+      if ((node->flags & TREE_NODE_FLAG_DATA_IS_CONST) == 0) {
+        if (node_1st == NULL)
+          node_1st = node;
       
-      _get_variable_initialized_size(node, &bytes, &is_fully_initialized);
-      if (bytes > 0) {
-        fprintf(file_out, "      ; copy partially initialized global variable \"%s\"\n", node->children[1]->label);
+        _get_variable_initialized_size(node, &bytes, &is_fully_initialized);
+        if (bytes > 0) {
+          fprintf(file_out, "      ; copy partially initialized global variable \"%s\"\n", node->children[1]->label);
     
-        /* target address -> hl */
-        _load_label_to_hl(node->children[1]->label, file_out);
+          /* target address -> hl */
+          _load_label_to_hl(node->children[1]->label, file_out);
 
-        /* source address -> de */
-        snprintf(label_tmp, sizeof(label_tmp), "global_variable_rom_%s", node->children[1]->label);
-        _load_label_to_de(label_tmp, file_out);
+          /* source address -> de */
+          snprintf(label_tmp, sizeof(label_tmp), "global_variable_rom_%s", node->children[1]->label);
+          _load_label_to_de(label_tmp, file_out);
 
-        /* counter -> bc */
-        _load_value_to_bc(bytes, file_out);
+          /* counter -> bc */
+          _load_value_to_bc(bytes, file_out);
 
-        /* call */
-        _call_to("_copy_bytes", file_out);
+          /* call */
+          _call_to("_copy_bytes", file_out);
+        }
       }
     }
   }
