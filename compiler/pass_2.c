@@ -9,6 +9,7 @@
 #include "defines.h"
 #include "parse.h"
 #include "main.h"
+#include "pass_1.h"
 #include "pass_2.h"
 #include "printf.h"
 #include "definitions.h"
@@ -54,6 +55,7 @@ static char g_token_in_simple_form[MAX_NAME_LENGTH + 1];
 static int g_block_level = 0;
 
 static int g_check_ast_failed = NO;
+static int g_was_main_function_defined = NO;
 
 
 static void _check_ast_block(struct tree_node *node);
@@ -411,6 +413,15 @@ int pass_2(void) {
         snprintf(g_error_message, sizeof(g_error_message), "g_block_level should be 0 here, but it's %d instead! Please submit a bug report!\n", g_block_level);
         print_error(g_error_message, ERROR_ERR);
         return FAILED;
+      }
+
+      if (g_was_main_function_defined == YES) {
+        /* special case! right after "void main(void)" is parsed we'll generate tokens for "void mainmain(void)".
+           mainmain() is where the initializer code jumps to, and mainmain() jumps to main(). this way the compiler
+           can generate a proper stack allocating jump to main() while the linker just makes a plain and simple jump
+           to mainmain()... */
+        create_mainmain_tokens();
+        g_was_main_function_defined = NO;
       }
     }
     else if (g_token_current->id == TOKEN_ID_DEFINE) {
@@ -2482,7 +2493,8 @@ int create_variable_or_function(void) {
     }
     else {
       /* a function definition */
-    
+      int function_file_id = g_token_current->file_id;
+      
       /* this token is '(' */
       _next_token();
 
@@ -2620,6 +2632,23 @@ int create_variable_or_function(void) {
       
           if (tree_node_add_child(g_global_nodes, node) == FAILED)
             return FAILED;
+
+          /* is it "main"? */
+          if (strcmp(node->children[1]->label, "main") == 0) {
+            /* yes, check that it's correctly defined */
+            if (node->children[0]->value != VARIABLE_TYPE_VOID || node->added_children > 3) {
+              print_error("main()'s definition must be \"void main(void)\".\n", ERROR_ERR);
+              return FAILED;
+            }
+
+            g_was_main_function_defined = YES;
+          }
+
+          /* is it "mainmain"? */
+          if (strcmp(node->children[1]->label, "mainmain") == 0 && function_file_id >= 0) {
+            print_error("mainmain() cannot be defined as it's a reserved function name.\n", ERROR_ERR);
+            return FAILED;
+          }
           
           return SUCCEEDED;
         }

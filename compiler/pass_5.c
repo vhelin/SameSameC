@@ -1877,8 +1877,10 @@ int propagate_operand_types(void) {
       if (t->registers != NULL) {
         int type_max = _get_set_max_registers_type(t);
 
-        if (type_max == VARIABLE_TYPE_NONE)
+        if (type_max == VARIABLE_TYPE_NONE) {
+          fprintf(stderr, "propagate_operand_types(): Function \"%s\" was called, but we were unable to determine the max type! Please submit a bug report!\n", t->arg1_s);
           return FAILED;
+        }
       }
     }
     else if (op == TAC_OP_FUNCTION_CALL_USE_RETURN_VALUE) {

@@ -149,7 +149,7 @@ int file_has_main(void) {
 
   f = g_files_first;
   while (f != NULL) {
-    if (_find_function("main:", f) == SUCCEEDED)
+    if (_find_function("mainmain:", f) == SUCCEEDED)
       return SUCCEEDED;
     f = f->next;
   }

@@ -18,7 +18,6 @@ static struct symbol_table_item **g_symbol_table = NULL;
 static int g_symbol_table_size = 0;
 
 
-
 int is_symbol_table_empty(void) {
 
   int i;
@@ -118,7 +117,6 @@ int symbol_table_add_symbol(struct tree_node *node, char *name, int level) {
   }
 
   item = calloc(sizeof(struct symbol_table_item), 1);
-
   if (item == NULL) {
     print_error("Out of memory while allocating a new symbol table item.\n", ERROR_DIR);
     return FAILED;

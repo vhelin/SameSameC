@@ -95,8 +95,8 @@ int arch_z80_write_system_init(int target, FILE *file_out) {
     fprintf(file_out, "    LD  DE,$DFF0\n");
     fprintf(file_out, "\n");
 
-    fprintf(file_out, "    ; jump to user code\n");
-    fprintf(file_out, "    JP  main\n");
+    fprintf(file_out, "    ; jump to mainmain() (that jumps to main())\n");
+    fprintf(file_out, "    JP  mainmain\n");
   }
   
   return SUCCEEDED;

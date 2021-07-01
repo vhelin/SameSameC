@@ -5,7 +5,7 @@ uint16 g_data_size = __filesize("../colors.bin");
 
 void main(void) {
 
-  uint8 i;
+  uint8 i;//,i;
 
   while (1) {
     __z80_out[0xBF] = 0x00;
@@ -16,11 +16,4 @@ void main(void) {
     g_color--;
     i = 1 + i;
   }
-}
-
-void hello(void) {
-
-  main();
-
-  while(1) {}
 }

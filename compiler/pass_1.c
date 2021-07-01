@@ -63,7 +63,7 @@ int pass_1(void) {
     if (q == SUCCEEDED)
       continue;
     else if (q == EVALUATE_TOKEN_EOP) {
-      /* add 8 no ops so that parsing later will be easier (no need to check for null pointers all the time */
+      /* add 8 no ops so that parsing later will be easier (no need to check for null pointers all the time) */
       for (q = 0; q < 8; q++)
         add_token(TOKEN_ID_NO_OP, 0, 0.0, NULL);
       return SUCCEEDED;
@@ -80,6 +80,42 @@ int pass_1(void) {
   }
 
   return FAILED;
+}
+
+
+int create_mainmain_tokens(void) {
+
+  int sum = 0, q;
+  
+  /* we'll call this from pass_2.c when we've parsed function "void main(void)"... */
+
+  /* generate "void mainmain(void)" */
+  sum += add_token(TOKEN_ID_VARIABLE_TYPE, VARIABLE_TYPE_VOID, 0.0, NULL);  
+  sum += add_token(TOKEN_ID_VALUE_STRING, 0, 0.0, "mainmain");
+  sum += add_token(TOKEN_ID_SYMBOL, '(', 0.0, NULL);
+  sum += add_token(TOKEN_ID_VARIABLE_TYPE, VARIABLE_TYPE_VOID, 0.0, NULL);
+  sum += add_token(TOKEN_ID_SYMBOL, ')', 0.0, NULL);
+  sum += add_token(TOKEN_ID_SYMBOL, '{', 0.0, NULL);
+  sum += add_token(TOKEN_ID_VALUE_STRING, 0, 0.0, "main");
+  sum += add_token(TOKEN_ID_SYMBOL, '(', 0.0, NULL);
+  sum += add_token(TOKEN_ID_SYMBOL, ')', 0.0, NULL);
+  sum += add_token(TOKEN_ID_SYMBOL, ';', 0.0, NULL);
+  sum += add_token(TOKEN_ID_WHILE, 0, 0.0, NULL);
+  sum += add_token(TOKEN_ID_SYMBOL, '(', 0.0, NULL);
+  sum += add_token(TOKEN_ID_VALUE_INT, 1, 0.0, NULL);  
+  sum += add_token(TOKEN_ID_SYMBOL, ')', 0.0, NULL);
+  sum += add_token(TOKEN_ID_SYMBOL, '{', 0.0, NULL);
+  sum += add_token(TOKEN_ID_SYMBOL, '}', 0.0, NULL);
+  sum += add_token(TOKEN_ID_SYMBOL, '}', 0.0, NULL);
+  
+  if (sum != 17)
+    return FAILED;
+
+  /* add 8 no ops so that parsing later will be easier (no need to check for null pointers all the time) */
+  for (q = 0; q < 8; q++)
+    add_token(TOKEN_ID_NO_OP, 0, 0.0, NULL);
+  
+  return SUCCEEDED;
 }
 
 
@@ -102,6 +138,7 @@ int add_token(int id, int value, double value_double, char *label) {
     t->line_number = g_active_file_info_last->line_current;
   }
   else {
+    /*
     if (id != TOKEN_ID_NO_OP) {
       if (label == NULL)
         snprintf(g_error_message, sizeof(g_error_message), "We are adding a token ID %d to the system, but there is no open file! Please submit a bug report!\n", id);
@@ -109,6 +146,7 @@ int add_token(int id, int value, double value_double, char *label) {
         snprintf(g_error_message, sizeof(g_error_message), "We are adding token \"%s\" to the system, but there is no open file! Please submit a bug report!\n", label);
       print_error(g_error_message, ERROR_WRN);
     }
+    */
     
     t->file_id = -1;
     t->line_number = -1;
