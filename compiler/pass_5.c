@@ -1873,10 +1873,13 @@ int propagate_operand_types(void) {
         fprintf(stderr, "propagate_operand_types(): Couldn't find type for ARG1!\n");
     }
     else if (op == TAC_OP_FUNCTION_CALL) {
-      int type_max = _get_set_max_registers_type(t);
+      /* if t->registers == NULL that means that the function was called with 0 arguments */
+      if (t->registers != NULL) {
+        int type_max = _get_set_max_registers_type(t);
 
-      if (type_max == VARIABLE_TYPE_NONE)
-        return FAILED;
+        if (type_max == VARIABLE_TYPE_NONE)
+          return FAILED;
+      }
     }
     else if (op == TAC_OP_FUNCTION_CALL_USE_RETURN_VALUE) {
       int type_max = _get_set_max_registers_type(t);

@@ -17,3 +17,10 @@ void main(void) {
     i = 1 + i;
   }
 }
+
+void hello(void) {
+
+  main();
+
+  while(1) {}
+}
