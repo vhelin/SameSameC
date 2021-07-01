@@ -804,6 +804,9 @@ int create_factor(void) {
   else if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == ':') {
     return FINISHED;
   }
+  else if (g_token_current->id == TOKEN_ID_BYTES) {
+    node = allocate_tree_node_bytes(g_token_current);
+  }
   else {
     _print_loose_token_error(g_token_current);
     return FAILED;
@@ -2148,7 +2151,7 @@ int create_block(struct tree_node *open_function_definition, int expect_curly_br
 
 struct tree_node *create_array(double pointer_depth, int variable_type, char *name) {
 
-  int array_size = 0, added_items = 0;
+  int array_size = 0, added_items, i;
   struct tree_node *node;
 
   node = allocate_tree_node_with_children(TREE_NODE_TYPE_CREATE_VARIABLE, 16);
@@ -2245,14 +2248,29 @@ struct tree_node *create_array(double pointer_depth, int variable_type, char *na
       tree_node_add_child(node, _get_current_open_expression());
       _open_expression_pop();
 
-      added_items++;
-
       if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == ',') {
         /* next token */
         _next_token();
       }      
     }
   }
+
+  /* some items can be TREE_NODE_TYPE_EXPRESSION with single TREE_NODE_TYPE_BYTES child -> simplify! */
+  for (i = 2; i < node->added_children; i++) {
+    if (node->children[i]->type == TREE_NODE_TYPE_EXPRESSION &&
+        node->children[i]->added_children == 1 &&
+        node->children[i]->children[0]->type == TREE_NODE_TYPE_BYTES) {
+      struct tree_node *n;
+
+      n = node->children[i]->children[0];
+      node->children[i]->children[0] = NULL;
+      free_tree_node(node->children[i]);
+      node->children[i] = n;
+    }
+  }
+  
+  /* as some items in the array can be of type TREE_NODE_TYPE_BYTES, recalculate the array size here */
+  added_items = tree_node_get_create_variable_data_items(node);
 
   if (array_size == 0 && added_items == 0) {
     print_error("An array without any items doesn't make sense.\n", ERROR_ERR);
@@ -2390,7 +2408,9 @@ int create_variable_or_function(void) {
       else if (symbol == '[') {
         /* array */
         node = create_array(pointer_depth, variable_type, name);
-
+        if (node == NULL)
+          return FAILED;
+        
         /* add to global lists */
         if (symbol_table_add_symbol(node, node->children[1]->label, g_block_level) == FAILED) {
           free_tree_node(node);
@@ -2620,8 +2640,6 @@ int create_definition() {
 
   char name[MAX_NAME_LENGTH + 1];
   int q;
-
-  strncpy(name, g_token_current->label, MAX_NAME_LENGTH);
 
   /* next token */
   _next_token();

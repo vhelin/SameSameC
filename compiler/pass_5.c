@@ -2149,7 +2149,6 @@ int optimize_for_inc(void) {
     if (t->op == TAC_OP_ADD && t->arg1_type == TAC_ARG_TYPE_CONSTANT && ((int)t->arg1_d) == 1)
       tac_swap_args(t);
   }
-
   
   return SUCCEEDED;
 }
@@ -2200,8 +2199,7 @@ int reorder_global_variables(void) {
         }
         else {
           /* an array */
-          int inits = node->added_children - 2;
-          if (inits == node->value)
+          if (tree_node_get_create_variable_data_items(node) == node->value)
             nodes[index++] = node;
         }
       }
@@ -2215,8 +2213,8 @@ int reorder_global_variables(void) {
       if ((node->flags & TREE_NODE_FLAG_DATA_IS_CONST) == 0) {
         if (node->value > 0) {
           /* an array */
-          int inits = node->added_children - 2;
-          if (inits < node->value && inits > 0)
+          int items = tree_node_get_create_variable_data_items(node);
+          if (items < node->value && items > 0)
             nodes[index++] = node;
         }
       }
@@ -2234,8 +2232,8 @@ int reorder_global_variables(void) {
       }
       else {
         /* an array */
-        int inits = node->added_children - 2;
-        if (inits == 0 || (node->flags & TREE_NODE_FLAG_DATA_IS_CONST) == TREE_NODE_FLAG_DATA_IS_CONST)
+        int items = tree_node_get_create_variable_data_items(node);
+        if (items == 0 || (node->flags & TREE_NODE_FLAG_DATA_IS_CONST) == TREE_NODE_FLAG_DATA_IS_CONST)
           nodes[index++] = node;
       }
     }

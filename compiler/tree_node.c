@@ -439,6 +439,9 @@ int tree_node_set_string(struct tree_node *node, char *string) {
     node->label = NULL;
     return SUCCEEDED;
   }
+
+  if (node->label != NULL)
+    free(node->label);
   
   node->label = calloc(strlen(string) + 1, 1);
   if (node->label == NULL) {
@@ -476,3 +479,43 @@ struct tree_node *allocate_tree_node_stack(int stack) {
 
   return node;
 }
+
+
+struct tree_node *allocate_tree_node_bytes(struct token *t) {
+
+  struct tree_node *node = allocate_tree_node(TREE_NODE_TYPE_BYTES);
+
+  if (node == NULL)
+    return NULL;
+
+  node->label = calloc(t->value, 1);
+  if (node->label == NULL) {
+    print_error("Out of memory while allocating memory for a tree node.\n", ERROR_ERR);
+    return FAILED;
+  }
+
+  /* copy data */
+  memcpy(node->label, t->label, t->value);
+
+  /* copy the number of bytes */
+  node->value = t->value;
+  
+  return node;
+}
+
+
+int tree_node_get_create_variable_data_items(struct tree_node *node) {
+
+  int items = 0, i;
+  
+  items = 0;
+  for (i = 2; i < node->added_children; i++) {
+    if (node->children[i]->type == TREE_NODE_TYPE_BYTES)
+      items += node->children[i]->value;
+    else
+      items++;
+  }
+  
+  return items;
+}
+  

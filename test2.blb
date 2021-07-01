@@ -1,5 +1,7 @@
 
-uint16 g_color = 0;
+uint8  g_color = 0;
+uint8  g_data[2] = { 1, __incbin("../colors.bin"), 2 };
+uint16 g_data_size = __filesize("../colors.bin");
 
 void main(void) {
 

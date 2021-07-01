@@ -114,15 +114,21 @@ int add_token(int id, int value, double value_double, char *label) {
     t->line_number = -1;
   }
 
-  if (label == NULL)
-    t->label = NULL;
+  if (id == TOKEN_ID_BYTES) {
+    /* NOTE! in the case of TOKEN_ID_BYTES we'll capture label */
+    t->label = label;
+  }
   else {
-    t->label = calloc(strlen(label)+1, 1);
-    if (t->label == NULL) {
-      print_error("Out of memory while allocating a new token.\n", ERROR_DIR);
-      return FAILED;
+    if (label == NULL)
+      t->label = NULL;
+    else {
+      t->label = calloc(strlen(label)+1, 1);
+      if (t->label == NULL) {
+        print_error("Out of memory while allocating a new token.\n", ERROR_DIR);
+        return FAILED;
+      }
+      strncpy(t->label, label, strlen(label));
     }
-    strncpy(t->label, label, strlen(label));
   }
 
   if (g_token_first == NULL) {
@@ -254,6 +260,93 @@ int evaluate_token(int type) {
     if (strcaselesscmp(g_tmp, "default") == 0)
       return add_token(TOKEN_ID_DEFAULT, 0, 0.0, NULL);
 
+    /* __filesize() */
+    if (strcaselesscmp(g_tmp, "__filesize") == 0) {
+      int token, file_size;
+      FILE *f;
+
+      token = get_next_token();
+      if (token != GET_NEXT_TOKEN_SYMBOL || g_tmp[0] != '(') {
+        print_error("\"__filesize()\" is missing its first parenthesis.\n", ERROR_DIR);
+        return FAILED;
+      }
+
+      token = get_next_token();
+      if (token != GET_NEXT_TOKEN_STRING) {
+        print_error("\"__filesize()\" needs a file name.\n", ERROR_DIR);
+        return FAILED;
+      }
+
+      f = fopen(g_tmp, "r");
+      if (f == NULL) {
+        snprintf(g_error_message, sizeof(g_error_message), "\"__filesize() cannot open file \"%s\".\n", g_tmp);
+        print_error(g_error_message, ERROR_DIR);
+        return FAILED;
+      }
+
+      fseek(f, 0, SEEK_END);
+      file_size = (int)ftell(f);
+      fclose(f);
+
+      token = get_next_token();
+      if (token != GET_NEXT_TOKEN_SYMBOL || g_tmp[0] != ')') {
+        print_error("\"__filesize()\" is missing its second parenthesis.\n", ERROR_DIR);
+        return FAILED;
+      }
+
+      return add_token(TOKEN_ID_VALUE_INT, file_size, 0.0, NULL);
+    }
+
+    /* __incbin() */
+    if (strcaselesscmp(g_tmp, "__incbin") == 0) {
+      int token, file_size;
+      unsigned char *data;
+      FILE *f;
+
+      token = get_next_token();
+      if (token != GET_NEXT_TOKEN_SYMBOL || g_tmp[0] != '(') {
+        print_error("\"__incbin()\" is missing its first parenthesis.\n", ERROR_DIR);
+        return FAILED;
+      }
+
+      token = get_next_token();
+      if (token != GET_NEXT_TOKEN_STRING) {
+        print_error("\"__incbin()\" needs a file name.\n", ERROR_DIR);
+        return FAILED;
+      }
+
+      f = fopen(g_tmp, "r");
+      if (f == NULL) {
+        snprintf(g_error_message, sizeof(g_error_message), "\"__incbin() cannot open file \"%s\".\n", g_tmp);
+        print_error(g_error_message, ERROR_DIR);
+        return FAILED;
+      }
+
+      fseek(f, 0, SEEK_END);
+      file_size = (int)ftell(f);
+      fseek(f, 0, SEEK_SET);
+
+      data = calloc(file_size, 1);
+      if (data == NULL) {
+        snprintf(g_error_message, sizeof(g_error_message), "Out of memory while allocating memory for __incbin()'ed \"%s\".\n", g_tmp);
+        print_error(g_error_message, ERROR_DIR);
+        fclose(f);
+        return FAILED;
+      }
+
+      fread(data, 1, file_size, f);
+      fclose(f);
+
+      token = get_next_token();
+      if (token != GET_NEXT_TOKEN_SYMBOL || g_tmp[0] != ')') {
+        print_error("\"__incbin()\" is missing its second parenthesis.\n", ERROR_DIR);
+        return FAILED;
+      }
+
+      /* NOTE! in the case of TOKEN_ID_BYTES add_token() will eat the memory block "data" and it'll be assigned to a "token" */
+      return add_token(TOKEN_ID_BYTES, file_size, 0.0, (char *)data);
+    }
+    
     /* #include */
     if (strcaselesscmp(g_tmp, "#include") == 0) {
       int include_size;
@@ -270,8 +363,8 @@ int evaluate_token(int type) {
       return SUCCEEDED;
     }
           
-    /* .DEFINE */
-    if (strcaselesscmp(g_tmp, ".DEFINE") == 0)
+    /* #define */
+    if (strcaselesscmp(g_tmp, "#define") == 0)
       return add_token(TOKEN_ID_DEFINE, 0, 0.0, g_tmp);
       
     /* .CHANGEFILE (INTERNAL) */

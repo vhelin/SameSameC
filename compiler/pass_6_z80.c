@@ -4208,8 +4208,9 @@ static void _get_variable_initialized_size(struct tree_node *node, int *bytes, i
     max_elements = 1;
   else
     max_elements = node->value;
-  elements = node->added_children - 2;
 
+  elements = tree_node_get_create_variable_data_items(node);
+  
   element_type = tree_node_get_max_var_type(node->children[0]);
   element_size = get_variable_type_size(element_type) / 8;
 
@@ -4276,8 +4277,9 @@ int generate_global_variables_z80(char *file_name, FILE *file_out) {
 
         /* check element types */
         for (j = 2; j < node->added_children; j++) {
-          if (node->children[j]->type != TREE_NODE_TYPE_VALUE_INT && 
-              node->children[j]->type != TREE_NODE_TYPE_VALUE_DOUBLE) {
+          if (node->children[j]->type != TREE_NODE_TYPE_VALUE_INT &&
+              node->children[j]->type != TREE_NODE_TYPE_VALUE_DOUBLE &&
+              node->children[j]->type != TREE_NODE_TYPE_BYTES) {
             g_current_filename_id = node->file_id;
             g_current_line_number = node->line_number;
             snprintf(g_error_message, sizeof(g_error_message), "generate_global_variables_z80(): Global variable (\"%s\") can only be initialized with an immediate number!\n", node->children[1]->label);
@@ -4315,8 +4317,6 @@ int generate_global_variables_z80(char *file_name, FILE *file_out) {
   for (i = 0; i < g_global_nodes->added_children; i++) {
     struct tree_node *node = g_global_nodes->children[i];
     if (node != NULL && node->type == TREE_NODE_TYPE_CREATE_VARIABLE) {
-      length = strlen(node->children[1]->label);
-
       if ((node->flags & TREE_NODE_FLAG_DATA_IS_CONST) == 0)
         snprintf(label_tmp, sizeof(label_tmp), "global_variable_rom_%s", node->children[1]->label);
       else
@@ -4339,8 +4339,17 @@ int generate_global_variables_z80(char *file_name, FILE *file_out) {
         
           if (node->children[j]->type == TREE_NODE_TYPE_VALUE_INT)
             fprintf(file_out, "%d", node->children[j]->value);
-          if (node->children[j]->type == TREE_NODE_TYPE_VALUE_DOUBLE)
+          else if (node->children[j]->type == TREE_NODE_TYPE_VALUE_DOUBLE)
             fprintf(file_out, "%d", (int)(node->children[j]->value));
+          else if (node->children[j]->type == TREE_NODE_TYPE_BYTES) {
+            int k;
+
+            for (k = 0; k < node->children[j]->value; k++) {
+              if (k > 0)
+                fprintf(file_out, ", ");
+              fprintf(file_out, "%d", node->children[j]->label[k]);
+            }
+          }
         }
 
         fprintf(file_out, "\n");

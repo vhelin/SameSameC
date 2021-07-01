@@ -265,6 +265,7 @@ struct token {
 #define TOKEN_ID_SWITCH        15
 #define TOKEN_ID_CASE          16
 #define TOKEN_ID_DEFAULT       17
+#define TOKEN_ID_BYTES         18
 
 #define SYMBOL_LOGICAL_OR  0
 #define SYMBOL_LOGICAL_AND 1
@@ -355,6 +356,7 @@ struct tree_node {
 #define TREE_NODE_TYPE_LABEL               27
 #define TREE_NODE_TYPE_GOTO                28
 #define TREE_NODE_TYPE_DEAD                29
+#define TREE_NODE_TYPE_BYTES               30
 
 struct symbol_table_item {
   int level;
