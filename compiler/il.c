@@ -439,6 +439,10 @@ int il_stack_calculate_expression(struct tree_node *node, int calculate_max_var_
       si[z].value = g_temp_r - 1;
       si[z].sign = SI_SIGN_POSITIVE;      
     }
+    else if (child->type == TREE_NODE_TYPE_BYTES) {
+      print_error("Having raw bytes inside an expression doesn't make any sense.\n", ERROR_STC);
+      return FAILED;
+    }
     else {
       fprintf(stderr, "_il_stack_calculate_expression(): Got an unhandled tree_node of type %d! Please submit a bug report!\n", child->type);
       return FAILED;

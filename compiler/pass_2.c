@@ -200,7 +200,7 @@ static int _print_loose_token_error(struct token *t) {
 }
 
 
-static int _open_expression_push() {
+static int _open_expression_push(void) {
 
   if (g_open_expression_current_id >= 256)
     return FAILED;
@@ -215,7 +215,7 @@ static int _open_expression_push() {
 }
 
 
-static int _open_expression_pop() {
+static int _open_expression_pop(void) {
 
   g_open_expression[g_open_expression_current_id] = NULL;
   
@@ -229,7 +229,7 @@ static int _open_expression_pop() {
 }
 
 
-static struct tree_node *_get_current_open_expression() {
+static struct tree_node *_get_current_open_expression(void) {
 
   if (g_open_expression_current_id < 0) {
     print_error("Trying to get the current open expression, but there is none! Please submit a bug report!\n", ERROR_ERR);
@@ -240,7 +240,7 @@ static struct tree_node *_get_current_open_expression() {
 }
 
 
-static int _open_condition_push() {
+static int _open_condition_push(void) {
 
   if (g_open_condition_current_id >= 256)
     return FAILED;
@@ -255,7 +255,7 @@ static int _open_condition_push() {
 }
 
 
-static int _open_condition_pop() {
+static int _open_condition_pop(void) {
 
   g_open_condition[g_open_condition_current_id] = NULL;
   
@@ -269,7 +269,7 @@ static int _open_condition_pop() {
 }
 
 
-static struct tree_node *_get_current_open_condition() {
+static struct tree_node *_get_current_open_condition(void) {
 
   if (g_open_condition_current_id < 0) {
     print_error("Trying to get the current open condition, but there is none! Please submit a bug report!\n", ERROR_ERR);
@@ -280,7 +280,7 @@ static struct tree_node *_get_current_open_condition() {
 }
 
 
-static int _open_block_push() {
+static int _open_block_push(void) {
 
   if (g_open_block_current_id >= 256)
     return FAILED;
@@ -295,7 +295,7 @@ static int _open_block_push() {
 }
 
 
-static int _open_block_pop() {
+static int _open_block_pop(void) {
 
   g_open_block[g_open_block_current_id] = NULL;
   
@@ -309,7 +309,7 @@ static int _open_block_pop() {
 }
 
 
-static struct tree_node *_get_current_open_block() {
+static struct tree_node *_get_current_open_block(void) {
 
   if (g_open_block_current_id < 0) {
     print_error("Trying to get the current open block, but there is none! Please submit a bug report!\n", ERROR_ERR);
@@ -485,6 +485,27 @@ static void _next_token(void) {
 #if defined(DEBUG_PASS_2)
   _print_token(g_token_current);
 #endif
+}
+
+
+static void _simplify_expressions_with_tree_node_type_bytes(struct tree_node *node) {
+
+  int i;
+  
+  /* some items can be TREE_NODE_TYPE_EXPRESSION with single TREE_NODE_TYPE_BYTES child -> simplify! */
+
+  for (i = 0; i < node->added_children; i++) {
+    if (node->children[i]->type == TREE_NODE_TYPE_EXPRESSION &&
+        node->children[i]->added_children == 1 &&
+        node->children[i]->children[0]->type == TREE_NODE_TYPE_BYTES) {
+      struct tree_node *n;
+
+      n = node->children[i]->children[0];
+      node->children[i]->children[0] = NULL;
+      free_tree_node(node->children[i]);
+      node->children[i] = n;
+    }
+  }
 }
 
 
@@ -2173,7 +2194,7 @@ int create_block(struct tree_node *open_function_definition, int expect_curly_br
 
 struct tree_node *create_array(double pointer_depth, int variable_type, char *name) {
 
-  int array_size = 0, added_items, i;
+  int array_size = 0, added_items;
   struct tree_node *node;
 
   node = allocate_tree_node_with_children(TREE_NODE_TYPE_CREATE_VARIABLE, 16);
@@ -2223,6 +2244,8 @@ struct tree_node *create_array(double pointer_depth, int variable_type, char *na
   else if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == ',') {
   }
   else {
+    int skip = NO;
+    
     /* read the items */
     
     if (g_token_current->id != TOKEN_ID_SYMBOL || g_token_current->value != '=') {
@@ -2235,17 +2258,38 @@ struct tree_node *create_array(double pointer_depth, int variable_type, char *na
     /* next token */
     _next_token();
 
-    if (g_token_current->id != TOKEN_ID_SYMBOL || g_token_current->value != '{') {
-      snprintf(g_error_message, sizeof(g_error_message), "Expected '{', but got %s.\n", _get_token_simple(g_token_current));
-      print_error(g_error_message, ERROR_ERR);
-      free_tree_node(node);
-      return NULL;
+    if (g_token_current->id == TOKEN_ID_BYTES) {
+      /* of form "int8 var[] = "hello"; */
+      tree_node_add_child(node, allocate_tree_node_bytes(g_token_current));
+      
+      /* next token */
+      _next_token();
+
+      if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == ',') {
+      }
+      else if (g_token_current->id != TOKEN_ID_SYMBOL || g_token_current->value != ';') {
+        snprintf(g_error_message, sizeof(g_error_message), "Expected ',' or ';', but got %s.\n", _get_token_simple(g_token_current));
+        print_error(g_error_message, ERROR_ERR);
+        free_tree_node(node);
+        return NULL;
+      }
+
+      skip = YES;
     }
 
-    /* next token */
-    _next_token();
+    if (skip == NO) {
+      if (g_token_current->id != TOKEN_ID_SYMBOL || g_token_current->value != '{') {
+        snprintf(g_error_message, sizeof(g_error_message), "Expected '{', but got %s.\n", _get_token_simple(g_token_current));
+        print_error(g_error_message, ERROR_ERR);
+        free_tree_node(node);
+        return NULL;
+      }
 
-    while (1) {
+      /* next token */
+      _next_token();
+    }
+    
+    while (skip == NO) {
       if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == '}') {
         /* next token */
         _next_token();
@@ -2276,21 +2320,10 @@ struct tree_node *create_array(double pointer_depth, int variable_type, char *na
       }      
     }
   }
-
-  /* some items can be TREE_NODE_TYPE_EXPRESSION with single TREE_NODE_TYPE_BYTES child -> simplify! */
-  for (i = 2; i < node->added_children; i++) {
-    if (node->children[i]->type == TREE_NODE_TYPE_EXPRESSION &&
-        node->children[i]->added_children == 1 &&
-        node->children[i]->children[0]->type == TREE_NODE_TYPE_BYTES) {
-      struct tree_node *n;
-
-      n = node->children[i]->children[0];
-      node->children[i]->children[0] = NULL;
-      free_tree_node(node->children[i]);
-      node->children[i] = n;
-    }
-  }
   
+  /* some items can be TREE_NODE_TYPE_EXPRESSION with single TREE_NODE_TYPE_BYTES child -> simplify! */
+  _simplify_expressions_with_tree_node_type_bytes(node);
+
   /* as some items in the array can be of type TREE_NODE_TYPE_BYTES, recalculate the array size here */
   added_items = tree_node_get_create_variable_data_items(node);
 
@@ -2684,7 +2717,7 @@ int create_variable_or_function(void) {
 }
 
 
-int create_definition() {
+int create_definition(void) {
 
   char name[MAX_NAME_LENGTH + 1];
   int q;

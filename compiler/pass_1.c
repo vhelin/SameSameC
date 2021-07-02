@@ -230,6 +230,22 @@ int evaluate_token(int type) {
   if (type == GET_NEXT_TOKEN_INT)
     return add_token(TOKEN_ID_VALUE_INT, g_parsed_int, 0.0, NULL);
 
+  /* a "string" */
+  if (type == GET_NEXT_TOKEN_STRING_DATA) {
+    char *tmp;
+
+    tmp = calloc(g_ss + 1, 1);
+    if (tmp == NULL) {
+      snprintf(g_error_message, sizeof(g_error_message), "Out of memory while allocating room for string \"%s\"\n", g_tmp);
+      print_error(g_error_message, ERROR_ERR);
+      return FAILED;
+    }
+
+    memcpy(tmp, g_tmp, g_ss + 1);
+    
+    return add_token(TOKEN_ID_BYTES, g_ss + 1, 0.0, tmp);
+  }
+  
   /* a string */
   if (type == GET_NEXT_TOKEN_STRING) {
     /* check reserved strings */
@@ -310,7 +326,7 @@ int evaluate_token(int type) {
       }
 
       token = get_next_token();
-      if (token != GET_NEXT_TOKEN_STRING) {
+      if (token != GET_NEXT_TOKEN_STRING_DATA) {
         print_error("\"__filesize()\" needs a file name.\n", ERROR_DIR);
         return FAILED;
       }
@@ -348,7 +364,7 @@ int evaluate_token(int type) {
       }
 
       token = get_next_token();
-      if (token != GET_NEXT_TOKEN_STRING) {
+      if (token != GET_NEXT_TOKEN_STRING_DATA) {
         print_error("\"__incbin()\" needs a file name.\n", ERROR_DIR);
         return FAILED;
       }
@@ -390,7 +406,7 @@ int evaluate_token(int type) {
       int include_size;
       
       q = get_next_token();
-      if (q != GET_NEXT_TOKEN_STRING) {
+      if (q != GET_NEXT_TOKEN_STRING_DATA) {
         print_error("#include needs a file name.\n", ERROR_DIR);
         return FAILED;
       }

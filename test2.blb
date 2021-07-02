@@ -1,10 +1,12 @@
 
 uint8  g_color = 0;
-uint8  g_data[5] = { 1, __incbin("../colors.bin"), 2 };
+uint8  g_data[5] = { __incbin("../colors.bin"), 2 };
 uint16 g_data_size = __filesize("../colors.bin");
+uint8  g_hello[] = "hello", g_things[] = { 0xff, "moi!", "hi!" };
 
 void main(void) {
 
+  //uint8 hello[] = { "hello!", 1 };
   uint8 i;
 
   while (1) {

@@ -31,7 +31,7 @@ static int g_current_indentation_depth = 0, g_print_is_inside_for = NO;
 static char g_current_indentation[256];
 
 
-static char *_get_current_indentation() {
+static char *_get_current_indentation(void) {
 
   int i, depth;
 
@@ -48,7 +48,7 @@ static char *_get_current_indentation() {
 }
 
 
-static char *_get_current_end_of_line() {
+static char *_get_current_end_of_line(void) {
 
   if (g_print_is_inside_for == YES)
     return "";
@@ -57,7 +57,7 @@ static char *_get_current_end_of_line() {
 }
 
 
-static char *_get_current_end_of_statement() {
+static char *_get_current_end_of_statement(void) {
 
   if (g_print_is_inside_for == YES)
     return "";

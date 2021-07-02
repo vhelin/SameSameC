@@ -153,7 +153,7 @@ int get_next_token(void) {
     g_tmp[g_ss] = 0;
     g_source_pointer++;
 
-    return GET_NEXT_TOKEN_STRING;
+    return GET_NEXT_TOKEN_STRING_DATA;
   }
 
   /* a symbol? */
