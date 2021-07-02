@@ -1967,12 +1967,12 @@ int collect_and_preprocess_local_variables_inside_functions(void) {
       struct tree_node *local_variables[LOCAL_VAR_COUNT];
       int local_variables_count = 0, register_usage[REG_COUNT], used_registers = 0, register_sizes[REG_COUNT], arguments_count = 0;
       int offset = -4; /* the first 2 bytes in the stack frame are for return address, next 2 bytes are old stack frame address */
-      int type, size;
+      int return_value_type, return_value_size;
 
       /* NOTE: if the function returns a value we'll need to allocate space for that in the stack frame */        
-      type = tree_node_get_max_var_type(function_node->children[0]);
-      size = get_variable_type_size(type) / 8;
-      offset -= size;
+      return_value_type = tree_node_get_max_var_type(function_node->children[0]);
+      return_value_size = get_variable_type_size(return_value_type) / 8;
+      offset -= return_value_size;
 
       /* NOTE: allocate space in the stack frame for arguments to the function */
       /* NOTE: in pass_2.c when we create function we immediately add function arguments (tree_nodes) thus this is already done */
@@ -2104,6 +2104,8 @@ int collect_and_preprocess_local_variables_inside_functions(void) {
       fprintf(stderr, "*** FUNCTION \"%s\" STACK FRAME\n", function_node->children[1]->label);
       fprintf(stderr, "OFFSET  %.5d SIZE %.6d \"return address\"\n", -0, 2);
       fprintf(stderr, "OFFSET %.5d SIZE %.6d \"caller's stack frame address\"\n", -2, 2);
+      if (return_value_size > 0)
+        fprintf(stderr, "OFFSET %.5d SIZE %.6d \"return value\"\n", -4, return_value_size);
 #endif
 
       /* calculate the offsets */

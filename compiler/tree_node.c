@@ -338,6 +338,9 @@ struct tree_node *clone_tree_node(struct tree_node *node) {
   clone->file_id = node->file_id;
   clone->line_number = node->line_number;
   clone->definition = node->definition;
+  clone->flags = node->flags;
+  clone->reads = node->reads;
+  clone->writes = node->writes;
 
   for (i = 0; i < node->added_children; i++)
     clone->children[i] = clone_tree_node(node->children[i]);

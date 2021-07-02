@@ -3935,7 +3935,9 @@ static int _generate_asm_function_call_z80(struct tac *t, FILE *file_out, struct
     }
   }
 
+  /*
   fprintf(stderr, "FUNCTION CALL %s TOTAL OFFSET %d\n", t->arg1_node->children[1]->label, t->arg1_node->local_variables->offset_to_fp_total);
+  */
   
   /* update sp */
   _load_value_to_ix(t->arg1_node->local_variables->offset_to_fp_total, file_out);

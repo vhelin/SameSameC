@@ -489,12 +489,29 @@ static void _print_function_definition(struct tree_node *node) {
   if (node == NULL)
     return;
 
-  fprintf(stderr, "%s %s%s(", g_variable_types[node->children[0]->value], _get_pointer_stars(node->children[0]), node->children[1]->label);
+  if ((node->flags & TREE_NODE_FLAG_CONST_1) == TREE_NODE_FLAG_CONST_1)
+    fprintf(stderr, "const ");
 
+  fprintf(stderr, "%s %s", g_variable_types[node->children[0]->value], _get_pointer_stars(node->children[0]));
+
+  if ((node->flags & TREE_NODE_FLAG_CONST_2) == TREE_NODE_FLAG_CONST_2)
+    fprintf(stderr, " const ");
+
+  fprintf(stderr, "%s(", node->children[1]->label);
+  
   for (i = 2; i < node->added_children-1; i += 2) {
     if (i > 2)
       fprintf(stderr, ", ");
-    fprintf(stderr, "%s %s%s", g_variable_types[node->children[i]->value], _get_pointer_stars(node->children[i]), node->children[i+1]->label);
+
+    if ((node->children[i]->flags & TREE_NODE_FLAG_CONST_1) == TREE_NODE_FLAG_CONST_1)
+      fprintf(stderr, "const ");
+    
+    fprintf(stderr, "%s %s ", g_variable_types[node->children[i]->value], _get_pointer_stars(node->children[i]));
+
+    if ((node->children[i]->flags & TREE_NODE_FLAG_CONST_2) == TREE_NODE_FLAG_CONST_2)
+      fprintf(stderr, "const ");
+    
+    fprintf(stderr, "%s", node->children[i+1]->label);
   }
   
   fprintf(stderr, ")");

@@ -1032,8 +1032,6 @@ int create_statement(void) {
       variable_type = g_token_current->value;
 
       if (variable_type == VARIABLE_TYPE_CONST) {
-        g_current_line_number = g_token_previous->line_number;
-        g_current_filename_id = g_token_previous->file_id;
         print_error("\"const const\" doesn't make any sense.\n", ERROR_ERR);
         return FAILED;
       }
@@ -2090,10 +2088,6 @@ int create_block(struct tree_node *open_function_definition, int expect_curly_br
     /* clone the arguments right here */
     for (i = 2; i < open_function_definition->added_children; i += 2) {
       struct tree_node *argument = allocate_tree_node_with_children(TREE_NODE_TYPE_CREATE_VARIABLE_FUNCTION_ARGUMENT, 3);
-
-      /* NOTE: we leave the expression slot empty and use that later to detect that this
-         variable is actually a function argument. we save the function argument number
-         in tree_node's 'value_double' field */
       
       if (argument == NULL) {
         free_symbol_table_items(g_block_level);
@@ -2101,9 +2095,13 @@ int create_block(struct tree_node *open_function_definition, int expect_curly_br
         return FAILED;
       }
 
-      /* argument number */
+      /* NOTE: we save the function argument number in tree_node's 'value_double' field */
       argument->value_double = (i / 2) - 1;
 
+      /* NOTE: this is unlike elsewhere - the variable type node in function arguments list contains the const flags,
+         but elsewhere TREE_NODE_TYPE_CREATE_VARIABLE root node has them... perhaps change this later? */
+      argument->flags = open_function_definition->children[i+0]->flags;
+      
       /* variable type */
       tree_node_add_child(argument, clone_tree_node(open_function_definition->children[i+0]));
       /* name */
@@ -2382,8 +2380,6 @@ int create_variable_or_function(void) {
     variable_type = g_token_current->value;
 
     if (variable_type == VARIABLE_TYPE_CONST) {
-      g_current_line_number = g_token_previous->line_number;
-      g_current_filename_id = g_token_previous->file_id;
       print_error("\"const const\" doesn't make any sense.\n", ERROR_ERR);
       return FAILED;
     }
@@ -2562,8 +2558,6 @@ int create_variable_or_function(void) {
       /* this token is '(' */
       _next_token();
 
-      /* start collecting the argument types and names */
-
       g_open_function_definition = allocate_tree_node_with_children(TREE_NODE_TYPE_FUNCTION_DEFINITION, 16);
       if (g_open_function_definition == NULL)
         return FAILED;
@@ -2579,20 +2573,54 @@ int create_variable_or_function(void) {
 
       /* store the pointer depth (0 - not a pointer, 1+ - is a pointer) */
       g_open_function_definition->children[0]->value_double = pointer_depth;
-    
+
+      /* store const flags */
+      if (is_const_1 == YES)
+        g_open_function_definition->flags |= TREE_NODE_FLAG_CONST_1;
+      if (is_const_2 == YES)
+        g_open_function_definition->flags |= TREE_NODE_FLAG_CONST_2;
+      
+      /* start collecting the argument types and names */
       while (1) {
+        is_const_1 = NO;
+        is_const_2 = NO;
+        
         if (g_token_current->id == TOKEN_ID_VARIABLE_TYPE) {
           struct tree_node *node;
 
-          node = allocate_tree_node_variable_type(g_token_current->value);
+          variable_type = g_token_current->value;
+
+          /* next token */
+          _next_token();
+
+          if (variable_type == VARIABLE_TYPE_CONST) {
+            is_const_1 = YES;
+
+            /* get the real variable type */
+            if (g_token_current->id != TOKEN_ID_VARIABLE_TYPE) {
+              g_current_line_number = g_token_previous->line_number;
+              g_current_filename_id = g_token_previous->file_id;
+              print_error("\"const\" must be followed by a variable type.\n", ERROR_ERR);
+              return FAILED;
+            }
+
+            variable_type = g_token_current->value;
+
+            if (variable_type == VARIABLE_TYPE_CONST) {
+              print_error("\"const const\" doesn't make any sense.\n", ERROR_ERR);
+              return FAILED;
+            }
+
+            /* next token */
+            _next_token();
+          }
+
+          node = allocate_tree_node_variable_type(variable_type);
           if (node == NULL) {
             free_tree_node(g_open_function_definition);
             g_open_function_definition = NULL;
             return FAILED;
           }
-        
-          /* next token */
-          _next_token();
 
           pointer_depth = 0;
         
@@ -2603,9 +2631,22 @@ int create_variable_or_function(void) {
             _next_token();
           }
 
+          if (pointer_depth > 0 && g_token_current->id == TOKEN_ID_VARIABLE_TYPE && g_token_current->value == VARIABLE_TYPE_CONST) {
+            is_const_2 = YES;
+
+            /* next token */
+            _next_token();
+          }
+
           /* store the pointer depth (0 - not a pointer, 1+ - is a pointer) */
           node->value_double = pointer_depth;
 
+          /* store const flags */
+          if (is_const_1 == YES)
+            node->flags |= TREE_NODE_FLAG_CONST_1;
+          if (is_const_2 == YES)
+            node->flags |= TREE_NODE_FLAG_CONST_2;
+          
           if (node->value == VARIABLE_TYPE_VOID && pointer_depth == 0 && g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == ')') {
             /* this function has a "void" argument and nothing else -> ignore "void" */
             free_tree_node(node);

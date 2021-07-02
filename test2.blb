@@ -1,22 +1,11 @@
 
-uint8  g_color = 0;
-uint8  g_data[5] = { __incbin("../colors.bin"), 2 };
-uint16 g_data_size = __filesize("../colors.bin");
-uint8  g_hello[] = "hello", g_things[] = { 0xff, "moi!", "hi!" };
-
 void main(void) {
 
-  //uint8 hello[] = { __incbin("../colors.bin"), 1 };
-  const uint8 hello[] = { 0, 1 };
-  uint8 i;
+  int8 sum = add(1, 2);
+  sum++;
+}
 
-  while (1) {
-    __z80_out[0xBF] = 0x00;
-    __z80_out[0xBF] = 0xC0;
-    for (i = 0; i < 32; i++) {
-      __z80_out[0xBE] = g_color;
-    }
-    g_color--;
-    i = 1 + i;
-  }
+int8 add(const int8 a, const int8 b) {
+
+  return a + b;
 }
