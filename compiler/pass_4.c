@@ -296,7 +296,7 @@ static int _generate_il_create_variable(struct tree_node *node) {
 
   /* create variable */
   
-  symbol_table_add_symbol(node, node->children[1]->label, g_block_level);
+  symbol_table_add_symbol(node, node->children[1]->label, g_block_level, node->line_number, node->file_id);
 
   t = add_tac();
   if (t == NULL)
@@ -1131,7 +1131,7 @@ int generate_il(void) {
   for (i = 0; i < g_global_nodes->added_children; i++) {
     struct tree_node *node = g_global_nodes->children[i];
     if (node->type == TREE_NODE_TYPE_FUNCTION_PROTOTYPE) {
-      if (symbol_table_add_symbol(node, node->children[1]->label, g_block_level) == FAILED)
+      if (symbol_table_add_symbol(node, node->children[1]->label, g_block_level, node->line_number, node->file_id) == FAILED)
         return FAILED;
     }
   }
@@ -1139,7 +1139,7 @@ int generate_il(void) {
   for (i = 0; i < g_global_nodes->added_children; i++) {
     struct tree_node *node = g_global_nodes->children[i];
     if (node != NULL && (node->type == TREE_NODE_TYPE_CREATE_VARIABLE || node->type == TREE_NODE_TYPE_CREATE_VARIABLE_FUNCTION_ARGUMENT)) {
-      if (symbol_table_add_symbol(node, node->children[1]->label, g_block_level) == FAILED)
+      if (symbol_table_add_symbol(node, node->children[1]->label, g_block_level, node->line_number, node->file_id) == FAILED)
         return FAILED;
     }
   }
@@ -1147,7 +1147,7 @@ int generate_il(void) {
   for (i = 0; i < g_global_nodes->added_children; i++) {
     struct tree_node *node = g_global_nodes->children[i];
     if (node != NULL && node->type == TREE_NODE_TYPE_FUNCTION_DEFINITION) {
-      if (symbol_table_add_symbol(node, node->children[1]->label, g_block_level) == FAILED)
+      if (symbol_table_add_symbol(node, node->children[1]->label, g_block_level, node->line_number, node->file_id) == FAILED)
         return FAILED;
     }
   }

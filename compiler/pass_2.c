@@ -348,7 +348,7 @@ static int _pass_2_z80_init(void) {
   if (node == NULL)
     return FAILED;
 
-  if (symbol_table_add_symbol(node, node->children[1]->label, g_block_level) == FAILED) {
+  if (symbol_table_add_symbol(node, node->children[1]->label, g_block_level, -1, -1) == FAILED) {
     free_tree_node(node);
     return FAILED;
   }
@@ -361,7 +361,7 @@ static int _pass_2_z80_init(void) {
   if (node == NULL)
     return FAILED;
 
-  if (symbol_table_add_symbol(node, node->children[1]->label, g_block_level) == FAILED) {
+  if (symbol_table_add_symbol(node, node->children[1]->label, g_block_level, -1, -1) == FAILED) {
     free_tree_node(node);
     return FAILED;
   }
@@ -1003,6 +1003,7 @@ int create_statement(void) {
       /* get the real variable type */
       if (g_token_current->id != TOKEN_ID_VARIABLE_TYPE) {
         g_current_line_number = g_token_previous->line_number;
+        g_current_filename_id = g_token_previous->file_id;
         print_error("\"const\" must be followed by a variable type.\n", ERROR_ERR);
         return FAILED;
       }
@@ -1011,6 +1012,7 @@ int create_statement(void) {
 
       if (variable_type == VARIABLE_TYPE_CONST) {
         g_current_line_number = g_token_previous->line_number;
+        g_current_filename_id = g_token_previous->file_id;
         print_error("\"const const\" doesn't make any sense.\n", ERROR_ERR);
         return FAILED;
       }
@@ -1020,7 +1022,7 @@ int create_statement(void) {
     }
     
     while (1) {
-      int is_const_2 = NO;
+      int is_const_2 = NO, file_id, line_number;
       
       pointer_depth = 0;
     
@@ -1040,6 +1042,7 @@ int create_statement(void) {
 
       if (g_token_current->id != TOKEN_ID_VALUE_STRING) {
         g_current_line_number = g_token_previous->line_number;
+        g_current_filename_id = g_token_previous->file_id;
         snprintf(g_error_message, sizeof(g_error_message), "\"%s\" must be followed by a variable name.\n", g_variable_types[variable_type]);
         print_error(g_error_message, ERROR_ERR);
         return FAILED;
@@ -1047,6 +1050,10 @@ int create_statement(void) {
 
       strncpy(name, g_token_current->label, MAX_NAME_LENGTH);
 
+      /* remember these for symbol_table_add_symbol() */
+      file_id = g_token_current->file_id;
+      line_number = g_token_current->line_number;
+      
       /* next token */
       _next_token();
 
@@ -1055,6 +1062,7 @@ int create_statement(void) {
                                                      g_token_current->value != ',' &&
                                                      g_token_current->value != ';')) {
         g_current_line_number = g_token_previous->line_number;
+        g_current_filename_id = g_token_previous->file_id;
         snprintf(g_error_message, sizeof(g_error_message), "\"%s\" must be followed by a ';', ',', '[' or '='.\n", name);
         print_error(g_error_message, ERROR_ERR);
         return FAILED;
@@ -1117,7 +1125,7 @@ int create_statement(void) {
         }
 
         /* add to symbol table */
-        if (symbol_table_add_symbol(node, name, g_block_level) == FAILED)
+        if (symbol_table_add_symbol(node, name, g_block_level, line_number, file_id) == FAILED)
           return FAILED;
 
         /* next token */
@@ -1155,7 +1163,7 @@ int create_statement(void) {
       tree_node_add_child(_get_current_open_block(), node);
 
       /* add to symbol table */
-      if (symbol_table_add_symbol(node, name, g_block_level) == FAILED)
+      if (symbol_table_add_symbol(node, name, g_block_level, line_number, file_id) == FAILED)
         return FAILED;
 
       if (symbol == ',')
@@ -1196,6 +1204,7 @@ int create_statement(void) {
       /* goto */
       if (g_token_current->id != TOKEN_ID_VALUE_STRING) {
         g_current_line_number = g_token_previous->line_number;
+        g_current_filename_id = g_token_previous->file_id;
         print_error("\"goto\" needs a label to go to.\n", ERROR_ERR);
         return FAILED;
       }
@@ -1216,6 +1225,7 @@ int create_statement(void) {
 
       if (!(g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == ';'))  {
         g_current_line_number = g_token_previous->line_number;
+        g_current_filename_id = g_token_previous->file_id;
         snprintf(g_error_message, sizeof(g_error_message), "Expected ';', but got %s.\n", _get_token_simple(g_token_current));
         print_error(g_error_message, ERROR_ERR);
         return FAILED;
@@ -1234,6 +1244,7 @@ int create_statement(void) {
                                                    g_token_current->value != SYMBOL_INCREMENT &&
                                                    g_token_current->value != SYMBOL_DECREMENT)) {
       g_current_line_number = g_token_previous->line_number;
+      g_current_filename_id = g_token_previous->file_id;
       snprintf(g_error_message, sizeof(g_error_message), "\"%s\" must be followed by '=' / '[' / '(' / '++' / '--'.\n", name);
       print_error(g_error_message, ERROR_ERR);
       return FAILED;
@@ -2104,7 +2115,7 @@ int create_block(struct tree_node *open_function_definition, int expect_curly_br
       open_function_definition->children[i+1]->definition = argument;
       
       /* add to symbol table */
-      if (symbol_table_add_symbol(argument, argument->children[1]->label, g_block_level) == FAILED) {
+      if (symbol_table_add_symbol(argument, argument->children[1]->label, g_block_level, argument->line_number, argument->file_id) == FAILED) {
         free_symbol_table_items(g_block_level);
         g_block_level--;
         return FAILED;
@@ -2322,6 +2333,7 @@ int create_variable_or_function(void) {
     /* get the real variable type */
     if (g_token_current->id != TOKEN_ID_VARIABLE_TYPE) {
       g_current_line_number = g_token_previous->line_number;
+      g_current_filename_id = g_token_previous->file_id;
       print_error("\"const\" must be followed by a variable type.\n", ERROR_ERR);
       return FAILED;
     }
@@ -2330,6 +2342,7 @@ int create_variable_or_function(void) {
 
     if (variable_type == VARIABLE_TYPE_CONST) {
       g_current_line_number = g_token_previous->line_number;
+      g_current_filename_id = g_token_previous->file_id;
       print_error("\"const const\" doesn't make any sense.\n", ERROR_ERR);
       return FAILED;
     }
@@ -2339,7 +2352,7 @@ int create_variable_or_function(void) {
   }
   
   while (1) {
-    int is_const_2 = NO;
+    int is_const_2 = NO, file_id, line_number;
     
     if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == ',') {
       /* next token */
@@ -2364,6 +2377,7 @@ int create_variable_or_function(void) {
     
     if (g_token_current->id != TOKEN_ID_VALUE_STRING) {
       g_current_line_number = g_token_previous->line_number;
+      g_current_filename_id = g_token_previous->file_id;
       snprintf(g_error_message, sizeof(g_error_message), "\"%s\" must be followed by a variable or function name.\n", g_variable_types[variable_type]);
       print_error(g_error_message, ERROR_ERR);
       return FAILED;
@@ -2371,6 +2385,10 @@ int create_variable_or_function(void) {
 
     strncpy(name, g_token_current->label, MAX_NAME_LENGTH);
 
+    /* remember these for symbol_table_add_symbol() */
+    file_id = g_token_current->file_id;
+    line_number = g_token_current->line_number;
+      
     /* next token */
     _next_token();
 
@@ -2380,6 +2398,7 @@ int create_variable_or_function(void) {
                                                    g_token_current->value != '[' &&
                                                    g_token_current->value != '(')) {
       g_current_line_number = g_token_previous->line_number;
+      g_current_filename_id = g_token_previous->file_id;
       snprintf(g_error_message, sizeof(g_error_message), "\"%s\" must be followed by a ';', ',', '=', '[' or '('.\n", name);
       print_error(g_error_message, ERROR_ERR);
       return FAILED;
@@ -2423,7 +2442,7 @@ int create_variable_or_function(void) {
           return FAILED;
         
         /* add to global lists */
-        if (symbol_table_add_symbol(node, node->children[1]->label, g_block_level) == FAILED) {
+        if (symbol_table_add_symbol(node, node->children[1]->label, g_block_level, line_number, file_id) == FAILED) {
           free_tree_node(node);
           return FAILED;
         }
@@ -2473,7 +2492,7 @@ int create_variable_or_function(void) {
         node->flags |= TREE_NODE_FLAG_CONST_2;
       
       /* add to global lists */
-      if (symbol_table_add_symbol(node, node->children[1]->label, g_block_level) == FAILED) {
+      if (symbol_table_add_symbol(node, node->children[1]->label, g_block_level, line_number, file_id) == FAILED) {
         free_tree_node(node);
         return FAILED;
       }
@@ -2592,7 +2611,7 @@ int create_variable_or_function(void) {
             _next_token();
 
             /* add to global lists */
-            if (symbol_table_add_symbol(node, node->children[1]->label, g_block_level) == FAILED) {
+            if (symbol_table_add_symbol(node, node->children[1]->label, g_block_level, line_number, file_id) == FAILED) {
               free_tree_node(node);
               return FAILED;
             }
@@ -2625,7 +2644,7 @@ int create_variable_or_function(void) {
           g_open_function_definition = NULL;
 
           /* add to global lists */
-          if (symbol_table_add_symbol(node, node->children[1]->label, g_block_level) == FAILED) {
+          if (symbol_table_add_symbol(node, node->children[1]->label, g_block_level, line_number, file_id) == FAILED) {
             free_tree_node(node);
             return FAILED;
           }
@@ -2675,6 +2694,7 @@ int create_definition() {
   
   if (g_token_current->id != TOKEN_ID_VALUE_STRING) {
     g_current_line_number = g_token_previous->line_number;
+    g_current_filename_id = g_token_previous->file_id;
     snprintf(g_error_message, sizeof(g_error_message), "\"%s\" must be followed by a definition name.\n", name);
     print_error(g_error_message, ERROR_ERR);
     return FAILED;
