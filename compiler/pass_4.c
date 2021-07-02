@@ -294,6 +294,19 @@ static int _generate_il_create_variable(struct tree_node *node) {
   g_current_filename_id = node->file_id;
   g_current_line_number = node->line_number;
 
+  if (node->type == TREE_NODE_TYPE_CREATE_VARIABLE) {
+    /* is it referenced? */
+    if (node->reads == 0 && node->writes == 0) {
+      /* no -> kill it! */
+      snprintf(g_error_message, sizeof(g_error_message), "Removing unreferenced variable \"%s\".\n", node->children[1]->label);
+      print_error(g_error_message, ERROR_WRN);
+
+      node->type = TREE_NODE_TYPE_DEAD;
+
+      return SUCCEEDED;
+    }
+  }
+  
   /* create variable */
   
   symbol_table_add_symbol(node, node->children[1]->label, g_block_level, node->line_number, node->file_id);

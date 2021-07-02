@@ -6,7 +6,7 @@ int pass_2(void);
 int add_a_new_definition(char *name, double value, char *string, int type, int size);
 int create_definition(void);
 int create_variable_or_function(void);
-struct tree_node *create_array(double pointer_depth, int variable_type, char *name);
+struct tree_node *create_array(double pointer_depth, int variable_type, char *name, int line_number, int file_id);
 int create_expression(void);
 int create_term(void);
 int create_factor(void);

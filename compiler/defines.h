@@ -321,6 +321,8 @@ struct tree_node {
   struct tree_node **children;
   struct local_variables *local_variables;
   char flags;
+  int  reads;
+  int  writes;
 };
 
 #define TREE_NODE_FLAG_CONST_1       (1 << 0)

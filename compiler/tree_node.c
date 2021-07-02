@@ -303,6 +303,8 @@ struct tree_node *allocate_tree_node(int type) {
   node->definition = NULL;
   node->local_variables = NULL;
   node->flags = 0;
+  node->reads = 0;
+  node->writes = 0;
 
   /* NOTE! */
   node->file_id = g_current_filename_id;

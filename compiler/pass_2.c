@@ -1120,7 +1120,7 @@ int create_statement(void) {
       }
       else if (symbol == '[') {
         /* array */
-        node = create_array(pointer_depth, variable_type, name);
+        node = create_array(pointer_depth, variable_type, name, line_number, file_id);
         if (node == NULL)
           return FAILED;
 
@@ -1158,6 +1158,10 @@ int create_statement(void) {
       node = allocate_tree_node_with_children(TREE_NODE_TYPE_CREATE_VARIABLE, 3);
       if (node == NULL)
         return FAILED;
+
+      /* use the line where the name was given */
+      node->file_id = file_id;
+      node->line_number = line_number;
 
       tree_node_add_child(node, allocate_tree_node_variable_type(variable_type));
       tree_node_add_child(node, allocate_tree_node_value_string(name));
@@ -2192,7 +2196,7 @@ int create_block(struct tree_node *open_function_definition, int expect_curly_br
 }
 
 
-struct tree_node *create_array(double pointer_depth, int variable_type, char *name) {
+struct tree_node *create_array(double pointer_depth, int variable_type, char *name, int line_number, int file_id) {
 
   int array_size = 0, added_items;
   struct tree_node *node;
@@ -2201,6 +2205,10 @@ struct tree_node *create_array(double pointer_depth, int variable_type, char *na
   if (node == NULL)
     return NULL;
 
+  /* use the line where the name was given */
+  node->file_id = file_id;
+  node->line_number = line_number;
+  
   tree_node_add_child(node, allocate_tree_node_variable_type(variable_type));
   tree_node_add_child(node, allocate_tree_node_value_string(name));
 
@@ -2470,7 +2478,7 @@ int create_variable_or_function(void) {
       }
       else if (symbol == '[') {
         /* array */
-        node = create_array(pointer_depth, variable_type, name);
+        node = create_array(pointer_depth, variable_type, name, line_number, file_id);
         if (node == NULL)
           return FAILED;
         
@@ -2503,6 +2511,10 @@ int create_variable_or_function(void) {
       if (node == NULL)
         return FAILED;
 
+      /* use the line where the name was given */
+      node->file_id = file_id;
+      node->line_number = line_number;
+      
       tree_node_add_child(node, allocate_tree_node_variable_type(variable_type));
       tree_node_add_child(node, allocate_tree_node_value_string(name));
       if (symbol == '=') {
@@ -2888,6 +2900,14 @@ static void _check_ast_simple_tree_node(struct tree_node *node) {
     }
     node->definition = item->node;
   }
+
+  /* mark references */
+  node->definition->reads++;
+
+  if (node->type == TREE_NODE_TYPE_INCREMENT_DECREMENT) {
+    /* mark references */
+    node->definition->writes++;
+  }
   
   _check_ast_check_definition(node);
 }
@@ -2955,6 +2975,9 @@ static void _check_ast_assignment(struct tree_node *node) {
   }
 
   definition = node->children[0]->definition;
+
+  /* mark references */
+  definition->writes++;
   
   if (node->added_children <= 2) {
     /* assignment to a variable */
@@ -3037,6 +3060,9 @@ static void _check_ast_function_call(struct tree_node *node) {
     }
     node->definition = item->node;
   }
+
+  /* mark references */
+  node->definition->reads++;
 
   _check_ast_check_definition(node);
 }

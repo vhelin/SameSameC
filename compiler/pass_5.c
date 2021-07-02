@@ -56,6 +56,14 @@ int pass_5(void) {
   if (compress_register_names() == FAILED)
     return FAILED;
   
+#if defined(DEBUG_PASS_5)
+  fprintf(stderr, ">------------------------------ OPTIMIZED IL ------------------------------>\n");
+#endif
+  
+#if defined(DEBUG_PASS_5)
+  print_tacs();
+#endif
+
   /* TODO: reuse old registers to decrease stack usage later */
 
   if (propagate_operand_types() == FAILED)
@@ -69,14 +77,6 @@ int pass_5(void) {
   if (make_sure_all_tacs_have_definition_nodes() == FAILED)
     return FAILED;
 
-#if defined(DEBUG_PASS_5)
-  fprintf(stderr, ">------------------------------ OPTIMIZED IL ------------------------------>\n");
-#endif
-  
-#if defined(DEBUG_PASS_5)
-  print_tacs();
-#endif
-  
   return SUCCEEDED;
 }
 
@@ -2007,11 +2007,11 @@ int collect_and_preprocess_local_variables_inside_functions(void) {
             return FAILED;
           }
 
-          local_variables[local_variables_count++] = t->result_node;
-
           /* is this a function argument? */
           if (t->result_node->type == TREE_NODE_TYPE_CREATE_VARIABLE_FUNCTION_ARGUMENT)
             arguments_count++;
+
+          local_variables[local_variables_count++] = t->result_node;
         }
         else if (op == TAC_OP_DEAD) {
         }
@@ -2099,7 +2099,13 @@ int collect_and_preprocess_local_variables_inside_functions(void) {
         return FAILED;
       }
       function_node->local_variables->temp_registers_count = used_registers;
-      
+
+#if defined(DEBUG_PASS_5)
+      fprintf(stderr, "*** FUNCTION \"%s\" STACK FRAME\n", function_node->children[1]->label);
+      fprintf(stderr, "OFFSET  %.5d SIZE %.6d \"return address\"\n", -0, 2);
+      fprintf(stderr, "OFFSET %.5d SIZE %.6d \"caller's stack frame address\"\n", -2, 2);
+#endif
+
       /* calculate the offsets */
       for (j = 0; j < local_variables_count; j++) {
         int size = _get_variable_size(local_variables[j]);
@@ -2110,6 +2116,10 @@ int collect_and_preprocess_local_variables_inside_functions(void) {
         function_node->local_variables->local_variables[j].node = local_variables[j];
         function_node->local_variables->local_variables[j].offset_to_fp = offset;
         function_node->local_variables->local_variables[j].size = size;
+
+#if defined(DEBUG_PASS_5)
+        fprintf(stderr, "OFFSET %.5d SIZE %.6d VARIABLE %s\n", offset, size/8, local_variables[j]->children[1]->label);
+#endif
         
         offset -= size / 8;
       }
@@ -2125,6 +2135,10 @@ int collect_and_preprocess_local_variables_inside_functions(void) {
         function_node->local_variables->temp_registers[j].offset_to_fp = offset;
         function_node->local_variables->temp_registers[j].size = register_sizes[k];
         function_node->local_variables->temp_registers[j].register_index = k;
+
+#if defined(DEBUG_PASS_5)
+        fprintf(stderr, "OFFSET %.5d SIZE %.6d REGISTER r%d\n", offset, register_sizes[k]/8, k);
+#endif
         
         offset -= register_sizes[k] / 8;
         

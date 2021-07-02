@@ -6,7 +6,8 @@ uint8  g_hello[] = "hello", g_things[] = { 0xff, "moi!", "hi!" };
 
 void main(void) {
 
-  //uint8 hello[] = { "hello!", 1 };
+  //uint8 hello[] = { __incbin("../colors.bin"), 1 };
+  const uint8 hello[] = { 0, 1 };
   uint8 i;
 
   while (1) {
