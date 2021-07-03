@@ -267,6 +267,7 @@ struct token {
 #define TOKEN_ID_CASE          16
 #define TOKEN_ID_DEFAULT       17
 #define TOKEN_ID_BYTES         18
+#define TOKEN_ID_ASM           19
 
 #define SYMBOL_LOGICAL_OR  0
 #define SYMBOL_LOGICAL_AND 1
@@ -360,6 +361,7 @@ struct tree_node {
 #define TREE_NODE_TYPE_GOTO                28
 #define TREE_NODE_TYPE_DEAD                29
 #define TREE_NODE_TYPE_BYTES               30
+#define TREE_NODE_TYPE_ASM                 31
 
 struct symbol_table_item {
   int level;
@@ -451,27 +453,25 @@ struct stack_item_priority_item {
   int priority;
 };
 
-#define REGISTER_STATUS_UNKNOWN 0
-#define REGISTER_STATUS_VALUE   1
-#define REGISTER_STATUS_LABEL   2
+#define ASM_LINE_FLAG_READ  (1 << 0)
+#define ASM_LINE_FLAG_WRITE (1 << 1)
 
-struct cpu_z80 {
-  int a;
-  int bc;
-  int de;
-  int hl;
-  char a_status;
-  char bc_status;
-  char de_status;
-  char hl_status;
-  char *bc_s;
-  char *hl_s;
-  char *de_s;
+struct asm_line {
+  char *line;
+  char flags;
+  char cpu_register[3]; /* zero terminated */
+  int line_number;
+  struct tree_node *variable;
+  struct asm_line *next;
 };
 
-/* bc - tmp */
-/* de - frame pointer */
-/* hl - tmp */
-/* sp - stack pointer */
+struct inline_asm {
+  int id;
+  int file_id;
+  int line_number;
+  struct asm_line *asm_line_first;
+  struct asm_line *asm_line_last;
+  struct inline_asm *next;
+};
 
 #endif /* _DEFINES_H */

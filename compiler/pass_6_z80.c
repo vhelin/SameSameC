@@ -27,17 +27,7 @@ extern struct tac *g_tacs;
 extern int g_tacs_count, g_tacs_max;
 extern char g_tmp[4096], g_error_message[sizeof(g_tmp) + MAX_NAME_LENGTH + 1 + 1024];
 
-static struct cpu_z80 g_cpu_z80;
 static int g_return_id = 1;
-
-
-static void _reset_cpu_z80(void) {
-
-  g_cpu_z80.a_status = REGISTER_STATUS_UNKNOWN;
-  g_cpu_z80.bc_status = REGISTER_STATUS_UNKNOWN;
-  g_cpu_z80.de_status = REGISTER_STATUS_UNKNOWN;
-  g_cpu_z80.hl_status = REGISTER_STATUS_UNKNOWN;
-}
 
 
 int pass_6_z80(char *file_name, FILE *file_out) {
@@ -47,8 +37,6 @@ int pass_6_z80(char *file_name, FILE *file_out) {
 
   if (generate_global_variables_z80(file_name, file_out) == FAILED)
     return FAILED;
-  
-  _reset_cpu_z80();
   
   if (generate_asm_z80(file_out) == FAILED)
     return FAILED;
@@ -4100,7 +4088,6 @@ int generate_asm_z80(FILE *file_out) {
         /* IL -> ASM */
 
         if (op == TAC_OP_LABEL && t->is_function == YES) {
-          _reset_cpu_z80();
           i--;
           break;
         }
@@ -4125,10 +4112,8 @@ int generate_asm_z80(FILE *file_out) {
         print_tac(t, YES, file_out);
         fprintf(file_out, "      ; -----------------------------------------------------------------\n");
         
-        if (op == TAC_OP_LABEL && t->is_function == NO) {
+        if (op == TAC_OP_LABEL && t->is_function == NO)
           fprintf(file_out, "    %s:\n", t->result_s);
-          _reset_cpu_z80();
-        }
         else if (op == TAC_OP_LABEL)
           fprintf(file_out, "    %s:\n", t->result_s);
         else if (op == TAC_OP_ASSIGNMENT) {

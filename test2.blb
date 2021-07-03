@@ -1,11 +1,18 @@
 
 void main(void) {
 
-  int8 sum = add(1, 2);
+  int8 sum = sum(1, 2);
   sum++;
 }
 
-int8 add(const int8 a, const int8 b) {
+int8 sum(int8 a, int8 b) {
 
-  return a + b;
+  int8 c;
+
+  __asm("LD  A,(@a)",
+        "LD  B,(@b)",
+        "ADD A,B",
+        "LD  (@c),A");
+
+  return c;
 }

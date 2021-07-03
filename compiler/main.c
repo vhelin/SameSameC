@@ -16,6 +16,7 @@
 #include "source_line_manager.h"
 #include "definitions.h"
 #include "symbol_table.h"
+#include "inline_asm.h"
 #include "pass_1.h"
 #include "pass_2.h"
 #include "pass_3.h"
@@ -48,6 +49,7 @@ extern struct stringmaptable *g_stringmaptables;
 extern struct active_file_info *g_active_file_info_first, *g_active_file_info_last, *g_active_file_info_tmp;
 extern struct token *g_token_first, *g_token_last;
 extern struct definition *g_definitions_first;
+extern struct inline_asm *g_inline_asm_first, *g_inline_asm_last;
 extern char *g_include_in_tmp, *g_tmp_a;
 extern char *g_include_dir, *g_buffer, *g_full_name;
 extern int g_include_in_tmp_size, g_tmp_a_size, g_newline_beginning;
@@ -358,6 +360,12 @@ void procedures_at_exit(void) {
     f = ft;
   }
 
+  while (g_inline_asm_first != NULL) {
+    struct inline_asm *ia = g_inline_asm_first->next;
+    inline_asm_free(g_inline_asm_first);
+    g_inline_asm_first = ia;
+  }
+  
   while (g_definitions_first != NULL) {
     struct definition *d = g_definitions_first->next;
     free(g_definitions_first);

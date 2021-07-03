@@ -2070,6 +2070,22 @@ int create_statement(void) {
 
     return SUCCEEDED;
   }
+  else if (g_token_current->id == TOKEN_ID_ASM) {
+    /* inline ASM */
+    node = allocate_tree_node(TREE_NODE_TYPE_ASM);
+    if (node == NULL)
+      return FAILED;
+
+    /* transfer the inline_asm id */
+    node->value = g_token_current->value;
+    
+    tree_node_add_child(_get_current_open_block(), node);
+
+    /* next token */
+    _next_token();
+
+    return SUCCEEDED;
+  }
   
   snprintf(g_error_message, sizeof(g_error_message), "Expected a statement, but got %s.\n", _get_token_simple(g_token_current));
   print_error(g_error_message, ERROR_ERR);
@@ -2574,7 +2590,7 @@ int create_variable_or_function(void) {
       /* store the pointer depth (0 - not a pointer, 1+ - is a pointer) */
       g_open_function_definition->children[0]->value_double = pointer_depth;
 
-      /* store const flags */
+      /* NOTE: store const flags in TREE_NODE_TYPE_FUNCTION_DEFINITION */
       if (is_const_1 == YES)
         g_open_function_definition->flags |= TREE_NODE_FLAG_CONST_1;
       if (is_const_2 == YES)
@@ -2641,7 +2657,7 @@ int create_variable_or_function(void) {
           /* store the pointer depth (0 - not a pointer, 1+ - is a pointer) */
           node->value_double = pointer_depth;
 
-          /* store const flags */
+          /* NOTE: store const flags in TREE_NODE_TYPE_VARIABLE_TYPE */
           if (is_const_1 == YES)
             node->flags |= TREE_NODE_FLAG_CONST_1;
           if (is_const_2 == YES)
@@ -3217,6 +3233,8 @@ static void _check_ast_statement(struct tree_node *node) {
   else if (node->type == TREE_NODE_TYPE_BREAK || node->type == TREE_NODE_TYPE_CONTINUE)
     return;
   else if (node->type == TREE_NODE_TYPE_LABEL || node->type == TREE_NODE_TYPE_GOTO)
+    return;
+  else if (node->type == TREE_NODE_TYPE_ASM)
     return;
   else {
     fprintf(stderr, "_check_ast_statement(): Unhandled statement type %d! Please submit a bug report!\n", node->type);

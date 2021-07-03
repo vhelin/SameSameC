@@ -18,6 +18,8 @@
 #include "symbol_table.h"
 #include "il.h"
 #include "tac.h"
+#include "inline_asm.h"
+#include "inline_asm_z80.h"
 
 
 extern struct tree_node *g_global_nodes;
@@ -25,7 +27,7 @@ extern int g_verbose_mode, g_input_float_mode, g_current_filename_id, g_current_
 extern char *g_variable_types[4], *g_two_char_symbols[10], g_label[MAX_NAME_LENGTH + 1];
 extern double g_parsed_double;
 extern struct tac *g_tacs;
-extern int g_tacs_count, g_tacs_max;
+extern int g_tacs_count, g_tacs_max, g_backend;
 extern char g_tmp[4096], g_error_message[sizeof(g_tmp) + MAX_NAME_LENGTH + 1 + 1024];
 
 static struct breakable_stack_item g_breakable_stack_items[256];
@@ -1016,6 +1018,30 @@ static int _generate_il_create_goto(struct tree_node *node) {
 }
 
 
+static int _generate_il_asm(struct tree_node *node) {
+
+  struct symbol_table_item *sti;
+  struct inline_asm *ia;
+  struct asm_line *al;
+
+  ia = inline_asm_find(node->value);
+  if (ia == NULL)
+    return FAILED;
+
+  al = ia->asm_line_first;
+  while (al != NULL) {
+    /* determine if the ASM line has i/o with variables, and find the associated tree_node where the variable is created */
+    if (g_backend == BACKEND_Z80) {
+      if (inline_asm_z80_parse_line(al) == FAILED)
+        return FAILED;
+    }
+    al = al->next;
+  }
+  
+  return SUCCEEDED;
+}
+
+
 static int _generate_il_create_statement(struct tree_node *node) {
 
   int r = SUCCEEDED;
@@ -1057,6 +1083,8 @@ static int _generate_il_create_statement(struct tree_node *node) {
     r = _generate_il_create_label(node);
   else if (node->type == TREE_NODE_TYPE_GOTO)
     r = _generate_il_create_goto(node);
+  else if (node->type == TREE_NODE_TYPE_ASM)
+    r = _generate_il_asm(node);
   else {
     snprintf(g_error_message, sizeof(g_error_message), "_generate_il_create_statement(): Unsupported node type %d! Please send a bug report!\n", node->type);
     print_error(g_error_message, ERROR_ERR);

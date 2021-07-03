@@ -15,6 +15,7 @@
 #include "include_file.h"
 #include "pass_3.h"
 #include "tree_node.h"
+#include "inline_asm.h"
 
 
 /* define this for DEBUG */
@@ -413,6 +414,38 @@ static void _print_for(struct tree_node *node) {
 }
 
 
+static void _print_asm(struct tree_node *node) {
+
+  struct inline_asm *ia;
+  struct asm_line *al;
+  int printed = NO;
+  
+  if (node == NULL)
+    return;
+
+  ia = inline_asm_find(node->value);
+  if (ia == NULL)
+    return;
+
+  al = ia->asm_line_first;
+  while (al != NULL) {
+    if (printed == NO)
+      fprintf(stderr, "%s__asm(", _get_current_indentation());
+    else
+      fprintf(stderr, "%s      ", _get_current_indentation());
+    fprintf(stderr, "\"%s\"", al->line);
+
+    printed = YES;
+    al = al->next;
+
+    if (al != NULL)
+      fprintf(stderr, ",\n");
+  }
+
+  fprintf(stderr, ");\n");
+}
+
+
 static void _print_statement(struct tree_node *node, int line) {
 
   if (node == NULL)
@@ -456,6 +489,8 @@ static void _print_statement(struct tree_node *node, int line) {
     fprintf(stderr, "%sbreak%s%s", _get_current_indentation(), _get_current_end_of_statement(), _get_current_end_of_line());
   else if (node->type == TREE_NODE_TYPE_CONTINUE)
     fprintf(stderr, "%scontinue%s%s", _get_current_indentation(), _get_current_end_of_statement(), _get_current_end_of_line());
+  else if (node->type == TREE_NODE_TYPE_ASM)
+    _print_asm(node);
   else
     fprintf(stderr, "%s?%s%s", _get_current_indentation(), _get_current_end_of_statement(), _get_current_end_of_line());
 }
@@ -495,7 +530,7 @@ static void _print_function_definition(struct tree_node *node) {
   fprintf(stderr, "%s %s", g_variable_types[node->children[0]->value], _get_pointer_stars(node->children[0]));
 
   if ((node->flags & TREE_NODE_FLAG_CONST_2) == TREE_NODE_FLAG_CONST_2)
-    fprintf(stderr, " const ");
+    fprintf(stderr, "const ");
 
   fprintf(stderr, "%s(", node->children[1]->label);
   
@@ -506,7 +541,7 @@ static void _print_function_definition(struct tree_node *node) {
     if ((node->children[i]->flags & TREE_NODE_FLAG_CONST_1) == TREE_NODE_FLAG_CONST_1)
       fprintf(stderr, "const ");
     
-    fprintf(stderr, "%s %s ", g_variable_types[node->children[i]->value], _get_pointer_stars(node->children[i]));
+    fprintf(stderr, "%s %s", g_variable_types[node->children[i]->value], _get_pointer_stars(node->children[i]));
 
     if ((node->children[i]->flags & TREE_NODE_FLAG_CONST_2) == TREE_NODE_FLAG_CONST_2)
       fprintf(stderr, "const ");

@@ -16,6 +16,7 @@
 #include "stack.h"
 #include "printf.h"
 #include "definitions.h"
+#include "inline_asm.h"
 
 
 extern int g_verbose_mode, g_source_pointer, g_ss, g_input_float_mode, g_parsed_int, g_open_files, g_expect_calculations;
@@ -32,94 +33,7 @@ char g_current_directive[MAX_NAME_LENGTH + 1];
 struct token *g_token_first = NULL, *g_token_last = NULL;
 
 
-int pass_1(void) {
-
-  int q;
-
-  if (g_verbose_mode == ON)
-    printf("Pass 1...\n");
-
-  /* start from the very first character, this is the index to the source file we are about to parse... */
-  g_source_pointer = 0;
-
-  while (1) {
-    q = get_next_token();
-    if (q == FAILED)
-      break;
-
-    /*
-    if (q == GET_NEXT_TOKEN_INT)
-      fprintf(stderr, "%d: TOKEN: %d\n", q, g_parsed_int);
-    else if (q == GET_NEXT_TOKEN_DOUBLE)
-      fprintf(stderr, "%d: TOKEN: %f\n", q, g_parsed_double);
-    else if (q == GET_NEXT_TOKEN_STACK)
-      fprintf(stderr, "%d: TOKEN: %d\n", q, g_latest_stack);
-    else
-      fprintf(stderr, "%d: TOKEN: %s\n", q, g_tmp);
-    */
-
-    q = evaluate_token(q);
-
-    if (q == SUCCEEDED)
-      continue;
-    else if (q == EVALUATE_TOKEN_EOP) {
-      /* add 8 no ops so that parsing later will be easier (no need to check for null pointers all the time) */
-      for (q = 0; q < 8; q++)
-        add_token(TOKEN_ID_NO_OP, 0, 0.0, NULL);
-      return SUCCEEDED;
-    }
-    else if (q == FAILED) {
-      snprintf(g_error_message, sizeof(g_error_message), "Couldn't parse \"%s\".\n", g_tmp);
-      print_error(g_error_message, ERROR_ERR);
-      return FAILED;
-    }
-    else {
-      printf("PASS_1: Internal error, unknown return type %d.\n", q);
-      return FAILED;
-    }
-  }
-
-  return FAILED;
-}
-
-
-int create_mainmain_tokens(void) {
-
-  int sum = 0, q;
-  
-  /* we'll call this from pass_2.c when we've parsed function "void main(void)"... */
-
-  /* generate "void mainmain(void)" */
-  sum += add_token(TOKEN_ID_VARIABLE_TYPE, VARIABLE_TYPE_VOID, 0.0, NULL);  
-  sum += add_token(TOKEN_ID_VALUE_STRING, 0, 0.0, "mainmain");
-  sum += add_token(TOKEN_ID_SYMBOL, '(', 0.0, NULL);
-  sum += add_token(TOKEN_ID_VARIABLE_TYPE, VARIABLE_TYPE_VOID, 0.0, NULL);
-  sum += add_token(TOKEN_ID_SYMBOL, ')', 0.0, NULL);
-  sum += add_token(TOKEN_ID_SYMBOL, '{', 0.0, NULL);
-  sum += add_token(TOKEN_ID_VALUE_STRING, 0, 0.0, "main");
-  sum += add_token(TOKEN_ID_SYMBOL, '(', 0.0, NULL);
-  sum += add_token(TOKEN_ID_SYMBOL, ')', 0.0, NULL);
-  sum += add_token(TOKEN_ID_SYMBOL, ';', 0.0, NULL);
-  sum += add_token(TOKEN_ID_WHILE, 0, 0.0, NULL);
-  sum += add_token(TOKEN_ID_SYMBOL, '(', 0.0, NULL);
-  sum += add_token(TOKEN_ID_VALUE_INT, 1, 0.0, NULL);  
-  sum += add_token(TOKEN_ID_SYMBOL, ')', 0.0, NULL);
-  sum += add_token(TOKEN_ID_SYMBOL, '{', 0.0, NULL);
-  sum += add_token(TOKEN_ID_SYMBOL, '}', 0.0, NULL);
-  sum += add_token(TOKEN_ID_SYMBOL, '}', 0.0, NULL);
-  
-  if (sum != 17)
-    return FAILED;
-
-  /* add 8 no ops so that parsing later will be easier (no need to check for null pointers all the time) */
-  for (q = 0; q < 8; q++)
-    add_token(TOKEN_ID_NO_OP, 0, 0.0, NULL);
-  
-  return SUCCEEDED;
-}
-
-
-int add_token(int id, int value, double value_double, char *label) {
+static int _add_token(int id, int value, double value_double, char *label) {
 
   struct token *t;
 
@@ -182,6 +96,240 @@ int add_token(int id, int value, double value_double, char *label) {
 }
 
 
+int pass_1(void) {
+
+  int q;
+
+  if (g_verbose_mode == ON)
+    printf("Pass 1...\n");
+
+  /* start from the very first character, this is the index to the source file we are about to parse... */
+  g_source_pointer = 0;
+
+  while (1) {
+    q = get_next_token();
+    if (q == FAILED)
+      break;
+
+    /*
+    if (q == GET_NEXT_TOKEN_INT)
+      fprintf(stderr, "%d: TOKEN: %d\n", q, g_parsed_int);
+    else if (q == GET_NEXT_TOKEN_DOUBLE)
+      fprintf(stderr, "%d: TOKEN: %f\n", q, g_parsed_double);
+    else if (q == GET_NEXT_TOKEN_STACK)
+      fprintf(stderr, "%d: TOKEN: %d\n", q, g_latest_stack);
+    else
+      fprintf(stderr, "%d: TOKEN: %s\n", q, g_tmp);
+    */
+
+    q = evaluate_token(q);
+
+    if (q == SUCCEEDED)
+      continue;
+    else if (q == EVALUATE_TOKEN_EOP) {
+      /* add 8 no ops so that parsing later will be easier (no need to check for null pointers all the time) */
+      for (q = 0; q < 8; q++)
+        _add_token(TOKEN_ID_NO_OP, 0, 0.0, NULL);
+      return SUCCEEDED;
+    }
+    else if (q == FAILED) {
+      snprintf(g_error_message, sizeof(g_error_message), "Couldn't parse \"%s\".\n", g_tmp);
+      print_error(g_error_message, ERROR_ERR);
+      return FAILED;
+    }
+    else {
+      printf("PASS_1: Internal error, unknown return type %d.\n", q);
+      return FAILED;
+    }
+  }
+
+  return FAILED;
+}
+
+
+int create_mainmain_tokens(void) {
+
+  int sum = 0, q;
+  
+  /* we'll call this from pass_2.c when we've parsed function "void main(void)"... */
+
+  /* generate "void mainmain(void)" */
+  sum += _add_token(TOKEN_ID_VARIABLE_TYPE, VARIABLE_TYPE_VOID, 0.0, NULL);  
+  sum += _add_token(TOKEN_ID_VALUE_STRING, 0, 0.0, "mainmain");
+  sum += _add_token(TOKEN_ID_SYMBOL, '(', 0.0, NULL);
+  sum += _add_token(TOKEN_ID_VARIABLE_TYPE, VARIABLE_TYPE_VOID, 0.0, NULL);
+  sum += _add_token(TOKEN_ID_SYMBOL, ')', 0.0, NULL);
+  sum += _add_token(TOKEN_ID_SYMBOL, '{', 0.0, NULL);
+  sum += _add_token(TOKEN_ID_VALUE_STRING, 0, 0.0, "main");
+  sum += _add_token(TOKEN_ID_SYMBOL, '(', 0.0, NULL);
+  sum += _add_token(TOKEN_ID_SYMBOL, ')', 0.0, NULL);
+  sum += _add_token(TOKEN_ID_SYMBOL, ';', 0.0, NULL);
+  sum += _add_token(TOKEN_ID_WHILE, 0, 0.0, NULL);
+  sum += _add_token(TOKEN_ID_SYMBOL, '(', 0.0, NULL);
+  sum += _add_token(TOKEN_ID_VALUE_INT, 1, 0.0, NULL);  
+  sum += _add_token(TOKEN_ID_SYMBOL, ')', 0.0, NULL);
+  sum += _add_token(TOKEN_ID_SYMBOL, '{', 0.0, NULL);
+  sum += _add_token(TOKEN_ID_SYMBOL, '}', 0.0, NULL);
+  sum += _add_token(TOKEN_ID_SYMBOL, '}', 0.0, NULL);
+  
+  if (sum != 17)
+    return FAILED;
+
+  /* add 8 no ops so that parsing later will be easier (no need to check for null pointers all the time) */
+  for (q = 0; q < 8; q++)
+    _add_token(TOKEN_ID_NO_OP, 0, 0.0, NULL);
+  
+  return SUCCEEDED;
+}
+
+
+static int _parse_filesize(void) {
+
+  int token, file_size;
+  FILE *f;
+
+  token = get_next_token();
+  if (token != GET_NEXT_TOKEN_SYMBOL || g_tmp[0] != '(') {
+    print_error("\"__filesize()\" is missing its first parenthesis.\n", ERROR_DIR);
+    return FAILED;
+  }
+
+  token = get_next_token();
+  if (token != GET_NEXT_TOKEN_STRING_DATA) {
+    print_error("\"__filesize()\" needs a file name.\n", ERROR_DIR);
+    return FAILED;
+  }
+
+  f = fopen(g_tmp, "r");
+  if (f == NULL) {
+    snprintf(g_error_message, sizeof(g_error_message), "\"__filesize() cannot open file \"%s\".\n", g_tmp);
+    print_error(g_error_message, ERROR_DIR);
+    return FAILED;
+  }
+
+  fseek(f, 0, SEEK_END);
+  file_size = (int)ftell(f);
+  fclose(f);
+
+  token = get_next_token();
+  if (token != GET_NEXT_TOKEN_SYMBOL || g_tmp[0] != ')') {
+    print_error("\"__filesize()\" is missing its second parenthesis.\n", ERROR_DIR);
+    return FAILED;
+  }
+
+  return _add_token(TOKEN_ID_VALUE_INT, file_size, 0.0, NULL);
+}
+
+
+static int _parse_incbin(void) {
+
+  int token, file_size;
+  unsigned char *data;
+  FILE *f;
+
+  token = get_next_token();
+  if (token != GET_NEXT_TOKEN_SYMBOL || g_tmp[0] != '(') {
+    print_error("\"__incbin()\" is missing its first parenthesis.\n", ERROR_DIR);
+    return FAILED;
+  }
+
+  token = get_next_token();
+  if (token != GET_NEXT_TOKEN_STRING_DATA) {
+    print_error("\"__incbin()\" needs a file name.\n", ERROR_DIR);
+    return FAILED;
+  }
+
+  f = fopen(g_tmp, "r");
+  if (f == NULL) {
+    snprintf(g_error_message, sizeof(g_error_message), "\"__incbin() cannot open file \"%s\".\n", g_tmp);
+    print_error(g_error_message, ERROR_DIR);
+    return FAILED;
+  }
+
+  fseek(f, 0, SEEK_END);
+  file_size = (int)ftell(f);
+  fseek(f, 0, SEEK_SET);
+
+  data = calloc(file_size, 1);
+  if (data == NULL) {
+    snprintf(g_error_message, sizeof(g_error_message), "Out of memory while allocating memory for __incbin()'ed \"%s\".\n", g_tmp);
+    print_error(g_error_message, ERROR_DIR);
+    fclose(f);
+    return FAILED;
+  }
+
+  fread(data, 1, file_size, f);
+  fclose(f);
+
+  token = get_next_token();
+  if (token != GET_NEXT_TOKEN_SYMBOL || g_tmp[0] != ')') {
+    print_error("\"__incbin()\" is missing its second parenthesis.\n", ERROR_DIR);
+    return FAILED;
+  }
+
+  /* NOTE! in the case of TOKEN_ID_BYTES _add_token() will eat the memory block "data" and it'll be assigned to a "token" */
+  return _add_token(TOKEN_ID_BYTES, file_size, 0.0, (char *)data);
+}
+
+
+static int _parse_asm(void) {
+
+  struct inline_asm *ia;
+  int token;
+  
+  token = get_next_token();
+  if (token != GET_NEXT_TOKEN_SYMBOL || g_tmp[0] != '(') {
+    print_error("\"__asm()\" is missing its first parenthesis.\n", ERROR_DIR);
+    return FAILED;
+  }
+
+  ia = inline_asm_add();
+  if (ia == NULL)
+    return FAILED;
+
+  if (g_active_file_info_last != NULL) {
+    ia->file_id = g_active_file_info_last->filename_id;
+    ia->line_number = g_active_file_info_last->line_current;
+  }
+  
+  if (_add_token(TOKEN_ID_ASM, ia->id, 0.0, NULL) == FAILED)
+    return FAILED;
+  
+  /* collect the asm lines */
+  while (1) {
+    token = get_next_token();
+
+    if (token == GET_NEXT_TOKEN_STRING_DATA) {
+      int line_number = -1;
+
+      if (g_active_file_info_last != NULL)
+        line_number = g_active_file_info_last->line_current;
+
+      if (inline_asm_add_asm_line(ia, g_tmp, g_ss + 1, line_number) == FAILED)
+        return FAILED;
+    }
+    else if (token == GET_NEXT_TOKEN_SYMBOL && g_tmp[0] == ',') {
+    }
+    else if (token == GET_NEXT_TOKEN_SYMBOL && g_tmp[0] == ')')
+      break;
+    else {
+      print_error("Expected a string, ',' or ')', but got something else.\n", ERROR_DIR);
+      return FAILED;
+    }
+  }
+
+  /* the end */
+  token = get_next_token();
+  if (token == GET_NEXT_TOKEN_SYMBOL && g_tmp[0] == ';')
+    return SUCCEEDED;
+
+  print_error("Expected a ';', but got something else.\n", ERROR_DIR);
+
+  return FAILED;
+}
+
+
+
 int evaluate_token(int type) {
 
   int q;
@@ -219,16 +367,16 @@ int evaluate_token(int type) {
       }
     }
 
-    return add_token(TOKEN_ID_SYMBOL, value, 0.0, NULL);
+    return _add_token(TOKEN_ID_SYMBOL, value, 0.0, NULL);
   }
 
   /* a double */
   if (type == GET_NEXT_TOKEN_DOUBLE)
-    return add_token(TOKEN_ID_VALUE_DOUBLE, 0, g_parsed_double, NULL);
+    return _add_token(TOKEN_ID_VALUE_DOUBLE, 0, g_parsed_double, NULL);
 
   /* an int */
   if (type == GET_NEXT_TOKEN_INT)
-    return add_token(TOKEN_ID_VALUE_INT, g_parsed_int, 0.0, NULL);
+    return _add_token(TOKEN_ID_VALUE_INT, g_parsed_int, 0.0, NULL);
 
   /* a "string" */
   if (type == GET_NEXT_TOKEN_STRING_DATA) {
@@ -243,7 +391,7 @@ int evaluate_token(int type) {
 
     memcpy(tmp, g_tmp, g_ss + 1);
     
-    return add_token(TOKEN_ID_BYTES, g_ss + 1, 0.0, tmp);
+    return _add_token(TOKEN_ID_BYTES, g_ss + 1, 0.0, tmp);
   }
   
   /* a string */
@@ -252,154 +400,79 @@ int evaluate_token(int type) {
     
     /* int8 */
     if (strcaselesscmp(g_tmp, "int8") == 0)
-      return add_token(TOKEN_ID_VARIABLE_TYPE, VARIABLE_TYPE_INT8, 0.0, NULL);
+      return _add_token(TOKEN_ID_VARIABLE_TYPE, VARIABLE_TYPE_INT8, 0.0, NULL);
 
     /* uint8 */
     if (strcaselesscmp(g_tmp, "uint8") == 0)
-      return add_token(TOKEN_ID_VARIABLE_TYPE, VARIABLE_TYPE_UINT8, 0.0, NULL);
+      return _add_token(TOKEN_ID_VARIABLE_TYPE, VARIABLE_TYPE_UINT8, 0.0, NULL);
 
     /* int16 */
     if (strcaselesscmp(g_tmp, "int16") == 0)
-      return add_token(TOKEN_ID_VARIABLE_TYPE, VARIABLE_TYPE_INT16, 0.0, NULL);
+      return _add_token(TOKEN_ID_VARIABLE_TYPE, VARIABLE_TYPE_INT16, 0.0, NULL);
 
     /* uint16 */
     if (strcaselesscmp(g_tmp, "uint16") == 0)
-      return add_token(TOKEN_ID_VARIABLE_TYPE, VARIABLE_TYPE_UINT16, 0.0, NULL);
+      return _add_token(TOKEN_ID_VARIABLE_TYPE, VARIABLE_TYPE_UINT16, 0.0, NULL);
 
     /* void */
     if (strcaselesscmp(g_tmp, "void") == 0)
-      return add_token(TOKEN_ID_VARIABLE_TYPE, VARIABLE_TYPE_VOID, 0.0, NULL);
+      return _add_token(TOKEN_ID_VARIABLE_TYPE, VARIABLE_TYPE_VOID, 0.0, NULL);
 
     /* const */
     if (strcaselesscmp(g_tmp, "const") == 0)
-      return add_token(TOKEN_ID_VARIABLE_TYPE, VARIABLE_TYPE_CONST, 0.0, NULL);
+      return _add_token(TOKEN_ID_VARIABLE_TYPE, VARIABLE_TYPE_CONST, 0.0, NULL);
 
     /* return */
     if (strcaselesscmp(g_tmp, "return") == 0)
-      return add_token(TOKEN_ID_RETURN, 0, 0.0, NULL);
+      return _add_token(TOKEN_ID_RETURN, 0, 0.0, NULL);
 
     /* else */
     if (strcaselesscmp(g_tmp, "else") == 0)
-      return add_token(TOKEN_ID_ELSE, 0, 0.0, NULL);
+      return _add_token(TOKEN_ID_ELSE, 0, 0.0, NULL);
 
     /* if */
     if (strcaselesscmp(g_tmp, "if") == 0)
-      return add_token(TOKEN_ID_IF, 0, 0.0, NULL);
+      return _add_token(TOKEN_ID_IF, 0, 0.0, NULL);
 
     /* while */
     if (strcaselesscmp(g_tmp, "while") == 0)
-      return add_token(TOKEN_ID_WHILE, 0, 0.0, NULL);
+      return _add_token(TOKEN_ID_WHILE, 0, 0.0, NULL);
 
     /* for */
     if (strcaselesscmp(g_tmp, "for") == 0)
-      return add_token(TOKEN_ID_FOR, 0, 0.0, NULL);
+      return _add_token(TOKEN_ID_FOR, 0, 0.0, NULL);
     
     /* break */
     if (strcaselesscmp(g_tmp, "break") == 0)
-      return add_token(TOKEN_ID_BREAK, 0, 0.0, NULL);
+      return _add_token(TOKEN_ID_BREAK, 0, 0.0, NULL);
 
     /* continue */
     if (strcaselesscmp(g_tmp, "continue") == 0)
-      return add_token(TOKEN_ID_CONTINUE, 0, 0.0, NULL);
+      return _add_token(TOKEN_ID_CONTINUE, 0, 0.0, NULL);
     
     /* switch */
     if (strcaselesscmp(g_tmp, "switch") == 0)
-      return add_token(TOKEN_ID_SWITCH, 0, 0.0, NULL);
+      return _add_token(TOKEN_ID_SWITCH, 0, 0.0, NULL);
 
     /* case */
     if (strcaselesscmp(g_tmp, "case") == 0)
-      return add_token(TOKEN_ID_CASE, 0, 0.0, NULL);
+      return _add_token(TOKEN_ID_CASE, 0, 0.0, NULL);
 
     /* default */
     if (strcaselesscmp(g_tmp, "default") == 0)
-      return add_token(TOKEN_ID_DEFAULT, 0, 0.0, NULL);
+      return _add_token(TOKEN_ID_DEFAULT, 0, 0.0, NULL);
 
+    /* __asm() */
+    if (strcaselesscmp(g_tmp, "__asm") == 0)
+      return _parse_asm();
+        
     /* __filesize() */
-    if (strcaselesscmp(g_tmp, "__filesize") == 0) {
-      int token, file_size;
-      FILE *f;
-
-      token = get_next_token();
-      if (token != GET_NEXT_TOKEN_SYMBOL || g_tmp[0] != '(') {
-        print_error("\"__filesize()\" is missing its first parenthesis.\n", ERROR_DIR);
-        return FAILED;
-      }
-
-      token = get_next_token();
-      if (token != GET_NEXT_TOKEN_STRING_DATA) {
-        print_error("\"__filesize()\" needs a file name.\n", ERROR_DIR);
-        return FAILED;
-      }
-
-      f = fopen(g_tmp, "r");
-      if (f == NULL) {
-        snprintf(g_error_message, sizeof(g_error_message), "\"__filesize() cannot open file \"%s\".\n", g_tmp);
-        print_error(g_error_message, ERROR_DIR);
-        return FAILED;
-      }
-
-      fseek(f, 0, SEEK_END);
-      file_size = (int)ftell(f);
-      fclose(f);
-
-      token = get_next_token();
-      if (token != GET_NEXT_TOKEN_SYMBOL || g_tmp[0] != ')') {
-        print_error("\"__filesize()\" is missing its second parenthesis.\n", ERROR_DIR);
-        return FAILED;
-      }
-
-      return add_token(TOKEN_ID_VALUE_INT, file_size, 0.0, NULL);
-    }
+    if (strcaselesscmp(g_tmp, "__filesize") == 0)
+      return _parse_filesize();
 
     /* __incbin() */
-    if (strcaselesscmp(g_tmp, "__incbin") == 0) {
-      int token, file_size;
-      unsigned char *data;
-      FILE *f;
-
-      token = get_next_token();
-      if (token != GET_NEXT_TOKEN_SYMBOL || g_tmp[0] != '(') {
-        print_error("\"__incbin()\" is missing its first parenthesis.\n", ERROR_DIR);
-        return FAILED;
-      }
-
-      token = get_next_token();
-      if (token != GET_NEXT_TOKEN_STRING_DATA) {
-        print_error("\"__incbin()\" needs a file name.\n", ERROR_DIR);
-        return FAILED;
-      }
-
-      f = fopen(g_tmp, "r");
-      if (f == NULL) {
-        snprintf(g_error_message, sizeof(g_error_message), "\"__incbin() cannot open file \"%s\".\n", g_tmp);
-        print_error(g_error_message, ERROR_DIR);
-        return FAILED;
-      }
-
-      fseek(f, 0, SEEK_END);
-      file_size = (int)ftell(f);
-      fseek(f, 0, SEEK_SET);
-
-      data = calloc(file_size, 1);
-      if (data == NULL) {
-        snprintf(g_error_message, sizeof(g_error_message), "Out of memory while allocating memory for __incbin()'ed \"%s\".\n", g_tmp);
-        print_error(g_error_message, ERROR_DIR);
-        fclose(f);
-        return FAILED;
-      }
-
-      fread(data, 1, file_size, f);
-      fclose(f);
-
-      token = get_next_token();
-      if (token != GET_NEXT_TOKEN_SYMBOL || g_tmp[0] != ')') {
-        print_error("\"__incbin()\" is missing its second parenthesis.\n", ERROR_DIR);
-        return FAILED;
-      }
-
-      /* NOTE! in the case of TOKEN_ID_BYTES add_token() will eat the memory block "data" and it'll be assigned to a "token" */
-      return add_token(TOKEN_ID_BYTES, file_size, 0.0, (char *)data);
-    }
+    if (strcaselesscmp(g_tmp, "__incbin") == 0)
+      return _parse_incbin();
     
     /* #include */
     if (strcaselesscmp(g_tmp, "#include") == 0) {
@@ -419,7 +492,7 @@ int evaluate_token(int type) {
           
     /* #define */
     if (strcaselesscmp(g_tmp, "#define") == 0)
-      return add_token(TOKEN_ID_DEFINE, 0, 0.0, g_tmp);
+      return _add_token(TOKEN_ID_DEFINE, 0, 0.0, g_tmp);
       
     /* .CHANGEFILE (INTERNAL) */
     if (strcaselesscmp(g_tmp, ".CHANGEFILE") == 0) {
@@ -501,7 +574,7 @@ int evaluate_token(int type) {
     }
 
     /* not a known string -> add it as a string token */
-    return add_token(TOKEN_ID_VALUE_STRING, 0, 0.0, g_tmp);
+    return _add_token(TOKEN_ID_VALUE_STRING, 0, 0.0, g_tmp);
   }
 
   return FAILED;
