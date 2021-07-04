@@ -2189,6 +2189,14 @@ int create_block(struct tree_node *open_function_definition, int expect_curly_br
     }
   }
 
+  /* a quick exit for function prototypes - there we only need the function argument variables */
+  if (open_function_definition != NULL && open_function_definition->type == TREE_NODE_TYPE_FUNCTION_PROTOTYPE) {
+    free_symbol_table_items(g_block_level);
+    g_block_level--;
+
+    return SUCCEEDED;
+  }
+  
   if (expect_curly_braces == YES) {
     if (g_token_current->id != TOKEN_ID_SYMBOL || g_token_current->value != '{') {
       snprintf(g_error_message, sizeof(g_error_message), "Expected '{', but got %s.\n", _get_token_simple(g_token_current));
@@ -2742,29 +2750,20 @@ int create_variable_or_function(void) {
 
             g_open_function_definition->flags |= TREE_NODE_FLAG_PUREASM;
           }
-          
+
           /* is it actually a function prototype? */
           if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == ';') {
-            node = g_open_function_definition;
-            g_open_function_definition = NULL;
-
-            node->type = TREE_NODE_TYPE_FUNCTION_PROTOTYPE;
+            g_open_function_definition->type = TREE_NODE_TYPE_FUNCTION_PROTOTYPE;
 
             /* this token is ';' */
             _next_token();
 
-            /* add to global lists */
-            if (symbol_table_add_symbol(node, node->children[1]->label, g_block_level, line_number, file_id) == FAILED) {
-              free_tree_node(node);
-              return FAILED;
-            }
-      
-            if (tree_node_add_child(g_global_nodes, node) == FAILED)
-              return FAILED;
-            
-            return SUCCEEDED;
+            /* NOTE: even for a function prototype we will "parse" a block, which in reality means that
+               we'll create a block for it that'll contain only function argument definitions. this is for
+               the later pass where we calculate frames for functions and make them callable. this fake
+               block is later deleted and doesn't generate any TACs... */
           }
-
+          
           /* start parsing the function block */
 
           if (_open_block_push() == FAILED) {
@@ -2794,6 +2793,10 @@ int create_variable_or_function(void) {
       
           if (tree_node_add_child(g_global_nodes, node) == FAILED)
             return FAILED;
+
+          /* is it actually a function prototype? */
+          if (node->type == TREE_NODE_TYPE_FUNCTION_PROTOTYPE)
+            return SUCCEEDED;
 
           /* is it "main"? */
           if (strcmp(node->children[1]->label, "main") == 0) {

@@ -1137,15 +1137,19 @@ static int _generate_il_create_function(struct tree_node *node) {
 
   /* reset the temp register counter */
   g_temp_r = 0;
-  
+
   if (_generate_il_create_block(node->children[node->added_children-1]) == FAILED)
     return FAILED;
-
+  
   if (is_last_tac(TAC_OP_RETURN) || is_last_tac(TAC_OP_RETURN_VALUE))
     return SUCCEEDED;
 
   /* HACK: the block has eneded without a return, so we'll add one here */
 
+  /* ... unless it's a function prototype */
+  if (node->type == TREE_NODE_TYPE_FUNCTION_PROTOTYPE)
+    return SUCCEEDED;
+  
   /* ... unless it's a __pureasm function! */
   if ((node->flags & TREE_NODE_FLAG_PUREASM) == TREE_NODE_FLAG_PUREASM)
     return SUCCEEDED;
@@ -1205,7 +1209,7 @@ int generate_il(void) {
 
   for (i = 0; i < g_global_nodes->added_children; i++) {
     struct tree_node *node = g_global_nodes->children[i];
-    if (node != NULL && node->type == TREE_NODE_TYPE_FUNCTION_DEFINITION) {
+    if (node != NULL && (node->type == TREE_NODE_TYPE_FUNCTION_DEFINITION || node->type == TREE_NODE_TYPE_FUNCTION_PROTOTYPE)) {
       if (_generate_il_create_function(node) == FAILED)
         return FAILED;
     }

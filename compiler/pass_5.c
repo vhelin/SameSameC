@@ -56,19 +56,13 @@ int pass_5(void) {
   if (compress_register_names() == FAILED)
     return FAILED;
   
-#if defined(DEBUG_PASS_5)
-  fprintf(stderr, ">------------------------------ OPTIMIZED IL ------------------------------>\n");
-#endif
-  
-#if defined(DEBUG_PASS_5)
-  print_tacs();
-#endif
-
   /* TODO: reuse old registers to decrease stack usage later */
 
   if (propagate_operand_types() == FAILED)
     return FAILED;
   if (collect_and_preprocess_local_variables_inside_functions() == FAILED)
+    return FAILED;
+  if (delete_function_prototype_tacs() == FAILED)
     return FAILED;
   if (reorder_global_variables() == FAILED)
     return FAILED;
@@ -76,6 +70,14 @@ int pass_5(void) {
   /* double check that this is still true */
   if (make_sure_all_tacs_have_definition_nodes() == FAILED)
     return FAILED;
+
+#if defined(DEBUG_PASS_5)
+  fprintf(stderr, ">------------------------------ OPTIMIZED IL ------------------------------>\n");
+#endif
+  
+#if defined(DEBUG_PASS_5)
+  print_tacs();
+#endif
 
   return SUCCEEDED;
 }
@@ -2171,6 +2173,34 @@ int optimize_for_inc(void) {
     struct tac *t = &g_tacs[i];
     if (t->op == TAC_OP_ADD && t->arg1_type == TAC_ARG_TYPE_CONSTANT && ((int)t->arg1_d) == 1)
       tac_swap_args(t);
+  }
+  
+  return SUCCEEDED;
+}
+
+
+int delete_function_prototype_tacs(void) {
+
+  int i;
+
+  for (i = 0; i < g_tacs_count; i++) {
+    struct tac *t = &g_tacs[i];
+    if (t->op == TAC_OP_LABEL && t->is_function == YES && t->function_node->type == TREE_NODE_TYPE_FUNCTION_PROTOTYPE) {
+      /* found a function prototype -> delete as its job is done */
+      t->op = TAC_OP_DEAD;
+      i++;
+
+      while (i < g_tacs_count) {
+        t = &g_tacs[i];
+        if (t->op == TAC_OP_LABEL && t->is_function == YES) {
+          /* process this TAC again next iteration */
+          i--;
+          break;
+        }
+        t->op = TAC_OP_DEAD;
+        i++;
+      }
+    }
   }
   
   return SUCCEEDED;
