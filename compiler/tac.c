@@ -12,6 +12,7 @@
 #include "symbol_table.h"
 #include "main.h"
 #include "tac.h"
+#include "inline_asm.h"
 
 
 extern int g_verbose_mode, g_input_float_mode, g_current_filename_id, g_current_line_number;
@@ -356,8 +357,44 @@ void print_tac(struct tac *t, int is_comment, FILE *file_out) {
     else
       fprintf(file_out, "variable \"%s\" size ? offset ? type ?", t->result_node->children[1]->label);
   }
+  else if (t->op == TAC_OP_ASM) {
+    struct inline_asm *ia;
+    struct asm_line *al;
+    int printed = NO;
+    char pre_1[] = "          ", pre_2[] = "      ;            ", *pre;
+
+    if (is_comment == YES)
+      pre = pre_2;
+    else
+      pre = pre_1;
+    
+    ia = inline_asm_find(t->result_d);
+    if (ia == NULL)
+      return;
+
+    al = ia->asm_line_first;
+    while (al != NULL) {
+      if (printed == NO) {
+        if (is_comment == YES)
+          fprintf(file_out, "__asm(");
+        else
+          fprintf(file_out, "  __asm(");
+      }
+      else
+        fprintf(file_out, "%s", pre);
+      fprintf(file_out, "\"%s\"", al->line);
+
+      printed = YES;
+      al = al->next;
+
+      if (al != NULL)
+        fprintf(file_out, ",\n");
+    }
+
+    fprintf(file_out, ");");
+  }
   else {
-    fprintf(file_out, "print_tac(): Unknown TAC op %d! Please submit a bug report!", t->op);
+    fprintf(file_out, "print_tac(): Unknown TAC op %d! Please submit a bug report!\n", t->op);
     return;
   }
 

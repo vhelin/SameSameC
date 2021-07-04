@@ -1020,24 +1020,39 @@ static int _generate_il_create_goto(struct tree_node *node) {
 
 static int _generate_il_asm(struct tree_node *node) {
 
-  struct symbol_table_item *sti;
   struct inline_asm *ia;
   struct asm_line *al;
+  struct tac *t;
+
+  /* update file id and line number for all TACs and error messages */
+  g_current_filename_id = node->file_id;
+  g_current_line_number = node->line_number;
 
   ia = inline_asm_find(node->value);
   if (ia == NULL)
     return FAILED;
 
+  t = add_tac();
+  if (t == NULL)
+    return FAILED;
+
+  t->op = TAC_OP_ASM;
+  tac_set_result(t, TAC_ARG_TYPE_CONSTANT, ia->id, NULL);
+
   al = ia->asm_line_first;
   while (al != NULL) {
+    /* update file id and line number for all TACs and error messages */
+    g_current_line_number = al->line_number;
+    
     /* determine if the ASM line has i/o with variables, and find the associated tree_node where the variable is created */
     if (g_backend == BACKEND_Z80) {
       if (inline_asm_z80_parse_line(al) == FAILED)
         return FAILED;
     }
+
     al = al->next;
   }
-  
+
   return SUCCEEDED;
 }
 

@@ -433,6 +433,7 @@ struct tac {
 #define TAC_OP_FUNCTION_CALL_USE_RETURN_VALUE 25
 #define TAC_OP_GET_ADDRESS       26
 #define TAC_OP_GET_ADDRESS_ARRAY 27
+#define TAC_OP_ASM               28
 
 #define TAC_ARG_TYPE_NONE     0
 #define TAC_ARG_TYPE_CONSTANT 1

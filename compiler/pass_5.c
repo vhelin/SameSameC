@@ -1897,6 +1897,8 @@ int propagate_operand_types(void) {
     }
     else if (op == TAC_OP_CREATE_VARIABLE) {
     }
+    else if (op == TAC_OP_ASM) {
+    }
     else {
       fprintf(stderr, "propagate_operand_sizes(): Unknown TAC op %d!\n", op);
       return FAILED;

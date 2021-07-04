@@ -1,8 +1,8 @@
 
 void main(void) {
 
-  int8 sum = sum(1, 2);
-  sum++;
+  int8 result = sum(1, 2);
+  result++;
 }
 
 int8 sum(int8 a, int8 b) {
@@ -16,3 +16,11 @@ int8 sum(int8 a, int8 b) {
 
   return c;
 }
+
+/*
+int8 sum(void) __pureasm {
+
+  __asm("ADD A,B",
+        "RET");
+}
+*/

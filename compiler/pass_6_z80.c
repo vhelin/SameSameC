@@ -19,6 +19,7 @@
 #include "symbol_table.h"
 #include "il.h"
 #include "tac.h"
+#include "inline_asm.h"
 
 
 extern struct tree_node *g_global_nodes;
@@ -3852,8 +3853,6 @@ static int _generate_asm_function_call_z80(struct tac *t, FILE *file_out, struct
 
       reg_offset = function_node->local_variables->temp_registers[r].offset_to_fp;
 
-      fprintf(stderr, "SANITY: OFFSET %d -> OFFSET %d\n", reg_offset, arg_offset);
-      
       if (reset_iy == YES && reg_offset > -127) {
         /* load the old stack frame address -> iy */
         reset_iy = NO;
@@ -3918,7 +3917,7 @@ static int _generate_asm_function_call_z80(struct tac *t, FILE *file_out, struct
       argument++;
     }
     else {
-      fprintf(stderr, "_generate_asm_function_call_z80(): Corrupted function \"%s\" definition (B)! Please submit a bug report!\n", t->arg1_node->children[1]->label);
+      fprintf(stderr, "_generate_asm_function_call_z80(): Corrupted function \"%s\" definition (B)! Unknown node type %d! Please submit a bug report!\n", t->arg1_node->children[1]->label, type_node->type);
       return FAILED;
     }
   }
@@ -4033,6 +4032,25 @@ static int _generate_asm_function_call_z80(struct tac *t, FILE *file_out, struct
       /* 8-bit */
       _load_l_into_iy(0, file_out);
     }    
+  }
+  
+  return SUCCEEDED;
+}
+
+
+static int _generate_asm_inline_asm_z80(struct tac *t, FILE *file_out, struct tree_node *function_node) {
+
+  struct inline_asm *ia;
+  struct asm_line *al;
+
+  ia = inline_asm_find(t->result_d);
+  if (ia == NULL)
+    return FAILED;
+
+  al = ia->asm_line_first;
+  while (al != NULL) {
+
+    al = al->next;
   }
   
   return SUCCEEDED;
@@ -4164,6 +4182,10 @@ int generate_asm_z80(FILE *file_out) {
             return FAILED;
         }
         else if (op == TAC_OP_CREATE_VARIABLE) {
+        }
+        else if (op == TAC_OP_ASM) {
+          if (_generate_asm_inline_asm_z80(t, file_out, function_node) == FAILED)
+            return FAILED;
         }
         else
           fprintf(stderr, "generate_asm_z80(): Unimplemented IL -> Z80 ASM op %d! Please submit a bug report!\n", op);
