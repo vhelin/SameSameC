@@ -462,6 +462,10 @@ int evaluate_token(int type) {
     if (strcaselesscmp(g_tmp, "default") == 0)
       return _add_token(TOKEN_ID_DEFAULT, 0, 0.0, NULL);
 
+    /* __pureasm */
+    if (strcaselesscmp(g_tmp, "__pureasm") == 0)
+      return _add_token(TOKEN_ID_HINT, 0, 0.0, g_tmp);
+    
     /* __asm() */
     if (strcaselesscmp(g_tmp, "__asm") == 0)
       return _parse_asm();

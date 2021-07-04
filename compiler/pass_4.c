@@ -1146,7 +1146,11 @@ static int _generate_il_create_function(struct tree_node *node) {
 
   /* HACK: the block has eneded without a return, so we'll add one here */
 
-  if (node->children[0]->value != VARIABLE_TYPE_VOID) {
+  /* ... unless it's a __pureasm function! */
+  if ((node->flags & TREE_NODE_FLAG_PUREASM) == TREE_NODE_FLAG_PUREASM)
+    return SUCCEEDED;
+  
+  if (node->children[0]->value != VARIABLE_TYPE_VOID || node->children[0]->value_double > 0) {
     snprintf(g_error_message, sizeof(g_error_message), "_generate_il_create_function(): The function \"%s\" doesn't end to a return, but its return type is not void!\n", node->children[1]->label);
     print_error(g_error_message, ERROR_ERR);
     return FAILED;

@@ -10,17 +10,19 @@ int8 sum(int8 a, int8 b) {
   int8 c;
 
   __asm("LD  A,(@a)",
-        "LD  B,(@b)",
-        "ADD A,B",
-        "LD  (@c),A");
+        "LD  B,(@b)");
+
+  asmsum();
+  
+  __asm("LD  (@c),A");
 
   return c;
 }
 
-/*
-void sum(void) __pureasm {
+void asmsum(void) __pureasm {
 
   __asm("ADD A,B",
         "RET");
 }
-*/
+
+void cock(void) __pureasm;

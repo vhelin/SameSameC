@@ -3805,6 +3805,13 @@ static int _generate_asm_function_call_z80(struct tac *t, FILE *file_out, struct
   char return_label[32];
   int j, argument = 0, reset_iy = YES;
 
+  /* __pureasm function calls are very simple */
+  if ((t->arg1_node->flags & TREE_NODE_FLAG_PUREASM) == TREE_NODE_FLAG_PUREASM) {
+    _call_to(t->arg1_node->children[1]->label, file_out);
+
+    return SUCCEEDED;
+  }
+  
   /* de -> bc */
   _load_de_to_bc(file_out);
   
@@ -4265,13 +4272,17 @@ int generate_asm_z80(FILE *file_out) {
 
       _add_label(function_node->children[1]->label, file_out, NO);
 
-      fprintf(file_out, "      ; A  - tmp\n");
-      fprintf(file_out, "      ; BC - tmp\n");
-      fprintf(file_out, "      ; DE - frame pointer\n");
-      fprintf(file_out, "      ; HL - tmp\n");
-      fprintf(file_out, "      ; SP - stack pointer\n");
-      fprintf(file_out, "      ; IX - tmp\n");
-      fprintf(file_out, "      ; IY - tmp\n");
+      if ((function_node->flags & TREE_NODE_FLAG_PUREASM) == TREE_NODE_FLAG_PUREASM) {
+      }
+      else {
+        fprintf(file_out, "      ; A  - tmp\n");
+        fprintf(file_out, "      ; BC - tmp\n");
+        fprintf(file_out, "      ; DE - frame pointer\n");
+        fprintf(file_out, "      ; HL - tmp\n");
+        fprintf(file_out, "      ; SP - stack pointer\n");
+        fprintf(file_out, "      ; IX - tmp\n");
+        fprintf(file_out, "      ; IY - tmp\n");
+      }
       
       for (i = i + 1; i < g_tacs_count; i++) {
         t = &g_tacs[i];

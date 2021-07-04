@@ -551,6 +551,9 @@ static void _print_function_definition(struct tree_node *node) {
   
   fprintf(stderr, ")");
 
+  if ((node->flags & TREE_NODE_FLAG_PUREASM) == TREE_NODE_FLAG_PUREASM)
+    fprintf(stderr, " __pureasm");
+  
   if (node->type == TREE_NODE_TYPE_FUNCTION_PROTOTYPE) {
     fprintf(stderr, ";\n");
     return;

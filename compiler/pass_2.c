@@ -105,7 +105,11 @@ char *_get_token_simple(struct token *t) {
     snprintf(g_token_in_simple_form, sizeof(g_token_in_simple_form), "'%s'", "case");
   else if (t->id == TOKEN_ID_DEFAULT)
     snprintf(g_token_in_simple_form, sizeof(g_token_in_simple_form), "'%s'", "default");
-  
+  else if (t->id == TOKEN_ID_HINT)
+    snprintf(g_token_in_simple_form, sizeof(g_token_in_simple_form), "'%s'", t->label);
+  else
+    fprintf(stderr, "%s:%d: _get_token_simple(): Unknown token %d!\n", get_file_name(t->file_id), t->line_number, t->id);
+    
   return g_token_in_simple_form;
 }
 
@@ -2725,6 +2729,20 @@ int create_variable_or_function(void) {
           /* this token is ')' */
           _next_token();
 
+          if (g_token_current->id == TOKEN_ID_HINT && strcmp(g_token_current->label, "__pureasm") == 0) {
+            if (g_open_function_definition->added_children > 2 ||
+                g_open_function_definition->children[0]->value != VARIABLE_TYPE_VOID ||
+                g_open_function_definition->children[0]->value_double > 0) {
+              print_error("A __pureasm function must be of type \"void name(void)\".\n", ERROR_ERR);
+              return FAILED;
+            }
+            
+            /* this token is '__pureasm' */
+            _next_token();
+
+            g_open_function_definition->flags |= TREE_NODE_FLAG_PUREASM;
+          }
+          
           /* is it actually a function prototype? */
           if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == ';') {
             node = g_open_function_definition;
@@ -2746,8 +2764,8 @@ int create_variable_or_function(void) {
             
             return SUCCEEDED;
           }
-        
-          /* start parsing the function */
+
+          /* start parsing the function block */
 
           if (_open_block_push() == FAILED) {
             free_tree_node(g_open_function_definition);
@@ -2792,6 +2810,23 @@ int create_variable_or_function(void) {
           if (strcmp(node->children[1]->label, "mainmain") == 0 && function_file_id >= 0) {
             print_error("mainmain() cannot be defined as it's a reserved function name.\n", ERROR_ERR);
             return FAILED;
+          }
+
+          /* check that __pureasm functions contain only __asm() items */
+          if ((node->flags & TREE_NODE_FLAG_PUREASM) == TREE_NODE_FLAG_PUREASM) {
+            struct tree_node *block;
+            int i;
+
+            block = node->children[node->added_children - 1];
+            for (i = 0; i < block->added_children; i++) {
+              if (block->children[i]->type != TREE_NODE_TYPE_ASM) {
+                g_current_filename_id = block->children[i]->file_id;
+                g_current_line_number = block->children[i]->line_number;
+                snprintf(g_error_message, sizeof(g_error_message), "__pureasm function \"%s\" can only contain __asm() items.\n", node->children[1]->label);
+                print_error(g_error_message, ERROR_ERR);
+                return FAILED;
+              }
+            }
           }
           
           return SUCCEEDED;

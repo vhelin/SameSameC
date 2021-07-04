@@ -268,6 +268,7 @@ struct token {
 #define TOKEN_ID_DEFAULT       17
 #define TOKEN_ID_BYTES         18
 #define TOKEN_ID_ASM           19
+#define TOKEN_ID_HINT          20
 
 #define SYMBOL_LOGICAL_OR  0
 #define SYMBOL_LOGICAL_AND 1
@@ -329,6 +330,7 @@ struct tree_node {
 #define TREE_NODE_FLAG_CONST_1       (1 << 0)
 #define TREE_NODE_FLAG_CONST_2       (1 << 1)
 #define TREE_NODE_FLAG_DATA_IS_CONST (1 << 2)
+#define TREE_NODE_FLAG_PUREASM       (1 << 3)
 
 #define TREE_NODE_TYPE_CREATE_VARIABLE      0
 #define TREE_NODE_TYPE_ASSIGNMENT           1
