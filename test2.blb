@@ -18,7 +18,7 @@ int8 sum(int8 a, int8 b) {
 }
 
 /*
-int8 sum(void) __pureasm {
+void sum(void) __pureasm {
 
   __asm("ADD A,B",
         "RET");

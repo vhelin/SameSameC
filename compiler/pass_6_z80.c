@@ -267,6 +267,20 @@ static void _load_from_ix_to_l(int offset, FILE *file_out) {
 }
 
 
+static void _load_from_ix_to_register(int offset, char reg, FILE *file_out) {
+
+  char name[2];
+
+  name[0] = toupper(reg);
+  name[1] = 0;
+  
+  if (offset >= 0)
+    fprintf(file_out, "      LD  %s,(IX+%d)\n", name, offset);
+  else
+    fprintf(file_out, "      LD  %s,(IX%d)\n", name, offset);
+}
+
+
 static void _load_a_into_hl(FILE *file_out) {
 
   fprintf(file_out, "      LD  (HL),A\n");
@@ -324,6 +338,20 @@ static void _load_l_into_ix(int offset, FILE *file_out) {
     fprintf(file_out, "      LD  (IX+%d),L\n", offset);
   else
     fprintf(file_out, "      LD  (IX%d),L\n", offset);
+}
+
+
+static void _load_register_into_ix(int offset, char reg, FILE *file_out) {
+
+  char name[2];
+
+  name[0] = toupper(reg);
+  name[1] = 0;
+
+  if (offset >= 0)
+    fprintf(file_out, "      LD  (IX+%d),%s\n", offset, name);
+  else
+    fprintf(file_out, "      LD  (IX%d),%s\n", offset, name);
 }
 
 
@@ -4038,6 +4066,130 @@ static int _generate_asm_function_call_z80(struct tac *t, FILE *file_out, struct
 }
 
 
+static int _generate_asm_inline_asm_read_z80(struct tac *t, FILE *file_out, struct tree_node *function_node, struct asm_line *al, int file_id) {
+
+  int offset = -1;
+
+  if (find_stack_offset(TAC_ARG_TYPE_LABEL, al->variable->children[1]->label, 0, al->variable, &offset, function_node) == FAILED)
+    return FAILED;
+
+  /* generate asm */
+
+  /******************************************************************************************************/
+  /* source address -> ix */
+  /******************************************************************************************************/
+
+  if (offset == 999999) {
+    /* global var */
+    _load_label_to_ix(al->variable->children[1]->label, file_out);
+  }
+  else {
+    /* it's a variable in the frame! */
+    fprintf(file_out, "      ; offset %d\n", offset);
+
+    _load_value_to_ix(offset, file_out);
+    _add_de_to_ix(file_out);
+  }
+  
+  /******************************************************************************************************/
+  /* copy data -> target register */
+  /******************************************************************************************************/
+
+  if (al->cpu_register[1] == 0) {
+    /* target is A/B/C/D/E/H/L */
+    _load_from_ix_to_register(0, al->cpu_register[0], file_out);
+  }
+  else {
+    /* target is BC/DE/HL */
+    int var_type;
+
+    var_type = tree_node_get_max_var_type(al->variable->children[0]);
+
+    if (var_type == VARIABLE_TYPE_INT16 || var_type == VARIABLE_TYPE_UINT16) {
+      /* 16-bit */
+      _load_from_ix_to_register(0, al->cpu_register[1], file_out);
+
+      if (offset == 999999) {
+        /* global var read */
+        _load_from_ix_to_register(1, al->cpu_register[0], file_out);
+      }
+      else {
+        /* stack frame read */
+        _load_from_ix_to_register(-1, al->cpu_register[0], file_out);
+      }
+    }
+    else {
+      fprintf(stderr, "%s:%d: _generate_asm_inline_asm_read_z80(): Reading an 8-bit variable into 16-bit register pair! We only read the lower 8 bits, remember to take care of the upper 8 bits!\n", get_file_name(file_id), al->line_number);
+      _load_from_ix_to_register(0, al->cpu_register[1], file_out);
+    }
+  }
+
+  return SUCCEEDED;
+}
+
+
+static int _generate_asm_inline_asm_write_z80(struct tac *t, FILE *file_out, struct tree_node *function_node, struct asm_line *al, int file_id) {
+
+  int offset = -1;
+
+  if (find_stack_offset(TAC_ARG_TYPE_LABEL, al->variable->children[1]->label, 0, al->variable, &offset, function_node) == FAILED)
+    return FAILED;
+
+  /* generate asm */
+
+  /******************************************************************************************************/
+  /* target address -> ix */
+  /******************************************************************************************************/
+
+  if (offset == 999999) {
+    /* global var */
+    _load_label_to_ix(al->variable->children[1]->label, file_out);
+  }
+  else {
+    /* it's a variable in the frame! */
+    fprintf(file_out, "      ; offset %d\n", offset);
+
+    _load_value_to_ix(offset, file_out);
+    _add_de_to_ix(file_out);
+  }
+  
+  /******************************************************************************************************/
+  /* copy data -> target address */
+  /******************************************************************************************************/
+
+  if (al->cpu_register[1] == 0) {
+    /* source is A/B/C/D/E/H/L */
+    _load_register_into_ix(0, al->cpu_register[0], file_out);
+  }
+  else {
+    /* source is BC/DE/HL */
+    int var_type;
+
+    var_type = tree_node_get_max_var_type(al->variable->children[0]);
+
+    if (var_type == VARIABLE_TYPE_INT16 || var_type == VARIABLE_TYPE_UINT16) {
+      /* 16-bit */
+      _load_register_into_ix(0, al->cpu_register[1], file_out);
+
+      if (offset == 999999) {
+        /* global var write */
+        _load_register_into_ix(1, al->cpu_register[0], file_out);
+      }
+      else {
+        /* stack frame write */
+        _load_register_into_ix(-1, al->cpu_register[0], file_out);
+      }
+    }
+    else {
+      fprintf(stderr, "%s:%d: _generate_asm_inline_asm_write_z80(): Writing a 16-bit value into an 8-bit variable! We only write the lower 8 bits...\n", get_file_name(file_id), al->line_number);
+      _load_register_into_ix(0, al->cpu_register[1], file_out);
+    }
+  }
+
+  return SUCCEEDED;
+}
+
+
 static int _generate_asm_inline_asm_z80(struct tac *t, FILE *file_out, struct tree_node *function_node) {
 
   struct inline_asm *ia;
@@ -4049,7 +4201,32 @@ static int _generate_asm_inline_asm_z80(struct tac *t, FILE *file_out, struct tr
 
   al = ia->asm_line_first;
   while (al != NULL) {
+    if (al->flags == 0) {
+      /* no outside access -> output as it is */
+      int i, length;
 
+      /* skip white space */
+      length = strlen(al->line);
+      for (i = 0; i < length && (al->line[i] == ' ' || al->line[i] == '\t'); i++)
+        ;
+
+      fprintf(file_out, "      %s\n", &al->line[i]);
+    }
+    else if ((al->flags & ASM_LINE_FLAG_READ) == ASM_LINE_FLAG_READ) {
+      /* read! */
+      if (_generate_asm_inline_asm_read_z80(t, file_out, function_node, al, ia->file_id) == FAILED)
+        return FAILED;
+    }
+    else if ((al->flags & ASM_LINE_FLAG_WRITE) == ASM_LINE_FLAG_WRITE) {
+      /* write! */
+      if (_generate_asm_inline_asm_write_z80(t, file_out, function_node, al, ia->file_id) == FAILED)
+        return FAILED;
+    }
+    else {
+      fprintf(stderr, "%s:%d: _generate_asm_inline_asm_z80(): Unhandled internal flags! Please submit a bug report!\n", get_file_name(ia->file_id), al->line_number);
+      return FAILED;
+    }
+    
     al = al->next;
   }
   

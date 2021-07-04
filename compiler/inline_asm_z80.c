@@ -65,7 +65,7 @@ int inline_asm_z80_parse_line(struct asm_line *al) {
            (c1 == 'L' && c2 == ',')) {
     al->cpu_register[0] = c1;
     al->cpu_register[1] = 0;
-    
+
     i += 2;
 
     /* skip whitespace */

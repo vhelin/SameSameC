@@ -17,6 +17,8 @@
 #include "include_file.h"
 #include "tree_node.h"
 #include "symbol_table.h"
+#include "inline_asm.h"
+#include "inline_asm_z80.h"
 
 
 /* define this for DEBUG */
@@ -2072,6 +2074,9 @@ int create_statement(void) {
   }
   else if (g_token_current->id == TOKEN_ID_ASM) {
     /* inline ASM */
+    struct inline_asm *ia;
+    struct asm_line *al;
+    
     node = allocate_tree_node(TREE_NODE_TYPE_ASM);
     if (node == NULL)
       return FAILED;
@@ -2081,6 +2086,24 @@ int create_statement(void) {
     
     tree_node_add_child(_get_current_open_block(), node);
 
+    ia = inline_asm_find(node->value);
+    if (ia == NULL)
+      return FAILED;
+    
+    al = ia->asm_line_first;
+    while (al != NULL) {
+      /* update file id and line number for all TACs and error messages */
+      g_current_line_number = al->line_number;
+    
+      /* determine if the ASM line has i/o with variables, and find the associated tree_node where the variable is created */
+      if (g_backend == BACKEND_Z80) {
+        if (inline_asm_z80_parse_line(al) == FAILED)
+          return FAILED;
+      }
+
+      al = al->next;
+    }
+    
     /* next token */
     _next_token();
 
