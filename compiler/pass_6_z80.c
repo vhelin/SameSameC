@@ -28,8 +28,6 @@ extern struct tac *g_tacs;
 extern int g_tacs_count, g_tacs_max;
 extern char g_tmp[4096], g_error_message[sizeof(g_tmp) + MAX_NAME_LENGTH + 1 + 1024];
 
-static int g_return_id = 1;
-
 
 int pass_6_z80(char *file_name, FILE *file_out) {
 
@@ -606,12 +604,6 @@ static void _out_a_into_c(FILE *file_out) {
 static void _jump_to(char *label, FILE *file_out) {
 
   fprintf(file_out, "      JP  %s\n", label);
-}
-
-
-static void _jump_to_hl(FILE *file_out) {
-
-  fprintf(file_out, "      JP  (HL)\n");
 }
 
 
@@ -3473,24 +3465,20 @@ static int _generate_asm_return_value_z80(struct tac *t, FILE *file_out, struct 
   
   if (return_var_type == VARIABLE_TYPE_INT16 || return_var_type == VARIABLE_TYPE_UINT16) {
     /* 16-bit */
-    _load_l_into_ix(-5, file_out);
-    _load_h_into_ix(-4, file_out);
+    _load_l_into_ix(-3, file_out);
+    _load_h_into_ix(-2, file_out);
   }
   else {
     /* 8-bit */
-    _load_l_into_ix(-4, file_out);
+    _load_l_into_ix(-2, file_out);
   }
   
   /******************************************************************************************************/
   /* return */
   /******************************************************************************************************/
 
-  /* return address -> hl */
-  _load_from_ix_to_l(-1, file_out);
-  _load_from_ix_to_h(0, file_out);
-
-  /* jump */
-  _jump_to_hl(file_out);
+  /* ret */
+  _ret(file_out);
   
   return SUCCEEDED;
 }
@@ -3498,16 +3486,8 @@ static int _generate_asm_return_value_z80(struct tac *t, FILE *file_out, struct 
 
 static int _generate_asm_return_z80(struct tac *t, FILE *file_out, struct tree_node *function_node) {
 
-  /* address of return address in stack frame -> ix */
-  _load_value_to_ix(0, file_out);
-  _add_de_to_ix(file_out);
-
-  /* return address -> hl */
-  _load_from_ix_to_l(-1, file_out);
-  _load_from_ix_to_h(0, file_out);
-  
-  /* jump */
-  _jump_to_hl(file_out);
+  /* ret */
+  _ret(file_out);
   
   return SUCCEEDED;
 }
@@ -3515,7 +3495,6 @@ static int _generate_asm_return_z80(struct tac *t, FILE *file_out, struct tree_n
 
 static int _generate_asm_function_call_z80(struct tac *t, FILE *file_out, struct tree_node *function_node, int op) {
 
-  char return_label[32];
   int j, argument = 0, reset_iy = YES;
 
   /* __pureasm function calls are very simple */
@@ -3533,19 +3512,13 @@ static int _generate_asm_function_call_z80(struct tac *t, FILE *file_out, struct
 
   /* build the new stack frame */
   
-  /* address of return address in stack frame -> ix */
+  /* address of old stack frame in stack frame -> ix */
   _load_value_to_ix(0, file_out);
   _add_de_to_ix(file_out);
 
-  /* return address -> (ix) */
-  snprintf(return_label, sizeof(return_label), "_return_%d", g_return_id++);
-  _load_label_to_hl(return_label, file_out);
-  _load_l_into_ix(-1, file_out);
-  _load_h_into_ix(0, file_out);
-  
   /* old stack frame address -> (ix) */
-  _load_c_into_ix(-3, file_out);
-  _load_b_into_ix(-2, file_out);
+  _load_c_into_ix(-1, file_out);
+  _load_b_into_ix(0, file_out);
 
   /* copy arguments to stack frame */
   for (j = 2; j < t->arg1_node->added_children; j += 2) {
@@ -3677,11 +3650,8 @@ static int _generate_asm_function_call_z80(struct tac *t, FILE *file_out, struct
   _add_de_to_ix(file_out);  
   _load_ix_to_sp(file_out);
 
-  /* jump! */
-  _jump_to(t->arg1_node->children[1]->label, file_out);
-
-  /* return address */
-  _add_label(return_label, file_out, NO);
+  /* call! */
+  _call_to(t->arg1_node->children[1]->label, file_out);
 
   /* go back to the old stack frame */
 
@@ -3708,12 +3678,12 @@ static int _generate_asm_function_call_z80(struct tac *t, FILE *file_out, struct
 
     if (return_var_type == VARIABLE_TYPE_INT16 || return_var_type == VARIABLE_TYPE_UINT16) {
       /* 16-bit */
-      _load_from_ix_to_l(-5, file_out);
-      _load_from_ix_to_h(-4, file_out);
+      _load_from_ix_to_l(-3, file_out);
+      _load_from_ix_to_h(-2, file_out);
     }
     else {
       /* 8-bit */
-      _load_from_ix_to_l(-4, file_out);
+      _load_from_ix_to_l(-2, file_out);
 
       /* sign extend 8-bit -> 16-bit? */
       if (return_var_type == VARIABLE_TYPE_INT8 && (t->result_var_type_promoted == VARIABLE_TYPE_INT16 ||
@@ -3730,8 +3700,8 @@ static int _generate_asm_function_call_z80(struct tac *t, FILE *file_out, struct
   }
   
   /* old stack frame address -> de */
-  _load_from_ix_to_e(-3, file_out);
-  _load_from_ix_to_d(-2, file_out);
+  _load_from_ix_to_e(-1, file_out);
+  _load_from_ix_to_d(0, file_out);
 
   if (op == TAC_OP_FUNCTION_CALL_USE_RETURN_VALUE) {
     int result_offset = -1;

@@ -31,7 +31,7 @@ extern int g_verbose_mode, g_input_float_mode, g_current_filename_id, g_current_
 extern char *g_variable_types[4], *g_two_char_symbols[10], g_label[MAX_NAME_LENGTH + 1];
 extern double g_parsed_double;
 extern struct tac *g_tacs;
-extern int g_tacs_count, g_tacs_max;
+extern int g_tacs_count, g_tacs_max, g_backend;
 extern char g_tmp[4096], g_error_message[sizeof(g_tmp) + MAX_NAME_LENGTH + 1 + 1024];
 
 int *g_register_reads = NULL, *g_register_writes = NULL;
@@ -1973,24 +1973,15 @@ int collect_and_preprocess_local_variables_inside_functions(void) {
       int offset = -4; /* the first 2 bytes in the stack frame are for return address, next 2 bytes are old stack frame address */
       int return_value_type, return_value_size;
 
+      /* some backends don't store the return address in the stack frame */
+      if (g_backend == BACKEND_Z80)
+        offset = -2;
+      
       /* NOTE: if the function returns a value we'll need to allocate space for that in the stack frame */        
       return_value_type = tree_node_get_max_var_type(function_node->children[0]);
       return_value_size = get_variable_type_size(return_value_type) / 8;
       offset -= return_value_size;
 
-      /* NOTE: allocate space in the stack frame for arguments to the function */
-      /* NOTE: in pass_2.c when we create function we immediately add function arguments (tree_nodes) thus this is already done */
-      /*
-      for (function_parameter = 2; function_parameter < function_node->added_children; function_parameter += 2) {
-        int type, size;
-
-        type = tree_node_get_max_var_type(function_node->children[function_parameter]);
-        size = get_variable_type_size(type) / 8;
-
-        offset += size;        
-      }
-      */
-      
       for (j = 0; j < REG_COUNT; j++) {
         register_usage[j] = 0;
         register_sizes[j] = 0;
@@ -2106,10 +2097,17 @@ int collect_and_preprocess_local_variables_inside_functions(void) {
 
 #if defined(DEBUG_PASS_5)
       fprintf(stderr, "*** FUNCTION \"%s\" STACK FRAME\n", function_node->children[1]->label);
-      fprintf(stderr, "OFFSET %.5d SIZE %.6d \"return address\"\n", -1, 2);
-      fprintf(stderr, "OFFSET %.5d SIZE %.6d \"caller's stack frame address\"\n", -3, 2);
-      if (return_value_size > 0)
-        fprintf(stderr, "OFFSET %.5d SIZE %.6d \"return value\"\n", -4 - (return_value_size - 1), return_value_size);
+      if (g_backend == BACKEND_Z80) {
+        fprintf(stderr, "OFFSET %.5d SIZE %.6d \"caller's stack frame address\"\n", -1, 2);
+        if (return_value_size > 0)
+          fprintf(stderr, "OFFSET %.5d SIZE %.6d \"return value\"\n", -2 - (return_value_size - 1), return_value_size);
+      }
+      else {
+        fprintf(stderr, "OFFSET %.5d SIZE %.6d \"return address\"\n", -1, 2);
+        fprintf(stderr, "OFFSET %.5d SIZE %.6d \"caller's stack frame address\"\n", -3, 2);
+        if (return_value_size > 0)
+          fprintf(stderr, "OFFSET %.5d SIZE %.6d \"return value\"\n", -4 - (return_value_size - 1), return_value_size);
+      }
 #endif
 
       /* calculate the offsets */
@@ -2119,8 +2117,7 @@ int collect_and_preprocess_local_variables_inside_functions(void) {
         if (size < 0)
           return FAILED;
 
-        /* note that the offset points to the very first byte of the variable, and we
-           count _up_ from there */
+        /* note that the offset points to the very first byte of the variable, and we count _up_ from there */
         function_node->local_variables->local_variables[j].node = local_variables[j];
         function_node->local_variables->local_variables[j].offset_to_fp = offset - ((size / 8) - 1);
         function_node->local_variables->local_variables[j].size = size;
