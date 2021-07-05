@@ -2106,10 +2106,10 @@ int collect_and_preprocess_local_variables_inside_functions(void) {
 
 #if defined(DEBUG_PASS_5)
       fprintf(stderr, "*** FUNCTION \"%s\" STACK FRAME\n", function_node->children[1]->label);
-      fprintf(stderr, "OFFSET  %.5d SIZE %.6d \"return address\"\n", -0, 2);
-      fprintf(stderr, "OFFSET %.5d SIZE %.6d \"caller's stack frame address\"\n", -2, 2);
+      fprintf(stderr, "OFFSET %.5d SIZE %.6d \"return address\"\n", -1, 2);
+      fprintf(stderr, "OFFSET %.5d SIZE %.6d \"caller's stack frame address\"\n", -3, 2);
       if (return_value_size > 0)
-        fprintf(stderr, "OFFSET %.5d SIZE %.6d \"return value\"\n", -4, return_value_size);
+        fprintf(stderr, "OFFSET %.5d SIZE %.6d \"return value\"\n", -4 - (return_value_size - 1), return_value_size);
 #endif
 
       /* calculate the offsets */
@@ -2118,13 +2118,15 @@ int collect_and_preprocess_local_variables_inside_functions(void) {
 
         if (size < 0)
           return FAILED;
-        
+
+        /* note that the offset points to the very first byte of the variable, and we
+           count _up_ from there */
         function_node->local_variables->local_variables[j].node = local_variables[j];
-        function_node->local_variables->local_variables[j].offset_to_fp = offset;
+        function_node->local_variables->local_variables[j].offset_to_fp = offset - ((size / 8) - 1);
         function_node->local_variables->local_variables[j].size = size;
 
 #if defined(DEBUG_PASS_5)
-        fprintf(stderr, "OFFSET %.5d SIZE %.6d VARIABLE %s\n", offset, size/8, local_variables[j]->children[1]->label);
+        fprintf(stderr, "OFFSET %.5d SIZE %.6d VARIABLE %s\n", function_node->local_variables->local_variables[j].offset_to_fp, size/8, local_variables[j]->children[1]->label);
 #endif
         
         offset -= size / 8;
@@ -2138,12 +2140,12 @@ int collect_and_preprocess_local_variables_inside_functions(void) {
           k++;
         }
 
-        function_node->local_variables->temp_registers[j].offset_to_fp = offset;
+        function_node->local_variables->temp_registers[j].offset_to_fp = offset - ((register_sizes[k] / 8) - 1);
         function_node->local_variables->temp_registers[j].size = register_sizes[k];
         function_node->local_variables->temp_registers[j].register_index = k;
 
 #if defined(DEBUG_PASS_5)
-        fprintf(stderr, "OFFSET %.5d SIZE %.6d REGISTER r%d\n", offset, register_sizes[k]/8, k);
+        fprintf(stderr, "OFFSET %.5d SIZE %.6d REGISTER r%d\n", function_node->local_variables->temp_registers[j].offset_to_fp, register_sizes[k]/8, k);
 #endif
         
         offset -= register_sizes[k] / 8;

@@ -7,13 +7,51 @@
 This is currently under development, and hosted in a private repository. So
 you should not be able to read this. :) Public release comes when it's working
 well enough. BILIBALI is GPL v2 software. Read the LICENSE file for more
-information.
+information. Some pieces of code were taken from WLA DX, but not so many.
 
-Programmed using
-  - "Basics of Compiler Design"
-    - http://web.archive.org/web/20120915222417/http://www.diku.dk/hjemmesider/ansatte/torbenm/Basics/basics_lulu2.pdf
-  - beer
-  - imagination
-  - emacs
+I will not approve pull requests as I want to do this myself. Up to the point
+when I decide I've had enough. :) Ideas, bug reports and feature requests are
+welcome, though.
+
+
+TODO
+----
+
+Optimize:
+
+- Allow constants and labels to be placed into TAC_OP_FUNCTION_CALL's argument list
+  (currently only registers are allowed)
+- Reuse registers inside a function
+- Create an optimizer for Z80 ASM that will remove unnecessary code (should be
+  relatively easy to remove most of those IX loads that happen all over the place)
+- Make IL optimizer passes to be able to merge remote commands instead of just
+  the adjacent ones
+- Optimize user written calculations like 2+a-1 -> 1+a
+- Don't save the return address into stack frame and JMP, instead do CALL + RET?
+  -> make pass_5.c able to handle both cases as not all CPUs have CALL + RET?
+- If a variable is only written to, remove the variable and all assignments
+
+Fix:
+
+- TAC_OP_ARRAY_READ and TAC_OP_ARRAY_ASSIGNMENT work incorrectly with arrays in stack?
+- Handle arrays inside functions better
+- const int8 var[] = { 1, 2, 3... }; inside a function -> move it to the end of the
+  function, rename to _var
+- const int8 var = 3; inside a function -> move it to the end of the function,
+  rename to _var
+- Add support for struct {};
+- Remake #define to just collect tokens and when expanded output clones of those tokens
+
+
+NOTE
+----
+
+Programmed using:
+
+- "Basics of Compiler Design"
+  - http://web.archive.org/web/20120915222417/http://www.diku.dk/hjemmesider/ansatte/torbenm/Basics/basics_lulu2.pdf
+- beer
+- imagination
+- emacs
 
 Should compile anywhere ANSI C89 is supported.

@@ -1,7 +1,8 @@
 
 void main(void) {
 
-  int8 result = sum(1, 2);
+  int8 array[] = { 0, 1, 2, 3, 4, 5, 6, 7 };
+  int16 result = sum(array[1], 2);
   result++;
 }
 
