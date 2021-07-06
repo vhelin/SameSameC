@@ -619,6 +619,7 @@ int create_factor(void) {
         return result;
       }
 
+      /* children[0] - index */
       tree_node_add_child(node, _get_current_open_expression());
       _open_expression_pop();
     
@@ -743,8 +744,12 @@ int create_factor(void) {
     node->type = TREE_NODE_TYPE_GET_ADDRESS;
 
     item = symbol_table_find_symbol(node->label);
-    if (item != NULL)
+    if (item != NULL) {
       node->definition = item->node;
+
+      /* mark references */
+      node->definition->reads++;
+    }
 
     if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == '[') {
       /* array! */
