@@ -1,8 +1,21 @@
 
 void main(void) {
 
-  int16 result = sum(1, 2);
-  result++;
+  uint8 color = 0;
+  uint8 i;
+
+  while (1) {
+    __z80_out[0xBF] = 0x00;
+    __z80_out[0xBF] = 0xC0;
+    for (i = 0; i < 32; i++) {
+      __z80_out[0xBE] = color;
+    }
+
+    add_1(&color);
+  }
 }
 
-int8 sum(int8 a, int8 b);
+void add_1(uint8 *color) {
+
+  color[0] = color[0] + 1;
+}

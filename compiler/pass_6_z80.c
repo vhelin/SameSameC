@@ -28,6 +28,8 @@ extern struct tac *g_tacs;
 extern int g_tacs_count, g_tacs_max;
 extern char g_tmp[4096], g_error_message[sizeof(g_tmp) + MAX_NAME_LENGTH + 1 + 1024];
 
+static int g_return_id = 1;
+
 
 int pass_6_z80(char *file_name, FILE *file_out) {
 
@@ -106,6 +108,12 @@ static void _load_value_to_ix(int value, FILE *file_out) {
 static void _load_value_to_iy(int value, FILE *file_out) {
 
   fprintf(file_out, "      LD  IY,%d\n", value);
+}
+
+
+static void _load_label_to_bc(char *label, FILE *file_out) {
+
+  fprintf(file_out, "      LD  BC,%s\n", label);
 }
 
 
@@ -368,6 +376,12 @@ static void _add_de_to_hl(FILE *file_out) {
 }
 
 
+static void _add_bc_to_ix(FILE *file_out) {
+
+  fprintf(file_out, "      ADD IX,BC\n");
+}
+
+
 static void _add_de_to_ix(FILE *file_out) {
 
   fprintf(file_out, "      ADD IX,DE\n");
@@ -493,33 +507,30 @@ static void _and_bc_to_hl(FILE *file_out) {
 }
 
 
-static void _load_de_to_sp(FILE *file_out) {
+static void _load_hl_to_bc(FILE *file_out) {
 
-  fprintf(file_out, "      LD  H,D\n");
-  fprintf(file_out, "      LD  L,E\n");
+  fprintf(file_out, "      LD  B,H\n");
+  fprintf(file_out, "      LD  C,L\n");
+}
+
+
+static void _load_hl_to_de(FILE *file_out) {
+
+  fprintf(file_out, "      LD  D,H\n");
+  fprintf(file_out, "      LD  E,L\n");
+}
+
+
+static void _load_hl_to_sp(FILE *file_out) {
+
   fprintf(file_out, "      LD  SP,HL\n");
 }
 
 
-static void _load_de_to_bc(FILE *file_out) {
-
-  fprintf(file_out, "      LD  B,D\n");
-  fprintf(file_out, "      LD  C,E\n");
-}
-
-
-static void _load_ix_to_sp(FILE *file_out) {
-
-  fprintf(file_out, "      LD  SP,IX\n");
-}
-
-
-static void _load_sp_to_de(FILE *file_out) {
+static void _load_sp_to_hl(FILE *file_out) {
 
   fprintf(file_out, "      LD  HL,0\n");
   fprintf(file_out, "      ADD HL,SP\n");
-  fprintf(file_out, "      LD  D,H\n");
-  fprintf(file_out, "      LD  E,L\n");
 }
 
 
@@ -646,6 +657,12 @@ static void _call_to(char *label, FILE *file_out) {
 static void _ret(FILE *file_out) {
 
   fprintf(file_out, "      RET\n");
+}
+
+
+static void _push_bc(FILE *file_out) {
+
+  fprintf(file_out, "      PUSH BC\n");
 }
 
 
@@ -3371,6 +3388,23 @@ static int _generate_asm_jump_eq_lt_gt_neq_lte_gte_z80(struct tac *t, FILE *file
 }
 
 
+static int _generate_asm_return_z80(struct tac *t, FILE *file_out, struct tree_node *function_node) {
+
+  /* ret */
+
+  /* bytes 0 and 1 of stack frame contain the return address */
+  fprintf(file_out, "      ; bytes 0 and 1 of stack frame contain the return address\n");
+  
+  _load_value_to_hl(-1, file_out);
+  _add_de_to_hl(file_out);  
+  _load_hl_to_sp(file_out);
+
+  _ret(file_out);
+  
+  return SUCCEEDED;
+}
+
+
 static int _generate_asm_return_value_z80(struct tac *t, FILE *file_out, struct tree_node *function_node) {
 
   int arg1_offset = -1, return_var_type;
@@ -3465,29 +3499,20 @@ static int _generate_asm_return_value_z80(struct tac *t, FILE *file_out, struct 
   
   if (return_var_type == VARIABLE_TYPE_INT16 || return_var_type == VARIABLE_TYPE_UINT16) {
     /* 16-bit */
-    _load_l_into_ix(-3, file_out);
-    _load_h_into_ix(-2, file_out);
+    _load_l_into_ix(-5, file_out);
+    _load_h_into_ix(-4, file_out);
   }
   else {
     /* 8-bit */
-    _load_l_into_ix(-2, file_out);
+    _load_l_into_ix(-4, file_out);
   }
   
   /******************************************************************************************************/
   /* return */
   /******************************************************************************************************/
 
-  /* ret */
-  _ret(file_out);
-  
-  return SUCCEEDED;
-}
-
-
-static int _generate_asm_return_z80(struct tac *t, FILE *file_out, struct tree_node *function_node) {
-
-  /* ret */
-  _ret(file_out);
+  if (_generate_asm_return_z80(t, file_out, function_node) == FAILED)
+    return FAILED;
   
   return SUCCEEDED;
 }
@@ -3495,30 +3520,29 @@ static int _generate_asm_return_z80(struct tac *t, FILE *file_out, struct tree_n
 
 static int _generate_asm_function_call_z80(struct tac *t, FILE *file_out, struct tree_node *function_node, int op) {
 
-  int j, argument = 0, reset_iy = YES;
-
+  int j, argument = 0, reset_iy = YES, init_ix = NO;
+  char return_label[32];
+  
   /* __pureasm function calls are very simple */
   if ((t->arg1_node->flags & TREE_NODE_FLAG_PUREASM) == TREE_NODE_FLAG_PUREASM) {
     _call_to(t->arg1_node->children[1]->label, file_out);
 
     return SUCCEEDED;
   }
-  
-  /* de -> bc */
-  _load_de_to_bc(file_out);
-  
-  /* sp -> de (the new stack frame address) */
-  _load_sp_to_de(file_out);
 
-  /* build the new stack frame */
-  
-  /* address of old stack frame in stack frame -> ix */
-  _load_value_to_ix(0, file_out);
-  _add_de_to_ix(file_out);
+  /* sp -> hl (the new stack frame address) */
+  _load_sp_to_hl(file_out);
+  _dec_hl(file_out);
 
-  /* old stack frame address -> (ix) */
-  _load_c_into_ix(-1, file_out);
-  _load_b_into_ix(0, file_out);
+  /* address of return address in stack frame -> bc */
+  snprintf(return_label, sizeof(return_label), "_return_%d", g_return_id++);
+  _load_label_to_bc(return_label, file_out);
+
+  /* address of return address in stack frame -> (stack) */
+  _push_bc(file_out);
+
+  /* old stack frame address -> (stack) */
+  _push_de(file_out);
 
   /* copy arguments to stack frame */
   for (j = 2; j < t->arg1_node->added_children; j += 2) {
@@ -3538,13 +3562,13 @@ static int _generate_asm_function_call_z80(struct tac *t, FILE *file_out, struct
       struct tree_node *name_node = t->arg1_node->children[j+1];
       struct local_variable *local_variable;
       int r, reg_var_type, reg, reg_offset, arg_var_type, arg_offset;
-
+      
       if (name_node->type != TREE_NODE_TYPE_VALUE_STRING) {
         fprintf(stderr, "_generate_asm_function_call_z80(): Corrupted function \"%s\" definition (A)! Please submit a bug report!\n", t->arg1_node->children[1]->label);
         return FAILED;
       }
       if (argument >= t->arg1_node->local_variables->arguments_count) {
-        fprintf(stderr, "_generate_asm_function_call_z80(): Trying to access local variable number %d, but the function \"%s\" is defined to have only %d arguments! Please submit a bug report!\n", argument + 1, t->arg1_node->children[1]->label, t->arg1_node->local_variables->arguments_count);
+        fprintf(stderr, "_generate_asm_function_call_z80(): Trying to access argument number %d, but the function \"%s\" is defined to have only %d arguments! Please submit a bug report!\n", argument + 1, t->arg1_node->children[1]->label, t->arg1_node->local_variables->arguments_count);
         return FAILED;
       }
 
@@ -3574,63 +3598,80 @@ static int _generate_asm_function_call_z80(struct tac *t, FILE *file_out, struct
 
       reg_offset = function_node->local_variables->temp_registers[r].offset_to_fp;
 
+      if (init_ix == NO) {
+        /* load the new stack frame address -> ix */
+        init_ix = YES;
+
+        fprintf(file_out, "      ; new stack frame -> IX\n");
+
+        _load_hl_to_bc(file_out);
+        _load_value_to_ix(0, file_out);
+        _add_bc_to_ix(file_out);
+      }
+      
       if (reset_iy == YES && reg_offset > -127) {
         /* load the old stack frame address -> iy */
         reset_iy = NO;
-        
+
+        fprintf(file_out, "      ; old stack frame -> IY\n");
+
         _load_value_to_iy(0, file_out);
-        _add_bc_to_iy(file_out);
+        _add_de_to_iy(file_out);
       }
 
-      /******************************************************************************************************/
-      /* copy data (reg) -> hl */
-      /******************************************************************************************************/
-
-      /* NOTE! if the offset is < -126 then we need extra instructions */
-      if (reg_offset < -126) {
+      /* NOTE! if the offset is <= -127 then we need extra instructions */
+      if (reg_offset <= -127) {
         /* load the old stack frame address -> iy */
         reset_iy = YES;
-        
+
+        fprintf(file_out, "      ; old stack frame with offset -> IY\n");
+
         _load_value_to_iy(reg_offset, file_out);
-        _add_bc_to_iy(file_out);
+        _add_de_to_iy(file_out);
 
         reg_offset = 0;
       }
       
+      /******************************************************************************************************/
+      /* copy data (reg) -> bc */
+      /******************************************************************************************************/
+
+      fprintf(file_out, "      ; copy argument %d\n", argument + 1);
+
       if (reg_var_type == VARIABLE_TYPE_INT16 || reg_var_type == VARIABLE_TYPE_UINT16) {
         /* 16-bit */        
-        _load_from_iy_to_l(reg_offset, file_out);
-        _load_from_iy_to_h(reg_offset + 1, file_out);
+        _load_from_iy_to_c(reg_offset, file_out);
+        _load_from_iy_to_b(reg_offset + 1, file_out);
       }
       else {
         /* 8-bit */
-        _load_from_iy_to_l(reg_offset, file_out);
+        _load_from_iy_to_c(reg_offset, file_out);
 
         /* sign extend 8-bit -> 16-bit? */
         if (reg_var_type == VARIABLE_TYPE_INT8 && (arg_var_type == VARIABLE_TYPE_INT16 ||
                                                    arg_var_type == VARIABLE_TYPE_UINT16)) {
           /* yes */
-          _sign_extend_l_to_hl(file_out);
+          _sign_extend_c_to_bc(file_out);
         }
         else if (reg_var_type == VARIABLE_TYPE_UINT8 && (arg_var_type == VARIABLE_TYPE_INT16 ||
                                                          arg_var_type == VARIABLE_TYPE_UINT16)) {
           /* upper byte -> 0 */
-          _load_value_to_h(0, file_out);
+          _load_value_to_b(0, file_out);
         }
       }
 
       /******************************************************************************************************/
-      /* copy data hl -> (ix) */
+      /* copy data bc/c -> (ix) */
       /******************************************************************************************************/
 
       if (arg_var_type == VARIABLE_TYPE_INT16 || arg_var_type == VARIABLE_TYPE_UINT16) {
         /* 16-bit */
-        _load_l_into_ix(arg_offset, file_out);
-        _load_h_into_ix(arg_offset + 1, file_out);
+        _load_c_into_ix(arg_offset, file_out);
+        _load_b_into_ix(arg_offset + 1, file_out);
       }
       else {
         /* 8-bit */
-        _load_l_into_ix(arg_offset, file_out);
+        _load_c_into_ix(arg_offset, file_out);
       }
 
       argument++;
@@ -3645,18 +3686,20 @@ static int _generate_asm_function_call_z80(struct tac *t, FILE *file_out, struct
   fprintf(stderr, "FUNCTION CALL %s TOTAL OFFSET %d\n", t->arg1_node->children[1]->label, t->arg1_node->local_variables->offset_to_fp_total);
   */
   
-  /* update sp */
-  _load_value_to_ix(t->arg1_node->local_variables->offset_to_fp_total, file_out);
-  _add_de_to_ix(file_out);  
-  _load_ix_to_sp(file_out);
+  fprintf(file_out, "      ; new stack frame -> DE\n");
 
-  /* call! */
-  _call_to(t->arg1_node->children[1]->label, file_out);
+  /* hl (new stack frame) -> de */
+  _load_hl_to_de(file_out);
 
+  /* jump! */
+  _jump_to(t->arg1_node->children[1]->label, file_out);
+
+  /* return label (used to get the return address) */
+  _add_label(return_label, file_out, NO);
+  
   /* go back to the old stack frame */
 
-  /* current stack frame address -> sp */
-  _load_de_to_sp(file_out);
+  fprintf(file_out, "      ; new stack frame -> IX\n");
   
   /* stack frame -> ix */
   _load_value_to_ix(0, file_out);
@@ -3676,14 +3719,19 @@ static int _generate_asm_function_call_z80(struct tac *t, FILE *file_out, struct
     /* return value -> hl/l */
     /******************************************************************************************************/
 
+    if (return_var_type == VARIABLE_TYPE_INT16 || return_var_type == VARIABLE_TYPE_UINT16)
+      fprintf(file_out, "      ; return value -> HL\n");
+    else
+      fprintf(file_out, "      ; return value -> L\n");
+    
     if (return_var_type == VARIABLE_TYPE_INT16 || return_var_type == VARIABLE_TYPE_UINT16) {
       /* 16-bit */
-      _load_from_ix_to_l(-3, file_out);
-      _load_from_ix_to_h(-2, file_out);
+      _load_from_ix_to_l(-5, file_out);
+      _load_from_ix_to_h(-4, file_out);
     }
     else {
       /* 8-bit */
-      _load_from_ix_to_l(-2, file_out);
+      _load_from_ix_to_l(-4, file_out);
 
       /* sign extend 8-bit -> 16-bit? */
       if (return_var_type == VARIABLE_TYPE_INT8 && (t->result_var_type_promoted == VARIABLE_TYPE_INT16 ||
@@ -3699,15 +3747,19 @@ static int _generate_asm_function_call_z80(struct tac *t, FILE *file_out, struct
     }
   }
   
+  fprintf(file_out, "      ; old stack frame address -> DE\n");
+
   /* old stack frame address -> de */
-  _load_from_ix_to_e(-1, file_out);
-  _load_from_ix_to_d(0, file_out);
+  _load_from_ix_to_e(-3, file_out);
+  _load_from_ix_to_d(-2, file_out);
 
   if (op == TAC_OP_FUNCTION_CALL_USE_RETURN_VALUE) {
     int result_offset = -1;
 
     if (find_stack_offset(t->result_type, t->result_s, t->result_d, t->result_node, &result_offset, function_node) == FAILED)
       return FAILED;
+
+    fprintf(file_out, "      ; copy return value to its destination\n");
 
     /******************************************************************************************************/
     /* target address -> iy */
@@ -3939,6 +3991,14 @@ int generate_asm_z80(FILE *file_out) {
         fprintf(file_out, "      ; SP - stack pointer\n");
         fprintf(file_out, "      ; IX - tmp\n");
         fprintf(file_out, "      ; IY - tmp\n");
+
+        if (strcmp(function_node->children[1]->label, "mainmain") != 0) {
+          /* allocate stack space for the stack frame */
+          fprintf(file_out, "      ; allocate space for the stack frame\n");
+          _load_value_to_hl(function_node->local_variables->offset_to_fp_total + 1, file_out);
+          _add_de_to_hl(file_out);  
+          _load_hl_to_sp(file_out);
+        }
       }
       
       for (i = i + 1; i < g_tacs_count; i++) {

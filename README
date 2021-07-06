@@ -27,9 +27,8 @@ Optimize:
 - Make IL optimizer passes to be able to merge remote commands instead of just
   the adjacent ones
 - Optimize user written calculations like 2+a-1 -> 1+a
-- Don't save the return address into stack frame and JMP, instead do CALL + RET?
-  -> make pass_5.c able to handle both cases as not all CPUs have CALL + RET?
 - If a variable is only written to, remove the variable and all assignments
+- Get rid of stack frame pointer DE in Z80 ASM, use just SP
 
 Fix:
 

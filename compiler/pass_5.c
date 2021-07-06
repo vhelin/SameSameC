@@ -1973,10 +1973,6 @@ int collect_and_preprocess_local_variables_inside_functions(void) {
       int offset = -4; /* the first 2 bytes in the stack frame are for return address, next 2 bytes are old stack frame address */
       int return_value_type, return_value_size;
 
-      /* some backends don't store the return address in the stack frame */
-      if (g_backend == BACKEND_Z80)
-        offset = -2;
-      
       /* NOTE: if the function returns a value we'll need to allocate space for that in the stack frame */        
       return_value_type = tree_node_get_max_var_type(function_node->children[0]);
       return_value_size = get_variable_type_size(return_value_type) / 8;
@@ -2097,17 +2093,10 @@ int collect_and_preprocess_local_variables_inside_functions(void) {
 
 #if defined(DEBUG_PASS_5)
       fprintf(stderr, "*** FUNCTION \"%s\" STACK FRAME\n", function_node->children[1]->label);
-      if (g_backend == BACKEND_Z80) {
-        fprintf(stderr, "OFFSET %.5d SIZE %.6d \"caller's stack frame address\"\n", -1, 2);
-        if (return_value_size > 0)
-          fprintf(stderr, "OFFSET %.5d SIZE %.6d \"return value\"\n", -2 - (return_value_size - 1), return_value_size);
-      }
-      else {
-        fprintf(stderr, "OFFSET %.5d SIZE %.6d \"return address\"\n", -1, 2);
-        fprintf(stderr, "OFFSET %.5d SIZE %.6d \"caller's stack frame address\"\n", -3, 2);
-        if (return_value_size > 0)
-          fprintf(stderr, "OFFSET %.5d SIZE %.6d \"return value\"\n", -4 - (return_value_size - 1), return_value_size);
-      }
+      fprintf(stderr, "OFFSET %.5d SIZE %.6d \"return address\"\n", -1, 2);
+      fprintf(stderr, "OFFSET %.5d SIZE %.6d \"caller's stack frame address\"\n", -3, 2);
+      if (return_value_size > 0)
+        fprintf(stderr, "OFFSET %.5d SIZE %.6d \"return value\"\n", -4 - (return_value_size - 1), return_value_size);
 #endif
 
       /* calculate the offsets */
