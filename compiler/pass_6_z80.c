@@ -150,15 +150,6 @@ static void _load_value_into_ix(int value, int offset, FILE *file_out) {
 }
 
 
-static void _load_value_into_iy(int value, int offset, FILE *file_out) {
-
-  if (offset >= 0)
-    fprintf(file_out, "      LD  (IY+%d),%d\n", offset, value);
-  else
-    fprintf(file_out, "      LD  (IY%d),%d\n", offset, value);
-}
-
-
 static void _load_from_de_to_a(FILE *file_out) {
 
   fprintf(file_out, "      LD  A,(DE)\n");
@@ -189,6 +180,24 @@ static void _load_from_iy_to_c(int offset, FILE *file_out) {
     fprintf(file_out, "      LD  C,(IY+%d)\n", offset);
   else
     fprintf(file_out, "      LD  C,(IY%d)\n", offset);
+}
+
+
+static void _load_from_iy_to_h(int offset, FILE *file_out) {
+
+  if (offset >= 0)
+    fprintf(file_out, "      LD  H,(IY+%d)\n", offset);
+  else
+    fprintf(file_out, "      LD  H,(IY%d)\n", offset);
+}
+
+
+static void _load_from_iy_to_l(int offset, FILE *file_out) {
+
+  if (offset >= 0)
+    fprintf(file_out, "      LD  L,(IY+%d)\n", offset);
+  else
+    fprintf(file_out, "      LD  L,(IY%d)\n", offset);
 }
 
 
@@ -373,12 +382,6 @@ static void _add_de_to_ix(FILE *file_out) {
 static void _add_de_to_iy(FILE *file_out) {
 
   fprintf(file_out, "      ADD IY,DE\n");
-}
-
-
-static void _add_bc_to_iy(FILE *file_out) {
-
-  fprintf(file_out, "      ADD IY,BC\n");
 }
 
 
@@ -1835,9 +1838,7 @@ static int _generate_asm_array_read_z80(struct tac *t, FILE *file_out, struct tr
   /* NOTE! var_type is actually the type of the item we have inside arg1 array */
   var_type = get_array_item_variable_type(t->arg1_node->children[0], t->arg1_node->children[0]->label);
   
-  if (t->arg2_type == TAC_ARG_TYPE_CONSTANT && ((int)t->arg2_d) == 0) {
-  }
-  else {
+  if (!(t->arg2_type == TAC_ARG_TYPE_CONSTANT && ((int)t->arg2_d) == 0)) {
     _add_bc_to_ix(file_out);
 
     if (var_type == VARIABLE_TYPE_INT16 || var_type == VARIABLE_TYPE_UINT16) {
@@ -2011,7 +2012,7 @@ static int _generate_asm_z80_out_write_z80(struct tac *t, FILE *file_out, struct
 
 static int _generate_asm_array_assignment_z80(struct tac *t, FILE *file_out, struct tree_node *function_node) {
 
-  int result_offset = -1, arg1_offset = -1, arg2_offset = -1;
+  int result_offset = -1, arg1_offset = -1, arg2_offset = -1, var_type;
 
   /* OVERRIDE for __z80_out */
   if (t->result_type == TAC_ARG_TYPE_LABEL && strcmp(t->result_s, "__z80_out") == 0)
@@ -2045,58 +2046,41 @@ static int _generate_asm_array_assignment_z80(struct tac *t, FILE *file_out, str
   /* generate asm */
 
   /******************************************************************************************************/
-  /* source address (arg1) -> ix */
-  /******************************************************************************************************/
-  
-  if (t->arg1_type == TAC_ARG_TYPE_CONSTANT) {
-  }
-  else if (t->arg1_type == TAC_ARG_TYPE_LABEL && arg1_offset == 999999) {
-    /* global var */
-    _load_label_to_ix(t->arg1_s, file_out);
-  }
-  else {
-    /* it's a variable in the frame! */
-    fprintf(file_out, "      ; offset %d\n", arg1_offset);
-
-    _load_value_to_ix(arg1_offset, file_out);
-    _add_de_to_ix(file_out);
-  }
-
-  /******************************************************************************************************/
-  /* index address (arg2) -> iy */
+  /* index address (arg2) -> ix */
   /******************************************************************************************************/
   
   if (t->arg2_type == TAC_ARG_TYPE_CONSTANT) {
   }
   else if (t->arg2_type == TAC_ARG_TYPE_LABEL && arg2_offset == 999999) {
     /* global var */
-    _load_label_to_iy(t->arg2_s, file_out);
+    _load_label_to_ix(t->arg2_s, file_out);
   }
   else {
     /* it's a variable in the frame! */
     fprintf(file_out, "      ; offset %d\n", arg2_offset);
 
-    _load_value_to_iy(arg2_offset, file_out);
-    _add_de_to_iy(file_out);
+    _load_value_to_ix(arg2_offset, file_out);
+    _add_de_to_ix(file_out);
   }
 
   /******************************************************************************************************/
-  /* copy data (iy) -> bc */
+  /* copy data (ix) -> bc */
   /******************************************************************************************************/
   
   if (t->arg2_type == TAC_ARG_TYPE_CONSTANT) {
     /* 16-bit */
-    _load_value_to_bc((int)t->arg2_d, file_out);
+    if (!(t->arg2_type == TAC_ARG_TYPE_CONSTANT && ((int)t->arg2_d) == 0))
+      _load_value_to_bc((int)t->arg2_d, file_out);
   }
   else {
     if (t->arg2_var_type == VARIABLE_TYPE_INT16 || t->arg2_var_type == VARIABLE_TYPE_UINT16) {
       /* 16-bit */
-      _load_from_iy_to_c(0, file_out);
-      _load_from_iy_to_b(1, file_out);
+      _load_from_ix_to_c(0, file_out);
+      _load_from_ix_to_b(1, file_out);
     }
     else {
       /* 8-bit */
-      _load_from_iy_to_c(0, file_out);
+      _load_from_ix_to_c(0, file_out);
 
       /* sign extend 8-bit -> 16-bit? */
       if (t->arg2_var_type == VARIABLE_TYPE_INT8) {
@@ -2115,76 +2099,124 @@ static int _generate_asm_array_assignment_z80(struct tac *t, FILE *file_out, str
   }
 
   /******************************************************************************************************/
-  /* result address (result) -> iy */
+  /* result address (result) -> ix */
   /******************************************************************************************************/
   
   if (t->result_type == TAC_ARG_TYPE_CONSTANT) {
   }
   else if (t->result_type == TAC_ARG_TYPE_LABEL && result_offset == 999999) {
     /* global var */
-    _load_label_to_iy(t->result_s, file_out);
+    _load_label_to_ix(t->result_s, file_out);
   }
   else {
     /* it's a variable in the frame! */
     fprintf(file_out, "      ; offset %d\n", result_offset);
 
-    _load_value_to_iy(result_offset, file_out);
+    _load_value_to_ix(result_offset, file_out);
+    _add_de_to_ix(file_out);
+  }
+
+  /******************************************************************************************************/
+  /* is the result address actually an address of a pointer? */
+  /******************************************************************************************************/
+  
+  if (t->result_node->children[0]->value_double > 0.0) {
+    /* yes -> get the real address */
+
+    /******************************************************************************************************/
+    /* copy data (ix) -> bc -> ix */
+    /******************************************************************************************************/
+
+    if (!(t->arg2_type == TAC_ARG_TYPE_CONSTANT && ((int)t->arg2_d) == 0))
+      _push_bc(file_out);
+    
+    /* 16-bit */
+    _load_from_ix_to_c(0, file_out);
+    _load_from_ix_to_b(1, file_out);
+
+    _load_value_to_ix(0, file_out);
+    _add_bc_to_ix(file_out);
+
+    if (!(t->arg2_type == TAC_ARG_TYPE_CONSTANT && ((int)t->arg2_d) == 0))
+      _pop_bc(file_out);
+  }
+  
+  /******************************************************************************************************/
+  /* add index bc -> ix */
+  /******************************************************************************************************/
+
+  /* NOTE! var_type is actually the type of the item we have inside result array */
+  var_type = get_array_item_variable_type(t->result_node->children[0], t->result_node->children[0]->label);
+
+  if (!(t->arg2_type == TAC_ARG_TYPE_CONSTANT && ((int)t->arg2_d) == 0)) {
+    _add_bc_to_ix(file_out);
+
+    if (var_type == VARIABLE_TYPE_INT16 || var_type == VARIABLE_TYPE_UINT16) {
+      /* the array has 16-bit items -> add bc -> ix twice! */
+      _add_bc_to_ix(file_out);
+    }
+  }
+  
+  /******************************************************************************************************/
+  /* source address (arg1) -> iy */
+  /******************************************************************************************************/
+
+  if (t->arg1_type == TAC_ARG_TYPE_CONSTANT) {
+  }
+  else if (t->arg1_type == TAC_ARG_TYPE_LABEL && arg1_offset == 999999) {
+    /* global var */
+    _load_label_to_iy(t->arg1_s, file_out);
+  }
+  else {
+    /* it's a variable in the frame! */
+    fprintf(file_out, "      ; offset %d\n", arg1_offset);
+
+    _load_value_to_iy(arg1_offset, file_out);
     _add_de_to_iy(file_out);
   }
-  
-  /******************************************************************************************************/
-  /* add index bc -> iy */
-  /******************************************************************************************************/
 
-  _add_bc_to_iy(file_out);
-
-  if (t->result_var_type == VARIABLE_TYPE_INT16 || t->result_var_type == VARIABLE_TYPE_UINT16) {
-    /* the array has 16-bit items -> add bc -> ix twice! */
-    _add_bc_to_iy(file_out);
-  }
-  
   /******************************************************************************************************/
-  /* copy data (ix) -> hl */
+  /* copy data (iy) -> hl */
   /******************************************************************************************************/
   
   if (t->arg1_type == TAC_ARG_TYPE_CONSTANT) {
     int value = (int)t->arg1_d;
-    if (t->result_var_type == VARIABLE_TYPE_INT16 || t->result_var_type == VARIABLE_TYPE_UINT16) {
+    if (var_type == VARIABLE_TYPE_INT16 || var_type == VARIABLE_TYPE_UINT16) {
       /* 16-bit */
-      _load_value_into_iy(value & 0xff, 0, file_out);
-      _load_value_into_iy((value >> 8) & 0xff, 1, file_out);
+      _load_value_into_ix(value & 0xff, 0, file_out);
+      _load_value_into_ix((value >> 8) & 0xff, 1, file_out);
 
       return SUCCEEDED;
     }
     else {
       /* 8-bit */
-      _load_value_into_iy(value & 0xff, 0, file_out);
+      _load_value_into_ix(value & 0xff, 0, file_out);
       return SUCCEEDED;
     }
   }
   else {
     if (t->arg1_var_type == VARIABLE_TYPE_INT16 || t->arg1_var_type == VARIABLE_TYPE_UINT16) {
       /* 16-bit */
-      _load_from_ix_to_l(0, file_out);
-      _load_from_ix_to_h(1, file_out);
+      _load_from_iy_to_l(0, file_out);
+      _load_from_iy_to_h(1, file_out);
     }
     else {
       /* 8-bit */
-      _load_from_ix_to_l(0, file_out);
+      _load_from_iy_to_l(0, file_out);
 
       /* sign extend 8-bit -> 16-bit? */
-      if (t->arg1_var_type == VARIABLE_TYPE_INT8 && (t->result_var_type == VARIABLE_TYPE_INT16 ||
-                                                     t->result_var_type == VARIABLE_TYPE_UINT16)) {
+      if (t->arg1_var_type == VARIABLE_TYPE_INT8 && (var_type == VARIABLE_TYPE_INT16 ||
+                                                     var_type == VARIABLE_TYPE_UINT16)) {
         /* yes */
         _sign_extend_l_to_hl(file_out);
       }
-      else if (t->arg1_var_type == VARIABLE_TYPE_UINT8 && (t->result_var_type == VARIABLE_TYPE_INT16 ||
-                                                           t->result_var_type == VARIABLE_TYPE_UINT16)) {
+      else if (t->arg1_var_type == VARIABLE_TYPE_UINT8 && (var_type == VARIABLE_TYPE_INT16 ||
+                                                           var_type == VARIABLE_TYPE_UINT16)) {
         /* upper byte -> 0 */
         _load_value_to_h(0, file_out);
       }
       else if ((t->arg1_var_type == VARIABLE_TYPE_UINT8 || t->arg1_var_type == VARIABLE_TYPE_INT8) &&
-               (t->result_var_type == VARIABLE_TYPE_INT8 || t->result_var_type == VARIABLE_TYPE_UINT8)) {
+               (var_type == VARIABLE_TYPE_INT8 || var_type == VARIABLE_TYPE_UINT8)) {
       }
       else {
         fprintf(stderr, "_generate_asm_array_assignment_z80: Unhandled 8-bit ARG1! Please submit a bug report!\n");
@@ -2194,17 +2226,17 @@ static int _generate_asm_array_assignment_z80(struct tac *t, FILE *file_out, str
   }
   
   /******************************************************************************************************/
-  /* copy data hl -> (iy) */
+  /* copy data hl -> (ix) */
   /******************************************************************************************************/
 
-  if (t->result_var_type == VARIABLE_TYPE_INT16 || t->result_var_type == VARIABLE_TYPE_UINT16) {
+  if (var_type == VARIABLE_TYPE_INT16 || var_type == VARIABLE_TYPE_UINT16) {
     /* 16-bit */
-    _load_l_into_iy(0, file_out);
-    _load_h_into_iy(1, file_out);
+    _load_l_into_ix(0, file_out);
+    _load_h_into_ix(1, file_out);
   }
   else {
     /* 8-bit */
-    _load_l_into_iy(0, file_out);
+    _load_l_into_ix(0, file_out);
   }
 
   return SUCCEEDED;

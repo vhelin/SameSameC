@@ -32,14 +32,18 @@ Optimize:
 
 Fix:
 
-- TAC_OP_ARRAY_READ and TAC_OP_ARRAY_ASSIGNMENT work incorrectly with arrays in stack?
 - Handle arrays inside functions better
 - const int8 var[] = { 1, 2, 3... }; inside a function -> move it to the end of the
   function, rename to _var
 - const int8 var = 3; inside a function -> move it to the end of the function,
   rename to _var
+- Remake #define to just collect tokens and when expanded output clones of those tokens,
+  and add support for arguments
+
+Add:
+
+- Add support for -=, +=, *=, /=, |= and &=
 - Add support for struct {};
-- Remake #define to just collect tokens and when expanded output clones of those tokens
 
 
 NOTE
