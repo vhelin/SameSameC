@@ -2,6 +2,8 @@
 void main(void) {
 
   uint8 color = 0;
+
+/*
   uint8 i;
 
   while (1) {
@@ -13,9 +15,16 @@ void main(void) {
 
     add_1(&color);
   }
+*/
+
+  add_1(&color);
 }
 
 void add_1(uint8 *color) {
+
+  /*
+  uint8 data[] = { 1, 2 };
+  */
 
   color[0] = color[0] + 1;
 }

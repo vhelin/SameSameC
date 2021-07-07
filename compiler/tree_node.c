@@ -136,6 +136,19 @@ static int _get_create_variable_variable_type(struct tree_node *node) {
 }
 
 
+int get_array_item_variable_type(struct tree_node *node, char *label) {
+
+  int pointer_depth;
+
+  pointer_depth = ((int)node->value_double) - 1;
+
+  if (pointer_depth > 0)
+    return VARIABLE_TYPE_UINT16;
+  else
+    return node->value;
+}
+
+
 int tree_node_get_max_var_type(struct tree_node *node) {
 
   if (node->type == TREE_NODE_TYPE_VALUE_INT)
@@ -153,7 +166,7 @@ int tree_node_get_max_var_type(struct tree_node *node) {
   else if (node->type == TREE_NODE_TYPE_INCREMENT_DECREMENT)
     return _get_create_variable_variable_type(node->definition->children[0]);
   else if (node->type == TREE_NODE_TYPE_ARRAY_ITEM)
-    return _get_create_variable_variable_type(node->definition->children[0]);
+    return get_array_item_variable_type(node->definition->children[0], node->definition->children[1]->label);
   else if (node->type == TREE_NODE_TYPE_FUNCTION_CALL)
     return _get_create_variable_variable_type(node->definition->children[0]);
   else if (node->type == TREE_NODE_TYPE_EXPRESSION) {
@@ -177,7 +190,7 @@ int tree_node_get_max_var_type(struct tree_node *node) {
       else if (n->type == TREE_NODE_TYPE_INCREMENT_DECREMENT)
         type_max = get_max_variable_type_2(type_max, _get_create_variable_variable_type(n->definition->children[0]));
       else if (n->type == TREE_NODE_TYPE_ARRAY_ITEM)
-        type_max = get_max_variable_type_2(type_max, _get_create_variable_variable_type(n->definition->children[0]));
+        type_max = get_max_variable_type_2(type_max, get_array_item_variable_type(n->definition->children[0], n->definition->children[1]->label));
       else if (n->type == TREE_NODE_TYPE_FUNCTION_CALL)
         type_max = get_max_variable_type_2(type_max, _get_create_variable_variable_type(n->definition->children[0]));
       else

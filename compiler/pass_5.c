@@ -1828,13 +1828,11 @@ int propagate_operand_types(void) {
       if (_find_operand_type(&t->result_var_type, t->result_type, (int)t->result_d, t->result_s, t->result_node, YES) == FAILED)
         return FAILED;
 
-      /* RESULT from ARG1 and ARG2? */
+      /* RESULT from ARG1? */
       if (t->result_type == TAC_ARG_TYPE_TEMP) {
-        int type_max = get_max_variable_type_4(t->arg1_var_type, t->arg2_var_type, t->arg1_var_type_promoted, t->arg2_var_type_promoted);
-        
         if (t->result_var_type == VARIABLE_TYPE_NONE) {
           /* get the type from the operands */
-          t->result_var_type = type_max;
+          t->result_var_type = get_array_item_variable_type(t->arg1_node->children[0], t->arg1_node->children[0]->label);
         }
 
         _set_temp_register_type((int)t->result_d, t->result_var_type);
@@ -1925,18 +1923,14 @@ static int _get_variable_size(struct tree_node *node) {
   else {
     int type = node->children[0]->value;
 
-    if (type == VARIABLE_TYPE_INT8) {
+    if (type == VARIABLE_TYPE_INT8)
       size = 8;
-    }
-    else if (type == VARIABLE_TYPE_UINT8) {
+    else if (type == VARIABLE_TYPE_UINT8)
       size = 8;
-    }
-    else if (type == VARIABLE_TYPE_INT16) {
+    else if (type == VARIABLE_TYPE_INT16)
       size = 16;
-    }
-    else if (type == VARIABLE_TYPE_UINT16) {
+    else if (type == VARIABLE_TYPE_UINT16)
       size = 16;
-    }
     else {
       fprintf(stderr, "_get_variable_size(): Cannot determine the variable size of variable \"%s\".\n", node->children[1]->label);
       return -1;

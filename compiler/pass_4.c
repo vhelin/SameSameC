@@ -429,12 +429,16 @@ static int _generate_il_create_assignment(struct tree_node *node) {
     tac_set_arg1(t, TAC_ARG_TYPE_TEMP, r2, NULL);
     tac_set_arg2(t, TAC_ARG_TYPE_TEMP, r1, NULL);
 
+    /* find the definition */
+    if (tac_try_find_definition(t, node->children[0]->label, node, TAC_USE_RESULT) == FAILED)
+      return FAILED;
+
     /* set promotions */
     type = tree_node_get_max_var_type(node->children[1]);
     tac_promote_argument(t, type, TAC_USE_ARG2);
     type = tree_node_get_max_var_type(node->children[2]);
     tac_promote_argument(t, type, TAC_USE_ARG1);
-    type = tree_node_get_max_var_type(node->children[0]);
+    type = get_array_item_variable_type(t->result_node->children[0], node->children[0]->label);
     tac_promote_argument(t, type, TAC_USE_RESULT);
   }
   else {
@@ -451,16 +455,16 @@ static int _generate_il_create_assignment(struct tree_node *node) {
     tac_set_result(t, TAC_ARG_TYPE_LABEL, 0, node->children[0]->label);
     tac_set_arg1(t, TAC_ARG_TYPE_TEMP, r1, NULL);
 
+    /* find the definition */
+    if (tac_try_find_definition(t, node->children[0]->label, node, TAC_USE_RESULT) == FAILED)
+      return FAILED;
+
     /* set promotions */
     type = tree_node_get_max_var_type(node->children[1]);
     tac_promote_argument(t, type, TAC_USE_ARG1);
     type = tree_node_get_max_var_type(node->children[0]);
     tac_promote_argument(t, type, TAC_USE_RESULT);
   }
-
-  /* find the definition */
-  if (tac_try_find_definition(t, node->children[0]->label, node, TAC_USE_RESULT) == FAILED)
-    return FAILED;
 
   if ((is_array_assignment == NO && node->children[0]->definition->children[0]->value_double == 0 && (node->children[0]->definition->flags & TREE_NODE_FLAG_CONST_1) == TREE_NODE_FLAG_CONST_1) ||
       (is_array_assignment == NO && node->children[0]->definition->children[0]->value_double > 0 && (node->children[0]->definition->flags & TREE_NODE_FLAG_CONST_2) == TREE_NODE_FLAG_CONST_2) ||
