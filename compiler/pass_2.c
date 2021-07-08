@@ -3340,7 +3340,7 @@ static void _check_ast_global_node(struct tree_node *node) {
 
   if (node == NULL)
     return;
-  
+
   if (node->type == TREE_NODE_TYPE_CREATE_VARIABLE || node->type == TREE_NODE_TYPE_CREATE_VARIABLE_FUNCTION_ARGUMENT)
     _check_ast_create_variable(node);
   else if (node->type == TREE_NODE_TYPE_FUNCTION_DEFINITION)
@@ -3359,6 +3359,11 @@ void check_ast(void) {
 
   int i;
 
+  /* mark all globals */
+  for (i = 0; i < g_global_nodes->added_children; i++)
+    g_global_nodes->children[i]->flags |= TREE_NODE_FLAG_GLOBAL;
+
+  /* check ast */
   for (i = 0; i < g_global_nodes->added_children; i++)
     _check_ast_global_node(g_global_nodes->children[i]);
 }

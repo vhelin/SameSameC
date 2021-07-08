@@ -147,7 +147,7 @@ int stack_calculate_tree_node(struct tree_node *node, int *value) {
 
   struct stack_item si[256];
   struct tree_node *child;
-  int q, b = 0;
+  int q, b = 0, failed = NO;
 
   /* only one string? HACK_1 */
   if (node->added_children == 1 && node->children[0]->type == TREE_NODE_TYPE_VALUE_STRING) {
@@ -414,27 +414,28 @@ int stack_calculate_tree_node(struct tree_node *node, int *value) {
     }
     else if (child->type == TREE_NODE_TYPE_INCREMENT_DECREMENT) {
       /* increment/decrement cannot be calculated here, only on the target machine... */
-      return FAILED;
+      failed = YES;
     }
     else if (child->type == TREE_NODE_TYPE_GET_ADDRESS) {
       /* get address cannot be calculated here, only on the target machine... */
-      return FAILED;
+      failed = YES;
     }
     else if (child->type == TREE_NODE_TYPE_GET_ADDRESS_ARRAY) {
       /* get address array cannot be calculated here, only on the target machine... */
-      return FAILED;
+      failed = YES;
     }
     else if (child->type == TREE_NODE_TYPE_FUNCTION_CALL) {
       /* function calls cannot be calculated here, only on the target machine... */
-      return FAILED;
+      failed = YES;
     }
     else if (child->type == TREE_NODE_TYPE_ARRAY_ITEM) {
       /* array items cannot be calculated here, only on the target machine... */
-      return FAILED;
+      /* TODO: if the array is const and index is a value, then this can be solved here... */
+      failed = YES;
     }
     else if (child->type == TREE_NODE_TYPE_BYTES) {
       /* raw bytes in a calculation - doesn't make any sense */
-      return FAILED;
+      failed = YES;
     }    
     else {
       fprintf(stderr, "STACK_CALCULATE_TREE_NODE: Got an unhandled tree_node of type %d! Please submit a bug report!\n", child->type);
@@ -447,6 +448,9 @@ int stack_calculate_tree_node(struct tree_node *node, int *value) {
     }
   }
 
+  if (failed == YES)
+    return FAILED;
+  
   if (b != 0) {
     print_error("Unbalanced parentheses.\n", ERROR_STC);
     return FAILED;

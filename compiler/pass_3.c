@@ -24,11 +24,12 @@
 
 
 extern struct tree_node *g_global_nodes, *g_label_definition;
-extern int g_verbose_mode, g_input_float_mode;
+extern int g_verbose_mode, g_input_float_mode, g_current_filename_id, g_current_line_number;
 extern char *g_variable_types[4], *g_two_char_symbols[10], g_label[MAX_NAME_LENGTH + 1];
+extern char g_tmp[4096], g_error_message[sizeof(g_tmp) + MAX_NAME_LENGTH + 1 + 1024];
 extern double g_parsed_double;
 
-static int g_current_indentation_depth = 0, g_print_is_inside_for = NO;
+static int g_current_indentation_depth = 0, g_print_is_inside_for = NO, g_simplified_expressions = 0, g_simplify_expressions_failed = NO;
 static char g_current_indentation[256];
 
 
@@ -610,7 +611,8 @@ int pass_3(void) {
   _print_global_nodes();
 #endif
   
-  simplify_expressions();
+  if (simplify_expressions() == FAILED)
+    return FAILED;
 
 #if defined(DEBUG_PASS_3)
   fprintf(stderr, ">------------------------------ SIMPLIFIED ------------------------------>\n");
@@ -643,26 +645,77 @@ static int _simplify_expression(struct tree_node *node) {
   /* try to simplify a sub expression */
 
   for (i = 0; i < node->added_children; i++) {
-    if (node->children[i]->type == TREE_NODE_TYPE_EXPRESSION) {
-      if (_simplify_expression(node->children[i]) == SUCCEEDED)
+    struct tree_node *child = node->children[i];
+    
+    if (child->type == TREE_NODE_TYPE_EXPRESSION) {
+      if (_simplify_expression(child) == SUCCEEDED)
         return SUCCEEDED;
       else
         subexpressions++;
     }
-    if (node->children[i]->type == TREE_NODE_TYPE_FUNCTION_CALL) {
-      for (j = 1; j < node->children[i]->added_children; j++) {
-        if (_simplify_expression(node->children[i]->children[j]) == SUCCEEDED)
+    else if (child->type == TREE_NODE_TYPE_FUNCTION_CALL) {
+      for (j = 1; j < child->added_children; j++) {
+        if (_simplify_expression(child->children[j]) == SUCCEEDED)
           return SUCCEEDED;
         subexpressions++;
       }
     }
-    if (node->children[i]->type == TREE_NODE_TYPE_GET_ADDRESS_ARRAY) {
-      if (_simplify_expression(node->children[i]->children[0]) == SUCCEEDED)
+    else if (child->type == TREE_NODE_TYPE_GET_ADDRESS_ARRAY) {
+      if (_simplify_expression(child->children[0]) == SUCCEEDED)
         return SUCCEEDED;
       subexpressions++;
     }
-    if (node->children[i]->type == TREE_NODE_TYPE_ARRAY_ITEM) {
-      if (_simplify_expression(node->children[i]->children[0]) == SUCCEEDED)
+    else if (child->type == TREE_NODE_TYPE_VALUE_STRING) {
+      /* NOTE! if the variable we are referencing here is const, then we'll transform this
+         tree_node to contain its value so future passes can possibly optimize calculations
+         or just use the pure value instead of an expensive variable reference */
+      if (child->definition->children[0]->value_double == 0.0 && child->definition->flags & TREE_NODE_FLAG_CONST_1) {
+        if (child->definition->added_children == 3 && child->definition->children[2]->type == TREE_NODE_TYPE_VALUE_INT) {
+          /* transform! */
+          child->type = TREE_NODE_TYPE_VALUE_INT;
+          child->value = child->definition->children[2]->value;
+
+          /* remove a read reference */
+          child->definition->reads--;
+
+          return SUCCEEDED;
+        }
+      }
+    }
+    else if (child->type == TREE_NODE_TYPE_ARRAY_ITEM) {
+      /* NOTE! if the array we are referencing here is const (and index, too), then we'll transform this
+         tree_node to contain its value so future passes can possibly optimize calculations
+         or just use the pure value instead of an expensive variable reference */
+      if (child->definition->children[0]->value_double == 0.0 && child->definition->flags & TREE_NODE_FLAG_CONST_1) {
+        if (child->added_children == 1 && child->children[0]->type == TREE_NODE_TYPE_VALUE_INT) {
+          int index = child->children[0]->value;
+          int items = child->definition->added_children - 2;
+
+          if (index >= items || index < 0) {
+            g_current_filename_id = child->file_id;
+            g_current_line_number = child->line_number;
+            snprintf(g_error_message, sizeof(g_error_message), "_simplify_expression(): Trying to access array item %d, but the array has only %d items!\n", index, items);
+            print_error(g_error_message, ERROR_ERR);
+            g_simplify_expressions_failed = YES;
+            return FAILED;
+          }
+
+          if (child->definition->children[2 + index]->type == TREE_NODE_TYPE_VALUE_INT) {
+            /* transform! */
+            child->type = TREE_NODE_TYPE_VALUE_INT;
+            child->value = child->definition->children[2 + index]->value;
+
+            /* remove a read reference */
+            child->definition->reads--;
+
+            free_tree_node_children(child);
+
+            return SUCCEEDED;
+          }
+        }
+      }
+      
+      if (_simplify_expression(child->children[0]) == SUCCEEDED)
         return SUCCEEDED;
       subexpressions++;
     }
@@ -716,8 +769,8 @@ static void _simplify_expressions(struct tree_node *node) {
     return;
 
   /* try to simplify until it cannot be simplified any more */
-  while (_simplify_expression(node) == SUCCEEDED) {
-  }
+  while (_simplify_expression(node) == SUCCEEDED)
+    g_simplified_expressions++;
 }
 
 
@@ -880,7 +933,11 @@ static void _simplify_expressions_block(struct tree_node *node) {
     return;
 
   if (node->type != TREE_NODE_TYPE_BLOCK) {
-    fprintf(stderr, "_simplify_expressions_block(): Was expecting TREE_NODE_TYPE_BLOCK, got %d instead! Please submit a bug report!\n", node->type);
+    g_current_filename_id = node->file_id;
+    g_current_line_number = node->line_number;
+    snprintf(g_error_message, sizeof(g_error_message), "_simplify_expressions_block(): Was expecting TREE_NODE_TYPE_BLOCK, got %d instead! Please submit a bug report!\n", node->type);
+    print_error(g_error_message, ERROR_ERR);
+    g_simplify_expressions_failed = YES;
     return;
   }
 
@@ -910,17 +967,35 @@ static void _simplify_expressions_global_node(struct tree_node *node) {
   else if (node->type == TREE_NODE_TYPE_FUNCTION_PROTOTYPE) {
     /* nothing to simplify here */
   }
-  else
-    fprintf(stderr, "_simplify_expressions_global_node(): Unknown global node type %d! Please submit a bug report!\n", node->type);
+  else {
+    g_current_filename_id = node->file_id;
+    g_current_line_number = node->line_number;
+    snprintf(g_error_message, sizeof(g_error_message), "_simplify_expressions_global_node(): Unknown global node type %d! Please submit a bug report!\n", node->type);
+    print_error(g_error_message, ERROR_ERR);
+    g_simplify_expressions_failed = YES;
+  }
 }
 
 
 int simplify_expressions(void) {
 
-  int i;
+  int i, loop = 1;
 
-  for (i = 0; i < g_global_nodes->added_children; i++)
-    _simplify_expressions_global_node(g_global_nodes->children[i]);
+  /* loop expression simplifier until all expressions are simplified as much as possible */
+  do {
+    g_simplified_expressions = 0;
+
+    for (i = 0; i < g_global_nodes->added_children; i++)
+      _simplify_expressions_global_node(g_global_nodes->children[i]);
+
+    if (g_simplify_expressions_failed == NO) {
+      fprintf(stderr, "simplify_expressions(): Loop %d managed to do %d optimizations.\n", loop, g_simplified_expressions);
+      loop++;
+    }
+  } while (g_simplified_expressions > 0 && g_simplify_expressions_failed == NO);
+
+  if (g_simplify_expressions_failed == YES)
+    return FAILED;
   
   return SUCCEEDED;
 }

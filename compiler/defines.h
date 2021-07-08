@@ -331,6 +331,7 @@ struct tree_node {
 #define TREE_NODE_FLAG_CONST_2       (1 << 1)
 #define TREE_NODE_FLAG_DATA_IS_CONST (1 << 2)
 #define TREE_NODE_FLAG_PUREASM       (1 << 3)
+#define TREE_NODE_FLAG_GLOBAL        (1 << 4)
 
 #define TREE_NODE_TYPE_CREATE_VARIABLE      0
 #define TREE_NODE_TYPE_ASSIGNMENT           1

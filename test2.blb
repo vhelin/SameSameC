@@ -19,9 +19,8 @@ void main(void) {
 
 void add_1(uint8 *color) {
 
-  /*
-  uint8 data[] = { 1, 2 };
-  */
+  const uint8 data[] = { 1, 2 };
+  const uint8 one = 1+data[2-1-1]-1;
 
-  color[0] = color[0] + 1;
+  color[0] = color[0] + one;
 }
