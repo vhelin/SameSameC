@@ -12,7 +12,7 @@
       ; IX - tmp
       ; IY - tmp
       ; allocate space for the stack frame
-      LD  HL,-10
+      LD  HL,-8
       ADD HL,DE
       LD  SP,HL
       ; =================================================================
@@ -186,8 +186,8 @@
       ; copy argument 1
       LD  C,(IY-8)
       LD  B,(IY-7)
-      LD  (IX-5),C
-      LD  (IX-4),B
+      LD  (IX-7),C
+      LD  (IX-6),B
       ; new stack frame -> DE
       LD  D,H
       LD  E,L
@@ -203,66 +203,11 @@
       ; TAC: jmp _label_1
       ; -----------------------------------------------------------------
       JP  _label_1
-      ; =================================================================
-      ; ../test2.blb:17: add_1(&color);
-      ; =================================================================
-      ; -----------------------------------------------------------------
-      ; TAC: r2.uint16 (uint16) := &color.uint16 (uint16)
-      ; -----------------------------------------------------------------
-      ; offset -4
-      LD  HL,-4
-      ADD HL,DE
-      ; offset -10
-      LD  IX,-10
-      ADD IX,DE
-      LD  (IX+0),L
-      LD  (IX+1),H
-      ; -----------------------------------------------------------------
-      ; TAC: add_1(r2.uint16 (uint16))
-      ; -----------------------------------------------------------------
-      LD  HL,0
-      ADD HL,SP
-      DEC HL
-      LD  BC,_return_2
-      PUSH BC
-      PUSH DE
-      ; new stack frame -> IX
-      LD  B,H
-      LD  C,L
-      LD  IX,0
-      ADD IX,BC
-      ; old stack frame -> IY
-      LD  IY,0
-      ADD IY,DE
-      ; copy argument 1
-      LD  C,(IY-10)
-      LD  B,(IY-9)
-      LD  (IX-5),C
-      LD  (IX-4),B
-      ; new stack frame -> DE
-      LD  D,H
-      LD  E,L
-      JP  add_1
-    _return_2:
-      ; new stack frame -> IX
-      LD  IX,0
-      ADD IX,DE
-      ; old stack frame address -> DE
-      LD  E,(IX-3)
-      LD  D,(IX-2)
-      ; -----------------------------------------------------------------
-      ; TAC: return
-      ; -----------------------------------------------------------------
-      ; bytes -1 and 0 of stack frame contain the return address
-      LD  HL,-1
-      ADD HL,DE
-      LD  SP,HL
-      RET
   .ENDS
 
   .SECTION "add_1" FREE
     ; =================================================================
-    ; ../test2.blb:20: void add_1(uint8 *color) {
+    ; ../test2.blb:18: uint8 * add_1(uint8 *color) {
     ; =================================================================
     add_1:
       ; A  - tmp
@@ -273,59 +218,77 @@
       ; IX - tmp
       ; IY - tmp
       ; allocate space for the stack frame
-      LD  HL,-8
+      LD  HL,-12
       ADD HL,DE
       LD  SP,HL
       ; -----------------------------------------------------------------
-      ; TAC: variable "color" size 2 offset -5 type a
+      ; TAC: variable "color" size 2 offset -7 type a
       ; -----------------------------------------------------------------
       ; =================================================================
-      ; ../test2.blb:25: color[0] = color[0] + one;
+      ; ../test2.blb:20: const uint8 data[] = { 1, 2 };
+      ; =================================================================
+      ; -----------------------------------------------------------------
+      ; TAC: variable "_data" size 0 offset 0 type n
+      ; -----------------------------------------------------------------
+      ; -----------------------------------------------------------------
+      ; TAC: data.uint8 (uint8)[0.uint8 (uint8)] := 1.uint8 (uint8)
+      ; -----------------------------------------------------------------
+      LD  IX,_data
+      LD  (IX+0),1
+      ; -----------------------------------------------------------------
+      ; TAC: data.uint8 (uint8)[1.uint8 (uint8)] := 2.uint8 (uint8)
+      ; -----------------------------------------------------------------
+      LD  BC,1
+      LD  IX,_data
+      ADD IX,BC
+      LD  (IX+0),2
+      ; =================================================================
+      ; ../test2.blb:23: color[0] = color[0] + one;
       ; =================================================================
       ; -----------------------------------------------------------------
       ; TAC: r0.uint8 (uint8) := 0.uint8 (uint8)
       ; -----------------------------------------------------------------
-      ; offset -6
-      LD  IX,-6
+      ; offset -8
+      LD  IX,-8
       ADD IX,DE
       LD  (IX+0),0
       ; -----------------------------------------------------------------
       ; TAC: r1.uint8 (uint8) := color.uint16 (uint8)[0.uint8 (uint8)]
       ; -----------------------------------------------------------------
-      ; offset -5
-      LD  IX,-5
+      ; offset -7
+      LD  IX,-7
       ADD IX,DE
       LD  C,(IX+0)
       LD  B,(IX+1)
       LD  IX,0
       ADD IX,BC
       LD  L,(IX+0)
-      ; offset -7
-      LD  IX,-7
+      ; offset -9
+      LD  IX,-9
       ADD IX,DE
       LD  (IX+0),L
       ; -----------------------------------------------------------------
       ; TAC: r2.uint8 (uint8) := r1.uint8 (uint8) + 1.uint8 (uint8)
       ; -----------------------------------------------------------------
-      ; offset -7
-      LD  IX,-7
+      ; offset -9
+      LD  IX,-9
       ADD IX,DE
       LD  A,(IX+0)
       INC A
-      ; offset -8
-      LD  IX,-8
+      ; offset -10
+      LD  IX,-10
       ADD IX,DE
       LD  (IX+0),A
       ; -----------------------------------------------------------------
       ; TAC: color.uint16 (uint8)[r0.uint8 (uint8)] := r2.uint8 (uint8)
       ; -----------------------------------------------------------------
-      ; offset -6
-      LD  IX,-6
+      ; offset -8
+      LD  IX,-8
       ADD IX,DE
       LD  C,(IX+0)
       LD  B,0
-      ; offset -5
-      LD  IX,-5
+      ; offset -7
+      LD  IX,-7
       ADD IX,DE
       PUSH BC
       LD  C,(IX+0)
@@ -334,19 +297,42 @@
       ADD IX,BC
       POP BC
       ADD IX,BC
-      ; offset -8
-      LD  IY,-8
+      ; offset -10
+      LD  IY,-10
       ADD IY,DE
       LD  L,(IY+0)
       LD  (IX+0),L
+      ; =================================================================
+      ; ../test2.blb:25: return &data;
+      ; =================================================================
       ; -----------------------------------------------------------------
-      ; TAC: return
+      ; TAC: r3.uint16 (uint16) := &data.uint16 (uint16)
       ; -----------------------------------------------------------------
+      LD  HL,_data
+      ; offset -12
+      LD  IX,-12
+      ADD IX,DE
+      LD  (IX+0),L
+      LD  (IX+1),H
+      ; -----------------------------------------------------------------
+      ; TAC: return r3.uint16 (uint16)
+      ; -----------------------------------------------------------------
+      ; offset -12
+      LD  IX,-12
+      ADD IX,DE
+      LD  L,(IX+0)
+      LD  H,(IX+1)
+      LD  IX,0
+      ADD IX,DE
+      LD  (IX-5),L
+      LD  (IX-4),H
       ; bytes -1 and 0 of stack frame contain the return address
       LD  HL,-1
       ADD HL,DE
       LD  SP,HL
       RET
+    _data:
+      .DB 1, 2
   .ENDS
 
   .SECTION "mainmain" FREE
@@ -367,14 +353,14 @@
       LD  HL,0
       ADD HL,SP
       DEC HL
-      LD  BC,_return_3
+      LD  BC,_return_2
       PUSH BC
       PUSH DE
       ; new stack frame -> DE
       LD  D,H
       LD  E,L
       JP  main
-    _return_3:
+    _return_2:
       ; new stack frame -> IX
       LD  IX,0
       ADD IX,DE

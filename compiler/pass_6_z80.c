@@ -989,7 +989,7 @@ static int _generate_asm_assignment_z80(struct tac *t, FILE *file_out, struct tr
   }
   else if (t->result_type == TAC_ARG_TYPE_LABEL && result_offset == 999999) {
     /* global var */
-    _load_label_to_ix(t->result_s, file_out);
+    _load_label_to_ix(t->result_node->children[1]->label, file_out);
   }
   else {
     /* it's a variable in the frame! */
@@ -1007,7 +1007,7 @@ static int _generate_asm_assignment_z80(struct tac *t, FILE *file_out, struct tr
   }
   else if (t->arg1_type == TAC_ARG_TYPE_LABEL && arg1_offset == 999999) {
     /* global var */
-    _load_label_to_iy(t->arg1_s, file_out);
+    _load_label_to_iy(t->arg1_node->children[1]->label, file_out);
   }
   else {
     /* it's a variable in the frame! */
@@ -1101,7 +1101,7 @@ static int _generate_asm_add_sub_or_and_z80_8bit(struct tac *t, FILE *file_out, 
   }
   else if (t->arg1_type == TAC_ARG_TYPE_LABEL && arg1_offset == 999999) {
     /* global var */
-    _load_label_to_ix(t->arg1_s, file_out);
+    _load_label_to_ix(t->arg1_node->children[1]->label, file_out);
   }
   else {
     /* it's a variable in the frame! */
@@ -1132,7 +1132,7 @@ static int _generate_asm_add_sub_or_and_z80_8bit(struct tac *t, FILE *file_out, 
   }
   else if (t->arg2_type == TAC_ARG_TYPE_LABEL && arg2_offset == 999999) {
     /* global var */
-    _load_label_to_ix(t->arg2_s, file_out);
+    _load_label_to_ix(t->arg2_node->children[1]->label, file_out);
   }
   else {
     /* it's a variable in the frame! */
@@ -1207,7 +1207,7 @@ static int _generate_asm_add_sub_or_and_z80_8bit(struct tac *t, FILE *file_out, 
   }
   else if (t->result_type == TAC_ARG_TYPE_LABEL && result_offset == 999999) {
     /* global var */
-    _load_label_to_ix(t->result_s, file_out);
+    _load_label_to_ix(t->result_node->children[1]->label, file_out);
   }
   else {
     /* it's a variable in the frame! */
@@ -1276,7 +1276,7 @@ static int _generate_asm_add_sub_or_and_z80_16bit(struct tac *t, FILE *file_out,
   }
   else if (t->arg1_type == TAC_ARG_TYPE_LABEL && arg1_offset == 999999) {
     /* global var */
-    _load_label_to_ix(t->arg1_s, file_out);
+    _load_label_to_ix(t->arg1_node->children[1]->label, file_out);
   }
   else {
     /* it's a variable in the frame! */
@@ -1330,7 +1330,7 @@ static int _generate_asm_add_sub_or_and_z80_16bit(struct tac *t, FILE *file_out,
   }
   else if (t->arg2_type == TAC_ARG_TYPE_LABEL && arg2_offset == 999999) {
     /* global var */
-    _load_label_to_ix(t->arg2_s, file_out);
+    _load_label_to_ix(t->arg2_node->children[1]->label, file_out);
   }
   else {
     /* it's a variable in the frame! */
@@ -1414,7 +1414,7 @@ static int _generate_asm_add_sub_or_and_z80_16bit(struct tac *t, FILE *file_out,
   }
   else if (t->result_type == TAC_ARG_TYPE_LABEL && result_offset == 999999) {
     /* global var */
-    _load_label_to_ix(t->result_s, file_out);
+    _load_label_to_ix(t->result_node->children[1]->label, file_out);
   }
   else {
     /* it's a variable in the frame! */
@@ -1491,7 +1491,7 @@ static int _generate_asm_get_address_z80(struct tac *t, FILE *file_out, struct t
   }
   else if (t->arg1_type == TAC_ARG_TYPE_LABEL && arg1_offset == 999999) {
     /* global var */
-    _load_label_to_hl(t->arg1_s, file_out);
+    _load_label_to_hl(t->arg1_node->children[1]->label, file_out);
   }
   else {
     /* it's a variable in the frame! */
@@ -1512,7 +1512,7 @@ static int _generate_asm_get_address_z80(struct tac *t, FILE *file_out, struct t
     }
     else if (t->arg2_type == TAC_ARG_TYPE_LABEL && arg2_offset == 999999) {
       /* global var */
-      _load_label_to_ix(t->arg2_s, file_out);
+      _load_label_to_ix(t->arg2_node->children[1]->label, file_out);
     }
     else {
       /* it's a variable in the frame! */
@@ -1579,7 +1579,7 @@ static int _generate_asm_get_address_z80(struct tac *t, FILE *file_out, struct t
   }
   else if (t->result_type == TAC_ARG_TYPE_LABEL && result_offset == 999999) {
     /* global var */
-    _load_label_to_ix(t->result_s, file_out);
+    _load_label_to_ix(t->result_node->children[1]->label, file_out);
   }
   else {
     /* it's a variable in the frame! */
@@ -1631,7 +1631,7 @@ static int _generate_asm_z80_in_read_z80(struct tac *t, FILE *file_out, struct t
   }
   else if (t->arg2_type == TAC_ARG_TYPE_LABEL && arg2_offset == 999999) {
     /* global var */
-    _load_label_to_ix(t->arg2_s, file_out);
+    _load_label_to_ix(t->arg2_node->children[1]->label, file_out);
   }
   else {
     /* it's a variable in the frame! */
@@ -1670,7 +1670,7 @@ static int _generate_asm_z80_in_read_z80(struct tac *t, FILE *file_out, struct t
   }
   else if (t->result_type == TAC_ARG_TYPE_LABEL && result_offset == 999999) {
     /* global var */
-    _load_label_to_ix(t->result_s, file_out);
+    _load_label_to_ix(t->result_node->children[1]->label, file_out);
   }
   else {
     /* it's a variable in the frame! */
@@ -1741,7 +1741,7 @@ static int _generate_asm_array_read_z80(struct tac *t, FILE *file_out, struct tr
   }
   else if (t->arg2_type == TAC_ARG_TYPE_LABEL && arg2_offset == 999999) {
     /* global var */
-    _load_label_to_ix(t->arg2_s, file_out);
+    _load_label_to_ix(t->arg2_node->children[1]->label, file_out);
   }
   else {
     /* it's a variable in the frame! */
@@ -1796,7 +1796,7 @@ static int _generate_asm_array_read_z80(struct tac *t, FILE *file_out, struct tr
   }
   else if (t->arg1_type == TAC_ARG_TYPE_LABEL && arg1_offset == 999999) {
     /* global var */
-    _load_label_to_ix(t->arg1_s, file_out);
+    _load_label_to_ix(t->arg1_node->children[1]->label, file_out);
   }
   else {
     /* it's a variable in the frame! */
@@ -1896,7 +1896,7 @@ static int _generate_asm_array_read_z80(struct tac *t, FILE *file_out, struct tr
   }
   else if (t->result_type == TAC_ARG_TYPE_LABEL && result_offset == 999999) {
     /* global var */
-    _load_label_to_ix(t->result_s, file_out);
+    _load_label_to_ix(t->result_node->children[1]->label, file_out);
   }
   else {
     /* it's a variable in the frame! */
@@ -1948,7 +1948,7 @@ static int _generate_asm_z80_out_write_z80(struct tac *t, FILE *file_out, struct
   }
   else if (t->arg1_type == TAC_ARG_TYPE_LABEL && arg1_offset == 999999) {
     /* global var */
-    _load_label_to_ix(t->arg1_s, file_out);
+    _load_label_to_ix(t->arg1_node->children[1]->label, file_out);
   }
   else {
     /* it's a variable in the frame! */
@@ -1977,7 +1977,7 @@ static int _generate_asm_z80_out_write_z80(struct tac *t, FILE *file_out, struct
   }
   else if (t->arg2_type == TAC_ARG_TYPE_LABEL && arg2_offset == 999999) {
     /* global var */
-    _load_label_to_ix(t->arg2_s, file_out);
+    _load_label_to_ix(t->arg2_node->children[1]->label, file_out);
   }
   else {
     /* it's a variable in the frame! */
@@ -2053,7 +2053,7 @@ static int _generate_asm_array_assignment_z80(struct tac *t, FILE *file_out, str
   }
   else if (t->arg2_type == TAC_ARG_TYPE_LABEL && arg2_offset == 999999) {
     /* global var */
-    _load_label_to_ix(t->arg2_s, file_out);
+    _load_label_to_ix(t->arg2_node->children[1]->label, file_out);
   }
   else {
     /* it's a variable in the frame! */
@@ -2106,7 +2106,7 @@ static int _generate_asm_array_assignment_z80(struct tac *t, FILE *file_out, str
   }
   else if (t->result_type == TAC_ARG_TYPE_LABEL && result_offset == 999999) {
     /* global var */
-    _load_label_to_ix(t->result_s, file_out);
+    _load_label_to_ix(t->result_node->children[1]->label, file_out);
   }
   else {
     /* it's a variable in the frame! */
@@ -2165,7 +2165,7 @@ static int _generate_asm_array_assignment_z80(struct tac *t, FILE *file_out, str
   }
   else if (t->arg1_type == TAC_ARG_TYPE_LABEL && arg1_offset == 999999) {
     /* global var */
-    _load_label_to_iy(t->arg1_s, file_out);
+    _load_label_to_iy(t->arg1_node->children[1]->label, file_out);
   }
   else {
     /* it's a variable in the frame! */
@@ -2272,7 +2272,7 @@ static int _generate_asm_shift_left_right_z80_16bit(struct tac *t, FILE *file_ou
   }
   else if (t->arg1_type == TAC_ARG_TYPE_LABEL && arg1_offset == 999999) {
     /* global var */
-    _load_label_to_ix(t->arg1_s, file_out);
+    _load_label_to_ix(t->arg1_node->children[1]->label, file_out);
   }
   else {
     /* it's a variable in the frame! */
@@ -2326,7 +2326,7 @@ static int _generate_asm_shift_left_right_z80_16bit(struct tac *t, FILE *file_ou
   }
   else if (t->arg2_type == TAC_ARG_TYPE_LABEL && arg2_offset == 999999) {
     /* global var */
-    _load_label_to_ix(t->arg2_s, file_out);
+    _load_label_to_ix(t->arg2_node->children[1]->label, file_out);
   }
   else {
     /* it's a variable in the frame! */
@@ -2418,7 +2418,7 @@ static int _generate_asm_shift_left_right_z80_16bit(struct tac *t, FILE *file_ou
   }
   else if (t->result_type == TAC_ARG_TYPE_LABEL && result_offset == 999999) {
     /* global var */
-    _load_label_to_ix(t->result_s, file_out);
+    _load_label_to_ix(t->result_node->children[1]->label, file_out);
   }
   else {
     /* it's a variable in the frame! */
@@ -2475,7 +2475,7 @@ static int _generate_asm_shift_left_right_z80_8bit(struct tac *t, FILE *file_out
   }
   else if (t->arg1_type == TAC_ARG_TYPE_LABEL && arg1_offset == 999999) {
     /* global var */
-    _load_label_to_ix(t->arg1_s, file_out);
+    _load_label_to_ix(t->arg1_node->children[1]->label, file_out);
   }
   else {
     /* it's a variable in the frame! */
@@ -2506,7 +2506,7 @@ static int _generate_asm_shift_left_right_z80_8bit(struct tac *t, FILE *file_out
   }
   else if (t->arg2_type == TAC_ARG_TYPE_LABEL && arg2_offset == 999999) {
     /* global var */
-    _load_label_to_ix(t->arg2_s, file_out);
+    _load_label_to_ix(t->arg2_node->children[1]->label, file_out);
   }
   else {
     /* it's a variable in the frame! */
@@ -2572,7 +2572,7 @@ static int _generate_asm_shift_left_right_z80_8bit(struct tac *t, FILE *file_out
   }
   else if (t->result_type == TAC_ARG_TYPE_LABEL && result_offset == 999999) {
     /* global var */
-    _load_label_to_ix(t->result_s, file_out);
+    _load_label_to_ix(t->result_node->children[1]->label, file_out);
   }
   else {
     /* it's a variable in the frame! */
@@ -2657,7 +2657,7 @@ static int _generate_asm_mul_div_mod_z80_16bit(struct tac *t, FILE *file_out, st
   }
   else if (t->arg1_type == TAC_ARG_TYPE_LABEL && arg1_offset == 999999) {
     /* global var */
-    _load_label_to_ix(t->arg1_s, file_out);
+    _load_label_to_ix(t->arg1_node->children[1]->label, file_out);
   }
   else {
     /* it's a variable in the frame! */
@@ -2711,7 +2711,7 @@ static int _generate_asm_mul_div_mod_z80_16bit(struct tac *t, FILE *file_out, st
   }
   else if (t->arg2_type == TAC_ARG_TYPE_LABEL && arg2_offset == 999999) {
     /* global var */
-    _load_label_to_ix(t->arg2_s, file_out);
+    _load_label_to_ix(t->arg2_node->children[1]->label, file_out);
   }
   else {
     /* it's a variable in the frame! */
@@ -2856,7 +2856,7 @@ static int _generate_asm_mul_div_mod_z80_16bit(struct tac *t, FILE *file_out, st
   }
   else if (t->result_type == TAC_ARG_TYPE_LABEL && result_offset == 999999) {
     /* global var */
-    _load_label_to_ix(t->result_s, file_out);
+    _load_label_to_ix(t->result_node->children[1]->label, file_out);
   }
   else {
     /* it's a variable in the frame! */
@@ -2931,7 +2931,7 @@ static int _generate_asm_mul_div_mod_z80_8bit(struct tac *t, FILE *file_out, str
   }
   else if (t->arg1_type == TAC_ARG_TYPE_LABEL && arg1_offset == 999999) {
     /* global var */
-    _load_label_to_ix(t->arg1_s, file_out);
+    _load_label_to_ix(t->arg1_node->children[1]->label, file_out);
   }
   else {
     /* it's a variable in the frame! */
@@ -2962,7 +2962,7 @@ static int _generate_asm_mul_div_mod_z80_8bit(struct tac *t, FILE *file_out, str
   }
   else if (t->arg2_type == TAC_ARG_TYPE_LABEL && arg2_offset == 999999) {
     /* global var */
-    _load_label_to_ix(t->arg2_s, file_out);
+    _load_label_to_ix(t->arg2_node->children[1]->label, file_out);
   }
   else {
     /* it's a variable in the frame! */
@@ -3058,7 +3058,7 @@ static int _generate_asm_mul_div_mod_z80_8bit(struct tac *t, FILE *file_out, str
   }
   else if (t->result_type == TAC_ARG_TYPE_LABEL && result_offset == 999999) {
     /* global var */
-    _load_label_to_ix(t->result_s, file_out);
+    _load_label_to_ix(t->result_node->children[1]->label, file_out);
   }
   else {
     /* it's a variable in the frame! */
@@ -3184,7 +3184,7 @@ static int _generate_asm_jump_eq_lt_gt_neq_lte_gte_z80_16bit(struct tac *t, FILE
   }
   else if (t->arg1_type == TAC_ARG_TYPE_LABEL && arg1_offset == 999999) {
     /* global var */
-    _load_label_to_ix(t->arg1_s, file_out);
+    _load_label_to_ix(t->arg1_node->children[1]->label, file_out);
   }
   else {
     /* it's a variable in the frame! */
@@ -3238,7 +3238,7 @@ static int _generate_asm_jump_eq_lt_gt_neq_lte_gte_z80_16bit(struct tac *t, FILE
   }
   else if (t->arg2_type == TAC_ARG_TYPE_LABEL && arg2_offset == 999999) {
     /* global var */
-    _load_label_to_ix(t->arg2_s, file_out);
+    _load_label_to_ix(t->arg2_node->children[1]->label, file_out);
   }
   else {
     /* it's a variable in the frame! */
@@ -3339,7 +3339,7 @@ static int _generate_asm_jump_eq_lt_gt_neq_lte_gte_z80_8bit(struct tac *t, FILE 
   }
   else if (t->arg1_type == TAC_ARG_TYPE_LABEL && arg1_offset == 999999) {
     /* global var */
-    _load_label_to_ix(t->arg1_s, file_out);
+    _load_label_to_ix(t->arg1_node->children[1]->label, file_out);
   }
   else {
     /* it's a variable in the frame! */
@@ -3370,7 +3370,7 @@ static int _generate_asm_jump_eq_lt_gt_neq_lte_gte_z80_8bit(struct tac *t, FILE 
   }
   else if (t->arg2_type == TAC_ARG_TYPE_LABEL && arg2_offset == 999999) {
     /* global var */
-    _load_label_to_ix(t->arg2_s, file_out);
+    _load_label_to_ix(t->arg2_node->children[1]->label, file_out);
   }
   else {
     /* it's a variable in the frame! */
@@ -3480,7 +3480,7 @@ static int _generate_asm_return_value_z80(struct tac *t, FILE *file_out, struct 
   }
   else if (t->arg1_type == TAC_ARG_TYPE_LABEL && arg1_offset == 999999) {
     /* global var */
-    _load_label_to_ix(t->arg1_s, file_out);
+    _load_label_to_ix(t->arg1_node->children[1]->label, file_out);
   }
   else {
     /* it's a variable in the frame! */
@@ -3821,7 +3821,7 @@ static int _generate_asm_function_call_z80(struct tac *t, FILE *file_out, struct
     }
     else if (t->result_type == TAC_ARG_TYPE_LABEL && result_offset == 999999) {
       /* global var */
-      _load_label_to_iy(t->result_s, file_out);
+      _load_label_to_iy(t->result_node->children[1]->label, file_out);
     }
     else {
       /* it's a variable in the frame! */
@@ -4002,10 +4002,75 @@ static int _generate_asm_inline_asm_z80(struct tac *t, FILE *file_out, struct tr
 }
 
 
+static int _add_const_variables(struct tree_node *const_variables[256], int const_variables_count, FILE *file_out) {
+
+  int i, j, element_size, element_type;
+
+  for (i = 0; i < const_variables_count; i++) {
+    struct tree_node *node = const_variables[i];
+
+    /* turn the label into ASM's local label so that it cannot be accessed from outside. PS. the label's name has already
+       been turned into a local label in pass_5/collect_and_preprocess_local_variables_inside_functions() */
+    _add_label(node->children[1]->label, file_out, NO);
+
+    element_type = tree_node_get_max_var_type(node->children[0]);
+    element_size = get_variable_type_size(element_type);
+
+    if (element_size != 8 && element_size != 16) {
+      fprintf(stderr, "_add_const_variables(): Unsupported global variable \"%s\" size %d! Please submit a bug report!\n", node->children[1]->label, element_size);
+      return FAILED;
+    }
+
+    /* check element types */
+    for (j = 2; j < node->added_children; j++) {
+      if (node->children[j]->type != TREE_NODE_TYPE_VALUE_INT &&
+          node->children[j]->type != TREE_NODE_TYPE_VALUE_DOUBLE &&
+          node->children[j]->type != TREE_NODE_TYPE_BYTES) {
+        g_current_filename_id = node->file_id;
+        g_current_line_number = node->line_number;
+        snprintf(g_error_message, sizeof(g_error_message), "_add_const_variables(): Const variable (\"%s\") can only be initialized with an immediate number!\n", node->children[1]->label);
+        print_error(g_error_message, ERROR_ERR);
+
+        return FAILED;
+      }
+    }
+
+    if (element_size == 8)
+      fprintf(file_out, "      .DB ");
+    else if (element_size == 16)
+      fprintf(file_out, "      .DW ");
+
+    for (j = 2; j < node->added_children; j++) {
+      if (j > 2)
+        fprintf(file_out, ", ");
+        
+      if (node->children[j]->type == TREE_NODE_TYPE_VALUE_INT)
+        fprintf(file_out, "%d", node->children[j]->value);
+      else if (node->children[j]->type == TREE_NODE_TYPE_VALUE_DOUBLE)
+        fprintf(file_out, "%d", (int)(node->children[j]->value));
+      else if (node->children[j]->type == TREE_NODE_TYPE_BYTES) {
+        int k;
+
+        for (k = 0; k < node->children[j]->value; k++) {
+          if (k > 0)
+            fprintf(file_out, ", ");
+          fprintf(file_out, "%d", node->children[j]->label[k]);
+        }
+      }
+    }
+
+    fprintf(file_out, "\n");
+  }
+  
+  return SUCCEEDED;
+}
+
+
 int generate_asm_z80(FILE *file_out) {
 
-  int i, file_id = -1, line_number = -1;
-
+  int i, file_id = -1, line_number = -1, const_variables_count;
+  struct tree_node *const_variables[256];
+  
   for (i = 0; i < g_tacs_count; i++) {
     struct tac *t = &g_tacs[i];
     int op = t->op;
@@ -4052,6 +4117,8 @@ int generate_asm_z80(FILE *file_out) {
           _load_hl_to_sp(file_out);
         }
       }
+
+      const_variables_count = 0;
       
       for (i = i + 1; i < g_tacs_count; i++) {
         t = &g_tacs[i];
@@ -4139,6 +4206,20 @@ int generate_asm_z80(FILE *file_out) {
             return FAILED;
         }
         else if (op == TAC_OP_CREATE_VARIABLE) {
+          /* collect all const local variables to be placed later at the end of the function */
+          if (t->result_node->type == TREE_NODE_TYPE_CREATE_VARIABLE) {
+            struct tree_node *node = t->result_node;
+            
+            if ((node->children[0]->value_double == 0 && (node->flags & TREE_NODE_FLAG_CONST_1) == TREE_NODE_FLAG_CONST_1) ||
+                (node->children[0]->value_double > 0 && (node->flags & TREE_NODE_FLAG_CONST_2) == TREE_NODE_FLAG_CONST_2)) {
+              if (const_variables_count == 256) {
+                fprintf(stderr, "generate_asm_z80(): The function \"%s\" has more than 256 const variables. Please submit a bug report!\n", function_node->children[1]->label);
+                return FAILED;
+              }
+              
+              const_variables[const_variables_count++] = node;
+            }
+          }
         }
         else if (op == TAC_OP_ASM) {
           if (_generate_asm_inline_asm_z80(t, file_out, function_node) == FAILED)
@@ -4147,6 +4228,10 @@ int generate_asm_z80(FILE *file_out) {
         else
           fprintf(stderr, "generate_asm_z80(): Unimplemented IL -> Z80 ASM op %d! Please submit a bug report!\n", op);
       }
+
+      /* add the const variables to the end of the function */
+      if (_add_const_variables(const_variables, const_variables_count, file_out) == FAILED)
+        return FAILED;
       
       fprintf(file_out, "  .ENDS\n\n");
     }
