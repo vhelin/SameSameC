@@ -28,6 +28,7 @@
 #define GET_NEXT_TOKEN_DOUBLE      5
 #define GET_NEXT_TOKEN_STACK       6
 #define GET_NEXT_TOKEN_STRING_DATA 7
+#define GET_NEXT_TOKEN_LINEFEED    8
 
 #define EVALUATE_TOKEN_NOT_IDENTIFIED 2
 #define EVALUATE_TOKEN_EOP            6
@@ -140,11 +141,16 @@ struct label {
 };
 
 struct definition {
-  char   alias[MAX_NAME_LENGTH + 1];
-  char   string[MAX_NAME_LENGTH + 1];
-  double value;
-  int    type;
-  int    size;
+  char   name[MAX_NAME_LENGTH + 1];
+  int    parenthesis;
+  int    had_parenthesis;
+  int    has_arguments;
+  int    arguments;
+  struct token *tokens_first;
+  struct token *tokens_last;
+  struct token *arguments_first;
+  struct token *arguments_last;
+  struct token **arguments_data;
   struct definition *next;
 };
 
@@ -254,21 +260,20 @@ struct token {
 #define TOKEN_ID_VALUE_DOUBLE   3
 #define TOKEN_ID_VALUE_STRING   4
 #define TOKEN_ID_RETURN         5
-#define TOKEN_ID_DEFINE         6
-#define TOKEN_ID_NO_OP          7
-#define TOKEN_ID_ELSE           8
-#define TOKEN_ID_IF             9
-#define TOKEN_ID_WHILE         10
-#define TOKEN_ID_FOR           11
-#define TOKEN_ID_BREAK         12
-#define TOKEN_ID_CONTINUE      13
-#define TOKEN_ID_COMPARE       14
-#define TOKEN_ID_SWITCH        15
-#define TOKEN_ID_CASE          16
-#define TOKEN_ID_DEFAULT       17
-#define TOKEN_ID_BYTES         18
-#define TOKEN_ID_ASM           19
-#define TOKEN_ID_HINT          20
+#define TOKEN_ID_NO_OP          6
+#define TOKEN_ID_ELSE           7
+#define TOKEN_ID_IF             8
+#define TOKEN_ID_WHILE          9
+#define TOKEN_ID_FOR           10
+#define TOKEN_ID_BREAK         11
+#define TOKEN_ID_CONTINUE      12
+#define TOKEN_ID_COMPARE       13
+#define TOKEN_ID_SWITCH        14
+#define TOKEN_ID_CASE          15
+#define TOKEN_ID_DEFAULT       16
+#define TOKEN_ID_BYTES         17
+#define TOKEN_ID_ASM           18
+#define TOKEN_ID_HINT          19
 
 #define SYMBOL_LOGICAL_OR   0
 #define SYMBOL_LOGICAL_AND  1

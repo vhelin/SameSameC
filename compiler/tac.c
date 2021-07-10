@@ -8,7 +8,6 @@
 
 #include "defines.h"
 #include "printf.h"
-#include "definitions.h"
 #include "symbol_table.h"
 #include "main.h"
 #include "tac.h"

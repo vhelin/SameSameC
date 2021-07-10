@@ -11,12 +11,12 @@
 #include "include_file.h"
 #include "printf.h"
 #include "main.h"
-#include "definitions.h"
+#include "definition.h"
 
 
 
 int g_input_number_error_msg = YES, g_ss, g_string_size, g_input_float_mode = OFF, g_parse_floats = YES, g_expect_calculations = YES;
-int g_newline_beginning = ON, g_parsed_double_decimal_numbers = 0, g_operand_hint, g_operand_hint_type, g_parsed_int;
+int g_newline_beginning = ON, g_parsed_double_decimal_numbers = 0, g_operand_hint, g_operand_hint_type, g_parsed_int, g_input_number_return_linefeed = NO;
 char g_label[MAX_NAME_LENGTH + 1], g_xyz[512];
 double g_parsed_double;
 int g_source_pointer;
@@ -85,6 +85,8 @@ void skip_whitespace(void) {
       continue;
     }
     if (g_buffer[g_source_pointer] == 0xA) {
+      if (g_input_number_return_linefeed == YES)
+        break;
       g_source_pointer++;
       next_line();
       continue;
@@ -133,6 +135,15 @@ int get_next_token(void) {
   
   skip_whitespace();
 
+  if (g_buffer[g_source_pointer] == 0xA) {
+    if (g_input_number_return_linefeed == YES) {
+      g_source_pointer++;
+      next_line();
+
+      return GET_NEXT_TOKEN_LINEFEED;
+    }
+  }
+  
   c = g_buffer[g_source_pointer];
   
   /* "string"? */

@@ -10,7 +10,7 @@
 #include "parse.h"
 #include "printf.h"
 #include "main.h"
-#include "definitions.h"
+#include "definition.h"
 #include "source_line_manager.h"
 
 
@@ -307,7 +307,7 @@ int incbin_file(char *name, int *id, int *swap, int *skip, int *read) {
 
   struct incbin_file_data *ifd;
   char *in_tmp, *n;
-  int file_size, q, inz;
+  int file_size, q;
   FILE *f = NULL;
   int error_code = find_file(name, &f);
 
@@ -362,70 +362,9 @@ int incbin_file(char *name, int *id, int *swap, int *skip, int *read) {
     g_incbin_file_data_first = ifd;
 
   *id = q;
-
-  /* SKIP bytes? */
-  if (compare_next_token("SKIP") == FAILED)
-    *skip = 0;
-  else {
-    get_next_token();
-    inz = get_next_token();
-    if (inz != GET_NEXT_TOKEN_INT) {
-      print_error(".INCBIN needs the amount of skipped bytes.\n", ERROR_DIR);
-      return FAILED;
-    }
-
-    *skip = g_parsed_int;
-
-    if (g_parsed_int >= file_size) {
-      snprintf(g_error_message, sizeof(g_error_message), "SKIP value (%d) is more than the size (%d) of file \"%s\".\n", g_parsed_int, file_size, g_full_name);
-      print_error(g_error_message, ERROR_INB);
-      return FAILED;
-    }
-  }
-
-  /* READ bytes? */
-  if (compare_next_token("READ") == FAILED)
-    *read = file_size - *skip;
-  else {
-    get_next_token();
-    inz = get_next_token();
-    if (inz != GET_NEXT_TOKEN_INT) {
-      print_error(".INCBIN needs the amount of bytes for reading.\n", ERROR_DIR);
-      return FAILED;
-    }
-
-    *read = g_parsed_int;
-
-    if (*skip + *read > file_size) {
-      snprintf(g_error_message, sizeof(g_error_message), "Overreading file \"%s\" by %d bytes.\n", g_full_name, *skip + *read - file_size);
-      print_error(g_error_message, ERROR_INB);
-      return FAILED;
-    }
-  }
-
-  /* SWAP bytes? */
-  if (compare_next_token("SWAP") == FAILED)
-    *swap = 0;
-  else {
-    if ((*read & 1) == 1) {
-      snprintf(g_error_message, sizeof(g_error_message), "The read size of file \"%s\" is odd (%d)! Cannot perform SWAP.\n", g_full_name, *read);
-      print_error(g_error_message, ERROR_INB);
-      return FAILED;
-    }
-    *swap = 1;
-    get_next_token();
-  }
-
-  /* FSIZE? */
-  if (compare_next_token("FSIZE") == SUCCEEDED) {
-    get_next_token();
-
-    /* get the definition label */
-    if (get_next_token() == FAILED)
-      return FAILED;
-
-    add_a_new_definition(g_tmp, (double)file_size, NULL, DEFINITION_TYPE_VALUE, 0);
-  }
+  *skip = 0;
+  *read = file_size - *skip;
+  *swap = 0;
 
   return SUCCEEDED;
 }

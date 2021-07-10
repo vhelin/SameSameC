@@ -10,7 +10,6 @@
 #include "parse.h"
 #include "main.h"
 #include "printf.h"
-#include "definitions.h"
 #include "stack.h"
 #include "include_file.h"
 #include "pass_4.h"

@@ -15,85 +15,24 @@
 #include "pass_1.h"
 #include "stack.h"
 #include "printf.h"
-#include "definitions.h"
+#include "definition.h"
 #include "inline_asm.h"
+#include "token.h"
 
 
 extern int g_verbose_mode, g_source_pointer, g_ss, g_input_float_mode, g_parsed_int, g_open_files, g_expect_calculations;
-extern int g_latest_stack;
+extern int g_latest_stack, g_input_number_return_linefeed;
 extern double g_parsed_double;
 extern char g_tmp[4096], g_error_message[sizeof(g_tmp) + MAX_NAME_LENGTH + 1 + 1024];
 extern struct stack *g_stacks_first, *g_stacks_tmp, *g_stacks_last, *g_stacks_header_first, *g_stacks_header_last;
 extern char g_xyz[512], *g_buffer, g_tmp[4096], g_label[MAX_NAME_LENGTH + 1];
 extern struct active_file_info *g_active_file_info_first, *g_active_file_info_last, *g_active_file_info_tmp;
 extern struct file_name_info *g_file_name_info_first, *g_file_name_info_last, *g_file_name_info_tmp;
+extern struct token *g_latest_token;
 
 char g_current_directive[MAX_NAME_LENGTH + 1];
 
-struct token *g_token_first = NULL, *g_token_last = NULL;
-
-
-static int _add_token(int id, int value, double value_double, char *label) {
-
-  struct token *t;
-
-  t = calloc(sizeof(struct token), 1);
-  if (t == NULL) {
-    print_error("Out of memory while allocating a new token.\n", ERROR_DIR);
-    return FAILED;
-  }
-
-  t->id = id;
-  t->value = value;
-  t->value_double = value_double;
-  t->next = NULL;
-  if (g_active_file_info_last != NULL) {
-    t->file_id = g_active_file_info_last->filename_id;
-    t->line_number = g_active_file_info_last->line_current;
-  }
-  else {
-    /*
-    if (id != TOKEN_ID_NO_OP) {
-      if (label == NULL)
-        snprintf(g_error_message, sizeof(g_error_message), "We are adding a token ID %d to the system, but there is no open file! Please submit a bug report!\n", id);
-      else
-        snprintf(g_error_message, sizeof(g_error_message), "We are adding token \"%s\" to the system, but there is no open file! Please submit a bug report!\n", label);
-      print_error(g_error_message, ERROR_WRN);
-    }
-    */
-    
-    t->file_id = -1;
-    t->line_number = -1;
-  }
-
-  if (id == TOKEN_ID_BYTES) {
-    /* NOTE! in the case of TOKEN_ID_BYTES we'll capture label */
-    t->label = label;
-  }
-  else {
-    if (label == NULL)
-      t->label = NULL;
-    else {
-      t->label = calloc(strlen(label)+1, 1);
-      if (t->label == NULL) {
-        print_error("Out of memory while allocating a new token.\n", ERROR_DIR);
-        return FAILED;
-      }
-      strncpy(t->label, label, strlen(label));
-    }
-  }
-
-  if (g_token_first == NULL) {
-    g_token_first = t;
-    g_token_last = t;
-  }
-  else {
-    g_token_last->next = t;
-    g_token_last = t;
-  }
-
-  return SUCCEEDED;
-}
+int g_inside_define = NO;
 
 
 int pass_1(void) {
@@ -129,7 +68,7 @@ int pass_1(void) {
     else if (q == EVALUATE_TOKEN_EOP) {
       /* add 8 no ops so that parsing later will be easier (no need to check for null pointers all the time) */
       for (q = 0; q < 8; q++)
-        _add_token(TOKEN_ID_NO_OP, 0, 0.0, NULL);
+        token_add(TOKEN_ID_NO_OP, 0, 0.0, NULL);
       return SUCCEEDED;
     }
     else if (q == FAILED) {
@@ -154,30 +93,30 @@ int create_mainmain_tokens(void) {
   /* we'll call this from pass_2.c when we've parsed function "void main(void)"... */
 
   /* generate "void mainmain(void)" */
-  sum += _add_token(TOKEN_ID_VARIABLE_TYPE, VARIABLE_TYPE_VOID, 0.0, NULL);  
-  sum += _add_token(TOKEN_ID_VALUE_STRING, 0, 0.0, "mainmain");
-  sum += _add_token(TOKEN_ID_SYMBOL, '(', 0.0, NULL);
-  sum += _add_token(TOKEN_ID_VARIABLE_TYPE, VARIABLE_TYPE_VOID, 0.0, NULL);
-  sum += _add_token(TOKEN_ID_SYMBOL, ')', 0.0, NULL);
-  sum += _add_token(TOKEN_ID_SYMBOL, '{', 0.0, NULL);
-  sum += _add_token(TOKEN_ID_VALUE_STRING, 0, 0.0, "main");
-  sum += _add_token(TOKEN_ID_SYMBOL, '(', 0.0, NULL);
-  sum += _add_token(TOKEN_ID_SYMBOL, ')', 0.0, NULL);
-  sum += _add_token(TOKEN_ID_SYMBOL, ';', 0.0, NULL);
-  sum += _add_token(TOKEN_ID_WHILE, 0, 0.0, NULL);
-  sum += _add_token(TOKEN_ID_SYMBOL, '(', 0.0, NULL);
-  sum += _add_token(TOKEN_ID_VALUE_INT, 1, 0.0, NULL);  
-  sum += _add_token(TOKEN_ID_SYMBOL, ')', 0.0, NULL);
-  sum += _add_token(TOKEN_ID_SYMBOL, '{', 0.0, NULL);
-  sum += _add_token(TOKEN_ID_SYMBOL, '}', 0.0, NULL);
-  sum += _add_token(TOKEN_ID_SYMBOL, '}', 0.0, NULL);
+  sum += token_add(TOKEN_ID_VARIABLE_TYPE, VARIABLE_TYPE_VOID, 0.0, NULL);  
+  sum += token_add(TOKEN_ID_VALUE_STRING, strlen("mainmain") + 1, 0.0, "mainmain");
+  sum += token_add(TOKEN_ID_SYMBOL, '(', 0.0, NULL);
+  sum += token_add(TOKEN_ID_VARIABLE_TYPE, VARIABLE_TYPE_VOID, 0.0, NULL);
+  sum += token_add(TOKEN_ID_SYMBOL, ')', 0.0, NULL);
+  sum += token_add(TOKEN_ID_SYMBOL, '{', 0.0, NULL);
+  sum += token_add(TOKEN_ID_VALUE_STRING, strlen("main") + 1, 0.0, "main");
+  sum += token_add(TOKEN_ID_SYMBOL, '(', 0.0, NULL);
+  sum += token_add(TOKEN_ID_SYMBOL, ')', 0.0, NULL);
+  sum += token_add(TOKEN_ID_SYMBOL, ';', 0.0, NULL);
+  sum += token_add(TOKEN_ID_WHILE, 0, 0.0, NULL);
+  sum += token_add(TOKEN_ID_SYMBOL, '(', 0.0, NULL);
+  sum += token_add(TOKEN_ID_VALUE_INT, 1, 0.0, NULL);  
+  sum += token_add(TOKEN_ID_SYMBOL, ')', 0.0, NULL);
+  sum += token_add(TOKEN_ID_SYMBOL, '{', 0.0, NULL);
+  sum += token_add(TOKEN_ID_SYMBOL, '}', 0.0, NULL);
+  sum += token_add(TOKEN_ID_SYMBOL, '}', 0.0, NULL);
   
   if (sum != 17)
     return FAILED;
 
   /* add 8 no ops so that parsing later will be easier (no need to check for null pointers all the time) */
   for (q = 0; q < 8; q++)
-    _add_token(TOKEN_ID_NO_OP, 0, 0.0, NULL);
+    token_add(TOKEN_ID_NO_OP, 0, 0.0, NULL);
   
   return SUCCEEDED;
 }
@@ -217,7 +156,7 @@ static int _parse_filesize(void) {
     return FAILED;
   }
 
-  return _add_token(TOKEN_ID_VALUE_INT, file_size, 0.0, NULL);
+  return token_add(TOKEN_ID_VALUE_INT, file_size, 0.0, NULL);
 }
 
 
@@ -267,8 +206,8 @@ static int _parse_incbin(void) {
     return FAILED;
   }
 
-  /* NOTE! in the case of TOKEN_ID_BYTES _add_token() will eat the memory block "data" and it'll be assigned to a "token" */
-  return _add_token(TOKEN_ID_BYTES, file_size, 0.0, (char *)data);
+  /* NOTE! in the case of TOKEN_ID_BYTES token_add() will eat the memory block "data" and it'll be assigned to a "token" */
+  return token_add(TOKEN_ID_BYTES, file_size, 0.0, (char *)data);
 }
 
 
@@ -292,7 +231,7 @@ static int _parse_asm(void) {
     ia->line_number = g_active_file_info_last->line_current;
   }
   
-  if (_add_token(TOKEN_ID_ASM, ia->id, 0.0, NULL) == FAILED)
+  if (token_add(TOKEN_ID_ASM, ia->id, 0.0, NULL) == FAILED)
     return FAILED;
   
   /* collect the asm lines */
@@ -328,6 +267,160 @@ static int _parse_asm(void) {
   return FAILED;
 }
 
+
+static int _parse_define(void) {
+
+  struct definition *definition;
+  int token_count = 0, q;
+
+  q = get_next_token();
+  if (q != GET_NEXT_TOKEN_STRING) {
+    print_error("#define needs a definition name\n", ERROR_DIR);
+    return FAILED;
+  }
+      
+  /* get rid of an old definition with the same name, if one exists */
+  undefine(g_tmp);
+
+  /*
+    if (definition_get(g_tmp) != NULL) {
+    snprintf(g_error_message, sizeof(g_error_message), "Definition \"%s\" already exists.\n", g_tmp);
+    print_error(g_error_message, ERROR_DIR);
+    return FAILED;
+    }
+  */
+
+  definition = define(g_tmp);
+
+  if (definition == NULL)
+    return FAILED;
+
+  /* make get_next_token() return linefeeds */
+  g_input_number_return_linefeed = YES;
+
+  /* for token_add() */
+  g_inside_define = YES;
+      
+  /* collect all tokens that make this definition */
+  while (1) {
+    q = get_next_token();
+
+    if (q == FAILED)
+      break;
+    if (q == GET_NEXT_TOKEN_LINEFEED) {
+      if (token_count == 0) {
+        /* no tokens? */
+        snprintf(g_error_message, sizeof(g_error_message), "Definition \"%s\" cannot be empty.\n", definition->name);
+        print_error(g_error_message, ERROR_DIR);
+        return FAILED;
+      }
+          
+      break;
+    }
+
+    token_count++;
+
+    q = evaluate_token(q);
+
+    /* g_latest_token has the token evaluate_token() created */
+    if (definition_add_token(definition, g_latest_token) == FAILED)
+      return FAILED;
+  }
+
+  /* make get_next_token() not to return linefeeds */
+  g_input_number_return_linefeed = NO;
+  
+  g_inside_define = NO;
+
+  if (q == FAILED)
+    return FAILED;
+      
+  return SUCCEEDED;
+}
+
+
+static int _parse_definition(void) {
+
+  struct definition *definition;
+  struct token *t;
+  int q, i;
+
+  definition = definition_get(g_tmp);
+
+  if (definition->arguments_first == NULL) {  
+    /* no arguments */
+    t = definition->tokens_first;
+    while (t != NULL) {
+      token_clone_and_add(t);
+      t = t->next;
+    }
+  }
+  else {
+    /* parse arguments */
+
+    /* make get_next_token() return linefeeds */
+    g_input_number_return_linefeed = YES;
+
+    /* for token_add() */
+    g_inside_define = YES;
+
+    q = get_next_token();
+
+    if (q != GET_NEXT_TOKEN_SYMBOL || g_tmp[0] != '(') {
+      print_error("_parse_definition(): Was expecting '(', but got something else instead.\n", ERROR_DIR);
+      return FAILED;
+    }
+
+    t = definition->arguments_first;
+    while (1) {
+      q = get_next_token();
+      
+      if (q == FAILED)
+        return FAILED;
+      if (q == GET_NEXT_TOKEN_LINEFEED) {
+        snprintf(g_error_message, sizeof(g_error_message), "Definition \"%s\" is missing arguments.\n", definition->name);
+        print_error(g_error_message, ERROR_DIR);
+        return FAILED;
+      }
+      if (q == GET_NEXT_TOKEN_SYMBOL && g_tmp[0] == ')') {
+        if (t->next != NULL) {
+          snprintf(g_error_message, sizeof(g_error_message), "Definition \"%s\" was not called with enough arguments.\n", definition->name);
+          print_error(g_error_message, ERROR_DIR);
+          return FAILED;
+        }
+
+        break;
+      }
+      if (q == GET_NEXT_TOKEN_SYMBOL && g_tmp[0] == ',') {
+        t = t->next;
+        
+        if (t == NULL) {
+          snprintf(g_error_message, sizeof(g_error_message), "Trying to call definition \"%s\" with too many arguments.\n", definition->name);
+          print_error(g_error_message, ERROR_DIR);
+          return FAILED;
+        }
+      }
+
+      q = evaluate_token(q);
+
+      fprintf(stderr, "GOTTT %s\n", g_tmp);
+ 
+    }    
+
+    /* make get_next_token() not to return linefeeds */
+    g_input_number_return_linefeed = NO;
+  
+    g_inside_define = NO;
+    
+    /* free the arguments data as we've used it already */
+    for (i = 0; i < definition->arguments; i++) {
+      token_free(definition->arguments_data[i]);
+      definition->arguments_data[i] = NULL;
+    }
+  }
+
+  return SUCCEEDED;
+}
 
 
 int evaluate_token(int type) {
@@ -379,16 +472,16 @@ int evaluate_token(int type) {
       }
     }
 
-    return _add_token(TOKEN_ID_SYMBOL, value, 0.0, NULL);
+    return token_add(TOKEN_ID_SYMBOL, value, 0.0, NULL);
   }
 
   /* a double */
   if (type == GET_NEXT_TOKEN_DOUBLE)
-    return _add_token(TOKEN_ID_VALUE_DOUBLE, 0, g_parsed_double, NULL);
+    return token_add(TOKEN_ID_VALUE_DOUBLE, 0, g_parsed_double, NULL);
 
   /* an int */
   if (type == GET_NEXT_TOKEN_INT)
-    return _add_token(TOKEN_ID_VALUE_INT, g_parsed_int, 0.0, NULL);
+    return token_add(TOKEN_ID_VALUE_INT, g_parsed_int, 0.0, NULL);
 
   /* a "string" */
   if (type == GET_NEXT_TOKEN_STRING_DATA) {
@@ -403,7 +496,7 @@ int evaluate_token(int type) {
 
     memcpy(tmp, g_tmp, g_ss + 1);
     
-    return _add_token(TOKEN_ID_BYTES, g_ss + 1, 0.0, tmp);
+    return token_add(TOKEN_ID_BYTES, g_ss + 1, 0.0, tmp);
   }
   
   /* a string */
@@ -412,71 +505,71 @@ int evaluate_token(int type) {
     
     /* int8 */
     if (strcaselesscmp(g_tmp, "int8") == 0)
-      return _add_token(TOKEN_ID_VARIABLE_TYPE, VARIABLE_TYPE_INT8, 0.0, NULL);
+      return token_add(TOKEN_ID_VARIABLE_TYPE, VARIABLE_TYPE_INT8, 0.0, NULL);
 
     /* uint8 */
     if (strcaselesscmp(g_tmp, "uint8") == 0)
-      return _add_token(TOKEN_ID_VARIABLE_TYPE, VARIABLE_TYPE_UINT8, 0.0, NULL);
+      return token_add(TOKEN_ID_VARIABLE_TYPE, VARIABLE_TYPE_UINT8, 0.0, NULL);
 
     /* int16 */
     if (strcaselesscmp(g_tmp, "int16") == 0)
-      return _add_token(TOKEN_ID_VARIABLE_TYPE, VARIABLE_TYPE_INT16, 0.0, NULL);
+      return token_add(TOKEN_ID_VARIABLE_TYPE, VARIABLE_TYPE_INT16, 0.0, NULL);
 
     /* uint16 */
     if (strcaselesscmp(g_tmp, "uint16") == 0)
-      return _add_token(TOKEN_ID_VARIABLE_TYPE, VARIABLE_TYPE_UINT16, 0.0, NULL);
+      return token_add(TOKEN_ID_VARIABLE_TYPE, VARIABLE_TYPE_UINT16, 0.0, NULL);
 
     /* void */
     if (strcaselesscmp(g_tmp, "void") == 0)
-      return _add_token(TOKEN_ID_VARIABLE_TYPE, VARIABLE_TYPE_VOID, 0.0, NULL);
+      return token_add(TOKEN_ID_VARIABLE_TYPE, VARIABLE_TYPE_VOID, 0.0, NULL);
 
     /* const */
     if (strcaselesscmp(g_tmp, "const") == 0)
-      return _add_token(TOKEN_ID_VARIABLE_TYPE, VARIABLE_TYPE_CONST, 0.0, NULL);
+      return token_add(TOKEN_ID_VARIABLE_TYPE, VARIABLE_TYPE_CONST, 0.0, NULL);
 
     /* return */
     if (strcaselesscmp(g_tmp, "return") == 0)
-      return _add_token(TOKEN_ID_RETURN, 0, 0.0, NULL);
+      return token_add(TOKEN_ID_RETURN, 0, 0.0, NULL);
 
     /* else */
     if (strcaselesscmp(g_tmp, "else") == 0)
-      return _add_token(TOKEN_ID_ELSE, 0, 0.0, NULL);
+      return token_add(TOKEN_ID_ELSE, 0, 0.0, NULL);
 
     /* if */
     if (strcaselesscmp(g_tmp, "if") == 0)
-      return _add_token(TOKEN_ID_IF, 0, 0.0, NULL);
+      return token_add(TOKEN_ID_IF, 0, 0.0, NULL);
 
     /* while */
     if (strcaselesscmp(g_tmp, "while") == 0)
-      return _add_token(TOKEN_ID_WHILE, 0, 0.0, NULL);
+      return token_add(TOKEN_ID_WHILE, 0, 0.0, NULL);
 
     /* for */
     if (strcaselesscmp(g_tmp, "for") == 0)
-      return _add_token(TOKEN_ID_FOR, 0, 0.0, NULL);
+      return token_add(TOKEN_ID_FOR, 0, 0.0, NULL);
     
     /* break */
     if (strcaselesscmp(g_tmp, "break") == 0)
-      return _add_token(TOKEN_ID_BREAK, 0, 0.0, NULL);
+      return token_add(TOKEN_ID_BREAK, 0, 0.0, NULL);
 
     /* continue */
     if (strcaselesscmp(g_tmp, "continue") == 0)
-      return _add_token(TOKEN_ID_CONTINUE, 0, 0.0, NULL);
+      return token_add(TOKEN_ID_CONTINUE, 0, 0.0, NULL);
     
     /* switch */
     if (strcaselesscmp(g_tmp, "switch") == 0)
-      return _add_token(TOKEN_ID_SWITCH, 0, 0.0, NULL);
+      return token_add(TOKEN_ID_SWITCH, 0, 0.0, NULL);
 
     /* case */
     if (strcaselesscmp(g_tmp, "case") == 0)
-      return _add_token(TOKEN_ID_CASE, 0, 0.0, NULL);
+      return token_add(TOKEN_ID_CASE, 0, 0.0, NULL);
 
     /* default */
     if (strcaselesscmp(g_tmp, "default") == 0)
-      return _add_token(TOKEN_ID_DEFAULT, 0, 0.0, NULL);
+      return token_add(TOKEN_ID_DEFAULT, 0, 0.0, NULL);
 
     /* __pureasm */
     if (strcaselesscmp(g_tmp, "__pureasm") == 0)
-      return _add_token(TOKEN_ID_HINT, 0, 0.0, g_tmp);
+      return token_add(TOKEN_ID_HINT, 0, 0.0, g_tmp);
     
     /* __asm() */
     if (strcaselesscmp(g_tmp, "__asm") == 0)
@@ -505,10 +598,28 @@ int evaluate_token(int type) {
 
       return SUCCEEDED;
     }
-          
+
+    /* #undefine & #undef */
+    if (strcaselesscmp(g_tmp, "#undefine") == 0 || strcaselesscmp(g_tmp, "#undef") == 0) {
+      char name[MAX_NAME_LENGTH + 1];
+
+      strcpy(name, g_tmp);
+
+      q = get_next_token();
+      if (q != GET_NEXT_TOKEN_STRING) {
+        snprintf(g_error_message, sizeof(g_error_message), "%s needs a definition name.\n", name);
+        print_error(g_error_message, ERROR_DIR);
+        return FAILED;
+      }
+
+      undefine(g_tmp);
+
+      return SUCCEEDED;
+    }
+    
     /* #define */
     if (strcaselesscmp(g_tmp, "#define") == 0)
-      return _add_token(TOKEN_ID_DEFINE, 0, 0.0, g_tmp);
+      return _parse_define();
       
     /* .CHANGEFILE (INTERNAL) */
     if (strcaselesscmp(g_tmp, ".CHANGEFILE") == 0) {
@@ -589,8 +700,12 @@ int evaluate_token(int type) {
       return SUCCEEDED;
     }
 
+    /* is the string a definition call? */
+    if (definition_get(g_tmp) != NULL)
+      return _parse_definition();
+    
     /* not a known string -> add it as a string token */
-    return _add_token(TOKEN_ID_VALUE_STRING, 0, 0.0, g_tmp);
+    return token_add(TOKEN_ID_VALUE_STRING, strlen(g_tmp) + 1, 0.0, g_tmp);
   }
 
   return FAILED;

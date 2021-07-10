@@ -12,7 +12,7 @@
 #include "include_file.h"
 #include "printf.h"
 #include "main.h"
-#include "definitions.h"
+#include "definition.h"
 
 
 /* define this for DEBUG */
@@ -122,18 +122,6 @@ int get_label_length(char *l) {
 
   int length;
   
-  definition_get(l, &g_tmp_def);
-
-  if (g_tmp_def != NULL) {
-    if (g_tmp_def->type == DEFINITION_TYPE_STRING)
-      return (int)strlen(g_tmp_def->string);
-    else {
-      snprintf(g_xyz, sizeof(g_xyz), "Definition \"%s\" is not a string definition. .length returns 0 for that...\n", l);
-      print_error(g_xyz, ERROR_NUM);
-      return 0;
-    }
-  }
-
   length = (int)strlen(l);
 
   if (l[0] == '"' && l[length-1] == '"')
@@ -1048,31 +1036,6 @@ int stack_calculate(int *value, struct stack_item *si, int q, int save_if_cannot
 
 
 static int _resolve_string(struct stack_item *s, int *cannot_resolve) {
-
-  definition_get(s->string, &g_tmp_def);
-  if (g_tmp_def != NULL) {
-    if (g_tmp_def->type == DEFINITION_TYPE_STRING) {
-      snprintf(g_xyz, sizeof(g_xyz), "Definition \"%s\" is a string definition.\n", g_tmp_def->alias);
-      print_error(g_xyz, ERROR_STC);
-      return FAILED;
-    }
-    else if (g_tmp_def->type == DEFINITION_TYPE_STACK) {
-      /* turn this reference to a stack calculation define into a direct reference to the stack calculation as */
-      /* this way we don't have to care if the define is exported or not as stack calculations are always exported */
-      s->type = STACK_ITEM_TYPE_STACK;
-      s->sign = SI_SIGN_POSITIVE;
-      s->value = g_tmp_def->value;
-    }
-    else if (g_tmp_def->type == DEFINITION_TYPE_ADDRESS_LABEL) {
-      /* wla cannot resolve address labels (unless outside a section) -> only wlalink can do that */
-      *cannot_resolve = 1;
-      strcpy(s->string, g_tmp_def->string);
-    }
-    else {
-      s->type = STACK_ITEM_TYPE_VALUE;
-      s->value = g_tmp_def->value;
-    }
-  }
 
   /* is this form "string".length? */
   if (is_string_ending_with(s->string, ".length") > 0 ||

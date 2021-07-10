@@ -14,9 +14,10 @@
 #include "parse.h"
 #include "include_file.h"
 #include "source_line_manager.h"
-#include "definitions.h"
+#include "definition.h"
 #include "symbol_table.h"
 #include "inline_asm.h"
+#include "token.h"
 #include "pass_1.h"
 #include "pass_2.h"
 #include "pass_3.h"
@@ -368,14 +369,13 @@ void procedures_at_exit(void) {
   
   while (g_definitions_first != NULL) {
     struct definition *d = g_definitions_first->next;
-    free(g_definitions_first);
+    definition_free(g_definitions_first);
     g_definitions_first = d;
   }
 
   while (g_token_first != NULL) {
     struct token *t = g_token_first->next;
-    free(g_token_first->label);
-    free(g_token_first);
+    token_free(g_token_first);
     g_token_first = t;
   }
 
@@ -408,6 +408,12 @@ void procedures_at_exit(void) {
 }
 
 
+static int _add_a_new_definition(char *name, double d, char *s, int type, int s_length) {
+
+  return FAILED;
+}
+
+
 int parse_and_add_definition(char *c, int contains_flag) {
 
   char n[MAX_NAME_LENGTH + 1], *value;
@@ -422,7 +428,7 @@ int parse_and_add_definition(char *c, int contains_flag) {
   n[i] = 0;
 
   if (*c == 0)
-    return add_a_new_definition(n, 0.0, NULL, DEFINITION_TYPE_VALUE, 0);
+    return _add_a_new_definition(n, 0.0, NULL, DEFINITION_TYPE_VALUE, 0);
   else if (*c == '=') {
     c++;
     if (*c == 0)
@@ -448,7 +454,7 @@ int parse_and_add_definition(char *c, int contains_flag) {
           return FAILED;
         }
       }
-      return add_a_new_definition(n, (double)i, NULL, DEFINITION_TYPE_VALUE, 0);
+      return _add_a_new_definition(n, (double)i, NULL, DEFINITION_TYPE_VALUE, 0);
     }
 
     /* decimal value? */
@@ -461,7 +467,7 @@ int parse_and_add_definition(char *c, int contains_flag) {
           return FAILED;
         }
       }
-      return add_a_new_definition(n, (double)i, NULL, DEFINITION_TYPE_VALUE, 0);
+      return _add_a_new_definition(n, (double)i, NULL, DEFINITION_TYPE_VALUE, 0);
     }
 
     /* quoted string? */
@@ -486,7 +492,7 @@ int parse_and_add_definition(char *c, int contains_flag) {
       s[t] = 0;
       
       if (*c == 0)
-        result = add_a_new_definition(n, 0.0, s, DEFINITION_TYPE_STRING, (int)strlen(s));
+        result = _add_a_new_definition(n, 0.0, s, DEFINITION_TYPE_STRING, (int)strlen(s));
       else {
         fprintf(stderr, "PARSE_AND_ADD_DEFINITION: Incorrectly terminated quoted string (%s).\n", value);
         result = FAILED;
@@ -497,7 +503,7 @@ int parse_and_add_definition(char *c, int contains_flag) {
     }
 
     /* unquoted string */
-    return add_a_new_definition(n, 0.0, c, DEFINITION_TYPE_STRING, (int)strlen(c));
+    return _add_a_new_definition(n, 0.0, c, DEFINITION_TYPE_STRING, (int)strlen(c));
   }
 
   return FAILED;
