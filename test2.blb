@@ -15,12 +15,7 @@ void main(void) {
   }
 }
 
-uint8 * add_1(uint8 *color) {
+void add_1(uint8 *color) {
 
-  const uint8 data[] = { 1, 2 };
-  const uint8 one = 1+data[2-1-1]-1;
-
-  color[0] = color[0] + one;
-
-  return &data;
+  color[2-1-1] *= 1+(1+2-1-1);
 }

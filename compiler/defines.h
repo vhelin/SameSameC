@@ -270,16 +270,22 @@ struct token {
 #define TOKEN_ID_ASM           19
 #define TOKEN_ID_HINT          20
 
-#define SYMBOL_LOGICAL_OR  0
-#define SYMBOL_LOGICAL_AND 1
-#define SYMBOL_LTE         2
-#define SYMBOL_GTE         3
-#define SYMBOL_EQUAL       4
-#define SYMBOL_UNEQUAL     5
-#define SYMBOL_SHIFT_LEFT  6
-#define SYMBOL_SHIFT_RIGHT 7
-#define SYMBOL_INCREMENT   8
-#define SYMBOL_DECREMENT   9
+#define SYMBOL_LOGICAL_OR   0
+#define SYMBOL_LOGICAL_AND  1
+#define SYMBOL_LTE          2
+#define SYMBOL_GTE          3
+#define SYMBOL_EQUAL        4
+#define SYMBOL_UNEQUAL      5
+#define SYMBOL_SHIFT_LEFT   6
+#define SYMBOL_SHIFT_RIGHT  7
+#define SYMBOL_INCREMENT    8
+#define SYMBOL_DECREMENT    9
+#define SYMBOL_EQUAL_SUB   10
+#define SYMBOL_EQUAL_ADD   11
+#define SYMBOL_EQUAL_MUL   12
+#define SYMBOL_EQUAL_DIV   13
+#define SYMBOL_EQUAL_OR    14
+#define SYMBOL_EQUAL_AND   15
 
 #define VARIABLE_TYPE_NONE   0
 #define VARIABLE_TYPE_VOID   1

@@ -324,6 +324,12 @@ static int _generate_il_create_variable(struct tree_node *node) {
   /* if function argument, no need to assign anything, it's already done */
   if (node->type == TREE_NODE_TYPE_CREATE_VARIABLE_FUNCTION_ARGUMENT)
     return SUCCEEDED;
+
+  /* if const, no need to assign anything as the contents are written into the end of the function in ASM */
+  if ((node->children[0]->value_double == 0 && (node->flags & TREE_NODE_FLAG_CONST_1) == TREE_NODE_FLAG_CONST_1) ||
+      (node->children[0]->value_double > 0 && (node->flags & TREE_NODE_FLAG_CONST_2) == TREE_NODE_FLAG_CONST_2)) {
+    return SUCCEEDED;
+  }
   
   /* make assignment(s) */
 

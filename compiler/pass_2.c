@@ -37,7 +37,7 @@ extern struct token *g_token_first, *g_token_last;
 
 int g_current_filename_id = -1, g_current_line_number = -1;
 char *g_variable_types[7] = { "none", "void", "int8", "int16", "uint8", "uint16", "const" };
-char *g_two_char_symbols[10] = { "||", "&&", "<=", ">=", "==", "!=", "<<", ">>", "++", "--" };
+char *g_two_char_symbols[16] = { "||", "&&", "<=", ">=", "==", "!=", "<<", ">>", "++", "--", "-=", "+=", "*=", "/=", "|=", "&=" };
 
 static struct tree_node *g_open_function_definition = NULL;
 struct token *g_token_current = NULL, *g_token_previous = NULL;
@@ -70,7 +70,7 @@ char *_get_token_simple(struct token *t) {
   if (t->id == TOKEN_ID_VARIABLE_TYPE)
     snprintf(g_token_in_simple_form, sizeof(g_token_in_simple_form), "'%s'", g_variable_types[t->value]);
   else if (t->id == TOKEN_ID_SYMBOL) {
-    if (t->value <= SYMBOL_DECREMENT)
+    if (t->value <= SYMBOL_EQUAL_AND)
       snprintf(g_token_in_simple_form, sizeof(g_token_in_simple_form), "'%s'", g_two_char_symbols[t->value]);
     else
       snprintf(g_token_in_simple_form, sizeof(g_token_in_simple_form), "'%c'", t->value);
@@ -1365,14 +1365,22 @@ int create_statement(void) {
     
         /* next token */
         _next_token();
-
-        if (g_token_current->id != TOKEN_ID_SYMBOL || g_token_current->value != '=') {
+        
+        if (g_token_current->id != TOKEN_ID_SYMBOL || (g_token_current->value != '=' &&
+                                                       g_token_current->value != SYMBOL_EQUAL_SUB &&
+                                                       g_token_current->value != SYMBOL_EQUAL_ADD &&
+                                                       g_token_current->value != SYMBOL_EQUAL_MUL &&
+                                                       g_token_current->value != SYMBOL_EQUAL_DIV &&
+                                                       g_token_current->value != SYMBOL_EQUAL_OR &&
+                                                       g_token_current->value != SYMBOL_EQUAL_AND)) {
           snprintf(g_error_message, sizeof(g_error_message), "Expected '=', but got %s.\n", _get_token_simple(g_token_current));
           print_error(g_error_message, ERROR_ERR);
           free_tree_node(node_index);
           return FAILED;
         }
-    
+
+        symbol = g_token_current->value;
+        
         /* next token */
         _next_token();
       }
@@ -1381,9 +1389,104 @@ int create_statement(void) {
       if (_open_expression_push() == FAILED)
         return FAILED;    
 
+      /* if the assignment was of form += then we'll modify the expression... */
+      if (symbol == SYMBOL_EQUAL_SUB ||
+          symbol == SYMBOL_EQUAL_ADD ||
+          symbol == SYMBOL_EQUAL_MUL ||
+          symbol == SYMBOL_EQUAL_DIV ||
+          symbol == SYMBOL_EQUAL_OR ||
+          symbol == SYMBOL_EQUAL_AND) {
+        int operator;
+        
+        node = allocate_tree_node_value_string(name);
+        if (node == NULL)
+          return FAILED;
+
+        if (node_index != NULL) {
+          struct tree_node *node_index_2;
+          struct symbol_table_item *item;
+          
+          /* change the TREE_NODE_TYPE_VALUE_STRING to TREE_NODE_TYPE_ARRAY_ITEM */
+          node->type = TREE_NODE_TYPE_ARRAY_ITEM;
+
+          /* FIX! if the index expression contains increments or decrements then this
+             clone will also contain them -> the statement will do them twice! */
+          node_index_2 = clone_tree_node(node_index);
+          if (node_index_2 == NULL) {
+            free_tree_node(node);
+            return FAILED;
+          }
+
+          /* children[0] - index */
+          tree_node_add_child(node, node_index_2);
+
+          item = symbol_table_find_symbol(node->label);
+          if (item != NULL)
+            node->definition = item->node;
+        }
+
+        if (tree_node_add_child(_get_current_open_expression(), node) == FAILED)
+          return FAILED;
+
+        /* -, +, *, /, | or & */
+        if (symbol == SYMBOL_EQUAL_SUB)
+          operator = '-';
+        else if (symbol == SYMBOL_EQUAL_ADD)
+          operator = '+';
+        else if (symbol == SYMBOL_EQUAL_MUL)
+          operator = '*';
+        else if (symbol == SYMBOL_EQUAL_DIV)
+          operator = '/';
+        else if (symbol == SYMBOL_EQUAL_OR)
+          operator = '|';
+        else if (symbol == SYMBOL_EQUAL_AND)
+          operator = '&';
+        
+        node = allocate_tree_node_symbol(operator);
+        if (node == NULL)
+          return FAILED;
+
+        if (tree_node_add_child(_get_current_open_expression(), node) == FAILED)
+          return FAILED;
+
+        /* '(' */
+        node = allocate_tree_node_symbol('(');
+        if (node == NULL)
+          return FAILED;
+
+        if (tree_node_add_child(_get_current_open_expression(), node) == FAILED)
+          return FAILED;
+
+        /* create_expression() will put all tree_nodes it parses to g_open_expression */
+        if (_open_expression_push() == FAILED)
+          return FAILED;
+      }
+      
       /* possibly parse a calculation */
       if (create_expression() == FAILED)
         return FAILED;
+
+      if (symbol == SYMBOL_EQUAL_SUB ||
+          symbol == SYMBOL_EQUAL_ADD ||
+          symbol == SYMBOL_EQUAL_MUL ||
+          symbol == SYMBOL_EQUAL_DIV ||
+          symbol == SYMBOL_EQUAL_OR ||
+          symbol == SYMBOL_EQUAL_AND) {
+        node = _get_current_open_expression();
+        
+        _open_expression_pop();
+
+        if (tree_node_add_child(_get_current_open_expression(), node) == FAILED)
+          return FAILED;
+
+        /* ')' */
+        node = allocate_tree_node_symbol(')');
+        if (node == NULL)
+          return FAILED;
+
+        if (tree_node_add_child(_get_current_open_expression(), node) == FAILED)
+          return FAILED;
+      }
 
       node = allocate_tree_node_with_children(TREE_NODE_TYPE_ASSIGNMENT, 3);
       if (node == NULL)
@@ -1395,7 +1498,7 @@ int create_statement(void) {
       tree_node_add_child(node, _get_current_open_expression());
       _open_expression_pop();
       
-      if (node->children[0] == NULL || node->children[1] == NULL) {
+      if (node->children[0] == NULL || node->children[1] == NULL || (node->added_children == 3 && node->children[2] == NULL)) {
         free_tree_node(node);
         return FAILED;
       }

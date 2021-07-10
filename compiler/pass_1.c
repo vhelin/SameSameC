@@ -360,8 +360,20 @@ int evaluate_token(int type) {
         value = SYMBOL_INCREMENT;
       else if (g_tmp[0] == '-' && g_tmp[1] == '-')
         value = SYMBOL_DECREMENT;
+      else if (g_tmp[0] == '-' && g_tmp[1] == '=')
+        value = SYMBOL_EQUAL_SUB;
+      else if (g_tmp[0] == '+' && g_tmp[1] == '=')
+        value = SYMBOL_EQUAL_ADD;
+      else if (g_tmp[0] == '*' && g_tmp[1] == '=')
+        value = SYMBOL_EQUAL_MUL;
+      else if (g_tmp[0] == '/' && g_tmp[1] == '=')
+        value = SYMBOL_EQUAL_DIV;
+      else if (g_tmp[0] == '|' && g_tmp[1] == '=')
+        value = SYMBOL_EQUAL_OR;
+      else if (g_tmp[0] == '&' && g_tmp[1] == '=')
+        value = SYMBOL_EQUAL_AND;
       else {
-        snprintf(g_error_message, sizeof(g_error_message), "Unhandled two char symbol \"%c%c\"! Please submit a bug report!\n", g_tmp[0], g_tmp[1]);
+        snprintf(g_error_message, sizeof(g_error_message), "Unhandled two character symbol \"%c%c\"! Please submit a bug report!\n", g_tmp[0], g_tmp[1]);
         print_error(g_error_message, ERROR_ERR);
         return FAILED;
       }
