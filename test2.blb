@@ -1,5 +1,6 @@
 
-#define ONE(name) name
+#define ONE(var1, var2) \
+            (var1-var2)
 
 void main(void) {
 
@@ -19,5 +20,5 @@ void main(void) {
 
 void add_1(uint8 *color) {
 
-  color[2-1-1] *= 1+(ONE(2-1)+2-1-1);
+  color[2-1-1] += (ONE(2,1)+2-1-1);
 }

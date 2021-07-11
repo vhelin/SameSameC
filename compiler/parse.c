@@ -79,6 +79,11 @@ void skip_whitespace(void) {
   while (1) {
     if (g_source_pointer == g_size)
       break;
+    if (g_buffer[g_source_pointer] == '\\' && g_buffer[g_source_pointer+1] == 0xA) {
+      g_source_pointer += 2;
+      next_line();
+      continue;
+    }
     if (g_buffer[g_source_pointer] == ' ') {
       g_source_pointer++;
       g_newline_beginning = OFF;
@@ -143,7 +148,7 @@ int get_next_token(void) {
       return GET_NEXT_TOKEN_LINEFEED;
     }
   }
-  
+
   c = g_buffer[g_source_pointer];
   
   /* "string"? */

@@ -33,8 +33,6 @@ Optimize:
 Fix:
 
 - Handle arrays inside functions better
-- Remake #define to just collect tokens and when expanded output clones of those tokens,
-  and add support for arguments
 - Currently "data[i++] += 1;" does the increment twice...
 
 Add:

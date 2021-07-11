@@ -343,7 +343,7 @@ static int _parse_definition(void) {
 
   struct definition *definition;
   struct token *t;
-  int q, i;
+  int q, argument;
 
   definition = definition_get(g_tmp);
 
@@ -361,7 +361,7 @@ static int _parse_definition(void) {
     /* make get_next_token() return linefeeds */
     g_input_number_return_linefeed = YES;
 
-    /* for token_add() */
+    /* for token_add() inside evaluate_token() */
     g_inside_define = YES;
 
     q = get_next_token();
@@ -372,6 +372,7 @@ static int _parse_definition(void) {
     }
 
     t = definition->arguments_first;
+    argument = 0;
     while (1) {
       q = get_next_token();
       
@@ -399,24 +400,71 @@ static int _parse_definition(void) {
           print_error(g_error_message, ERROR_DIR);
           return FAILED;
         }
+
+        argument++;
+
+        continue;
       }
 
       q = evaluate_token(q);
 
-      fprintf(stderr, "GOTTT %s\n", g_tmp);
- 
-    }    
+      g_latest_token->next = NULL;
+      if (definition->arguments_data_first[argument] == NULL) {
+        definition->arguments_data_first[argument] = g_latest_token;
+        definition->arguments_data_last[argument] = g_latest_token;
+      }
+      else {
+        definition->arguments_data_last[argument]->next = g_latest_token;
+        definition->arguments_data_last[argument] = g_latest_token;
+      }
+    }
 
     /* make get_next_token() not to return linefeeds */
     g_input_number_return_linefeed = NO;
   
     g_inside_define = NO;
-    
-    /* free the arguments data as we've used it already */
-    for (i = 0; i < definition->arguments; i++) {
-      token_free(definition->arguments_data[i]);
-      definition->arguments_data[i] = NULL;
+
+    /* expand the definition */
+    t = definition->tokens_first;
+    while (t != NULL) {
+      int expanded = NO;
+      
+      if (t->id == TOKEN_ID_VALUE_STRING) {
+        struct token *arg;
+        
+        /* is the token one of the arguments? */
+        arg = definition->arguments_first;
+        argument = 0;
+        while (arg != NULL) {
+          if (strcmp(arg->label, t->label) == 0)
+            break;
+          arg = arg->next;
+          argument++;
+        }
+
+        /* yes! */
+        if (arg != NULL) {
+          struct token *t2;
+          
+          /* expand the argument */
+          t2 = definition->arguments_data_first[argument];
+          while (t2 != NULL) {
+            token_clone_and_add(t2);
+            t2 = t2->next;
+          }
+
+          expanded = YES;
+        }
+      }
+
+      if (expanded == NO)
+        token_clone_and_add(t);
+
+      t = t->next;
     }
+    
+    /* free the arguments data as we've processed the definition call */
+    definition_free_arguments_data(definition);
   }
 
   return SUCCEEDED;

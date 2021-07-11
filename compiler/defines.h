@@ -150,7 +150,8 @@ struct definition {
   struct token *tokens_last;
   struct token *arguments_first;
   struct token *arguments_last;
-  struct token **arguments_data;
+  struct token **arguments_data_first;
+  struct token **arguments_data_last;
   struct definition *next;
 };
 

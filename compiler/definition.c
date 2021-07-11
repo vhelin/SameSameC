@@ -41,7 +41,8 @@ struct definition *define(char *name) {
   d->tokens_last = NULL;
   d->arguments_first = NULL;
   d->arguments_last = NULL;
-  d->arguments_data = NULL;
+  d->arguments_data_first = NULL;
+  d->arguments_data_last = NULL;
 
   d->next = g_definitions_first;
   g_definitions_first = d;
@@ -53,7 +54,6 @@ struct definition *define(char *name) {
 void definition_free(struct definition *d) {
 
   struct token *t;
-  int i;
 
   t = d->tokens_first;
   while (t != NULL) {
@@ -69,11 +69,30 @@ void definition_free(struct definition *d) {
     t = next;
   }
 
-  for (i = 0; i < d->arguments; i++)
-    token_free(d->arguments_data[i]);
-  free(d->arguments_data);
-  
+  definition_free_arguments_data(d);
+  free(d->arguments_data_first);
+  free(d->arguments_data_last);
+
   free(d);
+}
+
+
+void definition_free_arguments_data(struct definition *d) {
+  
+  struct token *t;
+  int i;
+
+  for (i = 0; i < d->arguments; i++) {
+    t = d->arguments_data_first[i];
+    while (t != NULL) {
+      struct token *next = t->next;
+
+      token_free(t);
+      t = next;
+    }
+    d->arguments_data_first[i] = NULL;
+    d->arguments_data_last[i] = NULL;
+  }
 }
 
 
@@ -111,6 +130,7 @@ static int _collect_arguments_from_tokens(struct definition *d) {
 
   while (t != NULL) {
     if (t->id == TOKEN_ID_VALUE_STRING) {
+      next = t->next;
       t->next = NULL;
       
       if (d->arguments_first == NULL) {
@@ -123,6 +143,7 @@ static int _collect_arguments_from_tokens(struct definition *d) {
       }
 
       arguments++;
+      t = next;
     }
     else if (t->id == TOKEN_ID_SYMBOL && t->value == ',') {
       next = t->next;
@@ -148,15 +169,24 @@ static int _collect_arguments_from_tokens(struct definition *d) {
   d->tokens_first = NULL;
   d->tokens_last = NULL;
 
-  d->arguments_data = calloc(sizeof(struct token *) * arguments, 1);
-  if (d->arguments_data == NULL) {
+  d->arguments_data_first = calloc(sizeof(struct token *) * arguments, 1);
+  if (d->arguments_data_first == NULL) {
     snprintf(g_error_message, sizeof(g_error_message), "Out of memory while trying to allocate argument data list for definition \"%s\".\n", d->name);
     print_error(g_error_message, ERROR_DIR);
     return FAILED;
   }
 
-  for (i = 0; i < arguments; i++)
-    d->arguments_data[i] = NULL;
+  d->arguments_data_last = calloc(sizeof(struct token *) * arguments, 1);
+  if (d->arguments_data_last == NULL) {
+    snprintf(g_error_message, sizeof(g_error_message), "Out of memory while trying to allocate argument data list for definition \"%s\".\n", d->name);
+    print_error(g_error_message, ERROR_DIR);
+    return FAILED;
+  }
+
+  for (i = 0; i < arguments; i++) {
+    d->arguments_data_first[i] = NULL;
+    d->arguments_data_last[i] = NULL;
+  }
 
   d->arguments = arguments;
 
