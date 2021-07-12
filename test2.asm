@@ -218,7 +218,7 @@
       ; IX - tmp
       ; IY - tmp
       ; allocate space for the stack frame
-      LD  HL,-10
+      LD  HL,-9
       ADD HL,DE
       LD  SP,HL
       ; -----------------------------------------------------------------
@@ -287,14 +287,7 @@
       ; ../test2.blb:26: color[2-1-1] += (ONE(2,-1)+2-1-1);
       ; =================================================================
       ; -----------------------------------------------------------------
-      ; TAC: r1.uint8 (uint8) := 0.uint8 (uint8)
-      ; -----------------------------------------------------------------
-      ; offset -8
-      LD  IX,-8
-      ADD IX,DE
-      LD  (IX+0),0
-      ; -----------------------------------------------------------------
-      ; TAC: r2.uint8 (uint8) := color.uint16 (uint8)[0.uint8 (uint8)]
+      ; TAC: r1.uint8 (uint8) := color.uint16 (uint8)[0.uint8 (uint8)]
       ; -----------------------------------------------------------------
       ; offset -5
       LD  IX,-5
@@ -304,42 +297,34 @@
       LD  IX,0
       ADD IX,BC
       LD  L,(IX+0)
-      ; offset -9
-      LD  IX,-9
+      ; offset -8
+      LD  IX,-8
       ADD IX,DE
       LD  (IX+0),L
       ; -----------------------------------------------------------------
-      ; TAC: r3.uint8 (uint8) := r2.uint8 (uint8) + 3.uint8 (uint8)
-      ; -----------------------------------------------------------------
-      ; offset -9
-      LD  IX,-9
-      ADD IX,DE
-      LD  A,(IX+0)
-      ADD A,3
-      ; offset -10
-      LD  IX,-10
-      ADD IX,DE
-      LD  (IX+0),A
-      ; -----------------------------------------------------------------
-      ; TAC: color.uint16 (uint8)[r1.uint8 (uint8)] := r3.uint8 (uint8)
+      ; TAC: r2.uint8 (uint8) := r1.uint8 (uint8) + 3.uint8 (uint8)
       ; -----------------------------------------------------------------
       ; offset -8
       LD  IX,-8
       ADD IX,DE
-      LD  C,(IX+0)
-      LD  B,0
+      LD  A,(IX+0)
+      ADD A,3
+      ; offset -9
+      LD  IX,-9
+      ADD IX,DE
+      LD  (IX+0),A
+      ; -----------------------------------------------------------------
+      ; TAC: color.uint16 (uint8)[0.uint8 (uint8)] := r2.uint8 (uint8)
+      ; -----------------------------------------------------------------
       ; offset -5
       LD  IX,-5
       ADD IX,DE
-      PUSH BC
       LD  C,(IX+0)
       LD  B,(IX+1)
       LD  IX,0
       ADD IX,BC
-      POP BC
-      ADD IX,BC
-      ; offset -10
-      LD  IY,-10
+      ; offset -9
+      LD  IY,-9
       ADD IY,DE
       LD  L,(IY+0)
       LD  (IX+0),L

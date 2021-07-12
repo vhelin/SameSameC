@@ -1506,6 +1506,97 @@ static int _optimize_il_22(int *optimizations_counter) {
 }
 
 
+static int _optimize_il_23(int *optimizations_counter) {
+  
+  /*
+    rX = CONST   <--- REMOVE rX if rX doesn't appear elsewhere
+    ?  = rX * rB <--- REMOVE rX if rX doesn't appear elsewhere
+  */
+
+  int i = 0;
+
+  while (1) {
+    int is_last_function = NO;
+    int end = _find_end_of_il_function(i, &is_last_function);
+    if (end < 0)
+      return FAILED;
+
+    if (_count_and_allocate_register_usage(i, end) == FAILED)
+      return FAILED;
+
+    while (i < end) {
+      int current, next;
+
+      current = _find_next_living_tac(i);
+
+      if (current < 0)
+        break;
+
+      if (g_tacs[current].op == TAC_OP_ASSIGNMENT &&
+          g_tacs[current].result_type == TAC_ARG_TYPE_TEMP &&
+          g_tacs[current].arg1_type == TAC_ARG_TYPE_CONSTANT &&
+          g_register_reads[(int)g_tacs[current].result_d] == 1 && g_register_writes[(int)g_tacs[current].result_d] == 1) {
+        next = current;
+        while (1) {
+          next = _find_next_living_tac(next + 1);
+
+          if (g_tacs[next].op == TAC_OP_LABEL) {
+            /* we cannot search past a label */
+            next = -1;
+            break;
+          }
+          else if (g_tacs[next].op == TAC_OP_FUNCTION_CALL) {
+            fprintf(stderr, "_optimize_il_23(): Implement me when function calls can take others than just registers as arguments!\n");
+          }
+          else if (g_tacs[next].op == TAC_OP_FUNCTION_CALL_USE_RETURN_VALUE) {
+            fprintf(stderr, "_optimize_il_23(): Implement me when function calls can take others than just registers as arguments!\n");
+          }
+          else if (g_tacs[next].op == TAC_OP_CREATE_VARIABLE) {
+          }
+          else if (g_tacs[next].op != TAC_OP_DEAD) {
+            if (g_tacs[next].arg1_type == TAC_ARG_TYPE_TEMP && (int)g_tacs[current].result_d == (int)g_tacs[next].arg1_d) {
+              /* found match! rX can be removed, constant embedded! */
+              if (tac_set_arg1(&g_tacs[next], g_tacs[current].arg1_type, g_tacs[current].arg1_d, g_tacs[current].arg1_s) == FAILED)
+                return FAILED;
+              g_tacs[next].arg1_node = g_tacs[current].arg1_node;
+              g_tacs[next].arg1_var_type_promoted = g_tacs[current].arg1_var_type_promoted;
+              g_tacs[current].op = TAC_OP_DEAD;
+              (*optimizations_counter)++;
+              next = -1;
+              break;
+            }
+            if (g_tacs[next].arg2_type == TAC_ARG_TYPE_TEMP && (int)g_tacs[current].result_d == (int)g_tacs[next].arg2_d) {
+              /* found match! rX can be removed, constant embedded! */
+              if (tac_set_arg2(&g_tacs[next], g_tacs[current].arg1_type, g_tacs[current].arg1_d, g_tacs[current].arg1_s) == FAILED)
+                return FAILED;
+              g_tacs[next].arg2_node = g_tacs[current].arg1_node;
+              g_tacs[next].arg2_var_type_promoted = g_tacs[current].arg1_var_type_promoted;
+              g_tacs[current].op = TAC_OP_DEAD;
+              (*optimizations_counter)++;
+              next = -1;
+              break;
+            }
+          }
+
+          if (next < 0)
+            break;
+        }
+
+        if (next < 0)
+          break;
+      }
+
+      i = current + 1;
+    }
+
+    if (is_last_function == YES)
+      break;
+  }
+
+  return SUCCEEDED;
+}
+
+
 int optimize_il(void) {
 
   int optimizations_counter, loop = 1;
@@ -1557,6 +1648,8 @@ int optimize_il(void) {
     if (_optimize_il_21(&optimizations_counter) == FAILED)
       return FAILED;
     if (_optimize_il_22(&optimizations_counter) == FAILED)
+      return FAILED;
+    if (_optimize_il_23(&optimizations_counter) == FAILED)
       return FAILED;
     
     fprintf(stderr, "optimize_il(): Loop %d managed to do %d optimizations.\n", loop, optimizations_counter);
