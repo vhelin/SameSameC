@@ -20,5 +20,8 @@ void main(void) {
 
 void add_1(uint8 *color) {
 
+  int8 var = color[0];
+  var = (var--) + 1;
+
   color[2-1-1] += (ONE(2,-1)+2-1-1);
 }
