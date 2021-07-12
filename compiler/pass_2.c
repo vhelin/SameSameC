@@ -873,7 +873,7 @@ int create_expression(void) {
     return THE_END;
   }
 
-  if (g_token_current->id == TOKEN_ID_SYMBOL && (g_token_current->value == '-' || g_token_current->value == '+')) {
+  while (g_token_current->id == TOKEN_ID_SYMBOL && (g_token_current->value == '-' || g_token_current->value == '+')) {
     node = allocate_tree_node_symbol(g_token_current->value);
     if (node == NULL)
       return FAILED;
@@ -889,17 +889,26 @@ int create_expression(void) {
   if (result != SUCCEEDED)
     return result;
 
-  while (g_token_current->id == TOKEN_ID_SYMBOL && (g_token_current->value == '-' || g_token_current->value == '+')) {
-    node = allocate_tree_node_symbol(g_token_current->value);
-    if (node == NULL)
-      return FAILED;
+  while (1) {
+    int got = 0;
+    
+    while (g_token_current->id == TOKEN_ID_SYMBOL && (g_token_current->value == '-' || g_token_current->value == '+')) {
+      got++;
+      
+      node = allocate_tree_node_symbol(g_token_current->value);
+      if (node == NULL)
+        return FAILED;
 
-    if (tree_node_add_child(_get_current_open_expression(), node) == FAILED)
-      return FAILED;
+      if (tree_node_add_child(_get_current_open_expression(), node) == FAILED)
+        return FAILED;
 
-    /* next token */
-    _next_token();
+      /* next token */
+      _next_token();
+    }
 
+    if (got == 0)
+      break;
+    
     result = create_term();
     if (result != SUCCEEDED)
       return result;

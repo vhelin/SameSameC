@@ -38,6 +38,7 @@ Fix:
 Add:
 
 - Add support for struct {};
+- Add support for #if, #elif, #else and #endif
 
 
 NOTE
