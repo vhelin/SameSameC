@@ -250,13 +250,13 @@
       ADD IX,DE
       LD  (IX+0),L
       ; -----------------------------------------------------------------
-      ; TAC: r2.uint8 (uint8) := r1.uint8 (uint8) + 1.uint8 (uint8)
+      ; TAC: r2.uint8 (uint8) := r1.uint8 (uint8) + 3.uint8 (uint8)
       ; -----------------------------------------------------------------
       ; offset -7
       LD  IX,-7
       ADD IX,DE
       LD  A,(IX+0)
-      INC A
+      ADD A,3
       ; offset -8
       LD  IX,-8
       ADD IX,DE

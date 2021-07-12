@@ -801,10 +801,21 @@ int stack_calculate(int *value, struct stack_item *si, int q, int save_if_cannot
     }
   }
 
-  /* check if the computation is of the form "+-..." and remove that leading "+" */
-  if (q > 2 && si[0].type == STACK_ITEM_TYPE_OPERATOR && si[0].value == SI_OP_ADD &&
-      si[1].type == STACK_ITEM_TYPE_OPERATOR && si[1].value == SI_OP_SUB) {
-    si[0].type = STACK_ITEM_TYPE_DELETED;
+  /* check if the computation has "--" and turn it into a "+" */
+  for (k = 0; k < q-2; k++) {
+    if (si[k].type == STACK_ITEM_TYPE_OPERATOR && si[k].value == SI_OP_SUB &&
+        si[k+1].type == STACK_ITEM_TYPE_OPERATOR && si[k+1].value == SI_OP_SUB) {
+      si[k].type = STACK_ITEM_TYPE_DELETED;
+      si[k+1].value = SI_OP_ADD;
+    }
+  }
+
+  /* check if the computation has "+-" or "-+" and remove that "+" */
+  for (k = 0; k < q-2; k++) {
+    if (si[k].type == STACK_ITEM_TYPE_OPERATOR && si[k].value == SI_OP_ADD &&
+        si[k+1].type == STACK_ITEM_TYPE_OPERATOR && si[k+1].value == SI_OP_SUB) {
+      si[k].type = STACK_ITEM_TYPE_DELETED;
+    }
   }
 
   /* fix the sign in every operand */
