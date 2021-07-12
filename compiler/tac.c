@@ -495,6 +495,22 @@ int tac_set_result(struct tac *t, int arg_type, double d, char *s) {
 }
 
 
+void free_tac_contents(struct tac *t) {
+
+  free(t->arg1_s);
+  t->arg1_s = NULL;
+  
+  free(t->arg2_s);
+  t->arg2_s = NULL;
+  
+  free(t->result_s);
+  t->result_s = NULL;
+  
+  free(t->registers);
+  t->registers = NULL;
+}
+
+
 struct tac *add_tac(void) {
 
   struct tac *t;

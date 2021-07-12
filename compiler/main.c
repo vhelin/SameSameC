@@ -18,6 +18,7 @@
 #include "symbol_table.h"
 #include "inline_asm.h"
 #include "token.h"
+#include "tac.h"
 #include "pass_1.h"
 #include "pass_2.h"
 #include "pass_3.h"
@@ -384,12 +385,8 @@ void procedures_at_exit(void) {
 
   free_symbol_table();
 
-  for (index = 0; index < g_tacs_count; index++) {
-    free(g_tacs[index].arg1_s);
-    free(g_tacs[index].arg2_s);
-    free(g_tacs[index].result_s);
-    free(g_tacs[index].registers);
-  }
+  for (index = 0; index < g_tacs_count; index++)
+    free_tac_contents(&g_tacs[index]);
   free(g_tacs);
 
   free(g_register_reads);

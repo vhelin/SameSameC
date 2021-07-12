@@ -6,6 +6,7 @@ char *generate_temp_label(int id);
 void print_tac(struct tac *t, int is_comment, FILE *file_out);
 void print_tacs(void);
 void tac_swap_args(struct tac *t);
+void free_tac_contents(struct tac *t);
 int tac_set_arg1(struct tac *t, int arg_type, double d, char *s);
 int tac_set_arg2(struct tac *t, int arg_type, double d, char *s);
 int tac_set_result(struct tac *t, int arg_type, double d, char *s);
