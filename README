@@ -19,16 +19,10 @@ TODO
 
 Optimize:
 
-- Allow constants and labels to be placed into TAC_OP_FUNCTION_CALL's argument list
-  (currently only registers are allowed)
 - Reuse registers inside a function
-- Create an optimizer for Z80 ASM that will remove unnecessary code (should be
-  relatively easy to remove most of those IX loads that happen all over the place)
-- Make IL optimizer passes to be able to merge remote commands instead of just
-  the adjacent ones
 - Optimize user written calculations like 2+a-1 -> 1+a
 - If a variable is only written to, remove the variable and all assignments
-- Get rid of stack frame pointer DE in Z80 ASM, use just SP
+- Get rid of stack frame pointer DE in Z80 ASM, use just SP?
 
 Fix:
 

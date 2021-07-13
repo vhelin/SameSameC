@@ -964,7 +964,7 @@ static void _divide_h_by_e_to_a_b(FILE *file_out) {
 
 static int _generate_asm_assignment_z80(struct tac *t, FILE *file_out, struct tree_node *function_node) {
 
-  int result_offset = -1, arg1_offset = -1;
+  int result_offset = -1, arg1_offset = -1, ix_offset = 0;
 
   /* result */
 
@@ -994,6 +994,11 @@ static int _generate_asm_assignment_z80(struct tac *t, FILE *file_out, struct tr
     /* it's a variable in the frame! */
     fprintf(file_out, "      ; offset %d\n", result_offset);
 
+    if (result_offset >= -128 && result_offset <= 126) {
+      ix_offset = result_offset;
+      result_offset = 0;
+    }
+    
     _load_value_to_ix(result_offset, file_out);
     _add_de_to_ix(file_out);
   }
@@ -1024,12 +1029,12 @@ static int _generate_asm_assignment_z80(struct tac *t, FILE *file_out, struct tr
     int value = (int)t->arg1_d;
     if (t->result_var_type == VARIABLE_TYPE_INT16 || t->result_var_type == VARIABLE_TYPE_UINT16) {
       /* 16-bit */
-      _load_value_into_ix(value & 0xff, 0, file_out);
-      _load_value_into_ix((value >> 8) & 0xff, 1, file_out);
+      _load_value_into_ix(value & 0xff, ix_offset, file_out);
+      _load_value_into_ix((value >> 8) & 0xff, ix_offset + 1, file_out);
     }
     else {
       /* 8-bit */
-      _load_value_into_ix(value & 0xff, 0, file_out);
+      _load_value_into_ix(value & 0xff, ix_offset, file_out);
     }
   }
   else {
@@ -1037,10 +1042,10 @@ static int _generate_asm_assignment_z80(struct tac *t, FILE *file_out, struct tr
       /* 16-bit */
       if (t->arg1_var_type == VARIABLE_TYPE_INT16 || t->arg1_var_type == VARIABLE_TYPE_UINT16) {
         _load_from_iy_to_a(0, file_out);
-        _load_a_into_ix(0, file_out);
+        _load_a_into_ix(ix_offset, file_out);
 
         _load_from_iy_to_a(1, file_out);
-        _load_a_into_ix(1, file_out);
+        _load_a_into_ix(ix_offset + 1, file_out);
       }
       else {
         /* sign extend 8-bit -> 16-bit? */
@@ -1048,22 +1053,22 @@ static int _generate_asm_assignment_z80(struct tac *t, FILE *file_out, struct tr
           /* lower byte must be sign extended */
           _load_from_iy_to_a(0, file_out);
           _sign_extend_a_to_bc(file_out);
-          _load_c_into_ix(0, file_out);
-          _load_b_into_ix(1, file_out);
+          _load_c_into_ix(ix_offset, file_out);
+          _load_b_into_ix(ix_offset + 1, file_out);
         }
         else {
           /* lower byte */
           _load_from_iy_to_a(0, file_out);
-          _load_a_into_ix(0, file_out);
+          _load_a_into_ix(ix_offset, file_out);
           /* upper byte is 0 */
-          _load_value_into_ix(0, 1, file_out);
+          _load_value_into_ix(0, ix_offset + 1, file_out);
         }
       }
     }
     else {
       /* 8-bit */
       _load_from_iy_to_a(0, file_out);
-      _load_a_into_ix(0, file_out);
+      _load_a_into_ix(ix_offset, file_out);
     }
   }
   
@@ -1073,7 +1078,7 @@ static int _generate_asm_assignment_z80(struct tac *t, FILE *file_out, struct tr
 
 static int _generate_asm_add_sub_or_and_z80_8bit(struct tac *t, FILE *file_out, struct tree_node *function_node, int op) {
   
-  int result_offset = -1, arg1_offset = -1, arg2_offset = -1;
+  int result_offset = -1, arg1_offset = -1, arg2_offset = -1, ix_offset = 0;
   
   /* result */
 
@@ -1106,6 +1111,11 @@ static int _generate_asm_add_sub_or_and_z80_8bit(struct tac *t, FILE *file_out, 
     /* it's a variable in the frame! */
     fprintf(file_out, "      ; offset %d\n", arg1_offset);
 
+    if (arg1_offset >= -128 && arg1_offset <= 126) {
+      ix_offset = arg1_offset;
+      arg1_offset = 0;
+    }
+    
     _load_value_to_ix(arg1_offset, file_out);
     _add_de_to_ix(file_out);
   }
@@ -1120,12 +1130,14 @@ static int _generate_asm_add_sub_or_and_z80_8bit(struct tac *t, FILE *file_out, 
   }
   else {
     /* 8-bit */
-    _load_from_ix_to_a(0, file_out);
+    _load_from_ix_to_a(ix_offset, file_out);
   }
 
   /******************************************************************************************************/
   /* source address (arg2) -> ix */
   /******************************************************************************************************/
+
+  ix_offset = 0;
   
   if (t->arg2_type == TAC_ARG_TYPE_CONSTANT) {
   }
@@ -1136,6 +1148,11 @@ static int _generate_asm_add_sub_or_and_z80_8bit(struct tac *t, FILE *file_out, 
   else {
     /* it's a variable in the frame! */
     fprintf(file_out, "      ; offset %d\n", arg2_offset);
+
+    if (arg2_offset >= -128 && arg2_offset <= 126) {
+      ix_offset = arg2_offset;
+      arg2_offset = 0;
+    }
 
     _load_value_to_ix(arg2_offset, file_out);
     _add_de_to_ix(file_out);
@@ -1155,7 +1172,7 @@ static int _generate_asm_add_sub_or_and_z80_8bit(struct tac *t, FILE *file_out, 
     }
     else {
       /* 8-bit */
-      _add_from_ix_to_a(0, file_out);
+      _add_from_ix_to_a(ix_offset, file_out);
     }
   }
   else if (op == TAC_OP_SUB) {
@@ -1168,7 +1185,7 @@ static int _generate_asm_add_sub_or_and_z80_8bit(struct tac *t, FILE *file_out, 
     }
     else {
       /* 8-bit */
-      _sub_from_ix_from_a(0, file_out);
+      _sub_from_ix_from_a(ix_offset, file_out);
     }
   }
   else if (op == TAC_OP_OR) {
@@ -1178,7 +1195,7 @@ static int _generate_asm_add_sub_or_and_z80_8bit(struct tac *t, FILE *file_out, 
     }
     else {
       /* 8-bit */
-      _or_from_ix_to_a(0, file_out);
+      _or_from_ix_to_a(ix_offset, file_out);
     }
   }
   else if (op == TAC_OP_AND) {
@@ -1188,7 +1205,7 @@ static int _generate_asm_add_sub_or_and_z80_8bit(struct tac *t, FILE *file_out, 
     }
     else {
       /* 8-bit */
-      _and_from_ix_from_a(0, file_out);
+      _and_from_ix_from_a(ix_offset, file_out);
     }
   }
   else {
@@ -1199,6 +1216,8 @@ static int _generate_asm_add_sub_or_and_z80_8bit(struct tac *t, FILE *file_out, 
   /******************************************************************************************************/
   /* target address -> ix */
   /******************************************************************************************************/
+
+  ix_offset = 0;
   
   if (t->result_type == TAC_ARG_TYPE_CONSTANT) {
     fprintf(stderr, "_generate_asm_add_sub_or_and_z80_8bit(): Target cannot be a value!\n");
@@ -1212,6 +1231,11 @@ static int _generate_asm_add_sub_or_and_z80_8bit(struct tac *t, FILE *file_out, 
     /* it's a variable in the frame! */
     fprintf(file_out, "      ; offset %d\n", result_offset);
 
+    if (result_offset >= -128 && result_offset <= 126) {
+      ix_offset = result_offset;
+      result_offset = 0;
+    }
+    
     _load_value_to_ix(result_offset, file_out);
     _add_de_to_ix(file_out);
   }
@@ -1224,22 +1248,22 @@ static int _generate_asm_add_sub_or_and_z80_8bit(struct tac *t, FILE *file_out, 
     /* 16-bit */
 
     /* lower byte */
-    _load_a_into_ix(0, file_out);
+    _load_a_into_ix(ix_offset, file_out);
 
     /* sign extend 8-bit -> 16-bit? */
     if (t->result_var_type == VARIABLE_TYPE_INT16 && (t->arg1_var_type == VARIABLE_TYPE_INT8 ||
                                                       t->arg2_var_type == VARIABLE_TYPE_INT8)) {
       /* yes */
-      _sign_extend_a_into_ix(1, file_out);
+      _sign_extend_a_into_ix(ix_offset + 1, file_out);
     }
     else {
       /* upper byte = 0 */
-      _load_value_into_ix(0, 1, file_out);
+      _load_value_into_ix(0, ix_offset + 1, file_out);
     }
   }
   else {
     /* 8-bit */
-    _load_a_into_ix(0, file_out);
+    _load_a_into_ix(ix_offset, file_out);
   }
 
   return SUCCEEDED;
@@ -1248,7 +1272,7 @@ static int _generate_asm_add_sub_or_and_z80_8bit(struct tac *t, FILE *file_out, 
 
 static int _generate_asm_add_sub_or_and_z80_16bit(struct tac *t, FILE *file_out, struct tree_node *function_node, int op) {
   
-  int result_offset = -1, arg1_offset = -1, arg2_offset = -1;
+  int result_offset = -1, arg1_offset = -1, arg2_offset = -1, ix_offset = 0;
   
   /* result */
 
@@ -1281,6 +1305,11 @@ static int _generate_asm_add_sub_or_and_z80_16bit(struct tac *t, FILE *file_out,
     /* it's a variable in the frame! */
     fprintf(file_out, "      ; offset %d\n", arg1_offset);
 
+    if (arg1_offset >= -128 && arg1_offset <= 126) {
+      ix_offset = arg1_offset;
+      arg1_offset = 0;
+    }
+    
     _load_value_to_ix(arg1_offset, file_out);
     _add_de_to_ix(file_out);
   }
@@ -1296,12 +1325,12 @@ static int _generate_asm_add_sub_or_and_z80_16bit(struct tac *t, FILE *file_out,
   else {
     if (t->arg1_var_type == VARIABLE_TYPE_INT16 || t->arg1_var_type == VARIABLE_TYPE_UINT16) {
       /* 16-bit */
-      _load_from_ix_to_l(0, file_out);
-      _load_from_ix_to_h(1, file_out);
+      _load_from_ix_to_l(ix_offset, file_out);
+      _load_from_ix_to_h(ix_offset + 1, file_out);
     }
     else {
       /* 8-bit */
-      _load_from_ix_to_l(0, file_out);
+      _load_from_ix_to_l(ix_offset, file_out);
 
       /* sign extend 8-bit -> 16-bit? */
       if (t->arg1_var_type == VARIABLE_TYPE_INT8 && (t->arg1_var_type_promoted == VARIABLE_TYPE_INT16 ||
@@ -1324,6 +1353,8 @@ static int _generate_asm_add_sub_or_and_z80_16bit(struct tac *t, FILE *file_out,
   /******************************************************************************************************/
   /* source address (arg2) -> ix */
   /******************************************************************************************************/
+
+  ix_offset = 0;
   
   if (t->arg2_type == TAC_ARG_TYPE_CONSTANT) {
   }
@@ -1334,6 +1365,11 @@ static int _generate_asm_add_sub_or_and_z80_16bit(struct tac *t, FILE *file_out,
   else {
     /* it's a variable in the frame! */
     fprintf(file_out, "      ; offset %d\n", arg2_offset);
+
+    if (arg2_offset >= -128 && arg2_offset <= 126) {
+      ix_offset = arg2_offset;
+      arg2_offset = 0;
+    }
 
     _load_value_to_ix(arg2_offset, file_out);
     _add_de_to_ix(file_out);
@@ -1353,12 +1389,12 @@ static int _generate_asm_add_sub_or_and_z80_16bit(struct tac *t, FILE *file_out,
   else {
     if (t->arg2_var_type == VARIABLE_TYPE_INT16 || t->arg2_var_type == VARIABLE_TYPE_UINT16) {
       /* 16-bit */
-      _load_from_ix_to_c(0, file_out);
-      _load_from_ix_to_b(1, file_out);
+      _load_from_ix_to_c(ix_offset, file_out);
+      _load_from_ix_to_b(ix_offset + 1, file_out);
     }
     else {
       /* 8-bit */
-      _load_from_ix_to_c(0, file_out);
+      _load_from_ix_to_c(ix_offset, file_out);
 
       /* sign extend 8-bit -> 16-bit? */
       if (t->arg2_var_type == VARIABLE_TYPE_INT8 && (t->arg2_var_type_promoted == VARIABLE_TYPE_INT16 ||
@@ -1406,6 +1442,8 @@ static int _generate_asm_add_sub_or_and_z80_16bit(struct tac *t, FILE *file_out,
   /******************************************************************************************************/
   /* target address -> ix */
   /******************************************************************************************************/
+
+  ix_offset = 0;
   
   if (t->result_type == TAC_ARG_TYPE_CONSTANT) {
     fprintf(stderr, "_generate_asm_add_sub_or_and_z80_16bit(): Target cannot be a value!\n");
@@ -1419,6 +1457,11 @@ static int _generate_asm_add_sub_or_and_z80_16bit(struct tac *t, FILE *file_out,
     /* it's a variable in the frame! */
     fprintf(file_out, "      ; offset %d\n", result_offset);
 
+    if (result_offset >= -128 && result_offset <= 126) {
+      ix_offset = result_offset;
+      result_offset = 0;
+    }
+    
     _load_value_to_ix(result_offset, file_out);
     _add_de_to_ix(file_out);
   }
@@ -1429,12 +1472,12 @@ static int _generate_asm_add_sub_or_and_z80_16bit(struct tac *t, FILE *file_out,
 
   if (t->result_var_type == VARIABLE_TYPE_INT16 || t->result_var_type == VARIABLE_TYPE_UINT16) {
     /* 16-bit */
-    _load_l_into_ix(0, file_out);
-    _load_h_into_ix(1, file_out);
+    _load_l_into_ix(ix_offset, file_out);
+    _load_h_into_ix(ix_offset + 1, file_out);
   }
   else {
     /* 8-bit */
-    _load_l_into_ix(0, file_out);
+    _load_l_into_ix(ix_offset, file_out);
   }
   
   return SUCCEEDED;
@@ -1459,7 +1502,7 @@ static int _generate_asm_add_sub_or_and_z80(struct tac *t, FILE *file_out, struc
 
 static int _generate_asm_get_address_z80(struct tac *t, FILE *file_out, struct tree_node *function_node, int op) {
 
-  int result_offset = -1, arg1_offset = -1, arg2_offset = -1;
+  int result_offset = -1, arg1_offset = -1, arg2_offset = -1, ix_offset = 0;
   
   /* result */
 
@@ -1517,6 +1560,11 @@ static int _generate_asm_get_address_z80(struct tac *t, FILE *file_out, struct t
       /* it's a variable in the frame! */
       fprintf(file_out, "      ; offset %d\n", arg2_offset);
 
+      if (arg2_offset >= -128 && arg2_offset <= 126) {
+        ix_offset = arg2_offset;
+        arg2_offset = 0;
+      }
+
       _load_value_to_ix(arg2_offset, file_out);
       _add_de_to_ix(file_out);
     }
@@ -1532,12 +1580,12 @@ static int _generate_asm_get_address_z80(struct tac *t, FILE *file_out, struct t
     else {
       if (t->arg2_var_type == VARIABLE_TYPE_INT16 || t->arg2_var_type == VARIABLE_TYPE_UINT16) {
         /* 16-bit */
-        _load_from_ix_to_c(0, file_out);
-        _load_from_ix_to_b(1, file_out);
+        _load_from_ix_to_c(ix_offset, file_out);
+        _load_from_ix_to_b(ix_offset + 1, file_out);
       }
       else {
         /* 8-bit */
-        _load_from_ix_to_c(0, file_out);
+        _load_from_ix_to_c(ix_offset, file_out);
 
         /* sign extend 8-bit -> 16-bit? */
         if (t->arg2_var_type == VARIABLE_TYPE_INT8) {
@@ -1571,6 +1619,8 @@ static int _generate_asm_get_address_z80(struct tac *t, FILE *file_out, struct t
   /******************************************************************************************************/
   /* target address -> ix */
   /******************************************************************************************************/
+
+  ix_offset = 0;
   
   if (t->result_type == TAC_ARG_TYPE_CONSTANT) {
     fprintf(stderr, "_generate_asm_get_address_z80(): Target cannot be a value!\n");
@@ -1584,6 +1634,11 @@ static int _generate_asm_get_address_z80(struct tac *t, FILE *file_out, struct t
     /* it's a variable in the frame! */
     fprintf(file_out, "      ; offset %d\n", result_offset);
 
+    if (result_offset >= -128 && result_offset <= 126) {
+      ix_offset = result_offset;
+      result_offset = 0;
+    }
+
     _load_value_to_ix(result_offset, file_out);
     _add_de_to_ix(file_out);
   }
@@ -1594,8 +1649,8 @@ static int _generate_asm_get_address_z80(struct tac *t, FILE *file_out, struct t
 
   if (t->result_var_type == VARIABLE_TYPE_INT16 || t->result_var_type == VARIABLE_TYPE_UINT16) {
     /* 16-bit */
-    _load_l_into_ix(0, file_out);
-    _load_h_into_ix(1, file_out);
+    _load_l_into_ix(ix_offset, file_out);
+    _load_h_into_ix(ix_offset + 1, file_out);
   }
   else {
     fprintf(stderr, "_generate_asm_get_address_z80(): The target cannot be an 8-bit value!\n");
@@ -1608,7 +1663,7 @@ static int _generate_asm_get_address_z80(struct tac *t, FILE *file_out, struct t
 
 static int _generate_asm_z80_in_read_z80(struct tac *t, FILE *file_out, struct tree_node *function_node) {
 
-  int result_offset = -1, arg2_offset = -1;
+  int result_offset = -1, arg2_offset = -1, ix_offset = 0;
 
   /* result */
 
@@ -1636,6 +1691,11 @@ static int _generate_asm_z80_in_read_z80(struct tac *t, FILE *file_out, struct t
     /* it's a variable in the frame! */
     fprintf(file_out, "      ; offset %d\n", arg2_offset);
 
+    if (arg2_offset >= -128 && arg2_offset <= 126) {
+      ix_offset = arg2_offset;
+      arg2_offset = 0;
+    }
+
     _load_value_to_ix(arg2_offset, file_out);
     _add_de_to_ix(file_out);
   }
@@ -1647,7 +1707,7 @@ static int _generate_asm_z80_in_read_z80(struct tac *t, FILE *file_out, struct t
   if (t->arg2_type == TAC_ARG_TYPE_CONSTANT) {
   }
   else {
-    _load_from_ix_to_c(0, file_out);
+    _load_from_ix_to_c(ix_offset, file_out);
   }
 
   /******************************************************************************************************/
@@ -1663,6 +1723,8 @@ static int _generate_asm_z80_in_read_z80(struct tac *t, FILE *file_out, struct t
   /* target address -> ix */
   /******************************************************************************************************/
   
+  ix_offset = 0;
+
   if (t->result_type == TAC_ARG_TYPE_CONSTANT) {
     fprintf(stderr, "_generate_asm_z80_in_read_z80(): Target cannot be a value!\n");
     return FAILED;
@@ -1675,6 +1737,11 @@ static int _generate_asm_z80_in_read_z80(struct tac *t, FILE *file_out, struct t
     /* it's a variable in the frame! */
     fprintf(file_out, "      ; offset %d\n", result_offset);
 
+    if (result_offset >= -128 && result_offset <= 126) {
+      ix_offset = result_offset;
+      result_offset = 0;
+    }
+
     _load_value_to_ix(result_offset, file_out);
     _add_de_to_ix(file_out);
   }
@@ -1685,12 +1752,12 @@ static int _generate_asm_z80_in_read_z80(struct tac *t, FILE *file_out, struct t
 
   if (t->result_var_type == VARIABLE_TYPE_INT16 || t->result_var_type == VARIABLE_TYPE_UINT16) {
     /* 16-bit */
-    _load_a_into_ix(0, file_out);
-    _load_value_into_ix(0, 1, file_out);
+    _load_a_into_ix(ix_offset, file_out);
+    _load_value_into_ix(0, ix_offset + 1, file_out);
   }
   else {
     /* 8-bit */
-    _load_a_into_ix(0, file_out);
+    _load_a_into_ix(ix_offset, file_out);
   }
   
   return SUCCEEDED;
@@ -1699,7 +1766,7 @@ static int _generate_asm_z80_in_read_z80(struct tac *t, FILE *file_out, struct t
 
 static int _generate_asm_array_read_z80(struct tac *t, FILE *file_out, struct tree_node *function_node) {
 
-  int result_offset = -1, arg1_offset = -1, arg2_offset = -1, var_type;
+  int result_offset = -1, arg1_offset = -1, arg2_offset = -1, var_type, ix_offset = 0;
 
   /* OVERRIDE for __z80_in */
   if (t->arg1_type == TAC_ARG_TYPE_LABEL && strcmp(t->arg1_s, "__z80_in") == 0)
@@ -1746,6 +1813,11 @@ static int _generate_asm_array_read_z80(struct tac *t, FILE *file_out, struct tr
     /* it's a variable in the frame! */
     fprintf(file_out, "      ; offset %d\n", arg2_offset);
 
+    if (arg2_offset >= -128 && arg2_offset <= 126) {
+      ix_offset = arg2_offset;
+      arg2_offset = 0;
+    }
+
     _load_value_to_ix(arg2_offset, file_out);
     _add_de_to_ix(file_out);
   }
@@ -1762,12 +1834,12 @@ static int _generate_asm_array_read_z80(struct tac *t, FILE *file_out, struct tr
   else {
     if (t->arg2_var_type == VARIABLE_TYPE_INT16 || t->arg2_var_type == VARIABLE_TYPE_UINT16) {
       /* 16-bit */
-      _load_from_ix_to_c(0, file_out);
-      _load_from_ix_to_b(1, file_out);
+      _load_from_ix_to_c(ix_offset, file_out);
+      _load_from_ix_to_b(ix_offset + 1, file_out);
     }
     else {
       /* 8-bit */
-      _load_from_ix_to_c(0, file_out);
+      _load_from_ix_to_c(ix_offset, file_out);
 
       /* sign extend 8-bit -> 16-bit? */
       if (t->arg2_var_type == VARIABLE_TYPE_INT8) {
@@ -1788,6 +1860,8 @@ static int _generate_asm_array_read_z80(struct tac *t, FILE *file_out, struct tr
   /******************************************************************************************************/
   /* source address (arg1) -> ix */
   /******************************************************************************************************/
+
+  ix_offset = 0;
   
   if (t->arg1_type == TAC_ARG_TYPE_CONSTANT) {
     fprintf(stderr, "_generate_asm_array_read_z80(): Source cannot be a value!\n");
@@ -1800,6 +1874,13 @@ static int _generate_asm_array_read_z80(struct tac *t, FILE *file_out, struct tr
   else {
     /* it's a variable in the frame! */
     fprintf(file_out, "      ; offset %d\n", arg1_offset);
+
+    if (t->arg1_node->children[0]->value_double > 0.0) {
+      if (arg1_offset >= -128 && arg1_offset <= 126) {
+        ix_offset = arg1_offset;
+        arg1_offset = 0;
+      }
+    }
 
     _load_value_to_ix(arg1_offset, file_out);
     _add_de_to_ix(file_out);
@@ -1820,8 +1901,8 @@ static int _generate_asm_array_read_z80(struct tac *t, FILE *file_out, struct tr
       _push_bc(file_out);
     
     /* 16-bit */
-    _load_from_ix_to_c(0, file_out);
-    _load_from_ix_to_b(1, file_out);
+    _load_from_ix_to_c(ix_offset, file_out);
+    _load_from_ix_to_b(ix_offset + 1, file_out);
 
     _load_value_to_ix(0, file_out);
     _add_bc_to_ix(file_out);
@@ -1888,6 +1969,8 @@ static int _generate_asm_array_read_z80(struct tac *t, FILE *file_out, struct tr
   /******************************************************************************************************/
   /* target address -> ix */
   /******************************************************************************************************/
+
+  ix_offset = 0;
   
   if (t->result_type == TAC_ARG_TYPE_CONSTANT) {
     fprintf(stderr, "_generate_asm_array_read_z80(): Target cannot be a value!\n");
@@ -1901,6 +1984,11 @@ static int _generate_asm_array_read_z80(struct tac *t, FILE *file_out, struct tr
     /* it's a variable in the frame! */
     fprintf(file_out, "      ; offset %d\n", result_offset);
 
+    if (result_offset >= -128 && result_offset <= 126) {
+      ix_offset = result_offset;
+      result_offset = 0;
+    }
+
     _load_value_to_ix(result_offset, file_out);
     _add_de_to_ix(file_out);
   }
@@ -1911,12 +1999,12 @@ static int _generate_asm_array_read_z80(struct tac *t, FILE *file_out, struct tr
 
   if (t->result_var_type == VARIABLE_TYPE_INT16 || t->result_var_type == VARIABLE_TYPE_UINT16) {
     /* 16-bit */
-    _load_l_into_ix(0, file_out);
-    _load_h_into_ix(1, file_out);
+    _load_l_into_ix(ix_offset, file_out);
+    _load_h_into_ix(ix_offset + 1, file_out);
   }
   else {
     /* 8-bit */
-    _load_l_into_ix(0, file_out);
+    _load_l_into_ix(ix_offset, file_out);
   }
 
   return SUCCEEDED;
@@ -1925,7 +2013,7 @@ static int _generate_asm_array_read_z80(struct tac *t, FILE *file_out, struct tr
 
 static int _generate_asm_z80_out_write_z80(struct tac *t, FILE *file_out, struct tree_node *function_node) {
 
-  int arg1_offset = -1, arg2_offset = -1;
+  int arg1_offset = -1, arg2_offset = -1, ix_offset = 0;
 
   /* arg1 */
 
@@ -1953,6 +2041,11 @@ static int _generate_asm_z80_out_write_z80(struct tac *t, FILE *file_out, struct
     /* it's a variable in the frame! */
     fprintf(file_out, "      ; offset %d\n", arg1_offset);
 
+    if (arg1_offset >= -128 && arg1_offset <= 126) {
+      ix_offset = arg1_offset;
+      arg1_offset = 0;
+    }
+
     _load_value_to_ix(arg1_offset, file_out);
     _add_de_to_ix(file_out);
   }
@@ -1965,12 +2058,14 @@ static int _generate_asm_z80_out_write_z80(struct tac *t, FILE *file_out, struct
     _load_value_to_a(((int)t->arg1_d) & 0xff, file_out);
   }
   else {
-    _load_from_ix_to_a(0, file_out);
+    _load_from_ix_to_a(ix_offset, file_out);
   }
 
   /******************************************************************************************************/
   /* index address (arg2) -> ix */
   /******************************************************************************************************/
+
+  ix_offset = 0;
   
   if (t->arg2_type == TAC_ARG_TYPE_CONSTANT) {
   }
@@ -1981,6 +2076,11 @@ static int _generate_asm_z80_out_write_z80(struct tac *t, FILE *file_out, struct
   else {
     /* it's a variable in the frame! */
     fprintf(file_out, "      ; offset %d\n", arg2_offset);
+
+    if (arg2_offset >= -128 && arg2_offset <= 126) {
+      ix_offset = arg2_offset;
+      arg2_offset = 0;
+    }
 
     _load_value_to_ix(arg2_offset, file_out);
     _add_de_to_ix(file_out);
@@ -1993,7 +2093,7 @@ static int _generate_asm_z80_out_write_z80(struct tac *t, FILE *file_out, struct
   if (t->arg2_type == TAC_ARG_TYPE_CONSTANT) {
   }
   else {
-    _load_from_ix_to_c(0, file_out);
+    _load_from_ix_to_c(ix_offset, file_out);
   }
 
   /******************************************************************************************************/
@@ -2011,7 +2111,7 @@ static int _generate_asm_z80_out_write_z80(struct tac *t, FILE *file_out, struct
 
 static int _generate_asm_array_assignment_z80(struct tac *t, FILE *file_out, struct tree_node *function_node) {
 
-  int result_offset = -1, arg1_offset = -1, arg2_offset = -1, var_type;
+  int result_offset = -1, arg1_offset = -1, arg2_offset = -1, var_type, ix_offset = 0;
 
   /* OVERRIDE for __z80_out */
   if (t->result_type == TAC_ARG_TYPE_LABEL && strcmp(t->result_s, "__z80_out") == 0)
@@ -2058,6 +2158,11 @@ static int _generate_asm_array_assignment_z80(struct tac *t, FILE *file_out, str
     /* it's a variable in the frame! */
     fprintf(file_out, "      ; offset %d\n", arg2_offset);
 
+    if (arg2_offset >= -128 && arg2_offset <= 126) {
+      ix_offset = arg2_offset;
+      arg2_offset = 0;
+    }
+
     _load_value_to_ix(arg2_offset, file_out);
     _add_de_to_ix(file_out);
   }
@@ -2074,12 +2179,12 @@ static int _generate_asm_array_assignment_z80(struct tac *t, FILE *file_out, str
   else {
     if (t->arg2_var_type == VARIABLE_TYPE_INT16 || t->arg2_var_type == VARIABLE_TYPE_UINT16) {
       /* 16-bit */
-      _load_from_ix_to_c(0, file_out);
-      _load_from_ix_to_b(1, file_out);
+      _load_from_ix_to_c(ix_offset, file_out);
+      _load_from_ix_to_b(ix_offset + 1, file_out);
     }
     else {
       /* 8-bit */
-      _load_from_ix_to_c(0, file_out);
+      _load_from_ix_to_c(ix_offset, file_out);
 
       /* sign extend 8-bit -> 16-bit? */
       if (t->arg2_var_type == VARIABLE_TYPE_INT8) {
@@ -2100,6 +2205,8 @@ static int _generate_asm_array_assignment_z80(struct tac *t, FILE *file_out, str
   /******************************************************************************************************/
   /* result address (result) -> ix */
   /******************************************************************************************************/
+
+  ix_offset = 0;
   
   if (t->result_type == TAC_ARG_TYPE_CONSTANT) {
   }
@@ -2110,6 +2217,13 @@ static int _generate_asm_array_assignment_z80(struct tac *t, FILE *file_out, str
   else {
     /* it's a variable in the frame! */
     fprintf(file_out, "      ; offset %d\n", result_offset);
+
+    if (t->result_node->children[0]->value_double > 0.0) {
+      if (result_offset >= -128 && result_offset <= 126) {
+        ix_offset = result_offset;
+        result_offset = 0;
+      }
+    }
 
     _load_value_to_ix(result_offset, file_out);
     _add_de_to_ix(file_out);
@@ -2130,8 +2244,8 @@ static int _generate_asm_array_assignment_z80(struct tac *t, FILE *file_out, str
       _push_bc(file_out);
     
     /* 16-bit */
-    _load_from_ix_to_c(0, file_out);
-    _load_from_ix_to_b(1, file_out);
+    _load_from_ix_to_c(ix_offset, file_out);
+    _load_from_ix_to_b(ix_offset + 1, file_out);
 
     _load_value_to_ix(0, file_out);
     _add_bc_to_ix(file_out);
@@ -2244,7 +2358,7 @@ static int _generate_asm_array_assignment_z80(struct tac *t, FILE *file_out, str
 
 static int _generate_asm_shift_left_right_z80_16bit(struct tac *t, FILE *file_out, struct tree_node *function_node, int op) {
 
-  int result_offset = -1, arg1_offset = -1, arg2_offset = -1;
+  int result_offset = -1, arg1_offset = -1, arg2_offset = -1, ix_offset = 0;
   
   /* result */
 
@@ -2277,6 +2391,11 @@ static int _generate_asm_shift_left_right_z80_16bit(struct tac *t, FILE *file_ou
     /* it's a variable in the frame! */
     fprintf(file_out, "      ; offset %d\n", arg1_offset);
 
+    if (arg1_offset >= -128 && arg1_offset <= 126) {
+      ix_offset = arg1_offset;
+      arg1_offset = 0;
+    }
+
     _load_value_to_ix(arg1_offset, file_out);
     _add_de_to_ix(file_out);
   }
@@ -2292,12 +2411,12 @@ static int _generate_asm_shift_left_right_z80_16bit(struct tac *t, FILE *file_ou
   else {
     if (t->arg1_var_type == VARIABLE_TYPE_INT16 || t->arg1_var_type == VARIABLE_TYPE_UINT16) {
       /* 16-bit */
-      _load_from_ix_to_l(0, file_out);
-      _load_from_ix_to_h(1, file_out);
+      _load_from_ix_to_l(ix_offset, file_out);
+      _load_from_ix_to_h(ix_offset + 1, file_out);
     }
     else {
       /* 8-bit */
-      _load_from_ix_to_l(0, file_out);
+      _load_from_ix_to_l(ix_offset, file_out);
 
       /* sign extend 8-bit -> 16-bit? */
       if (t->arg1_var_type == VARIABLE_TYPE_INT8 && (t->arg1_var_type_promoted == VARIABLE_TYPE_INT16 ||
@@ -2320,6 +2439,8 @@ static int _generate_asm_shift_left_right_z80_16bit(struct tac *t, FILE *file_ou
   /******************************************************************************************************/
   /* source address (arg2) -> ix */
   /******************************************************************************************************/
+
+  ix_offset = 0;
   
   if (t->arg2_type == TAC_ARG_TYPE_CONSTANT) {
   }
@@ -2330,6 +2451,11 @@ static int _generate_asm_shift_left_right_z80_16bit(struct tac *t, FILE *file_ou
   else {
     /* it's a variable in the frame! */
     fprintf(file_out, "      ; offset %d\n", arg2_offset);
+
+    if (arg2_offset >= -128 && arg2_offset <= 126) {
+      ix_offset = arg2_offset;
+      arg2_offset = 0;
+    }
 
     _load_value_to_ix(arg2_offset, file_out);
     _add_de_to_ix(file_out);
@@ -2346,12 +2472,12 @@ static int _generate_asm_shift_left_right_z80_16bit(struct tac *t, FILE *file_ou
   else {
     if (t->arg2_var_type == VARIABLE_TYPE_INT16 || t->arg2_var_type == VARIABLE_TYPE_UINT16) {
       /* 16-bit */
-      _load_from_ix_to_c(0, file_out);
-      _load_from_ix_to_b(1, file_out);
+      _load_from_ix_to_c(ix_offset, file_out);
+      _load_from_ix_to_b(ix_offset + 1, file_out);
     }
     else {
       /* 8-bit */
-      _load_from_ix_to_c(0, file_out);
+      _load_from_ix_to_c(ix_offset, file_out);
 
       /* sign extend 8-bit -> 16-bit? */
       if (t->arg2_var_type == VARIABLE_TYPE_INT8 && (t->arg2_var_type_promoted == VARIABLE_TYPE_INT16 ||
@@ -2410,6 +2536,8 @@ static int _generate_asm_shift_left_right_z80_16bit(struct tac *t, FILE *file_ou
   /******************************************************************************************************/
   /* target address -> ix */
   /******************************************************************************************************/
+
+  ix_offset = 0;
   
   if (t->result_type == TAC_ARG_TYPE_CONSTANT) {
     fprintf(stderr, "_generate_asm_shift_left_right_z80_16bit(): Target cannot be a value!\n");
@@ -2423,6 +2551,11 @@ static int _generate_asm_shift_left_right_z80_16bit(struct tac *t, FILE *file_ou
     /* it's a variable in the frame! */
     fprintf(file_out, "      ; offset %d\n", result_offset);
 
+    if (result_offset >= -128 && result_offset <= 126) {
+      ix_offset = result_offset;
+      result_offset = 0;
+    }
+
     _load_value_to_ix(result_offset, file_out);
     _add_de_to_ix(file_out);
   }
@@ -2433,12 +2566,12 @@ static int _generate_asm_shift_left_right_z80_16bit(struct tac *t, FILE *file_ou
 
   if (t->result_var_type == VARIABLE_TYPE_INT16 || t->result_var_type == VARIABLE_TYPE_UINT16) {
     /* 16-bit */
-    _load_l_into_ix(0, file_out);
-    _load_h_into_ix(1, file_out);
+    _load_l_into_ix(ix_offset, file_out);
+    _load_h_into_ix(ix_offset + 1, file_out);
   }
   else {
     /* 8-bit */
-    _load_l_into_ix(0, file_out);
+    _load_l_into_ix(ix_offset, file_out);
   }
   
   return SUCCEEDED;
@@ -2447,7 +2580,7 @@ static int _generate_asm_shift_left_right_z80_16bit(struct tac *t, FILE *file_ou
 
 static int _generate_asm_shift_left_right_z80_8bit(struct tac *t, FILE *file_out, struct tree_node *function_node, int op) {
 
-  int result_offset = -1, arg1_offset = -1, arg2_offset = -1;
+  int result_offset = -1, arg1_offset = -1, arg2_offset = -1, ix_offset = 0;
   
   /* result */
 
@@ -2480,6 +2613,11 @@ static int _generate_asm_shift_left_right_z80_8bit(struct tac *t, FILE *file_out
     /* it's a variable in the frame! */
     fprintf(file_out, "      ; offset %d\n", arg1_offset);
 
+    if (arg1_offset >= -128 && arg1_offset <= 126) {
+      ix_offset = arg1_offset;
+      arg1_offset = 0;
+    }
+
     _load_value_to_ix(arg1_offset, file_out);
     _add_de_to_ix(file_out);
   }
@@ -2494,12 +2632,14 @@ static int _generate_asm_shift_left_right_z80_8bit(struct tac *t, FILE *file_out
   }
   else {
     /* 8-bit */
-    _load_from_ix_to_b(0, file_out);
+    _load_from_ix_to_b(ix_offset, file_out);
   }
 
   /******************************************************************************************************/
   /* source address (arg2) -> ix */
   /******************************************************************************************************/
+
+  ix_offset = 0;
   
   if (t->arg2_type == TAC_ARG_TYPE_CONSTANT) {
   }
@@ -2510,6 +2650,11 @@ static int _generate_asm_shift_left_right_z80_8bit(struct tac *t, FILE *file_out
   else {
     /* it's a variable in the frame! */
     fprintf(file_out, "      ; offset %d\n", arg2_offset);
+
+    if (arg2_offset >= -128 && arg2_offset <= 126) {
+      ix_offset = arg2_offset;
+      arg2_offset = 0;
+    }
 
     _load_value_to_ix(arg2_offset, file_out);
     _add_de_to_ix(file_out);
@@ -2525,7 +2670,7 @@ static int _generate_asm_shift_left_right_z80_8bit(struct tac *t, FILE *file_out
   }
   else {
     /* 8-bit */
-    _load_from_ix_to_a(0, file_out);
+    _load_from_ix_to_a(ix_offset, file_out);
   }
   
   /******************************************************************************************************/
@@ -2564,6 +2709,8 @@ static int _generate_asm_shift_left_right_z80_8bit(struct tac *t, FILE *file_out
   /******************************************************************************************************/
   /* target address -> ix */
   /******************************************************************************************************/
+
+  ix_offset = 0;
   
   if (t->result_type == TAC_ARG_TYPE_CONSTANT) {
     fprintf(stderr, "_generate_asm_add_sub_or_and_z80_8bit(): Target cannot be a value!\n");
@@ -2577,6 +2724,11 @@ static int _generate_asm_shift_left_right_z80_8bit(struct tac *t, FILE *file_out
     /* it's a variable in the frame! */
     fprintf(file_out, "      ; offset %d\n", result_offset);
 
+    if (result_offset >= -128 && result_offset <= 126) {
+      ix_offset = result_offset;
+      result_offset = 0;
+    }
+
     _load_value_to_ix(result_offset, file_out);
     _add_de_to_ix(file_out);
   }
@@ -2589,22 +2741,22 @@ static int _generate_asm_shift_left_right_z80_8bit(struct tac *t, FILE *file_out
     /* 16-bit */
 
     /* lower byte */
-    _load_b_into_ix(0, file_out);
+    _load_b_into_ix(ix_offset, file_out);
 
     /* sign extend 8-bit -> 16-bit? */
     if (t->result_var_type == VARIABLE_TYPE_INT16 && (t->arg1_var_type == VARIABLE_TYPE_INT8 ||
                                                       t->arg2_var_type == VARIABLE_TYPE_INT8)) {
       /* yes */
-      _sign_extend_b_into_ix(1, file_out);
+      _sign_extend_b_into_ix(ix_offset + 1, file_out);
     }
     else {
       /* upper byte = 0 */
-      _load_value_into_ix(0, 1, file_out);
+      _load_value_into_ix(0, ix_offset + 1, file_out);
     }
   }
   else {
     /* 8-bit */
-    _load_b_into_ix(0, file_out);
+    _load_b_into_ix(ix_offset, file_out);
   }
 
   return SUCCEEDED;
@@ -2629,7 +2781,7 @@ static int _generate_asm_shift_left_right_z80(struct tac *t, FILE *file_out, str
 
 static int _generate_asm_mul_div_mod_z80_16bit(struct tac *t, FILE *file_out, struct tree_node *function_node, int op) {
 
-  int result_offset = -1, arg1_offset = -1, arg2_offset = -1;
+  int result_offset = -1, arg1_offset = -1, arg2_offset = -1, ix_offset = 0;
   
   /* result */
 
@@ -2662,6 +2814,11 @@ static int _generate_asm_mul_div_mod_z80_16bit(struct tac *t, FILE *file_out, st
     /* it's a variable in the frame! */
     fprintf(file_out, "      ; offset %d\n", arg1_offset);
 
+    if (arg1_offset >= -128 && arg1_offset <= 126) {
+      ix_offset = arg1_offset;
+      arg1_offset = 0;
+    }
+
     _load_value_to_ix(arg1_offset, file_out);
     _add_de_to_ix(file_out);
   }
@@ -2677,12 +2834,12 @@ static int _generate_asm_mul_div_mod_z80_16bit(struct tac *t, FILE *file_out, st
   else {
     if (t->arg1_var_type == VARIABLE_TYPE_INT16 || t->arg1_var_type == VARIABLE_TYPE_UINT16) {
       /* 16-bit */
-      _load_from_ix_to_c(0, file_out);
-      _load_from_ix_to_b(1, file_out);
+      _load_from_ix_to_c(ix_offset, file_out);
+      _load_from_ix_to_b(ix_offset + 1, file_out);
     }
     else {
       /* 8-bit */
-      _load_from_ix_to_c(0, file_out);
+      _load_from_ix_to_c(ix_offset, file_out);
 
       /* sign extend 8-bit -> 16-bit? */
       if (t->arg1_var_type == VARIABLE_TYPE_INT8 && (t->arg1_var_type_promoted == VARIABLE_TYPE_INT16 ||
@@ -2705,6 +2862,8 @@ static int _generate_asm_mul_div_mod_z80_16bit(struct tac *t, FILE *file_out, st
   /******************************************************************************************************/
   /* source address (arg2) -> ix */
   /******************************************************************************************************/
+
+  ix_offset = 0;
   
   if (t->arg2_type == TAC_ARG_TYPE_CONSTANT) {
   }
@@ -2715,6 +2874,11 @@ static int _generate_asm_mul_div_mod_z80_16bit(struct tac *t, FILE *file_out, st
   else {
     /* it's a variable in the frame! */
     fprintf(file_out, "      ; offset %d\n", arg2_offset);
+
+    if (arg2_offset >= -128 && arg2_offset <= 126) {
+      ix_offset = arg2_offset;
+      arg2_offset = 0;
+    }
 
     _load_value_to_ix(arg2_offset, file_out);
     _add_de_to_ix(file_out);
@@ -2734,12 +2898,12 @@ static int _generate_asm_mul_div_mod_z80_16bit(struct tac *t, FILE *file_out, st
   else {
     if (t->arg2_var_type == VARIABLE_TYPE_INT16 || t->arg2_var_type == VARIABLE_TYPE_UINT16) {
       /* 16-bit */
-      _load_from_ix_to_e(0, file_out);
-      _load_from_ix_to_d(1, file_out);
+      _load_from_ix_to_e(ix_offset, file_out);
+      _load_from_ix_to_d(ix_offset + 1, file_out);
     }
     else {
       /* 8-bit */
-      _load_from_ix_to_e(0, file_out);
+      _load_from_ix_to_e(ix_offset, file_out);
 
       /* sign extend 8-bit -> 16-bit? */
       if (t->arg2_var_type == VARIABLE_TYPE_INT8 && (t->arg2_var_type_promoted == VARIABLE_TYPE_INT16 ||
@@ -2849,6 +3013,8 @@ static int _generate_asm_mul_div_mod_z80_16bit(struct tac *t, FILE *file_out, st
   /* target address -> ix */
   /******************************************************************************************************/
   
+  ix_offset = 0;
+
   if (t->result_type == TAC_ARG_TYPE_CONSTANT) {
     fprintf(stderr, "_generate_asm_mul_div_mod_z80_16bit(): Target cannot be a value!\n");
     return FAILED;
@@ -2861,6 +3027,11 @@ static int _generate_asm_mul_div_mod_z80_16bit(struct tac *t, FILE *file_out, st
     /* it's a variable in the frame! */
     fprintf(file_out, "      ; offset %d\n", result_offset);
 
+    if (result_offset >= -128 && result_offset <= 126) {
+      ix_offset = result_offset;
+      result_offset = 0;
+    }
+
     _load_value_to_ix(result_offset, file_out);
     _add_de_to_ix(file_out);
   }
@@ -2872,12 +3043,12 @@ static int _generate_asm_mul_div_mod_z80_16bit(struct tac *t, FILE *file_out, st
   if (op == TAC_OP_DIV) {
     if (t->result_var_type == VARIABLE_TYPE_INT16 || t->result_var_type == VARIABLE_TYPE_UINT16) {
       /* 16-bit */
-      _load_a_into_ix(0, file_out);
-      _load_c_into_ix(1, file_out);
+      _load_a_into_ix(ix_offset, file_out);
+      _load_c_into_ix(ix_offset + 1, file_out);
     }
     else {
       /* 8-bit */
-      _load_a_into_ix(0, file_out);
+      _load_a_into_ix(ix_offset, file_out);
     }
   }
 
@@ -2888,12 +3059,12 @@ static int _generate_asm_mul_div_mod_z80_16bit(struct tac *t, FILE *file_out, st
   if (op == TAC_OP_MUL || op == TAC_OP_MOD) {
     if (t->result_var_type == VARIABLE_TYPE_INT16 || t->result_var_type == VARIABLE_TYPE_UINT16) {
       /* 16-bit */
-      _load_l_into_ix(0, file_out);
-      _load_h_into_ix(1, file_out);
+      _load_l_into_ix(ix_offset, file_out);
+      _load_h_into_ix(ix_offset + 1, file_out);
     }
     else {
       /* 8-bit */
-      _load_l_into_ix(0, file_out);
+      _load_l_into_ix(ix_offset, file_out);
     }
   }
 
@@ -2903,7 +3074,7 @@ static int _generate_asm_mul_div_mod_z80_16bit(struct tac *t, FILE *file_out, st
 
 static int _generate_asm_mul_div_mod_z80_8bit(struct tac *t, FILE *file_out, struct tree_node *function_node, int op) {
 
-  int result_offset = -1, arg1_offset = -1, arg2_offset = -1;
+  int result_offset = -1, arg1_offset = -1, arg2_offset = -1, ix_offset = 0;
   
   /* result */
 
@@ -2936,6 +3107,11 @@ static int _generate_asm_mul_div_mod_z80_8bit(struct tac *t, FILE *file_out, str
     /* it's a variable in the frame! */
     fprintf(file_out, "      ; offset %d\n", arg1_offset);
 
+    if (arg1_offset >= -128 && arg1_offset <= 126) {
+      ix_offset = arg1_offset;
+      arg1_offset = 0;
+    }
+
     _load_value_to_ix(arg1_offset, file_out);
     _add_de_to_ix(file_out);
   }
@@ -2950,13 +3126,15 @@ static int _generate_asm_mul_div_mod_z80_8bit(struct tac *t, FILE *file_out, str
   }
   else {
     /* 8-bit */
-    _load_from_ix_to_h(0, file_out);
+    _load_from_ix_to_h(ix_offset, file_out);
   }
 
   /******************************************************************************************************/
   /* source address (arg2) -> ix */
   /******************************************************************************************************/
   
+  ix_offset = 0;
+
   if (t->arg2_type == TAC_ARG_TYPE_CONSTANT) {
   }
   else if (t->arg2_type == TAC_ARG_TYPE_LABEL && arg2_offset == 999999) {
@@ -2966,6 +3144,11 @@ static int _generate_asm_mul_div_mod_z80_8bit(struct tac *t, FILE *file_out, str
   else {
     /* it's a variable in the frame! */
     fprintf(file_out, "      ; offset %d\n", arg2_offset);
+
+    if (arg2_offset >= -128 && arg2_offset <= 126) {
+      ix_offset = arg2_offset;
+      arg2_offset = 0;
+    }
 
     _load_value_to_ix(arg2_offset, file_out);
     _add_de_to_ix(file_out);
@@ -2984,7 +3167,7 @@ static int _generate_asm_mul_div_mod_z80_8bit(struct tac *t, FILE *file_out, str
   }
   else {
     /* 8-bit */
-    _load_from_ix_to_e(0, file_out);
+    _load_from_ix_to_e(ix_offset, file_out);
   }
 
   /******************************************************************************************************/
@@ -3050,6 +3233,8 @@ static int _generate_asm_mul_div_mod_z80_8bit(struct tac *t, FILE *file_out, str
   /******************************************************************************************************/
   /* target address -> ix */
   /******************************************************************************************************/
+
+  ix_offset = 0;
   
   if (t->result_type == TAC_ARG_TYPE_CONSTANT) {
     fprintf(stderr, "_generate_asm_add_sub_or_and_z80_8bit(): Target cannot be a value!\n");
@@ -3063,6 +3248,11 @@ static int _generate_asm_mul_div_mod_z80_8bit(struct tac *t, FILE *file_out, str
     /* it's a variable in the frame! */
     fprintf(file_out, "      ; offset %d\n", result_offset);
 
+    if (result_offset >= -128 && result_offset <= 126) {
+      ix_offset = result_offset;
+      result_offset = 0;
+    }
+
     _load_value_to_ix(result_offset, file_out);
     _add_de_to_ix(file_out);
   }
@@ -3074,12 +3264,12 @@ static int _generate_asm_mul_div_mod_z80_8bit(struct tac *t, FILE *file_out, str
   if (op == TAC_OP_MUL) {
     if (t->result_var_type == VARIABLE_TYPE_INT16 || t->result_var_type == VARIABLE_TYPE_UINT16) {
       /* 16-bit */
-      _load_l_into_ix(0, file_out);
-      _load_h_into_ix(1, file_out);
+      _load_l_into_ix(ix_offset, file_out);
+      _load_h_into_ix(ix_offset + 1, file_out);
     }
     else {
       /* 8-bit */
-      _load_l_into_ix(0, file_out);
+      _load_l_into_ix(ix_offset, file_out);
     }
   }
 
@@ -3092,22 +3282,22 @@ static int _generate_asm_mul_div_mod_z80_8bit(struct tac *t, FILE *file_out, str
       /* 16-bit */
 
       /* lower byte */
-      _load_a_into_ix(0, file_out);
+      _load_a_into_ix(ix_offset, file_out);
 
       /* sign extend 8-bit -> 16-bit? */
       if (t->result_var_type == VARIABLE_TYPE_INT16 && (t->arg1_var_type == VARIABLE_TYPE_INT8 ||
                                                         t->arg2_var_type == VARIABLE_TYPE_INT8)) {
         /* yes */
-        _sign_extend_a_into_ix(1, file_out);
+        _sign_extend_a_into_ix(ix_offset + 1, file_out);
       }
       else {
         /* upper byte = 0 */
-        _load_value_into_ix(0, 1, file_out);
+        _load_value_into_ix(0, ix_offset + 1, file_out);
       }
     }
     else {
       /* 8-bit */
-      _load_a_into_ix(0, file_out);
+      _load_a_into_ix(ix_offset, file_out);
     }
   }
 
@@ -3120,22 +3310,22 @@ static int _generate_asm_mul_div_mod_z80_8bit(struct tac *t, FILE *file_out, str
       /* 16-bit */
 
       /* lower byte */
-      _load_b_into_ix(0, file_out);
+      _load_b_into_ix(ix_offset, file_out);
 
       /* sign extend 8-bit -> 16-bit? */
       if (t->result_var_type == VARIABLE_TYPE_INT16 && (t->arg1_var_type == VARIABLE_TYPE_INT8 ||
                                                         t->arg2_var_type == VARIABLE_TYPE_INT8)) {
         /* yes */
-        _sign_extend_b_into_ix(1, file_out);
+        _sign_extend_b_into_ix(ix_offset + 1, file_out);
       }
       else {
         /* upper byte = 0 */
-        _load_value_into_ix(0, 1, file_out);
+        _load_value_into_ix(0, ix_offset + 1, file_out);
       }
     }
     else {
       /* 8-bit */
-      _load_b_into_ix(0, file_out);
+      _load_b_into_ix(ix_offset, file_out);
     }
   }
   
@@ -3161,7 +3351,7 @@ static int _generate_asm_mul_div_mod_z80(struct tac *t, FILE *file_out, struct t
 
 static int _generate_asm_jump_eq_lt_gt_neq_lte_gte_z80_16bit(struct tac *t, FILE *file_out, struct tree_node *function_node, int op) {
 
-  int arg1_offset = -1, arg2_offset = -1;
+  int arg1_offset = -1, arg2_offset = -1, ix_offset = 0;
 
   /* arg1 */
 
@@ -3189,6 +3379,11 @@ static int _generate_asm_jump_eq_lt_gt_neq_lte_gte_z80_16bit(struct tac *t, FILE
     /* it's a variable in the frame! */
     fprintf(file_out, "      ; offset %d\n", arg1_offset);
 
+    if (arg1_offset >= -128 && arg1_offset <= 126) {
+      ix_offset = arg1_offset;
+      arg1_offset = 0;
+    }
+
     _load_value_to_ix(arg1_offset, file_out);
     _add_de_to_ix(file_out);
   }
@@ -3204,12 +3399,12 @@ static int _generate_asm_jump_eq_lt_gt_neq_lte_gte_z80_16bit(struct tac *t, FILE
   else {
     if (t->arg1_var_type == VARIABLE_TYPE_INT16 || t->arg1_var_type == VARIABLE_TYPE_UINT16) {
       /* 16-bit */
-      _load_from_ix_to_l(0, file_out);
-      _load_from_ix_to_h(1, file_out);
+      _load_from_ix_to_l(ix_offset, file_out);
+      _load_from_ix_to_h(ix_offset + 1, file_out);
     }
     else {
       /* 8-bit */
-      _load_from_ix_to_l(0, file_out);
+      _load_from_ix_to_l(ix_offset, file_out);
 
       /* sign extend 8-bit -> 16-bit? */
       if (t->arg1_var_type == VARIABLE_TYPE_INT8 && (t->arg1_var_type_promoted == VARIABLE_TYPE_INT16 ||
@@ -3233,6 +3428,8 @@ static int _generate_asm_jump_eq_lt_gt_neq_lte_gte_z80_16bit(struct tac *t, FILE
   /* source address (arg2) -> ix */
   /******************************************************************************************************/
   
+  ix_offset = 0;
+
   if (t->arg2_type == TAC_ARG_TYPE_CONSTANT) {
   }
   else if (t->arg2_type == TAC_ARG_TYPE_LABEL && arg2_offset == 999999) {
@@ -3242,6 +3439,11 @@ static int _generate_asm_jump_eq_lt_gt_neq_lte_gte_z80_16bit(struct tac *t, FILE
   else {
     /* it's a variable in the frame! */
     fprintf(file_out, "      ; offset %d\n", arg2_offset);
+
+    if (arg2_offset >= -128 && arg2_offset <= 126) {
+      ix_offset = arg2_offset;
+      arg2_offset = 0;
+    }
 
     _load_value_to_ix(arg2_offset, file_out);
     _add_de_to_ix(file_out);
@@ -3258,12 +3460,12 @@ static int _generate_asm_jump_eq_lt_gt_neq_lte_gte_z80_16bit(struct tac *t, FILE
   else {
     if (t->arg2_var_type == VARIABLE_TYPE_INT16 || t->arg2_var_type == VARIABLE_TYPE_UINT16) {
       /* 16-bit */
-      _load_from_ix_to_c(0, file_out);
-      _load_from_ix_to_b(1, file_out);
+      _load_from_ix_to_c(ix_offset, file_out);
+      _load_from_ix_to_b(ix_offset + 1, file_out);
     }
     else {
       /* 8-bit */
-      _load_from_ix_to_c(0, file_out);
+      _load_from_ix_to_c(ix_offset, file_out);
 
       /* sign extend 8-bit -> 16-bit? */
       if (t->arg2_var_type == VARIABLE_TYPE_INT8 && (t->arg2_var_type_promoted == VARIABLE_TYPE_INT16 ||
@@ -3316,7 +3518,7 @@ static int _generate_asm_jump_eq_lt_gt_neq_lte_gte_z80_16bit(struct tac *t, FILE
 
 static int _generate_asm_jump_eq_lt_gt_neq_lte_gte_z80_8bit(struct tac *t, FILE *file_out, struct tree_node *function_node, int op) {
 
-  int arg1_offset = -1, arg2_offset = -1;
+  int arg1_offset = -1, arg2_offset = -1, ix_offset = 0;
   
   /* arg1 */
 
@@ -3344,6 +3546,11 @@ static int _generate_asm_jump_eq_lt_gt_neq_lte_gte_z80_8bit(struct tac *t, FILE 
     /* it's a variable in the frame! */
     fprintf(file_out, "      ; offset %d\n", arg1_offset);
 
+    if (arg1_offset >= -128 && arg1_offset <= 126) {
+      ix_offset = arg1_offset;
+      arg1_offset = 0;
+    }
+
     _load_value_to_ix(arg1_offset, file_out);
     _add_de_to_ix(file_out);
   }
@@ -3358,12 +3565,14 @@ static int _generate_asm_jump_eq_lt_gt_neq_lte_gte_z80_8bit(struct tac *t, FILE 
   }
   else {
     /* 8-bit */
-    _load_from_ix_to_a(0, file_out);
+    _load_from_ix_to_a(ix_offset, file_out);
   }
 
   /******************************************************************************************************/
   /* source address (arg2) -> ix */
   /******************************************************************************************************/
+
+  ix_offset = 0;
   
   if (t->arg2_type == TAC_ARG_TYPE_CONSTANT) {
   }
@@ -3374,6 +3583,11 @@ static int _generate_asm_jump_eq_lt_gt_neq_lte_gte_z80_8bit(struct tac *t, FILE 
   else {
     /* it's a variable in the frame! */
     fprintf(file_out, "      ; offset %d\n", arg2_offset);
+
+    if (arg2_offset >= -128 && arg2_offset <= 126) {
+      ix_offset = arg2_offset;
+      arg2_offset = 0;
+    }
 
     _load_value_to_ix(arg2_offset, file_out);
     _add_de_to_ix(file_out);
@@ -3389,7 +3603,7 @@ static int _generate_asm_jump_eq_lt_gt_neq_lte_gte_z80_8bit(struct tac *t, FILE 
   }
   else {
     /* 8-bit */
-    _load_from_ix_to_b(0, file_out);
+    _load_from_ix_to_b(ix_offset, file_out);
   }
   
   /******************************************************************************************************/
@@ -3458,7 +3672,7 @@ static int _generate_asm_return_z80(struct tac *t, FILE *file_out, struct tree_n
 
 static int _generate_asm_return_value_z80(struct tac *t, FILE *file_out, struct tree_node *function_node) {
 
-  int arg1_offset = -1, return_var_type;
+  int arg1_offset = -1, return_var_type, ix_offset = 0;
 
   /* arg1 */
 
@@ -3485,6 +3699,11 @@ static int _generate_asm_return_value_z80(struct tac *t, FILE *file_out, struct 
     /* it's a variable in the frame! */
     fprintf(file_out, "      ; offset %d\n", arg1_offset);
 
+    if (arg1_offset >= -128 && arg1_offset <= 126) {
+      ix_offset = arg1_offset;
+      arg1_offset = 0;
+    }
+
     _load_value_to_ix(arg1_offset, file_out);
     _add_de_to_ix(file_out);
   }
@@ -3507,18 +3726,18 @@ static int _generate_asm_return_value_z80(struct tac *t, FILE *file_out, struct 
     if (t->arg1_var_type == VARIABLE_TYPE_INT16 || t->arg1_var_type == VARIABLE_TYPE_UINT16) {
       if (return_var_type == VARIABLE_TYPE_INT16 || return_var_type == VARIABLE_TYPE_UINT16) {
         /* 16-bit */
-        _load_from_ix_to_l(0, file_out);
-        _load_from_ix_to_h(1, file_out);
+        _load_from_ix_to_l(ix_offset, file_out);
+        _load_from_ix_to_h(ix_offset + 1, file_out);
       }
       else {
         /* 8-bit */
-        _load_from_ix_to_l(0, file_out);
+        _load_from_ix_to_l(ix_offset, file_out);
       }
     }
     else {
       if (return_var_type == VARIABLE_TYPE_INT16 || return_var_type == VARIABLE_TYPE_UINT16) {
         /* 8-bit -> 16bit */
-        _load_from_ix_to_l(0, file_out);
+        _load_from_ix_to_l(ix_offset, file_out);
 
         /* sign extend 8-bit -> 16-bit? */
         if (t->arg1_var_type == VARIABLE_TYPE_INT8) {
@@ -3536,7 +3755,7 @@ static int _generate_asm_return_value_z80(struct tac *t, FILE *file_out, struct 
       }
       else {
         /* 8-bit */
-        _load_from_ix_to_l(0, file_out);
+        _load_from_ix_to_l(ix_offset, file_out);
       }
     }
   }
@@ -3876,7 +4095,7 @@ static int _generate_asm_function_call_z80(struct tac *t, FILE *file_out, struct
 
 static int _generate_asm_inline_asm_read_z80(struct tac *t, FILE *file_out, struct tree_node *function_node, struct asm_line *al, int file_id) {
 
-  int offset = -1;
+  int offset = -1, ix_offset = 0;
 
   if (find_stack_offset(TAC_ARG_TYPE_LABEL, al->variable->children[1]->label, 0, al->variable, &offset, function_node) == FAILED)
     return FAILED;
@@ -3895,6 +4114,11 @@ static int _generate_asm_inline_asm_read_z80(struct tac *t, FILE *file_out, stru
     /* it's a variable in the frame! */
     fprintf(file_out, "      ; offset %d\n", offset);
 
+    if (offset >= -128 && offset <= 126) {
+      ix_offset = offset;
+      offset = 0;
+    }
+
     _load_value_to_ix(offset, file_out);
     _add_de_to_ix(file_out);
   }
@@ -3905,7 +4129,7 @@ static int _generate_asm_inline_asm_read_z80(struct tac *t, FILE *file_out, stru
 
   if (al->cpu_register[1] == 0) {
     /* target is A/B/C/D/E/H/L */
-    _load_from_ix_to_register(0, al->cpu_register[0], file_out);
+    _load_from_ix_to_register(ix_offset, al->cpu_register[0], file_out);
   }
   else {
     /* target is BC/DE/HL */
@@ -3915,12 +4139,12 @@ static int _generate_asm_inline_asm_read_z80(struct tac *t, FILE *file_out, stru
 
     if (var_type == VARIABLE_TYPE_INT16 || var_type == VARIABLE_TYPE_UINT16) {
       /* 16-bit */
-      _load_from_ix_to_register(0, al->cpu_register[1], file_out);
-      _load_from_ix_to_register(1, al->cpu_register[0], file_out);
+      _load_from_ix_to_register(ix_offset, al->cpu_register[1], file_out);
+      _load_from_ix_to_register(ix_offset + 1, al->cpu_register[0], file_out);
     }
     else {
       fprintf(stderr, "%s:%d: _generate_asm_inline_asm_read_z80(): Reading an 8-bit variable into 16-bit register pair! We only read the lower 8 bits, remember to take care of the upper 8 bits!\n", get_file_name(file_id), al->line_number);
-      _load_from_ix_to_register(0, al->cpu_register[1], file_out);
+      _load_from_ix_to_register(ix_offset, al->cpu_register[1], file_out);
     }
   }
 
@@ -3930,7 +4154,7 @@ static int _generate_asm_inline_asm_read_z80(struct tac *t, FILE *file_out, stru
 
 static int _generate_asm_inline_asm_write_z80(struct tac *t, FILE *file_out, struct tree_node *function_node, struct asm_line *al, int file_id) {
 
-  int offset = -1;
+  int offset = -1, ix_offset = 0;
 
   if (find_stack_offset(TAC_ARG_TYPE_LABEL, al->variable->children[1]->label, 0, al->variable, &offset, function_node) == FAILED)
     return FAILED;
@@ -3949,6 +4173,11 @@ static int _generate_asm_inline_asm_write_z80(struct tac *t, FILE *file_out, str
     /* it's a variable in the frame! */
     fprintf(file_out, "      ; offset %d\n", offset);
 
+    if (offset >= -128 && offset <= 126) {
+      ix_offset = offset;
+      offset = 0;
+    }
+
     _load_value_to_ix(offset, file_out);
     _add_de_to_ix(file_out);
   }
@@ -3959,7 +4188,7 @@ static int _generate_asm_inline_asm_write_z80(struct tac *t, FILE *file_out, str
 
   if (al->cpu_register[1] == 0) {
     /* source is A/B/C/D/E/H/L */
-    _load_register_into_ix(0, al->cpu_register[0], file_out);
+    _load_register_into_ix(ix_offset, al->cpu_register[0], file_out);
   }
   else {
     /* source is BC/DE/HL */
@@ -3969,12 +4198,12 @@ static int _generate_asm_inline_asm_write_z80(struct tac *t, FILE *file_out, str
 
     if (var_type == VARIABLE_TYPE_INT16 || var_type == VARIABLE_TYPE_UINT16) {
       /* 16-bit */
-      _load_register_into_ix(0, al->cpu_register[1], file_out);
-      _load_register_into_ix(1, al->cpu_register[0], file_out);
+      _load_register_into_ix(ix_offset, al->cpu_register[1], file_out);
+      _load_register_into_ix(ix_offset + 1, al->cpu_register[0], file_out);
     }
     else {
       fprintf(stderr, "%s:%d: _generate_asm_inline_asm_write_z80(): Writing a 16-bit value into an 8-bit variable! We only write the lower 8 bits...\n", get_file_name(file_id), al->line_number);
-      _load_register_into_ix(0, al->cpu_register[1], file_out);
+      _load_register_into_ix(ix_offset, al->cpu_register[1], file_out);
     }
   }
 

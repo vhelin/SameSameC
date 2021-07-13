@@ -1,34 +1,4 @@
 
-  .RAMSECTION "global_variables_test2_ram" FREE
-    g_i DB
-  .ENDS
-
-  .SECTION "global_variables_test2_rom" FREE
-    global_variable_rom_g_i:
-      .DB 1
-  .ENDS
-
-  .SECTION "global_variables_test2_init" FREE
-    global_variables_test2_init:
-      ; copy all fully initialized global variables in a single call
-      LD  HL,g_i
-      LD  DE,global_variable_rom_g_i
-      LD  BC,1
-      CALL _copy_bytes
-      RET
-
-    _copy_bytes:
-      LD  A,(DE)
-      LD  (HL),A
-      INC DE
-      INC HL
-      DEC BC
-      LD  A,B
-      OR  A,C
-      JR  NZ,_copy_bytes
-      RET
-  .ENDS
-
   .SECTION "main" FREE
     ; =================================================================
     ; ../test2.blb:5: void main(void) {
@@ -55,9 +25,9 @@
       ; TAC: color.uint8 (uint8) := 0.uint8 (uint8)
       ; -----------------------------------------------------------------
       ; offset -4
-      LD  IX,-4
+      LD  IX,0
       ADD IX,DE
-      LD  (IX+0),0
+      LD  (IX-4),0
       ; =================================================================
       ; ../test2.blb:8: uint8 i;
       ; =================================================================
@@ -88,15 +58,15 @@
       LD  A,192
       OUT ($BF),A
       ; =================================================================
-      ; ../test2.blb:13: for (i = 0; i < 32; i++) {
+      ; ../test2.blb:14: for (i = 0; i < 32; i++) {
       ; =================================================================
       ; -----------------------------------------------------------------
       ; TAC: i.uint8 (uint8) := 0.uint8 (uint8)
       ; -----------------------------------------------------------------
       ; offset -5
-      LD  IX,-5
+      LD  IX,0
       ADD IX,DE
-      LD  (IX+0),0
+      LD  (IX-5),0
       ; -----------------------------------------------------------------
       ; TAC: _label_3:
       ; -----------------------------------------------------------------
@@ -105,16 +75,16 @@
       ; TAC: r0.uint8 (uint8) := 0.uint8 (uint8)
       ; -----------------------------------------------------------------
       ; offset -6
-      LD  IX,-6
+      LD  IX,0
       ADD IX,DE
-      LD  (IX+0),0
+      LD  (IX-6),0
       ; -----------------------------------------------------------------
       ; TAC: if i.uint8 (uint8) < 32.uint8 (uint8) jmp _label_6
       ; -----------------------------------------------------------------
       ; offset -5
-      LD  IX,-5
+      LD  IX,0
       ADD IX,DE
-      LD  A,(IX+0)
+      LD  A,(IX-5)
       LD  B,32
       SUB A,B
       JP  C,_label_6
@@ -130,9 +100,9 @@
       ; TAC: r0.uint8 (uint8) := 1.uint8 (uint8)
       ; -----------------------------------------------------------------
       ; offset -6
-      LD  IX,-6
+      LD  IX,0
       ADD IX,DE
-      LD  (IX+0),1
+      LD  (IX-6),1
       ; -----------------------------------------------------------------
       ; TAC: _label_7:
       ; -----------------------------------------------------------------
@@ -141,22 +111,22 @@
       ; TAC: if r0.uint8 (uint8) == 0.uint8 (uint8) jmp _label_5
       ; -----------------------------------------------------------------
       ; offset -6
-      LD  IX,-6
+      LD  IX,0
       ADD IX,DE
-      LD  A,(IX+0)
+      LD  A,(IX-6)
       LD  B,0
       SUB A,B
       JP  Z,_label_5
       ; =================================================================
-      ; ../test2.blb:14: __z80_out[0xBE] = color;
+      ; ../test2.blb:15: __z80_out[0xBE] = color;
       ; =================================================================
       ; -----------------------------------------------------------------
       ; TAC: __z80_out.uint8 (uint8)[190.uint8 (uint8)] := color.uint8 (uint8)
       ; -----------------------------------------------------------------
       ; offset -4
-      LD  IX,-4
+      LD  IX,0
       ADD IX,DE
-      LD  A,(IX+0)
+      LD  A,(IX-4)
       OUT ($BE),A
       ; -----------------------------------------------------------------
       ; TAC: _label_4:
@@ -166,14 +136,14 @@
       ; TAC: i.uint8 (uint8) := i.uint8 (uint8) + 1.uint8 (uint8)
       ; -----------------------------------------------------------------
       ; offset -5
-      LD  IX,-5
+      LD  IX,0
       ADD IX,DE
-      LD  A,(IX+0)
+      LD  A,(IX-5)
       INC A
       ; offset -5
-      LD  IX,-5
+      LD  IX,0
       ADD IX,DE
-      LD  (IX+0),A
+      LD  (IX-5),A
       ; -----------------------------------------------------------------
       ; TAC: jmp _label_3
       ; -----------------------------------------------------------------
@@ -183,7 +153,7 @@
       ; -----------------------------------------------------------------
     _label_5:
       ; =================================================================
-      ; ../test2.blb:17: add_to_color(&color, g_i);
+      ; ../test2.blb:18: add_to_color(&color, 1);
       ; =================================================================
       ; -----------------------------------------------------------------
       ; TAC: r1.uint16 (uint16) := &color.uint16 (uint16)
@@ -192,12 +162,12 @@
       LD  HL,-4
       ADD HL,DE
       ; offset -8
-      LD  IX,-8
+      LD  IX,0
       ADD IX,DE
-      LD  (IX+0),L
-      LD  (IX+1),H
+      LD  (IX-8),L
+      LD  (IX-7),H
       ; -----------------------------------------------------------------
-      ; TAC: add_to_color(r1.uint16, g_i.uint8 (uint8))
+      ; TAC: add_to_color(r1.uint16, 1.uint8 (uint8))
       ; -----------------------------------------------------------------
       LD  HL,0
       ADD HL,SP
@@ -219,9 +189,7 @@
       LD  (IX-5),C
       LD  (IX-4),B
       ; copy argument 2
-      LD  IY,g_i
-      LD  C,(IY+0)
-      LD  (IX-6),C
+      LD  (IX-6),1
       ; new stack frame -> DE
       LD  D,H
       LD  E,L
@@ -241,7 +209,7 @@
 
   .SECTION "add_to_color" FREE
     ; =================================================================
-    ; ../test2.blb:23: void add_to_color(uint8 *color, uint8 adder) {
+    ; ../test2.blb:22: void add_to_color(uint8 *color, uint8 adder) {
     ; =================================================================
     add_to_color:
       ; A  - tmp
@@ -262,46 +230,46 @@
       ; TAC: variable "adder" size 1 offset -6 type a
       ; -----------------------------------------------------------------
       ; =================================================================
-      ; ../test2.blb:25: color[0] += adder;
+      ; ../test2.blb:24: color[0] += adder;
       ; =================================================================
       ; -----------------------------------------------------------------
       ; TAC: r0.uint8 (uint8) := color.uint16 (uint8)[0.uint8 (uint8)]
       ; -----------------------------------------------------------------
       ; offset -5
-      LD  IX,-5
+      LD  IX,0
       ADD IX,DE
-      LD  C,(IX+0)
-      LD  B,(IX+1)
+      LD  C,(IX-5)
+      LD  B,(IX-4)
       LD  IX,0
       ADD IX,BC
       LD  L,(IX+0)
       ; offset -7
-      LD  IX,-7
+      LD  IX,0
       ADD IX,DE
-      LD  (IX+0),L
+      LD  (IX-7),L
       ; -----------------------------------------------------------------
       ; TAC: r1.uint8 (uint8) := r0.uint8 (uint8) + adder.uint8 (uint8)
       ; -----------------------------------------------------------------
       ; offset -7
-      LD  IX,-7
+      LD  IX,0
       ADD IX,DE
-      LD  A,(IX+0)
+      LD  A,(IX-7)
       ; offset -6
-      LD  IX,-6
+      LD  IX,0
       ADD IX,DE
-      ADD A,(IX+0)
+      ADD A,(IX-6)
       ; offset -8
-      LD  IX,-8
+      LD  IX,0
       ADD IX,DE
-      LD  (IX+0),A
+      LD  (IX-8),A
       ; -----------------------------------------------------------------
       ; TAC: color.uint16 (uint8)[0.uint8 (uint8)] := r1.uint8 (uint8)
       ; -----------------------------------------------------------------
       ; offset -5
-      LD  IX,-5
+      LD  IX,0
       ADD IX,DE
-      LD  C,(IX+0)
-      LD  B,(IX+1)
+      LD  C,(IX-5)
+      LD  B,(IX-4)
       LD  IX,0
       ADD IX,BC
       ; offset -8
