@@ -1511,6 +1511,19 @@ static int _optimize_il_22(int *optimizations_counter) {
 }
 
 
+static int _get_registers_index_in_function_call_arguments(struct tac *t, int reg) {
+
+  int i;
+
+  for (i = 0; i < t->arguments_count; i++) {
+    if (t->arguments[i].type == TAC_ARG_TYPE_TEMP && ((int)t->arguments[i].value) == reg)
+      return i;
+  }
+
+  return -1;
+}
+
+
 static int _optimize_il_23(int *optimizations_counter) {
   
   /*
@@ -1555,13 +1568,23 @@ static int _optimize_il_23(int *optimizations_counter) {
             next = -1;
             break;
           }
-          else if (g_tacs[next].op == TAC_OP_FUNCTION_CALL) {
-            fprintf(stderr, "_optimize_il_23(): Implement me when function calls can take others than just registers as arguments!\n");
-            next = -1;
-            break;
-          }
-          else if (g_tacs[next].op == TAC_OP_FUNCTION_CALL_USE_RETURN_VALUE) {
-            fprintf(stderr, "_optimize_il_23(): Implement me when function calls can take others than just registers as arguments!\n");
+          else if (g_tacs[next].op == TAC_OP_FUNCTION_CALL || g_tacs[next].op == TAC_OP_FUNCTION_CALL_USE_RETURN_VALUE) {
+            int index;
+
+            index = _get_registers_index_in_function_call_arguments(&g_tacs[next], (int)g_tacs[current].result_d);
+            if (index >= 0) {
+              /* found match! rX can be removed, constant embedded! */
+              struct function_argument *arg = &(g_tacs[next].arguments[index]);
+
+              arg->type = TAC_ARG_TYPE_CONSTANT;
+              arg->value = g_tacs[current].arg1_d;
+              arg->var_type = g_tacs[current].arg1_var_type;
+              arg->var_type_promoted = g_tacs[current].arg1_var_type_promoted;
+              g_tacs[current].op = TAC_OP_DEAD;
+              (*optimizations_counter)++;
+            }
+            
+            /* let's not serach past a function call */
             next = -1;
             break;
           }

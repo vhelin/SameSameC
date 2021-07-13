@@ -3571,7 +3571,7 @@ static int _generate_asm_return_value_z80(struct tac *t, FILE *file_out, struct 
 
 static int _generate_asm_function_call_z80(struct tac *t, FILE *file_out, struct tree_node *function_node, int op) {
 
-  int j, argument = 0, reset_iy = YES, init_ix = NO;
+  int j, argument, reset_iy = YES, init_ix = NO;
   char return_label[32];
   
   /* __pureasm function calls are very simple */
@@ -3596,6 +3596,7 @@ static int _generate_asm_function_call_z80(struct tac *t, FILE *file_out, struct
   _push_de(file_out);
 
   /* copy arguments to stack frame */
+  argument = 0;
   for (j = 2; j < t->arg1_node->added_children; j += 2) {
     struct tree_node *type_node = t->arg1_node->children[j];
 
@@ -3743,9 +3744,9 @@ static int _generate_asm_function_call_z80(struct tac *t, FILE *file_out, struct
           /* 8-bit */
           _load_c_into_ix(target_offset, file_out);
         }
-
-        argument++;
       }
+
+      argument++;
     }
     else {
       fprintf(stderr, "_generate_asm_function_call_z80(): Corrupted function \"%s\" definition (B)! Unknown node type %d! Please submit a bug report!\n", t->arg1_node->children[1]->label, type_node->type);

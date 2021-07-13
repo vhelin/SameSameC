@@ -12,7 +12,7 @@
       ; IX - tmp
       ; IY - tmp
       ; allocate space for the stack frame
-      LD  HL,-9
+      LD  HL,-8
       ADD HL,DE
       LD  SP,HL
       ; =================================================================
@@ -167,14 +167,7 @@
       LD  (IX+0),L
       LD  (IX+1),H
       ; -----------------------------------------------------------------
-      ; TAC: r2.uint8 (uint8) := 1.uint8 (uint8)
-      ; -----------------------------------------------------------------
-      ; offset -9
-      LD  IX,-9
-      ADD IX,DE
-      LD  (IX+0),1
-      ; -----------------------------------------------------------------
-      ; TAC: add_to_color(r1.uint16, r2.uint8)
+      ; TAC: add_to_color(r1.uint16, 1.uint8 (uint8))
       ; -----------------------------------------------------------------
       LD  HL,0
       ADD HL,SP
@@ -196,8 +189,7 @@
       LD  (IX-5),C
       LD  (IX-4),B
       ; copy argument 2
-      LD  C,(IY-9)
-      LD  (IX-6),C
+      LD  (IX-6),1
       ; new stack frame -> DE
       LD  D,H
       LD  E,L
