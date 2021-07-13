@@ -3610,9 +3610,10 @@ static int _generate_asm_function_call_z80(struct tac *t, FILE *file_out, struct
       break;
     }
     else if (type_node->type == TREE_NODE_TYPE_VARIABLE_TYPE) {
+      int source_var_type, source_offset, target_var_type, target_offset;
       struct tree_node *name_node = t->arg1_node->children[j+1];
       struct local_variable *local_variable;
-      int r, reg_var_type, reg, reg_offset, arg_var_type, arg_offset;
+      struct function_argument *arg;
       
       if (name_node->type != TREE_NODE_TYPE_VALUE_STRING) {
         fprintf(stderr, "_generate_asm_function_call_z80(): Corrupted function \"%s\" definition (A)! Please submit a bug report!\n", t->arg1_node->children[1]->label);
@@ -3631,23 +3632,15 @@ static int _generate_asm_function_call_z80(struct tac *t, FILE *file_out, struct
       }
 
       /* start copying the argument to new stack frame */
-      reg_var_type = t->registers_types[argument];
-      reg = t->registers[argument];
-      arg_var_type = tree_node_get_max_var_type(local_variable->node->children[0]);
-      arg_offset = local_variable->offset_to_fp;
-
-      /* find the offset of the register in the old stack frame */
-      for (r = 0; r < function_node->local_variables->temp_registers_count; r++) {
-        if (function_node->local_variables->temp_registers[r].register_index == reg)
-          break;
-      }
-
-      if (r == function_node->local_variables->temp_registers_count) {
-        fprintf(stderr, "_generate_asm_function_call_z80(): Register %d in function \"%s\" has gone missing! Please submit a bug report!\n", reg, t->arg1_node->children[1]->label);
+      arg = &(t->arguments[argument]);
+      
+      /* find the source offset in the old stack frame */
+      if (find_stack_offset(arg->type, arg->label, arg->value, arg->node, &source_offset, function_node) == FAILED)
         return FAILED;
-      }
 
-      reg_offset = function_node->local_variables->temp_registers[r].offset_to_fp;
+      source_var_type = arg->var_type;
+      target_var_type = tree_node_get_max_var_type(local_variable->node->children[0]);
+      target_offset = local_variable->offset_to_fp;
 
       if (init_ix == NO) {
         /* load the new stack frame address -> ix */
@@ -3655,32 +3648,42 @@ static int _generate_asm_function_call_z80(struct tac *t, FILE *file_out, struct
 
         fprintf(file_out, "      ; new stack frame -> IX\n");
 
-        _load_hl_to_bc(file_out);
         _load_value_to_ix(0, file_out);
+        _load_hl_to_bc(file_out);
         _add_bc_to_ix(file_out);
       }
-      
-      if (reset_iy == YES && reg_offset > -127) {
-        /* load the old stack frame address -> iy */
-        reset_iy = NO;
 
-        fprintf(file_out, "      ; old stack frame -> IY\n");
-
-        _load_value_to_iy(0, file_out);
-        _add_de_to_iy(file_out);
+      if (arg->type == TAC_ARG_TYPE_CONSTANT) {
       }
-
-      /* NOTE! if the offset is <= -127 then we need extra instructions */
-      if (reg_offset <= -127) {
-        /* load the old stack frame address -> iy */
+      else if (arg->type == TAC_ARG_TYPE_LABEL && source_offset == 999999) {
+        /* global var */
+        _load_label_to_iy(arg->node->children[1]->label, file_out);
         reset_iy = YES;
+      }
+      else {
+        /* it's a variable in the frame! */      
+        if (reset_iy == YES && source_offset > -127) {
+          /* load the old stack frame address -> iy */
+          reset_iy = NO;
 
-        fprintf(file_out, "      ; old stack frame with offset -> IY\n");
+          fprintf(file_out, "      ; old stack frame -> IY\n");
 
-        _load_value_to_iy(reg_offset, file_out);
-        _add_de_to_iy(file_out);
+          _load_value_to_iy(0, file_out);
+          _add_de_to_iy(file_out);
+        }
 
-        reg_offset = 0;
+        /* NOTE! if the offset is <= -127 then we need extra instructions */
+        if (source_offset <= -127) {
+          /* load the old stack frame address -> iy */
+          reset_iy = YES;
+
+          fprintf(file_out, "      ; old stack frame with offset -> IY\n");
+
+          _load_value_to_iy(source_offset, file_out);
+          _add_de_to_iy(file_out);
+
+          source_offset = 0;
+        }
       }
       
       /******************************************************************************************************/
@@ -3689,25 +3692,29 @@ static int _generate_asm_function_call_z80(struct tac *t, FILE *file_out, struct
 
       fprintf(file_out, "      ; copy argument %d\n", argument + 1);
 
-      if (reg_var_type == VARIABLE_TYPE_INT16 || reg_var_type == VARIABLE_TYPE_UINT16) {
-        /* 16-bit */        
-        _load_from_iy_to_c(reg_offset, file_out);
-        _load_from_iy_to_b(reg_offset + 1, file_out);
+      if (arg->type == TAC_ARG_TYPE_CONSTANT) {
       }
       else {
-        /* 8-bit */
-        _load_from_iy_to_c(reg_offset, file_out);
-
-        /* sign extend 8-bit -> 16-bit? */
-        if (reg_var_type == VARIABLE_TYPE_INT8 && (arg_var_type == VARIABLE_TYPE_INT16 ||
-                                                   arg_var_type == VARIABLE_TYPE_UINT16)) {
-          /* yes */
-          _sign_extend_c_to_bc(file_out);
+        if (source_var_type == VARIABLE_TYPE_INT16 || source_var_type == VARIABLE_TYPE_UINT16) {
+          /* 16-bit */        
+          _load_from_iy_to_c(source_offset, file_out);
+          _load_from_iy_to_b(source_offset + 1, file_out);
         }
-        else if (reg_var_type == VARIABLE_TYPE_UINT8 && (arg_var_type == VARIABLE_TYPE_INT16 ||
-                                                         arg_var_type == VARIABLE_TYPE_UINT16)) {
-          /* upper byte -> 0 */
-          _load_value_to_b(0, file_out);
+        else {
+          /* 8-bit */
+          _load_from_iy_to_c(source_offset, file_out);
+
+          /* sign extend 8-bit -> 16-bit? */
+          if (source_var_type == VARIABLE_TYPE_INT8 && (target_var_type == VARIABLE_TYPE_INT16 ||
+                                                        target_var_type == VARIABLE_TYPE_UINT16)) {
+            /* yes */
+            _sign_extend_c_to_bc(file_out);
+          }
+          else if (source_var_type == VARIABLE_TYPE_UINT8 && (target_var_type == VARIABLE_TYPE_INT16 ||
+                                                              target_var_type == VARIABLE_TYPE_UINT16)) {
+            /* upper byte -> 0 */
+            _load_value_to_b(0, file_out);
+          }
         }
       }
 
@@ -3715,17 +3722,30 @@ static int _generate_asm_function_call_z80(struct tac *t, FILE *file_out, struct
       /* copy data bc/c -> (ix) */
       /******************************************************************************************************/
 
-      if (arg_var_type == VARIABLE_TYPE_INT16 || arg_var_type == VARIABLE_TYPE_UINT16) {
-        /* 16-bit */
-        _load_c_into_ix(arg_offset, file_out);
-        _load_b_into_ix(arg_offset + 1, file_out);
+      if (arg->type == TAC_ARG_TYPE_CONSTANT) {
+        if (target_var_type == VARIABLE_TYPE_INT16 || target_var_type == VARIABLE_TYPE_UINT16) {
+          /* 16-bit */
+          _load_value_into_ix(((int)arg->value) & 0xff, target_offset, file_out);
+          _load_value_into_ix((((int)arg->value) >> 8) & 0xff, target_offset + 1, file_out);
+        }
+        else {
+          /* 8-bit */
+          _load_value_into_ix(((int)arg->value) & 0xff, target_offset, file_out);
+        }
       }
       else {
-        /* 8-bit */
-        _load_c_into_ix(arg_offset, file_out);
-      }
+        if (target_var_type == VARIABLE_TYPE_INT16 || target_var_type == VARIABLE_TYPE_UINT16) {
+          /* 16-bit */
+          _load_c_into_ix(target_offset, file_out);
+          _load_b_into_ix(target_offset + 1, file_out);
+        }
+        else {
+          /* 8-bit */
+          _load_c_into_ix(target_offset, file_out);
+        }
 
-      argument++;
+        argument++;
+      }
     }
     else {
       fprintf(stderr, "_generate_asm_function_call_z80(): Corrupted function \"%s\" definition (B)! Unknown node type %d! Please submit a bug report!\n", t->arg1_node->children[1]->label, type_node->type);

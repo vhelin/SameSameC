@@ -385,6 +385,15 @@ struct symbol_table_item {
   struct symbol_table_item *next;
 };
 
+struct function_argument {
+  unsigned char type;
+  double  value;
+  char   *label;
+  unsigned char var_type;
+  unsigned char var_type_promoted;
+  struct tree_node *node;
+};
+
 struct tac {
   unsigned char op;
 
@@ -409,8 +418,8 @@ struct tac {
   unsigned char result_var_type_promoted;
   struct tree_node *result_node;
 
-  int *registers;
-  int *registers_types;
+  struct function_argument *arguments;
+  int arguments_count;
   
   struct tree_node *function_node;
   char is_function;

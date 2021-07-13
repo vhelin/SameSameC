@@ -528,16 +528,17 @@ struct tac *generate_il_create_get_address_array(struct tree_node *node) {
 struct tac *generate_il_create_function_call(struct tree_node *node) {
 
   struct symbol_table_item *sti;
-  int *registers = NULL, i;
+  struct function_argument *arguments = NULL;
   struct tac *t;
+  int i;
 
   /* update file id and line number for all TACs and error messages */
   g_current_filename_id = node->file_id;
   g_current_line_number = node->line_number;
 
   if (node->added_children - 1 > 0) {
-    registers = (int *)calloc(sizeof(int) * node->added_children - 1, 1);
-    if (registers == NULL) {
+    arguments = (struct function_argument *)calloc(sizeof(struct function_argument) * node->added_children - 1, 1);
+    if (arguments == NULL) {
       snprintf(g_error_message, sizeof(g_error_message), "_generate_il_create_function_call(): Out of memory error.\n");
       print_error(g_error_message, ERROR_ERR);
       return NULL;
@@ -545,17 +546,28 @@ struct tac *generate_il_create_function_call(struct tree_node *node) {
   }
 
   for (i = 1; i < node->added_children; i++) {
-    registers[i-1] = g_temp_r;
-    if (_generate_il_create_expression(node->children[i]) == FAILED)
+    arguments[i-1].type = TAC_ARG_TYPE_TEMP;
+    arguments[i-1].value = g_temp_r;
+    arguments[i-1].label = NULL;
+    arguments[i-1].var_type = VARIABLE_TYPE_NONE;
+    arguments[i-1].var_type_promoted = VARIABLE_TYPE_NONE;
+    arguments[i-1].node = NULL;
+    
+    if (_generate_il_create_expression(node->children[i]) == FAILED) {
+      free(arguments);
       return NULL;
+    }
   }
 
   t = add_tac();
-  if (t == NULL)
+  if (t == NULL) {
+    free(arguments);
     return NULL;
+  }
 
   t->op = TAC_OP_FUNCTION_CALL;
-  t->registers = registers;
+  t->arguments = arguments;
+  t->arguments_count = node->added_children - 1;
   tac_set_arg1(t, TAC_ARG_TYPE_LABEL, 0, node->children[0]->label);
   tac_set_arg2(t, TAC_ARG_TYPE_CONSTANT, node->added_children - 1, NULL);
 

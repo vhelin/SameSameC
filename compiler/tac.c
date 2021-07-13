@@ -304,10 +304,7 @@ void print_tac(struct tac *t, int is_comment, FILE *file_out) {
     _print_tac_arg(t->arg1_type, t->arg1_d, t->arg1_s, t->arg1_var_type, t->arg1_var_type_promoted, file_out);
     fprintf(file_out, "(");
     for (j = 0; j < (int)t->arg2_d; j++) {
-      if (t->registers_types == NULL)
-        _print_tac_arg(TAC_ARG_TYPE_TEMP, t->registers[j], NULL, VARIABLE_TYPE_NONE, VARIABLE_TYPE_NONE, file_out);
-      else
-        _print_tac_arg(TAC_ARG_TYPE_TEMP, t->registers[j], NULL, t->registers_types[j], t->registers_types[j], file_out);
+      _print_tac_arg(t->arguments[j].type, t->arguments[j].value, t->arguments[j].label, t->arguments[j].var_type, t->arguments[j].var_type_promoted, file_out);
       if (j < (int)t->arg2_d - 1)
         fprintf(file_out, ", ");
     }
@@ -321,10 +318,7 @@ void print_tac(struct tac *t, int is_comment, FILE *file_out) {
     _print_tac_arg(t->arg1_type, t->arg1_d, t->arg1_s, t->arg1_var_type, t->arg1_var_type_promoted, file_out);
     fprintf(file_out, "(");
     for (j = 0; j < (int)t->arg2_d; j++) {
-      if (t->registers_types == NULL)
-        _print_tac_arg(TAC_ARG_TYPE_TEMP, t->registers[j], NULL, VARIABLE_TYPE_NONE, VARIABLE_TYPE_NONE, file_out);
-      else
-        _print_tac_arg(TAC_ARG_TYPE_TEMP, t->registers[j], NULL, t->registers_types[j], t->registers_types[j], file_out);
+      _print_tac_arg(t->arguments[j].type, t->arguments[j].value, t->arguments[j].label, t->arguments[j].var_type, t->arguments[j].var_type_promoted, file_out);
       if (j < (int)t->arg2_d - 1)
         fprintf(file_out, ", ");
     }
@@ -497,6 +491,8 @@ int tac_set_result(struct tac *t, int arg_type, double d, char *s) {
 
 void free_tac_contents(struct tac *t) {
 
+  int i;
+  
   free(t->arg1_s);
   t->arg1_s = NULL;
   
@@ -505,9 +501,13 @@ void free_tac_contents(struct tac *t) {
   
   free(t->result_s);
   t->result_s = NULL;
+
+  for (i = 0; i < t->arguments_count; i++)
+    free(t->arguments[i].label);
   
-  free(t->registers);
-  t->registers = NULL;
+  free(t->arguments);
+  t->arguments = NULL;
+  t->arguments_count = 0;
 }
 
 
@@ -546,8 +546,7 @@ struct tac *add_tac(void) {
   t->arg1_node = NULL;
   t->arg2_node = NULL;
   t->result_node = NULL;
-  t->registers = NULL;
-  t->registers_types = NULL;
+  t->arguments = NULL;
   t->function_node = NULL;
   t->is_function = NO;
 

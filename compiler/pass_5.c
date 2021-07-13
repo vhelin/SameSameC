@@ -183,17 +183,17 @@ static int _count_and_allocate_register_usage(int start, int end) {
     if (g_tacs[i].op == TAC_OP_FUNCTION_CALL) {
       int j;
 
-      for (j = 0; j < (int)g_tacs[i].arg2_d; j++) {
-        if (g_tacs[i].registers[j] > max)
-          max = g_tacs[i].registers[j];
+      for (j = 0; j < g_tacs[i].arguments_count; j++) {
+        if (g_tacs[i].arguments[j].type == TAC_ARG_TYPE_TEMP && g_tacs[i].arguments[j].value > max)
+          max = (int)g_tacs[i].arguments[j].value;
       }
     }
     else if (g_tacs[i].op == TAC_OP_FUNCTION_CALL_USE_RETURN_VALUE) {
       int j;
 
-      for (j = 0; j < (int)g_tacs[i].arg2_d; j++) {
-        if (g_tacs[i].registers[j] > max)
-          max = g_tacs[i].registers[j];
+      for (j = 0; j < g_tacs[i].arguments_count; j++) {
+        if (g_tacs[i].arguments[j].type == TAC_ARG_TYPE_TEMP && g_tacs[i].arguments[j].value > max)
+          max = (int)g_tacs[i].arguments[j].value;
       }
 
       if (g_tacs[i].result_type == TAC_ARG_TYPE_TEMP) {
@@ -251,14 +251,18 @@ static int _count_and_allocate_register_usage(int start, int end) {
     if (g_tacs[i].op == TAC_OP_FUNCTION_CALL) {
       int j;
 
-      for (j = 0; j < (int)g_tacs[i].arg2_d; j++)
-        g_register_reads[g_tacs[i].registers[j]]++;
+      for (j = 0; j < g_tacs[i].arguments_count; j++) {
+        if (g_tacs[i].arguments[j].type == TAC_ARG_TYPE_TEMP)
+          g_register_reads[(int)g_tacs[i].arguments[j].value]++;
+      }
     }
     else if (g_tacs[i].op == TAC_OP_FUNCTION_CALL_USE_RETURN_VALUE) {
       int j;
 
-      for (j = 0; j < (int)g_tacs[i].arg2_d; j++)
-        g_register_reads[g_tacs[i].registers[j]]++;
+      for (j = 0; j < g_tacs[i].arguments_count; j++) {
+        if (g_tacs[i].arguments[j].type == TAC_ARG_TYPE_TEMP)
+          g_register_reads[(int)g_tacs[i].arguments[j].value]++;
+      }
 
       if (g_tacs[i].result_type == TAC_ARG_TYPE_TEMP)
         g_register_writes[(int)g_tacs[i].result_d]++;
@@ -1450,6 +1454,7 @@ static int _optimize_il_22(int *optimizations_counter) {
 
   /*
     rB = ?       <--- REMOVE rB if rA doesn't appear elsewhere
+    ...
     rX = rA * rB <--- REMOVE rB if rA doesn't appear elsewhere
   */
 
@@ -1510,6 +1515,7 @@ static int _optimize_il_23(int *optimizations_counter) {
   
   /*
     rX = CONST   <--- REMOVE rX if rX doesn't appear elsewhere
+    ...
     ?  = rX * rB <--- REMOVE rX if rX doesn't appear elsewhere
   */
 
@@ -1537,8 +1543,12 @@ static int _optimize_il_23(int *optimizations_counter) {
           g_tacs[current].arg1_type == TAC_ARG_TYPE_CONSTANT &&
           g_register_reads[(int)g_tacs[current].result_d] == 1 && g_register_writes[(int)g_tacs[current].result_d] == 1) {
         next = current;
+
         while (1) {
           next = _find_next_living_tac(next + 1);
+
+          if (next < 0)
+            break;
 
           if (g_tacs[next].op == TAC_OP_LABEL) {
             /* we cannot search past a label */
@@ -1547,9 +1557,13 @@ static int _optimize_il_23(int *optimizations_counter) {
           }
           else if (g_tacs[next].op == TAC_OP_FUNCTION_CALL) {
             fprintf(stderr, "_optimize_il_23(): Implement me when function calls can take others than just registers as arguments!\n");
+            next = -1;
+            break;
           }
           else if (g_tacs[next].op == TAC_OP_FUNCTION_CALL_USE_RETURN_VALUE) {
             fprintf(stderr, "_optimize_il_23(): Implement me when function calls can take others than just registers as arguments!\n");
+            next = -1;
+            break;
           }
           else if (g_tacs[next].op == TAC_OP_CREATE_VARIABLE) {
           }
@@ -1581,9 +1595,6 @@ static int _optimize_il_23(int *optimizations_counter) {
           if (next < 0)
             break;
         }
-
-        if (next < 0)
-          break;
       }
 
       i = current + 1;
@@ -1668,19 +1679,23 @@ static int _rename_registers(struct tac *t, int* new_names) {
   if (t->op == TAC_OP_FUNCTION_CALL) {
     int j;
 
-    for (j = 0; j < (int)t->arg2_d; j++) {
-      if (new_names[t->registers[j]] < 0)
-        return FAILED;
-      t->registers[j] = new_names[t->registers[j]];
+    for (j = 0; j < t->arguments_count; j++) {
+      if (t->arguments[j].type == TAC_ARG_TYPE_TEMP) {
+        if (new_names[(int)t->arguments[j].value] < 0)
+          return FAILED;
+        t->arguments[j].value = new_names[(int)t->arguments[j].value];
+      }
     }
   }
   else if (t->op == TAC_OP_FUNCTION_CALL_USE_RETURN_VALUE) {
     int j;
 
-    for (j = 0; j < (int)t->arg2_d; j++) {
-      if (new_names[t->registers[j]] < 0)
-        return FAILED;
-      t->registers[j] = new_names[t->registers[j]];
+    for (j = 0; j < t->arguments_count; j++) {
+      if (t->arguments[j].type == TAC_ARG_TYPE_TEMP) {
+        if (new_names[(int)t->arguments[j].value] < 0)
+          return FAILED;
+        t->arguments[j].value = new_names[(int)t->arguments[j].value];
+      }
     }
     
     if (t->result_type == TAC_ARG_TYPE_TEMP) {
@@ -1878,36 +1893,6 @@ static int _find_operand_type(unsigned char *type, unsigned char arg_type, int v
 }
 
 
-static int _get_set_max_registers_type(struct tac *t) {
-
-  int j, args, type_max = VARIABLE_TYPE_NONE;
-
-  /* the number of arguments */
-  args = (int)t->arg2_d;
-
-  t->registers_types = (int *)calloc(sizeof(int) * args, 1);
-  if (t->registers_types == NULL) {
-    fprintf(stderr, "_get_set_max_register_type(): Out of memory error.\n");
-    return VARIABLE_TYPE_NONE;
-  }
-  
-  for (j = 0; j < args; j++) {
-    int type = _get_temp_register_type(t->registers[j]);
-
-    if (type <= VARIABLE_TYPE_NONE) {
-      fprintf(stderr, "_get_set_max_register_type(): A function argument type cannot be found!\n");
-      return VARIABLE_TYPE_NONE;
-    }
-
-    t->registers_types[j] = type;
-
-    type_max = get_max_variable_type_2(type, type_max);
-  }
-
-  return type_max;
-}
-
-
 int propagate_operand_types(void) {
   
   int i;
@@ -2089,27 +2074,32 @@ int propagate_operand_types(void) {
         fprintf(stderr, "propagate_operand_types(): Couldn't find type for ARG1!\n");
     }
     else if (op == TAC_OP_FUNCTION_CALL) {
-      /* if t->registers == NULL that means that the function was called with 0 arguments */
-      if (t->registers != NULL) {
-        int type_max = _get_set_max_registers_type(t);
+      /* if t->arguments == NULL that means that the function was called with 0 arguments */
+      if (t->arguments != NULL) {
+        int j;
 
-        if (type_max == VARIABLE_TYPE_NONE) {
-          fprintf(stderr, "propagate_operand_types(): Function \"%s\" was called, but we were unable to determine the max type! Please submit a bug report!\n", t->arg1_s);
-          return FAILED;
+        for (j = 0; j < t->arguments_count; j++) {
+          if (_find_operand_type(&(t->arguments[j].var_type), t->arguments[j].type, (int)t->arguments[j].value, t->arguments[j].label, t->arguments[j].node, NO) == FAILED)
+            return FAILED;
         }
       }
     }
     else if (op == TAC_OP_FUNCTION_CALL_USE_RETURN_VALUE) {
-      int type_max = _get_set_max_registers_type(t);
+      /* if t->arguments == NULL that means that the function was called with 0 arguments */
+      if (t->arguments != NULL) {
+        int j;
 
-      if (type_max == VARIABLE_TYPE_NONE)
-        return FAILED;
+        for (j = 0; j < t->arguments_count; j++) {
+          if (_find_operand_type(&(t->arguments[j].var_type), t->arguments[j].type, (int)t->arguments[j].value, t->arguments[j].label, t->arguments[j].node, NO) == FAILED)
+            return FAILED;
+        }
+      }
 
       if (_find_operand_type(&t->result_var_type, t->result_type, (int)t->result_d, t->result_s, t->result_node, YES) == FAILED)
         return FAILED;
 
       if (t->result_var_type == VARIABLE_TYPE_NONE)
-        t->result_var_type = type_max;
+        fprintf(stderr, "propagate_operand_types(): Couldn't find type for RESULT!\n");
     }
     else if (op == TAC_OP_CREATE_VARIABLE) {
     }
