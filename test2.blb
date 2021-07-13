@@ -14,9 +14,11 @@ void main(void) {
       __z80_out[0xBE] = color;
     }
 
-    add_to_color(&color, 1);
+    add_to_color(&color, g_i);
   }
 }
+
+uint8 g_i = 1;
 
 void add_to_color(uint8 *color, uint8 adder) {
 

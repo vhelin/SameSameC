@@ -1,4 +1,34 @@
 
+  .RAMSECTION "global_variables_test2_ram" FREE
+    g_i DB
+  .ENDS
+
+  .SECTION "global_variables_test2_rom" FREE
+    global_variable_rom_g_i:
+      .DB 1
+  .ENDS
+
+  .SECTION "global_variables_test2_init" FREE
+    global_variables_test2_init:
+      ; copy all fully initialized global variables in a single call
+      LD  HL,g_i
+      LD  DE,global_variable_rom_g_i
+      LD  BC,1
+      CALL _copy_bytes
+      RET
+
+    _copy_bytes:
+      LD  A,(DE)
+      LD  (HL),A
+      INC DE
+      INC HL
+      DEC BC
+      LD  A,B
+      OR  A,C
+      JR  NZ,_copy_bytes
+      RET
+  .ENDS
+
   .SECTION "main" FREE
     ; =================================================================
     ; ../test2.blb:5: void main(void) {
@@ -153,7 +183,7 @@
       ; -----------------------------------------------------------------
     _label_5:
       ; =================================================================
-      ; ../test2.blb:17: add_to_color(&color, 1);
+      ; ../test2.blb:17: add_to_color(&color, g_i);
       ; =================================================================
       ; -----------------------------------------------------------------
       ; TAC: r1.uint16 (uint16) := &color.uint16 (uint16)
@@ -167,7 +197,7 @@
       LD  (IX+0),L
       LD  (IX+1),H
       ; -----------------------------------------------------------------
-      ; TAC: add_to_color(r1.uint16, 1.uint8 (uint8))
+      ; TAC: add_to_color(r1.uint16, g_i.uint8 (uint8))
       ; -----------------------------------------------------------------
       LD  HL,0
       ADD HL,SP
@@ -189,7 +219,9 @@
       LD  (IX-5),C
       LD  (IX-4),B
       ; copy argument 2
-      LD  (IX-6),1
+      LD  IY,g_i
+      LD  C,(IY+0)
+      LD  (IX-6),C
       ; new stack frame -> DE
       LD  D,H
       LD  E,L
@@ -209,7 +241,7 @@
 
   .SECTION "add_to_color" FREE
     ; =================================================================
-    ; ../test2.blb:21: void add_to_color(uint8 *color, uint8 adder) {
+    ; ../test2.blb:23: void add_to_color(uint8 *color, uint8 adder) {
     ; =================================================================
     add_to_color:
       ; A  - tmp
@@ -230,7 +262,7 @@
       ; TAC: variable "adder" size 1 offset -6 type a
       ; -----------------------------------------------------------------
       ; =================================================================
-      ; ../test2.blb:23: color[0] += adder;
+      ; ../test2.blb:25: color[0] += adder;
       ; =================================================================
       ; -----------------------------------------------------------------
       ; TAC: r0.uint8 (uint8) := color.uint16 (uint8)[0.uint8 (uint8)]

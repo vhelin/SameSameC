@@ -3657,9 +3657,6 @@ static int _generate_asm_function_call_z80(struct tac *t, FILE *file_out, struct
       if (arg->type == TAC_ARG_TYPE_CONSTANT) {
       }
       else if (arg->type == TAC_ARG_TYPE_LABEL && source_offset == 999999) {
-        /* global var */
-        _load_label_to_iy(arg->node->children[1]->label, file_out);
-        reset_iy = YES;
       }
       else {
         /* it's a variable in the frame! */      
@@ -3693,6 +3690,13 @@ static int _generate_asm_function_call_z80(struct tac *t, FILE *file_out, struct
 
       fprintf(file_out, "      ; copy argument %d\n", argument + 1);
 
+      if (arg->type == TAC_ARG_TYPE_LABEL && source_offset == 999999) {
+        /* global var */
+        _load_label_to_iy(arg->node->children[1]->label, file_out);
+        reset_iy = YES;
+        source_offset = 0;
+      }
+      
       if (arg->type == TAC_ARG_TYPE_CONSTANT) {
       }
       else {

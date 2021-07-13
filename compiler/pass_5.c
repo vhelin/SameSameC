@@ -1527,7 +1527,7 @@ static int _get_registers_index_in_function_call_arguments(struct tac *t, int re
 static int _optimize_il_23(int *optimizations_counter) {
   
   /*
-    rX = CONST   <--- REMOVE rX if rX doesn't appear elsewhere
+    rX = ?       <--- REMOVE rX if rX doesn't appear elsewhere
     ...
     ?  = rX * rB <--- REMOVE rX if rX doesn't appear elsewhere
   */
@@ -1553,7 +1553,6 @@ static int _optimize_il_23(int *optimizations_counter) {
 
       if (g_tacs[current].op == TAC_OP_ASSIGNMENT &&
           g_tacs[current].result_type == TAC_ARG_TYPE_TEMP &&
-          g_tacs[current].arg1_type == TAC_ARG_TYPE_CONSTANT &&
           g_register_reads[(int)g_tacs[current].result_d] == 1 && g_register_writes[(int)g_tacs[current].result_d] == 1) {
         next = current;
 
@@ -1573,13 +1572,18 @@ static int _optimize_il_23(int *optimizations_counter) {
 
             index = _get_registers_index_in_function_call_arguments(&g_tacs[next], (int)g_tacs[current].result_d);
             if (index >= 0) {
-              /* found match! rX can be removed, constant embedded! */
+              /* found match! rX can be removed, variable/constant embedded! */
               struct function_argument *arg = &(g_tacs[next].arguments[index]);
 
-              arg->type = TAC_ARG_TYPE_CONSTANT;
+              arg->type = g_tacs[current].arg1_type;
               arg->value = g_tacs[current].arg1_d;
+              arg->label = g_tacs[current].arg1_s; /* NOTE! we move the label (if there's one) */
+              arg->node = g_tacs[current].arg1_node;
               arg->var_type = g_tacs[current].arg1_var_type;
               arg->var_type_promoted = g_tacs[current].arg1_var_type_promoted;
+
+              g_tacs[current].arg1_s = NULL;
+              g_tacs[current].arg1_node = NULL;
               g_tacs[current].op = TAC_OP_DEAD;
               (*optimizations_counter)++;
             }
@@ -1592,7 +1596,7 @@ static int _optimize_il_23(int *optimizations_counter) {
           }
           else if (g_tacs[next].op != TAC_OP_DEAD) {
             if (g_tacs[next].arg1_type == TAC_ARG_TYPE_TEMP && (int)g_tacs[current].result_d == (int)g_tacs[next].arg1_d) {
-              /* found match! rX can be removed, constant embedded! */
+              /* found match! rX can be removed, variable/constant embedded! */
               if (tac_set_arg1(&g_tacs[next], g_tacs[current].arg1_type, g_tacs[current].arg1_d, g_tacs[current].arg1_s) == FAILED)
                 return FAILED;
               g_tacs[next].arg1_node = g_tacs[current].arg1_node;
