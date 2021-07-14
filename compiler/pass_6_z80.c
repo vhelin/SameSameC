@@ -27,7 +27,7 @@ extern struct tac *g_tacs;
 extern int g_tacs_count, g_tacs_max;
 extern char g_tmp[4096], g_error_message[sizeof(g_tmp) + MAX_NAME_LENGTH + 1 + 1024];
 
-static int g_return_id = 1;
+static int g_return_id = 1, g_is_ix_de = NO;
 
 
 int pass_6_z80(char *file_name, FILE *file_out) {
@@ -92,6 +92,23 @@ int find_stack_offset(int type, char *name, int value, struct tree_node *node, i
 }
 
 
+static void _load_de_with_offset_to_ix(int offset, FILE *file_out) {
+
+  if (g_is_ix_de == YES && offset == 0) {
+    /* IX is already DE! */
+  }
+  else {
+    fprintf(file_out, "      LD  IX,%d\n", offset);
+    fprintf(file_out, "      ADD IX,DE\n");
+
+    if (offset == 0)
+      g_is_ix_de = YES;
+    else
+      g_is_ix_de = NO;
+  }
+}
+
+
 static void _load_b_to_a(FILE *file_out) {
 
   fprintf(file_out, "      LD  A,B\n");
@@ -101,6 +118,10 @@ static void _load_b_to_a(FILE *file_out) {
 static void _load_value_to_ix(int value, FILE *file_out) {
 
   fprintf(file_out, "      LD  IX,%d\n", value);
+
+  /* NOTE! for _load_de_with_offset_to_ix() optimization every time we touch IX (or create a label)
+     we need to set the variable to say that IX is no longer DE */
+  g_is_ix_de = NO;
 }
 
 
@@ -131,6 +152,10 @@ static void _load_label_to_hl(char *label, FILE *file_out) {
 static void _load_label_to_ix(char *label, FILE *file_out) {
 
   fprintf(file_out, "      LD  IX,%s\n", label);
+
+  /* NOTE! for _load_de_with_offset_to_ix() optimization every time we touch IX (or create a label)
+     we need to set the variable to say that IX is no longer DE */
+  g_is_ix_de = NO;
 }
 
 
@@ -146,6 +171,15 @@ static void _load_value_into_ix(int value, int offset, FILE *file_out) {
     fprintf(file_out, "      LD  (IX+%d),%d\n", offset, value);
   else
     fprintf(file_out, "      LD  (IX%d),%d\n", offset, value);
+}
+
+
+static void _load_value_into_iy(int value, int offset, FILE *file_out) {
+
+  if (offset >= 0)
+    fprintf(file_out, "      LD  (IY+%d),%d\n", offset, value);
+  else
+    fprintf(file_out, "      LD  (IY%d),%d\n", offset, value);
 }
 
 
@@ -369,12 +403,26 @@ static void _add_de_to_hl(FILE *file_out) {
 static void _add_bc_to_ix(FILE *file_out) {
 
   fprintf(file_out, "      ADD IX,BC\n");
+
+  /* NOTE! for _load_de_with_offset_to_ix() optimization every time we touch IX (or create a label)
+     we need to set the variable to say that IX is no longer DE */
+  g_is_ix_de = NO;
 }
 
 
 static void _add_de_to_ix(FILE *file_out) {
 
   fprintf(file_out, "      ADD IX,DE\n");
+
+  /* NOTE! for _load_de_with_offset_to_ix() optimization every time we touch IX (or create a label)
+     we need to set the variable to say that IX is no longer DE */
+  g_is_ix_de = NO;
+}
+
+
+static void _add_bc_to_iy(FILE *file_out) {
+
+  fprintf(file_out, "      ADD IY,BC\n");
 }
 
 
@@ -781,6 +829,12 @@ static void _add_label(char *label, FILE *file_out, char is_local) {
     fprintf(file_out, "    %s\n", label);
   else
     fprintf(file_out, "    %s:\n", label);
+
+  if (is_local == NO) {
+    /* NOTE! for _load_de_with_offset_to_ix() optimization every time we touch IX (or create a label)
+       we need to set the variable to say that IX is no longer DE */
+    g_is_ix_de = NO;
+  }
 }
 
 
@@ -998,9 +1052,8 @@ static int _generate_asm_assignment_z80(struct tac *t, FILE *file_out, struct tr
       ix_offset = result_offset;
       result_offset = 0;
     }
-    
-    _load_value_to_ix(result_offset, file_out);
-    _add_de_to_ix(file_out);
+
+    _load_de_with_offset_to_ix(result_offset, file_out);
   }
 
   /******************************************************************************************************/
@@ -1116,8 +1169,7 @@ static int _generate_asm_add_sub_or_and_z80_8bit(struct tac *t, FILE *file_out, 
       arg1_offset = 0;
     }
     
-    _load_value_to_ix(arg1_offset, file_out);
-    _add_de_to_ix(file_out);
+    _load_de_with_offset_to_ix(arg1_offset, file_out);
   }
   
   /******************************************************************************************************/
@@ -1154,8 +1206,7 @@ static int _generate_asm_add_sub_or_and_z80_8bit(struct tac *t, FILE *file_out, 
       arg2_offset = 0;
     }
 
-    _load_value_to_ix(arg2_offset, file_out);
-    _add_de_to_ix(file_out);
+    _load_de_with_offset_to_ix(arg2_offset, file_out);
   }
   
   /******************************************************************************************************/
@@ -1236,8 +1287,7 @@ static int _generate_asm_add_sub_or_and_z80_8bit(struct tac *t, FILE *file_out, 
       result_offset = 0;
     }
     
-    _load_value_to_ix(result_offset, file_out);
-    _add_de_to_ix(file_out);
+    _load_de_with_offset_to_ix(result_offset, file_out);
   }
 
   /******************************************************************************************************/
@@ -1310,8 +1360,7 @@ static int _generate_asm_add_sub_or_and_z80_16bit(struct tac *t, FILE *file_out,
       arg1_offset = 0;
     }
     
-    _load_value_to_ix(arg1_offset, file_out);
-    _add_de_to_ix(file_out);
+    _load_de_with_offset_to_ix(arg1_offset, file_out);
   }
   
   /******************************************************************************************************/
@@ -1371,8 +1420,7 @@ static int _generate_asm_add_sub_or_and_z80_16bit(struct tac *t, FILE *file_out,
       arg2_offset = 0;
     }
 
-    _load_value_to_ix(arg2_offset, file_out);
-    _add_de_to_ix(file_out);
+    _load_de_with_offset_to_ix(arg2_offset, file_out);
   }
   
   /******************************************************************************************************/
@@ -1461,9 +1509,8 @@ static int _generate_asm_add_sub_or_and_z80_16bit(struct tac *t, FILE *file_out,
       ix_offset = result_offset;
       result_offset = 0;
     }
-    
-    _load_value_to_ix(result_offset, file_out);
-    _add_de_to_ix(file_out);
+
+    _load_de_with_offset_to_ix(result_offset, file_out);
   }
 
   /******************************************************************************************************/
@@ -1565,8 +1612,7 @@ static int _generate_asm_get_address_z80(struct tac *t, FILE *file_out, struct t
         arg2_offset = 0;
       }
 
-      _load_value_to_ix(arg2_offset, file_out);
-      _add_de_to_ix(file_out);
+      _load_de_with_offset_to_ix(arg2_offset, file_out);
     }
 
     /******************************************************************************************************/
@@ -1639,8 +1685,7 @@ static int _generate_asm_get_address_z80(struct tac *t, FILE *file_out, struct t
       result_offset = 0;
     }
 
-    _load_value_to_ix(result_offset, file_out);
-    _add_de_to_ix(file_out);
+    _load_de_with_offset_to_ix(result_offset, file_out);
   }
 
   /******************************************************************************************************/
@@ -1696,8 +1741,7 @@ static int _generate_asm_z80_in_read_z80(struct tac *t, FILE *file_out, struct t
       arg2_offset = 0;
     }
 
-    _load_value_to_ix(arg2_offset, file_out);
-    _add_de_to_ix(file_out);
+    _load_de_with_offset_to_ix(arg2_offset, file_out);
   }
 
   /******************************************************************************************************/
@@ -1742,8 +1786,7 @@ static int _generate_asm_z80_in_read_z80(struct tac *t, FILE *file_out, struct t
       result_offset = 0;
     }
 
-    _load_value_to_ix(result_offset, file_out);
-    _add_de_to_ix(file_out);
+    _load_de_with_offset_to_ix(result_offset, file_out);
   }
 
   /******************************************************************************************************/
@@ -1766,7 +1809,7 @@ static int _generate_asm_z80_in_read_z80(struct tac *t, FILE *file_out, struct t
 
 static int _generate_asm_array_read_z80(struct tac *t, FILE *file_out, struct tree_node *function_node) {
 
-  int result_offset = -1, arg1_offset = -1, arg2_offset = -1, var_type, ix_offset = 0;
+  int result_offset = -1, arg1_offset = -1, arg2_offset = -1, var_type, ix_offset = 0, iy_offset = 0;
 
   /* OVERRIDE for __z80_in */
   if (t->arg1_type == TAC_ARG_TYPE_LABEL && strcmp(t->arg1_s, "__z80_in") == 0)
@@ -1818,8 +1861,7 @@ static int _generate_asm_array_read_z80(struct tac *t, FILE *file_out, struct tr
       arg2_offset = 0;
     }
 
-    _load_value_to_ix(arg2_offset, file_out);
-    _add_de_to_ix(file_out);
+    _load_de_with_offset_to_ix(arg2_offset, file_out);
   }
 
   /******************************************************************************************************/
@@ -1858,10 +1900,10 @@ static int _generate_asm_array_read_z80(struct tac *t, FILE *file_out, struct tr
   }
 
   /******************************************************************************************************/
-  /* source address (arg1) -> ix */
+  /* source address (arg1) -> iy */
   /******************************************************************************************************/
 
-  ix_offset = 0;
+  iy_offset = 0;
   
   if (t->arg1_type == TAC_ARG_TYPE_CONSTANT) {
     fprintf(stderr, "_generate_asm_array_read_z80(): Source cannot be a value!\n");
@@ -1869,7 +1911,7 @@ static int _generate_asm_array_read_z80(struct tac *t, FILE *file_out, struct tr
   }
   else if (t->arg1_type == TAC_ARG_TYPE_LABEL && arg1_offset == 999999) {
     /* global var */
-    _load_label_to_ix(t->arg1_node->children[1]->label, file_out);
+    _load_label_to_iy(t->arg1_node->children[1]->label, file_out);
   }
   else {
     /* it's a variable in the frame! */
@@ -1877,13 +1919,13 @@ static int _generate_asm_array_read_z80(struct tac *t, FILE *file_out, struct tr
 
     if (t->arg1_node->children[0]->value_double > 0.0) {
       if (arg1_offset >= -128 && arg1_offset <= 126) {
-        ix_offset = arg1_offset;
+        iy_offset = arg1_offset;
         arg1_offset = 0;
       }
     }
 
-    _load_value_to_ix(arg1_offset, file_out);
-    _add_de_to_ix(file_out);
+    _load_value_to_iy(arg1_offset, file_out);
+    _add_de_to_iy(file_out);
   }
 
   /******************************************************************************************************/
@@ -1894,41 +1936,41 @@ static int _generate_asm_array_read_z80(struct tac *t, FILE *file_out, struct tr
     /* yes -> get the real address */
 
     /******************************************************************************************************/
-    /* copy data (ix) -> bc -> ix */
+    /* copy data (iy) -> bc -> iy */
     /******************************************************************************************************/
 
     if (!(t->arg2_type == TAC_ARG_TYPE_CONSTANT && ((int)t->arg2_d) == 0))
       _push_bc(file_out);
     
     /* 16-bit */
-    _load_from_ix_to_c(ix_offset, file_out);
-    _load_from_ix_to_b(ix_offset + 1, file_out);
+    _load_from_iy_to_c(iy_offset, file_out);
+    _load_from_iy_to_b(iy_offset + 1, file_out);
 
-    _load_value_to_ix(0, file_out);
-    _add_bc_to_ix(file_out);
+    _load_value_to_iy(0, file_out);
+    _add_bc_to_iy(file_out);
 
     if (!(t->arg2_type == TAC_ARG_TYPE_CONSTANT && ((int)t->arg2_d) == 0))
       _pop_bc(file_out);
   }
   
   /******************************************************************************************************/
-  /* add bc -> ix */
+  /* add bc -> iy */
   /******************************************************************************************************/
 
   /* NOTE! var_type is actually the type of the item we have inside arg1 array */
   var_type = get_array_item_variable_type(t->arg1_node->children[0], t->arg1_node->children[0]->label);
   
   if (!(t->arg2_type == TAC_ARG_TYPE_CONSTANT && ((int)t->arg2_d) == 0)) {
-    _add_bc_to_ix(file_out);
+    _add_bc_to_iy(file_out);
 
     if (var_type == VARIABLE_TYPE_INT16 || var_type == VARIABLE_TYPE_UINT16) {
       /* the array has 16-bit items -> add bc -> iy twice! */
-      _add_bc_to_ix(file_out);
+      _add_bc_to_iy(file_out);
     }
   }
 
   /******************************************************************************************************/
-  /* copy data (ix) -> hl */
+  /* copy data (iy) -> hl */
   /******************************************************************************************************/
   
   if (t->arg1_type == TAC_ARG_TYPE_CONSTANT) {
@@ -1938,12 +1980,12 @@ static int _generate_asm_array_read_z80(struct tac *t, FILE *file_out, struct tr
   else {
     if (var_type == VARIABLE_TYPE_INT16 || var_type == VARIABLE_TYPE_UINT16) {
       /* 16-bit */
-      _load_from_ix_to_l(0, file_out);
-      _load_from_ix_to_h(1, file_out);
+      _load_from_iy_to_l(0, file_out);
+      _load_from_iy_to_h(1, file_out);
     }
     else {
       /* 8-bit */
-      _load_from_ix_to_l(0, file_out);
+      _load_from_iy_to_l(0, file_out);
 
       /* sign extend 8-bit -> 16-bit? */
       if (var_type == VARIABLE_TYPE_INT8 && (t->result_var_type_promoted == VARIABLE_TYPE_INT16 ||
@@ -1989,8 +2031,7 @@ static int _generate_asm_array_read_z80(struct tac *t, FILE *file_out, struct tr
       result_offset = 0;
     }
 
-    _load_value_to_ix(result_offset, file_out);
-    _add_de_to_ix(file_out);
+    _load_de_with_offset_to_ix(result_offset, file_out);
   }
 
   /******************************************************************************************************/
@@ -2046,8 +2087,7 @@ static int _generate_asm_z80_out_write_z80(struct tac *t, FILE *file_out, struct
       arg1_offset = 0;
     }
 
-    _load_value_to_ix(arg1_offset, file_out);
-    _add_de_to_ix(file_out);
+    _load_de_with_offset_to_ix(arg1_offset, file_out);
   }
 
   /******************************************************************************************************/
@@ -2082,8 +2122,7 @@ static int _generate_asm_z80_out_write_z80(struct tac *t, FILE *file_out, struct
       arg2_offset = 0;
     }
 
-    _load_value_to_ix(arg2_offset, file_out);
-    _add_de_to_ix(file_out);
+    _load_de_with_offset_to_ix(arg2_offset, file_out);
   }
 
   /******************************************************************************************************/
@@ -2111,7 +2150,7 @@ static int _generate_asm_z80_out_write_z80(struct tac *t, FILE *file_out, struct
 
 static int _generate_asm_array_assignment_z80(struct tac *t, FILE *file_out, struct tree_node *function_node) {
 
-  int result_offset = -1, arg1_offset = -1, arg2_offset = -1, var_type, ix_offset = 0;
+  int result_offset = -1, arg1_offset = -1, arg2_offset = -1, var_type, ix_offset = 0, iy_offset = 0;
 
   /* OVERRIDE for __z80_out */
   if (t->result_type == TAC_ARG_TYPE_LABEL && strcmp(t->result_s, "__z80_out") == 0)
@@ -2163,8 +2202,7 @@ static int _generate_asm_array_assignment_z80(struct tac *t, FILE *file_out, str
       arg2_offset = 0;
     }
 
-    _load_value_to_ix(arg2_offset, file_out);
-    _add_de_to_ix(file_out);
+    _load_de_with_offset_to_ix(arg2_offset, file_out);
   }
 
   /******************************************************************************************************/
@@ -2203,16 +2241,16 @@ static int _generate_asm_array_assignment_z80(struct tac *t, FILE *file_out, str
   }
 
   /******************************************************************************************************/
-  /* result address (result) -> ix */
+  /* result address (result) -> iy */
   /******************************************************************************************************/
 
-  ix_offset = 0;
+  iy_offset = 0;
   
   if (t->result_type == TAC_ARG_TYPE_CONSTANT) {
   }
   else if (t->result_type == TAC_ARG_TYPE_LABEL && result_offset == 999999) {
     /* global var */
-    _load_label_to_ix(t->result_node->children[1]->label, file_out);
+    _load_label_to_iy(t->result_node->children[1]->label, file_out);
   }
   else {
     /* it's a variable in the frame! */
@@ -2220,13 +2258,13 @@ static int _generate_asm_array_assignment_z80(struct tac *t, FILE *file_out, str
 
     if (t->result_node->children[0]->value_double > 0.0) {
       if (result_offset >= -128 && result_offset <= 126) {
-        ix_offset = result_offset;
+        iy_offset = result_offset;
         result_offset = 0;
       }
     }
 
-    _load_value_to_ix(result_offset, file_out);
-    _add_de_to_ix(file_out);
+    _load_value_to_iy(result_offset, file_out);
+    _add_de_to_iy(file_out);
   }
 
   /******************************************************************************************************/
@@ -2237,85 +2275,91 @@ static int _generate_asm_array_assignment_z80(struct tac *t, FILE *file_out, str
     /* yes -> get the real address */
 
     /******************************************************************************************************/
-    /* copy data (ix) -> bc -> ix */
+    /* copy data (iy) -> bc -> iy */
     /******************************************************************************************************/
 
     if (!(t->arg2_type == TAC_ARG_TYPE_CONSTANT && ((int)t->arg2_d) == 0))
       _push_bc(file_out);
     
     /* 16-bit */
-    _load_from_ix_to_c(ix_offset, file_out);
-    _load_from_ix_to_b(ix_offset + 1, file_out);
+    _load_from_iy_to_c(iy_offset, file_out);
+    _load_from_iy_to_b(iy_offset + 1, file_out);
 
-    _load_value_to_ix(0, file_out);
-    _add_bc_to_ix(file_out);
+    _load_value_to_iy(0, file_out);
+    _add_bc_to_iy(file_out);
 
     if (!(t->arg2_type == TAC_ARG_TYPE_CONSTANT && ((int)t->arg2_d) == 0))
       _pop_bc(file_out);
   }
   
   /******************************************************************************************************/
-  /* add index bc -> ix */
+  /* add index bc -> iy */
   /******************************************************************************************************/
 
   /* NOTE! var_type is actually the type of the item we have inside result array */
   var_type = get_array_item_variable_type(t->result_node->children[0], t->result_node->children[0]->label);
 
   if (!(t->arg2_type == TAC_ARG_TYPE_CONSTANT && ((int)t->arg2_d) == 0)) {
-    _add_bc_to_ix(file_out);
+    _add_bc_to_iy(file_out);
 
     if (var_type == VARIABLE_TYPE_INT16 || var_type == VARIABLE_TYPE_UINT16) {
       /* the array has 16-bit items -> add bc -> ix twice! */
-      _add_bc_to_ix(file_out);
+      _add_bc_to_iy(file_out);
     }
   }
   
   /******************************************************************************************************/
-  /* source address (arg1) -> iy */
+  /* source address (arg1) -> ix */
   /******************************************************************************************************/
 
+  ix_offset = 0;
+  
   if (t->arg1_type == TAC_ARG_TYPE_CONSTANT) {
   }
   else if (t->arg1_type == TAC_ARG_TYPE_LABEL && arg1_offset == 999999) {
     /* global var */
-    _load_label_to_iy(t->arg1_node->children[1]->label, file_out);
+    _load_label_to_ix(t->arg1_node->children[1]->label, file_out);
   }
   else {
     /* it's a variable in the frame! */
     fprintf(file_out, "      ; offset %d\n", arg1_offset);
 
-    _load_value_to_iy(arg1_offset, file_out);
-    _add_de_to_iy(file_out);
+    if (arg1_offset >= -128 && arg1_offset <= 126) {
+      ix_offset = arg1_offset;
+      arg1_offset = 0;
+    }
+    
+    _load_de_with_offset_to_ix(arg1_offset, file_out);
   }
 
   /******************************************************************************************************/
-  /* copy data (iy) -> hl */
+  /* copy data (ix) -> hl */
   /******************************************************************************************************/
   
   if (t->arg1_type == TAC_ARG_TYPE_CONSTANT) {
     int value = (int)t->arg1_d;
     if (var_type == VARIABLE_TYPE_INT16 || var_type == VARIABLE_TYPE_UINT16) {
       /* 16-bit */
-      _load_value_into_ix(value & 0xff, 0, file_out);
-      _load_value_into_ix((value >> 8) & 0xff, 1, file_out);
+      _load_value_into_iy(value & 0xff, 0, file_out);
+      _load_value_into_iy((value >> 8) & 0xff, 1, file_out);
 
       return SUCCEEDED;
     }
     else {
       /* 8-bit */
-      _load_value_into_ix(value & 0xff, 0, file_out);
+      _load_value_into_iy(value & 0xff, 0, file_out);
       return SUCCEEDED;
     }
   }
   else {
     if (t->arg1_var_type == VARIABLE_TYPE_INT16 || t->arg1_var_type == VARIABLE_TYPE_UINT16) {
       /* 16-bit */
-      _load_from_iy_to_l(0, file_out);
-      _load_from_iy_to_h(1, file_out);
+      _load_from_ix_to_l(ix_offset, file_out);
+      _load_from_ix_to_h(ix_offset + 1, file_out);
     }
     else {
       /* 8-bit */
-      _load_from_iy_to_l(0, file_out);
+      _load_from_ix_to_l(ix_offset, file_out);
 
       /* sign extend 8-bit -> 16-bit? */
       if (t->arg1_var_type == VARIABLE_TYPE_INT8 && (var_type == VARIABLE_TYPE_INT16 ||
@@ -2339,17 +2383,17 @@ static int _generate_asm_array_assignment_z80(struct tac *t, FILE *file_out, str
   }
   
   /******************************************************************************************************/
-  /* copy data hl -> (ix) */
+  /* copy data hl -> (iy) */
   /******************************************************************************************************/
 
   if (var_type == VARIABLE_TYPE_INT16 || var_type == VARIABLE_TYPE_UINT16) {
     /* 16-bit */
-    _load_l_into_ix(0, file_out);
-    _load_h_into_ix(1, file_out);
+    _load_l_into_iy(0, file_out);
+    _load_h_into_iy(1, file_out);
   }
   else {
     /* 8-bit */
-    _load_l_into_ix(0, file_out);
+    _load_l_into_iy(0, file_out);
   }
 
   return SUCCEEDED;
@@ -2396,8 +2440,7 @@ static int _generate_asm_shift_left_right_z80_16bit(struct tac *t, FILE *file_ou
       arg1_offset = 0;
     }
 
-    _load_value_to_ix(arg1_offset, file_out);
-    _add_de_to_ix(file_out);
+    _load_de_with_offset_to_ix(arg1_offset, file_out);
   }
   
   /******************************************************************************************************/
@@ -2457,8 +2500,7 @@ static int _generate_asm_shift_left_right_z80_16bit(struct tac *t, FILE *file_ou
       arg2_offset = 0;
     }
 
-    _load_value_to_ix(arg2_offset, file_out);
-    _add_de_to_ix(file_out);
+    _load_de_with_offset_to_ix(arg2_offset, file_out);
   }
   
   /******************************************************************************************************/
@@ -2556,8 +2598,7 @@ static int _generate_asm_shift_left_right_z80_16bit(struct tac *t, FILE *file_ou
       result_offset = 0;
     }
 
-    _load_value_to_ix(result_offset, file_out);
-    _add_de_to_ix(file_out);
+    _load_de_with_offset_to_ix(result_offset, file_out);
   }
 
   /******************************************************************************************************/
@@ -2618,8 +2659,7 @@ static int _generate_asm_shift_left_right_z80_8bit(struct tac *t, FILE *file_out
       arg1_offset = 0;
     }
 
-    _load_value_to_ix(arg1_offset, file_out);
-    _add_de_to_ix(file_out);
+    _load_de_with_offset_to_ix(arg1_offset, file_out);
   }
   
   /******************************************************************************************************/
@@ -2656,8 +2696,7 @@ static int _generate_asm_shift_left_right_z80_8bit(struct tac *t, FILE *file_out
       arg2_offset = 0;
     }
 
-    _load_value_to_ix(arg2_offset, file_out);
-    _add_de_to_ix(file_out);
+    _load_de_with_offset_to_ix(arg2_offset, file_out);
   }
 
   /******************************************************************************************************/
@@ -2729,8 +2768,7 @@ static int _generate_asm_shift_left_right_z80_8bit(struct tac *t, FILE *file_out
       result_offset = 0;
     }
 
-    _load_value_to_ix(result_offset, file_out);
-    _add_de_to_ix(file_out);
+    _load_de_with_offset_to_ix(result_offset, file_out);
   }
 
   /******************************************************************************************************/
@@ -2819,8 +2857,7 @@ static int _generate_asm_mul_div_mod_z80_16bit(struct tac *t, FILE *file_out, st
       arg1_offset = 0;
     }
 
-    _load_value_to_ix(arg1_offset, file_out);
-    _add_de_to_ix(file_out);
+    _load_de_with_offset_to_ix(arg1_offset, file_out);
   }
   
   /******************************************************************************************************/
@@ -2880,8 +2917,7 @@ static int _generate_asm_mul_div_mod_z80_16bit(struct tac *t, FILE *file_out, st
       arg2_offset = 0;
     }
 
-    _load_value_to_ix(arg2_offset, file_out);
-    _add_de_to_ix(file_out);
+    _load_de_with_offset_to_ix(arg2_offset, file_out);
   }
   
   /******************************************************************************************************/
@@ -3032,8 +3068,7 @@ static int _generate_asm_mul_div_mod_z80_16bit(struct tac *t, FILE *file_out, st
       result_offset = 0;
     }
 
-    _load_value_to_ix(result_offset, file_out);
-    _add_de_to_ix(file_out);
+    _load_de_with_offset_to_ix(result_offset, file_out);
   }
 
   /******************************************************************************************************/
@@ -3112,8 +3147,7 @@ static int _generate_asm_mul_div_mod_z80_8bit(struct tac *t, FILE *file_out, str
       arg1_offset = 0;
     }
 
-    _load_value_to_ix(arg1_offset, file_out);
-    _add_de_to_ix(file_out);
+    _load_de_with_offset_to_ix(arg1_offset, file_out);
   }
   
   /******************************************************************************************************/
@@ -3253,8 +3287,7 @@ static int _generate_asm_mul_div_mod_z80_8bit(struct tac *t, FILE *file_out, str
       result_offset = 0;
     }
 
-    _load_value_to_ix(result_offset, file_out);
-    _add_de_to_ix(file_out);
+    _load_de_with_offset_to_ix(result_offset, file_out);
   }
 
   /******************************************************************************************************/
@@ -3384,8 +3417,7 @@ static int _generate_asm_jump_eq_lt_gt_neq_lte_gte_z80_16bit(struct tac *t, FILE
       arg1_offset = 0;
     }
 
-    _load_value_to_ix(arg1_offset, file_out);
-    _add_de_to_ix(file_out);
+    _load_de_with_offset_to_ix(arg1_offset, file_out);
   }
   
   /******************************************************************************************************/
@@ -3445,8 +3477,7 @@ static int _generate_asm_jump_eq_lt_gt_neq_lte_gte_z80_16bit(struct tac *t, FILE
       arg2_offset = 0;
     }
 
-    _load_value_to_ix(arg2_offset, file_out);
-    _add_de_to_ix(file_out);
+    _load_de_with_offset_to_ix(arg2_offset, file_out);
   }
   
   /******************************************************************************************************/
@@ -3551,8 +3582,7 @@ static int _generate_asm_jump_eq_lt_gt_neq_lte_gte_z80_8bit(struct tac *t, FILE 
       arg1_offset = 0;
     }
 
-    _load_value_to_ix(arg1_offset, file_out);
-    _add_de_to_ix(file_out);
+    _load_de_with_offset_to_ix(arg1_offset, file_out);
   }
   
   /******************************************************************************************************/
@@ -3589,8 +3619,7 @@ static int _generate_asm_jump_eq_lt_gt_neq_lte_gte_z80_8bit(struct tac *t, FILE 
       arg2_offset = 0;
     }
 
-    _load_value_to_ix(arg2_offset, file_out);
-    _add_de_to_ix(file_out);
+    _load_de_with_offset_to_ix(arg2_offset, file_out);
   }
 
   /******************************************************************************************************/
@@ -3704,8 +3733,7 @@ static int _generate_asm_return_value_z80(struct tac *t, FILE *file_out, struct 
       arg1_offset = 0;
     }
 
-    _load_value_to_ix(arg1_offset, file_out);
-    _add_de_to_ix(file_out);
+    _load_de_with_offset_to_ix(arg1_offset, file_out);
   }
   
   /******************************************************************************************************/
@@ -3764,8 +3792,7 @@ static int _generate_asm_return_value_z80(struct tac *t, FILE *file_out, struct 
   /* copy return data hl/l -> stack frame */
   /******************************************************************************************************/
 
-  _load_value_to_ix(0, file_out);
-  _add_de_to_ix(file_out);
+  _load_de_with_offset_to_ix(0, file_out);
   
   if (return_var_type == VARIABLE_TYPE_INT16 || return_var_type == VARIABLE_TYPE_UINT16) {
     /* 16-bit */
@@ -3997,8 +4024,7 @@ static int _generate_asm_function_call_z80(struct tac *t, FILE *file_out, struct
   fprintf(file_out, "      ; new stack frame -> IX\n");
   
   /* stack frame -> ix */
-  _load_value_to_ix(0, file_out);
-  _add_de_to_ix(file_out);
+  _load_de_with_offset_to_ix(0, file_out);
 
   if (op == TAC_OP_FUNCTION_CALL_USE_RETURN_VALUE) {
     int return_var_type = tree_node_get_max_var_type(t->arg1_node->children[0]);
@@ -4119,8 +4145,7 @@ static int _generate_asm_inline_asm_read_z80(struct tac *t, FILE *file_out, stru
       offset = 0;
     }
 
-    _load_value_to_ix(offset, file_out);
-    _add_de_to_ix(file_out);
+    _load_de_with_offset_to_ix(offset, file_out);
   }
   
   /******************************************************************************************************/
@@ -4178,8 +4203,7 @@ static int _generate_asm_inline_asm_write_z80(struct tac *t, FILE *file_out, str
       offset = 0;
     }
 
-    _load_value_to_ix(offset, file_out);
-    _add_de_to_ix(file_out);
+    _load_de_with_offset_to_ix(offset, file_out);
   }
   
   /******************************************************************************************************/
@@ -4381,6 +4405,12 @@ int generate_asm_z80(FILE *file_out) {
           continue;
 
         /* IL -> ASM */
+
+        if (op == TAC_OP_LABEL) {
+          /* NOTE! for _load_de_with_offset_to_ix() optimization every time we touch IX (or create a label)
+             we need to set the variable to say that IX is no longer DE */
+          g_is_ix_de = NO;
+        }
 
         if (op == TAC_OP_LABEL && t->is_function == YES) {
           i--;
