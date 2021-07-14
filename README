@@ -19,10 +19,9 @@ TODO
 
 Optimize:
 
-- Reuse registers inside a function
 - Optimize user written calculations like 2+a-1 -> 1+a
 - If a variable is only written to, remove the variable and all assignments
-- Get rid of stack frame pointer DE in Z80 ASM, use just SP?
+- Keep stack frame in IX and possibly IY all the time
 
 Fix:
 

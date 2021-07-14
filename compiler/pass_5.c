@@ -52,11 +52,14 @@ int pass_5(void) {
     return FAILED;  
   if (optimize_il() == FAILED)
     return FAILED;
+  /* make life easier for reuse_registers() */
   if (compress_register_names() == FAILED)
     return FAILED;
-
-  /* TODO: reuse old registers to decrease stack usage later */
-
+  if (reuse_registers() == FAILED)
+    return FAILED;
+  /* reuse_registers() might have removed some registers, so let's compress again */
+  if (compress_register_names() == FAILED)
+    return FAILED;
   if (propagate_operand_types() == FAILED)
     return FAILED;
   if (collect_and_preprocess_local_variables_inside_functions() == FAILED)
@@ -1809,6 +1812,229 @@ int compress_register_names(void) {
 }
 
 
+static void _find_first_and_last_register_usage(int start, int end, int reg, int *first, int *last) {
+
+  int i, found_it = NO, item_1 = -1, item_2 = -1;
+
+  for (i = start; i < end; i++) {
+    if (g_tacs[i].op == TAC_OP_FUNCTION_CALL) {
+      int j;
+
+      for (j = 0; j < g_tacs[i].arguments_count; j++) {
+        if (g_tacs[i].arguments[j].type == TAC_ARG_TYPE_TEMP && g_tacs[i].arguments[j].value == reg) {
+          if (found_it == NO) {
+            found_it = YES;
+            item_1 = i;
+          }
+          else
+            item_2 = i;
+        }
+      }
+    }
+    else if (g_tacs[i].op == TAC_OP_FUNCTION_CALL_USE_RETURN_VALUE) {
+      int j;
+
+      for (j = 0; j < g_tacs[i].arguments_count; j++) {
+        if (g_tacs[i].arguments[j].type == TAC_ARG_TYPE_TEMP && g_tacs[i].arguments[j].value == reg) {
+          if (found_it == NO) {
+            found_it = YES;
+            item_1 = i;
+          }
+          else
+            item_2 = i;
+        }
+      }
+
+      if (g_tacs[i].result_type == TAC_ARG_TYPE_TEMP) {
+        if ((int)g_tacs[i].result_d == reg) {
+          if (found_it == NO) {
+            found_it = YES;
+            item_1 = i;
+          }
+          else
+            item_2 = i;
+        }
+      }
+    }
+    else if (g_tacs[i].op == TAC_OP_CREATE_VARIABLE) {
+    }
+    else if (g_tacs[i].op != TAC_OP_DEAD) {
+      if (g_tacs[i].arg1_type == TAC_ARG_TYPE_TEMP) {
+        if ((int)g_tacs[i].arg1_d == reg) {
+          if (found_it == NO) {
+            found_it = YES;
+            item_1 = i;
+          }
+          else
+            item_2 = i;
+        }
+      }
+      if (g_tacs[i].arg2_type == TAC_ARG_TYPE_TEMP) {
+        if ((int)g_tacs[i].arg2_d == reg) {
+          if (found_it == NO) {
+            found_it = YES;
+            item_1 = i;
+          }
+          else
+            item_2 = i;
+        }
+      }
+      if (g_tacs[i].result_type == TAC_ARG_TYPE_TEMP) {
+        if ((int)g_tacs[i].result_d == reg) {
+          if (found_it == NO) {
+            found_it = YES;
+            item_1 = i;
+          }
+          else
+            item_2 = i;
+        }
+      }
+    }
+  }
+
+  *first = item_1;
+  *last = item_2;
+}
+
+
+static void _rename_register(int start, int end, int r2, int r1) {
+
+  int i;
+
+  for (i = start; i < end; i++) {
+    if (g_tacs[i].op == TAC_OP_FUNCTION_CALL) {
+      int j;
+
+      for (j = 0; j < g_tacs[i].arguments_count; j++) {
+        if (g_tacs[i].arguments[j].type == TAC_ARG_TYPE_TEMP && g_tacs[i].arguments[j].value == r2)
+          g_tacs[i].arguments[j].value = r1;
+      }
+    }
+    else if (g_tacs[i].op == TAC_OP_FUNCTION_CALL_USE_RETURN_VALUE) {
+      int j;
+
+      for (j = 0; j < g_tacs[i].arguments_count; j++) {
+        if (g_tacs[i].arguments[j].type == TAC_ARG_TYPE_TEMP && g_tacs[i].arguments[j].value == r2)
+          g_tacs[i].arguments[j].value = r1;
+      }
+
+      if (g_tacs[i].result_type == TAC_ARG_TYPE_TEMP) {
+        if ((int)g_tacs[i].result_d == r2)
+          g_tacs[i].result_d = r1;
+      }
+    }
+    else if (g_tacs[i].op == TAC_OP_CREATE_VARIABLE) {
+    }
+    else if (g_tacs[i].op != TAC_OP_DEAD) {
+      if (g_tacs[i].arg1_type == TAC_ARG_TYPE_TEMP) {
+        if ((int)g_tacs[i].arg1_d == r2)
+          g_tacs[i].arg1_d = r1;
+      }
+      if (g_tacs[i].arg2_type == TAC_ARG_TYPE_TEMP) {
+        if ((int)g_tacs[i].arg2_d == r2)
+          g_tacs[i].arg2_d = r1;
+      }
+      if (g_tacs[i].result_type == TAC_ARG_TYPE_TEMP) {
+        if ((int)g_tacs[i].result_d == r2)
+          g_tacs[i].result_d = r1;
+      }
+    }
+  }
+}
+
+
+int reuse_registers(void) {
+
+  int *register_usage;
+  int i, j, r1, r2;
+
+  i = 0;
+  while (1) {
+    int is_last_function = NO;
+    int end = _find_end_of_il_function(i, &is_last_function);
+    if (end < 0)
+      return FAILED;
+
+    /* a function spans from "i" to "end-1" */
+
+    if (_count_and_allocate_register_usage(i, end) == FAILED)
+      return FAILED;
+
+    for (r1 = 0; r1 < g_register_reads_and_writes_count; r1++) {
+      int first1 = -1, last1 = -1, first2 = -1, last2 = -1;
+      
+      if (_count_and_allocate_register_usage(i, end) == FAILED)
+        return FAILED;
+
+      /* sum reads and writes */
+      for (j = 0; j < g_register_reads_and_writes_count; j++)
+        g_register_reads[j] += g_register_writes[j];
+
+      /* reuse the arrays! */
+      register_usage = g_register_reads;
+
+      if (register_usage[r1] == 0)
+        continue;
+
+      /* we have a register that's used! let's find the first and last usage */
+      _find_first_and_last_register_usage(i, end, r1, &first1, &last1);
+
+      if (first1 == -1 || last1 == -1) {
+        /* the register has been removed */
+        continue;
+      }
+
+      /* we have a span (first, last) for a register r1. find a bigger register r2 which life span
+         is after r1, and reuse this register (rename r2 to r1) */
+
+      /* TODO: find the register r2 with the optimal span */
+
+      for (r2 = r1 + 1; r2 < g_register_reads_and_writes_count; r2++) {
+        if (register_usage[r2] == 0)
+          continue;
+
+        first2 = -1;
+        last2 = -1;
+
+        /* we have a register that's used! let's find the first and last usage */
+        _find_first_and_last_register_usage(i, end, r2, &first2, &last2);
+
+        if (first2 == -1 || last2 == -1) {
+          /* the register has been removed */
+          continue;
+        }
+
+        if (first2 < last1) {
+          /* r2 is alive before r1 dies */
+          continue;
+        }
+
+        /* we found it! */
+        break;
+      }
+
+      if (r2 == g_register_reads_and_writes_count) {
+        /* no r2 was found -> move to the next r1 */
+        continue;
+      }
+
+      /* rename r2 to r1! */
+      _rename_register(i, end, r2, r1);
+
+      /* redo r1 */
+      r1--;
+    }
+    
+    i = end;
+
+    if (is_last_function == YES)
+      break;
+  }
+  
+  return SUCCEEDED;
+}
+
+
 static char *g_temp_register_types = NULL;
 static int g_temp_register_types_count = 0;
 
@@ -2249,7 +2475,9 @@ int collect_and_preprocess_local_variables_inside_functions(void) {
         else if (op == TAC_OP_DEAD) {
         }
         else {
-          /* mark the used registers */
+          /* mark the used registers and collect the max sizes for the registers. NOTE! the register size might
+             change during the search as we've reused some registers possibly and in some cases the register
+             might be 8-bit and in some cases 16-bit... */
           if (t->arg1_type == TAC_ARG_TYPE_TEMP) {
             int index = (int)t->arg1_d;
             int size = get_variable_type_size(t->arg1_var_type);
@@ -2258,11 +2486,8 @@ int collect_and_preprocess_local_variables_inside_functions(void) {
               fprintf(stderr, "collect_local_variables_inside_functions(): Register r%d size is 0!\n", index);
             
             register_usage[index] = 1;
-            if (size != register_sizes[index]) {
-              if (register_sizes[index] != 0)
-                fprintf(stderr, "collect_local_variables_inside_functions(): Register r%d size changed from %d to %d!\n", index, register_sizes[index], size);
+            if (size > register_sizes[index])
               register_sizes[index] = size;
-            }
           }
           if (t->arg2_type == TAC_ARG_TYPE_TEMP) {
             int index = (int)t->arg2_d;
@@ -2272,11 +2497,8 @@ int collect_and_preprocess_local_variables_inside_functions(void) {
               fprintf(stderr, "collect_local_variables_inside_functions(): Register r%d size is 0!\n", index);
 
             register_usage[index] = 1;
-            if (size != register_sizes[index]) {
-              if (register_sizes[index] != 0)
-                fprintf(stderr, "collect_local_variables_inside_functions(): Register r%d size changed from %d to %d!\n", index, register_sizes[index], size);
+            if (size > register_sizes[index])
               register_sizes[index] = size;
-            }
           }
           if (t->result_type == TAC_ARG_TYPE_TEMP) {
             int index = (int)t->result_d;
@@ -2286,11 +2508,8 @@ int collect_and_preprocess_local_variables_inside_functions(void) {
               fprintf(stderr, "collect_local_variables_inside_functions(): Register r%d size is 0!\n", index);
 
             register_usage[index] = 1;
-            if (size != register_sizes[index]) {
-              if (register_sizes[index] != 0)
-                fprintf(stderr, "collect_local_variables_inside_functions(): Register r%d size changed from %d to %d!\n", index, register_sizes[index], size);
+            if (size > register_sizes[index])
               register_sizes[index] = size;
-            }
           }
         }
 
