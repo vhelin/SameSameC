@@ -1,7 +1,10 @@
 
-  .RAMSECTION "global_variables_test2_ram" FREE
+  .RAMSECTION "global_variables_test2_ram" BANK 0 SLOT 3 FREE
     g_data DSB 2
   .ENDS
+
+  .BANK 0 SLOT 0
+  .ORG $0000
 
   .SECTION "global_variables_test2_rom" FREE
     global_variable_rom_g_data:
@@ -16,7 +19,6 @@
       LD  BC,2
       CALL copy_bytes_bank_000
       RET
-
   .ENDS
 
   .BANK 0 SLOT 0
@@ -291,7 +293,7 @@
       ADD IY,BC
       LD  (IY+0),3
       ; =================================================================
-      ; ../test2.blb:26: color[0] += values[1];
+      ; ../test2.blb:26: color[0] += values[adder];
       ; =================================================================
       ; -----------------------------------------------------------------
       ; TAC: r0.uint8 (uint8) := color.uint16 (uint8)[0.uint8 (uint8)]
@@ -307,9 +309,11 @@
       ; offset -15
       LD  (IX-15),L
       ; -----------------------------------------------------------------
-      ; TAC: r1.uint8 (uint8) := values.uint8 (uint8)[1.uint8 (uint8)]
+      ; TAC: r1.uint8 (uint8) := values.uint8 (uint8)[adder.uint8 (uint8)]
       ; -----------------------------------------------------------------
-      LD  BC,1
+      ; offset -6
+      LD  C,(IX-6)
+      LD  B,0
       ; offset -14
       LD  IY,-14
       ADD IY,DE

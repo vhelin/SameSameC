@@ -24,7 +24,7 @@
 extern struct tree_node *g_global_nodes;
 extern int g_verbose_mode, g_input_float_mode, g_current_filename_id, g_current_line_number;
 extern struct tac *g_tacs;
-extern int g_tacs_count, g_tacs_max, g_bank, g_slot;
+extern int g_tacs_count, g_tacs_max, g_bank, g_slot, g_ram_bank, g_ram_slot;
 extern char g_tmp[4096], g_error_message[sizeof(g_tmp) + MAX_NAME_LENGTH + 1 + 1024];
 
 static int g_return_id = 1, g_is_ix_de = NO;
@@ -4661,7 +4661,7 @@ int generate_global_variables_z80(char *file_name, FILE *file_out) {
     return SUCCEEDED;
 
   /* create .RAMSECTION for global variables */
-  fprintf(file_out, "  .RAMSECTION \"global_variables_%s_ram\" FREE\n", file_name);
+  fprintf(file_out, "  .RAMSECTION \"global_variables_%s_ram\" BANK %d SLOT %d FREE\n", file_name, g_ram_bank, g_ram_slot);
 
   for (i = 0; i < g_global_nodes->added_children; i++) {
     struct tree_node *node = g_global_nodes->children[i];
@@ -4719,7 +4719,12 @@ int generate_global_variables_z80(char *file_name, FILE *file_out) {
     }
   }
   
-  fprintf(file_out, "  .ENDS\n\n");  
+  fprintf(file_out, "  .ENDS\n");
+
+  fprintf(file_out, "\n");
+  fprintf(file_out, "  .BANK %d SLOT %d\n", g_bank, g_slot);
+  fprintf(file_out, "  .ORG $0000\n");
+  fprintf(file_out, "\n");
 
   /* create .SECTION for global variables */
   fprintf(file_out, "  .SECTION \"global_variables_%s_rom\" FREE\n", file_name);  
@@ -4847,23 +4852,6 @@ int generate_global_variables_z80(char *file_name, FILE *file_out) {
   
   _ret(file_out);
 
-  fprintf(file_out, "\n");
-
-  /* the copy loop */
-  /*
-  _add_label("_copy_bytes", file_out, NO);
-
-  _load_from_de_to_a(file_out);
-  _load_a_into_hl(file_out);
-  _inc_de(file_out);
-  _inc_hl(file_out);
-  _dec_bc(file_out);
-  _load_b_to_a(file_out);
-  _or_c_to_a(file_out);
-  _jr_nz_to("_copy_bytes", file_out);
-  _ret(file_out);
-  */
-  
   fprintf(file_out, "  .ENDS\n\n");
   
   return SUCCEEDED;

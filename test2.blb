@@ -23,7 +23,7 @@ void add_to_color(uint8 *color, uint8 adder) {
 
   uint8 values[8] = { 0, adder, 2, 3 };
 
-  color[0] += values[1];
+  color[0] += values[adder];
 }
 
 int8 g_data[2] = { 1, 2 };

@@ -138,6 +138,7 @@ int arch_z80_write_link_file(int target, char *object_file_name, FILE *file_out)
   */
 
   /* .RAMSECTIONs... */
+  /*
   got_any = NO;
   if (target == TARGET_SMS) {
     struct file *f;
@@ -157,7 +158,8 @@ int arch_z80_write_link_file(int target, char *object_file_name, FILE *file_out)
       f = f->next;
     }
   }
-  
+  */
+
   return SUCCEEDED;
 }
 
@@ -183,7 +185,7 @@ int arch_z80_create_copy_bytes_functions(void) {
                "      DEC BC\n" \
                "      LD  A,B\n" \
                "      OR  A,C\n" \
-               "      JR  NZ, copy_bytes_bank_%.3d\n" \
+               "      JR  NZ,copy_bytes_bank_%.3d\n" \
                "      RET\n" \
                "  .ENDS\n", f->bank, f->bank, f->bank);
 
