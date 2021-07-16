@@ -21,5 +21,9 @@ void main(void) {
 
 void add_to_color(uint8 *color, uint8 adder) {
 
-  color[0] += 1+adder-1+1-1+1-1;
+  uint8 values[8] = { 0, adder, 2, 3 };
+
+  color[0] += values[1];
 }
+
+int8 g_data[2] = { 1, 2 };

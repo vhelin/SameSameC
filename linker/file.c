@@ -11,6 +11,7 @@
 
 
 struct file *g_files_first = NULL, *g_files_last = NULL;
+unsigned char g_copy_bytes_bank[256];
 
 
 static int _get_plain_filename(char *output, int output_size, char *input) {
@@ -67,6 +68,9 @@ int file_load(char *name) {
   f->global_variables_init_function[0] = 0;
   f->data = NULL;
   f->size = 0;
+  f->bank = -1;
+  f->data_copy_bytes[0] = 0;
+  f->data_copy_bytes_size = 0;
   f->next = NULL;
   f->position_sections = 0;
   f->position_ramsections = 0;
@@ -126,16 +130,13 @@ static int _find_function(const char *name, struct file *f) {
   length = strlen(name);
 
   while (i < f->size) {
-    if (i < f->size - 4) {
-      if (d[i+0] == ' ' && d[i+1] == ' ' && d[i+2] == ' ' && d[i+3] == ' ' && i+4+length < f->size) {
-        for (j = 0; j < length; j++) {
-          if (d[i+4+j] != name[j])
-            break;
-        }
-        if (j == length)
-          return SUCCEEDED;
-      }
+    for (j = 0; i+j < f->size && j < length; j++) {
+      if (d[i+j] != name[j])
+        break;
     }
+    if (j == length)
+      return SUCCEEDED;
+
     i++;
   }
   
@@ -158,6 +159,38 @@ int file_has_main(void) {
 }
 
 
+int file_find_copy_bytes_calls(void) {
+
+  char copy_function_name[MAX_NAME_LENGTH+1];
+  struct file *f;
+  int i;
+
+  for (i = 0; i < 256; i++)
+    g_copy_bytes_bank[i] = NO;
+
+  /* TODO: optimize */
+  
+  f = g_files_first;
+  while (f != NULL) {
+    for (i = 0; i < 256; i++) {
+      if (g_copy_bytes_bank[i] == YES)
+        continue;
+      
+      snprintf(copy_function_name, sizeof(copy_function_name), "copy_bytes_bank_%.3d", i);
+      if (_find_function(copy_function_name, f) == SUCCEEDED) {
+        g_copy_bytes_bank[i] = YES;
+        f->bank = i;
+        break;
+      }
+    }
+    
+    f = f->next;
+  }
+
+  return SUCCEEDED;
+}
+
+
 int file_write_all_asm_files_into_tmp_file(FILE *fp) {
 
   struct file *f;
@@ -169,6 +202,11 @@ int file_write_all_asm_files_into_tmp_file(FILE *fp) {
     fprintf(fp, "; %s\n", f->name);
     fprintf(fp, "; ######################################################################\n");
     fwrite(f->data, 1, f->size, fp);
+
+    /* copy_bytes_bank_??? function? */
+    if (f->data_copy_bytes_size > 0)
+      fwrite(f->data_copy_bytes, 1, f->data_copy_bytes_size, fp);
+    
     f = f->next;
   }
 

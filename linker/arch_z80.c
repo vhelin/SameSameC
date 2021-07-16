@@ -11,6 +11,7 @@
 
 
 extern struct file *g_files_first, *g_files_last;
+extern unsigned char g_copy_bytes_bank[256];
 
 
 int arch_z80_write_system_init(int target, FILE *file_out) {
@@ -114,6 +115,7 @@ int arch_z80_write_link_file(int target, char *object_file_name, FILE *file_out)
   /* place .SECTIONs and .RAMSECTIONs into suitable banks and slots */
 
   /* .SECTIONs... */
+  /*
   got_any = NO;
   if (target == TARGET_SMS) {
     struct file *f;
@@ -133,6 +135,7 @@ int arch_z80_write_link_file(int target, char *object_file_name, FILE *file_out)
       f = f->next;
     }
   }
+  */
 
   /* .RAMSECTIONs... */
   got_any = NO;
@@ -155,5 +158,40 @@ int arch_z80_write_link_file(int target, char *object_file_name, FILE *file_out)
     }
   }
   
+  return SUCCEEDED;
+}
+
+
+int arch_z80_create_copy_bytes_functions(void) {
+
+  struct file *f;
+
+  f = g_files_first;
+  while (f != NULL) {
+    if (f->bank >= 0 && g_copy_bytes_bank[f->bank] == YES) {
+      /* we only need one of these functions per bank */
+      g_copy_bytes_bank[f->bank] = NO;
+
+      /* create the copy function */
+      snprintf(f->data_copy_bytes, sizeof(f->data_copy_bytes),
+               "  .SECTION \"copy_bytes_bank_%.3d\" FREE\n" \
+               "    copy_bytes_bank_%.3d:\n" \
+               "      LD  A,(DE)\n" \
+               "      LD  (HL),A\n" \
+               "      INC DE\n" \
+               "      INC HL\n" \
+               "      DEC BC\n" \
+               "      LD  A,B\n" \
+               "      OR  A,C\n" \
+               "      JR  NZ, copy_bytes_bank_%.3d\n" \
+               "      RET\n" \
+               "  .ENDS\n", f->bank, f->bank, f->bank);
+
+      f->data_copy_bytes_size = strlen(f->data_copy_bytes);
+    }
+    
+    f = f->next;
+  }
+
   return SUCCEEDED;
 }

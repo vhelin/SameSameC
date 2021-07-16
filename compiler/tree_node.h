@@ -13,6 +13,7 @@ int tree_node_add_child(struct tree_node *node, struct tree_node *child);
 int tree_node_set_string(struct tree_node *node, char *string);
 int tree_node_get_max_var_type(struct tree_node *node);
 int tree_node_get_create_variable_data_items(struct tree_node *node);
+int tree_node_is_expression_just_a_constant(struct tree_node *node);
 void free_tree_node(struct tree_node *node);
 void free_tree_node_children(struct tree_node *node);
 struct tree_node *clone_tree_node(struct tree_node *node);

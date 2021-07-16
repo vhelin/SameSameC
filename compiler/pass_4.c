@@ -363,10 +363,24 @@ static int _generate_il_create_variable(struct tree_node *node) {
   }
   else {
     /* array copy */
-    int i;
+    int i, constants = 0, skip_constants = NO;
+
+    /* calculate how many constants there are in the array */
+    for (i = 0; i < node->added_children - 2; i++) {
+      if (tree_node_is_expression_just_a_constant(node->children[2 + i]) == YES)
+        constants++;
+    }
+
+    /* in pass_6 we'll copy these constants when encountering TAC_OP_CREATE_VARIABLE, so the
+       TACs we create now here take place later */
+    if (constants > 3)
+      skip_constants = YES;
 
     for (i = 0; i < node->added_children - 2; i++) {
       int r2 = g_temp_r, type;
+
+      if (skip_constants == YES && tree_node_is_expression_just_a_constant(node->children[2 + i]) == YES)
+        continue;
 
       if (_generate_il_create_expression(node->children[2 + i]) == FAILED)
         return FAILED;

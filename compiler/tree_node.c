@@ -537,3 +537,11 @@ int tree_node_get_create_variable_data_items(struct tree_node *node) {
   return items;
 }
   
+
+int tree_node_is_expression_just_a_constant(struct tree_node *node) {
+
+  if (node->type == TREE_NODE_TYPE_VALUE_INT || node->type == TREE_NODE_TYPE_VALUE_DOUBLE)
+    return YES;
+  
+  return NO;
+}

@@ -63,7 +63,7 @@ extern struct tree_node *g_open_expression[256];
 extern struct tac *g_tacs;
 extern int g_tacs_count;
 
-int g_line_count_status = ON;
+int g_line_count_status = ON, g_bank = 0, g_slot = 0;
 int g_verbose_mode = OFF, g_test_mode = OFF;
 int g_extra_definitions = OFF, g_commandline_parsing = ON, g_makefile_rules = NO;
 int g_listfile_data = NO, g_quiet = NO, g_use_incdir = NO;
@@ -139,12 +139,14 @@ int main(int argc, char *argv[]) {
     printf("%s\n\n", g_version_string);
     printf("USAGE: %s <ARCHITECTURE> [OPTIONS] -o <ASM FILE> <SOURCE FILE>\n\n", argv[0]);
     printf("Options:\n");
-    printf("-q       Quiet\n");
-    printf("-v       Verbose messages\n");
-    printf("-I <DIR> Include directory\n");
-    printf("-D <DEF> Declare definition\n\n");
+    printf("-b <BANK> Bank\n");
+    printf("-s <SLOT> Slot\n");
+    printf("-q        Quiet\n");
+    printf("-v        Verbose messages\n");
+    printf("-I <DIR>  Include directory\n");
+    printf("-D <DEF>  Declare definition\n\n");
     printf("Achitectures:\n");
-    printf("-aZ80    Compile for Z80 CPU\n\n");
+    printf("-aZ80     Compile for Z80 CPU\n\n");
     printf("EXAMPLE: %s -aZ80 -D VERSION=1 -D TWO=2 -v -o main.asm main.blb\n\n", argv[0]);
     return 0;
   }
@@ -252,6 +254,28 @@ int parse_flags(char **flags, int flagc) {
       if (count + 1 < flagc) {
         /* get arg */
         parse_and_add_incdir(flags[count+1], NO);
+      }
+      else
+        return FAILED;
+
+      count++;
+      continue;
+    }
+    else if (!strcmp(flags[count], "-b")) {
+      if (count + 1 < flagc) {
+        /* get arg */
+        g_bank = atoi(flags[count+1]);
+      }
+      else
+        return FAILED;
+
+      count++;
+      continue;
+    }
+    else if (!strcmp(flags[count], "-s")) {
+      if (count + 1 < flagc) {
+        /* get arg */
+        g_slot = atoi(flags[count+1]);
       }
       else
         return FAILED;

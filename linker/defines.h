@@ -33,6 +33,9 @@ struct file {
   char global_variables_init_function[MAX_NAME_LENGTH+1];
   char *data;
   int  size;
+  int  bank;
+  char data_copy_bytes[1024];
+  int  data_copy_bytes_size;
   int  position_sections;
   int  position_ramsections;
   struct file *next;

@@ -36,7 +36,7 @@ extern char g_tmp[4096], g_error_message[sizeof(g_tmp) + MAX_NAME_LENGTH + 1 + 1
 int *g_register_reads = NULL, *g_register_writes = NULL;
 
 static struct label *g_removed_jump_destinations_first = NULL, *g_removed_jump_destinations_last = NULL;
-static int g_register_reads_and_writes_count = 0;
+static int g_register_reads_and_writes_count = 0, g_local_variable_running_index = 1;
 
 
 int pass_5(void) {
@@ -2446,18 +2446,20 @@ int collect_and_preprocess_local_variables_inside_functions(void) {
           break;
         }
         else if (op == TAC_OP_CREATE_VARIABLE) {
+          if (t->result_node->type == TREE_NODE_TYPE_CREATE_VARIABLE) {
+            char local_label[MAX_NAME_LENGTH + 1];
+
+            /* ... and here we rename it to be a local label, saves a lot of work later, all references
+               pointing to the original tree_node that contains the variable creation can use the new name */
+            snprintf(local_label, sizeof(local_label), "_%s_%d", t->result_node->children[1]->label, g_local_variable_running_index++);
+            strcpy(t->result_node->children[1]->label, local_label);
+          }
+          
           /* skip consts as they are placed at the end of the function (later in ASM) */
           if (t->result_node->type == TREE_NODE_TYPE_CREATE_VARIABLE &&
               ((t->result_node->children[0]->value_double == 0 && (t->result_node->flags & TREE_NODE_FLAG_CONST_1) == TREE_NODE_FLAG_CONST_1) ||
                (t->result_node->children[0]->value_double > 0 && (t->result_node->flags & TREE_NODE_FLAG_CONST_2) == TREE_NODE_FLAG_CONST_2))) {
-            char local_label[MAX_NAME_LENGTH + 1];
-            
             /* skipping a local const variable... */
-
-            /* ... and here we rename it to be a local label, saves a lot of work later, all references
-               pointing to the original tree_node that contains the variable creation can use the new name */
-            snprintf(local_label, sizeof(local_label), "_%s", t->result_node->children[1]->label);
-            strcpy(t->result_node->children[1]->label, local_label);
           }
           else {          
             if (local_variables_count >= LOCAL_VAR_COUNT) {

@@ -24,7 +24,7 @@
 extern struct tree_node *g_global_nodes;
 extern int g_verbose_mode, g_input_float_mode, g_current_filename_id, g_current_line_number;
 extern struct tac *g_tacs;
-extern int g_tacs_count, g_tacs_max;
+extern int g_tacs_count, g_tacs_max, g_bank, g_slot;
 extern char g_tmp[4096], g_error_message[sizeof(g_tmp) + MAX_NAME_LENGTH + 1 + 1024];
 
 static int g_return_id = 1, g_is_ix_de = NO;
@@ -4281,7 +4281,7 @@ static int _generate_asm_inline_asm_z80(struct tac *t, FILE *file_out, struct tr
 
 static int _add_const_variables(struct tree_node *const_variables[256], int const_variables_count, FILE *file_out) {
 
-  int i, j, element_size, element_type;
+  int i, j, k, last, element_size, element_type;
 
   for (i = 0; i < const_variables_count; i++) {
     struct tree_node *node = const_variables[i];
@@ -4299,16 +4299,18 @@ static int _add_const_variables(struct tree_node *const_variables[256], int cons
     }
 
     /* check element types */
-    for (j = 2; j < node->added_children; j++) {
-      if (node->children[j]->type != TREE_NODE_TYPE_VALUE_INT &&
-          node->children[j]->type != TREE_NODE_TYPE_VALUE_DOUBLE &&
-          node->children[j]->type != TREE_NODE_TYPE_BYTES) {
-        g_current_filename_id = node->file_id;
-        g_current_line_number = node->line_number;
-        snprintf(g_error_message, sizeof(g_error_message), "_add_const_variables(): Const variable (\"%s\") can only be initialized with an immediate number!\n", node->children[1]->label);
-        print_error(g_error_message, ERROR_ERR);
+    if ((node->flags & TREE_NODE_FLAG_DATA_IS_CONST) == TREE_NODE_FLAG_DATA_IS_CONST) {
+      for (j = 2; j < node->added_children; j++) {
+        if (node->children[j]->type != TREE_NODE_TYPE_VALUE_INT &&
+            node->children[j]->type != TREE_NODE_TYPE_VALUE_DOUBLE &&
+            node->children[j]->type != TREE_NODE_TYPE_BYTES) {
+          g_current_filename_id = node->file_id;
+          g_current_line_number = node->line_number;
+          snprintf(g_error_message, sizeof(g_error_message), "_add_const_variables(): Const variable (\"%s\") can only be initialized with an immediate number!\n", node->children[1]->label);
+          print_error(g_error_message, ERROR_ERR);
 
-        return FAILED;
+          return FAILED;
+        }
       }
     }
 
@@ -4317,7 +4319,14 @@ static int _add_const_variables(struct tree_node *const_variables[256], int cons
     else if (element_size == 16)
       fprintf(file_out, "      .DW ");
 
-    for (j = 2; j < node->added_children; j++) {
+    /* calculate how many constants there are in the array */
+    last = -1;
+    for (k = 0; k < node->added_children - 2; k++) {
+      if (tree_node_is_expression_just_a_constant(node->children[2 + k]) == YES)
+        last = k;
+    }
+
+    for (j = 2; j - 2 <= last && j < node->added_children; j++) {
       if (j > 2)
         fprintf(file_out, ", ");
         
@@ -4326,13 +4335,15 @@ static int _add_const_variables(struct tree_node *const_variables[256], int cons
       else if (node->children[j]->type == TREE_NODE_TYPE_VALUE_DOUBLE)
         fprintf(file_out, "%d", (int)(node->children[j]->value));
       else if (node->children[j]->type == TREE_NODE_TYPE_BYTES) {
-        int k;
-
         for (k = 0; k < node->children[j]->value; k++) {
           if (k > 0)
             fprintf(file_out, ", ");
           fprintf(file_out, "%d", node->children[j]->label[k]);
         }
+      }
+      else {
+        /* non-constants are 0 here, but they are overwritten later */
+        fprintf(file_out, "%d", 0);
       }
     }
 
@@ -4343,10 +4354,47 @@ static int _add_const_variables(struct tree_node *const_variables[256], int cons
 }
 
 
+static int _copy_non_const_array_constants(struct tac *t, struct tree_node *node, int last, struct tree_node *function_node, FILE *file_out) {
+
+  char copy_function_name[MAX_NAME_LENGTH+1];
+  int offset, size, type;
+
+  if (find_stack_offset(TAC_ARG_TYPE_LABEL, node->children[1]->label, 0, node, &offset, function_node) == FAILED)
+    return FAILED;
+
+  type = get_array_item_variable_type(node->children[0], node->children[1]->label);
+  size = get_variable_type_size(type) / 8;
+  
+  _push_de(file_out);
+  
+  /* target address -> hl */
+  _load_value_to_hl(offset, file_out);
+  _add_de_to_hl(file_out);
+  
+  /* source address -> de */
+  _load_label_to_de(node->children[1]->label, file_out);
+
+  /* counter -> bc */
+  _load_value_to_bc(size * (last + 1), file_out);
+
+  /* call */
+  snprintf(copy_function_name, sizeof(copy_function_name), "copy_bytes_bank_%.3d", g_bank);
+  _call_to(copy_function_name, file_out);
+
+  _pop_de(file_out);
+  
+  return SUCCEEDED;
+}
+
+
 int generate_asm_z80(FILE *file_out) {
 
   int i, file_id = -1, line_number = -1, const_variables_count;
   struct tree_node *const_variables[256];
+  
+  fprintf(file_out, "  .BANK %d SLOT %d\n", g_bank, g_slot);
+  fprintf(file_out, "  .ORG $0000\n");
+  fprintf(file_out, "\n");
   
   for (i = 0; i < g_tacs_count; i++) {
     struct tac *t = &g_tacs[i];
@@ -4489,18 +4537,40 @@ int generate_asm_z80(FILE *file_out) {
             return FAILED;
         }
         else if (op == TAC_OP_CREATE_VARIABLE) {
-          /* collect all const local variables to be placed later at the end of the function */
           if (t->result_node->type == TREE_NODE_TYPE_CREATE_VARIABLE) {
             struct tree_node *node = t->result_node;
             
             if ((node->children[0]->value_double == 0 && (node->flags & TREE_NODE_FLAG_CONST_1) == TREE_NODE_FLAG_CONST_1) ||
                 (node->children[0]->value_double > 0 && (node->flags & TREE_NODE_FLAG_CONST_2) == TREE_NODE_FLAG_CONST_2)) {
+              node->flags |= TREE_NODE_FLAG_DATA_IS_CONST;
+              
+              /* collect all const local variables to be placed later at the end of the function */
               if (const_variables_count == 256) {
                 fprintf(stderr, "generate_asm_z80(): The function \"%s\" has more than 256 const variables. Please submit a bug report!\n", function_node->children[1]->label);
                 return FAILED;
               }
               
               const_variables[const_variables_count++] = node;
+            }
+            else {
+              /* if the variable is in fact an array with more than 1 constants, then we need to bulk copy those constants */
+              int constants = 0, last = -1, j;
+
+              /* calculate how many constants there are in the array */
+              for (j = 0; j < node->added_children - 2; j++) {
+                if (tree_node_is_expression_just_a_constant(node->children[2 + j]) == YES) {
+                  constants++;
+                  last = j;
+                }
+              }
+
+              if (constants > 3) {
+                _copy_non_const_array_constants(t, node, last, function_node, file_out);
+
+                /* the constants in this array need to be available for a bulk copy at the end of the function, just like
+                   constant variables... */
+                const_variables[const_variables_count++] = node;
+              }
             }
           }
         }
@@ -4724,6 +4794,8 @@ int generate_global_variables_z80(char *file_name, FILE *file_out) {
   }
 
   if (total_bytes > 0) {
+    char copy_function_name[MAX_NAME_LENGTH+1];
+    
     fprintf(file_out, "      ; copy all fully initialized global variables in a single call\n");
     
     /* target address -> hl */
@@ -4737,7 +4809,8 @@ int generate_global_variables_z80(char *file_name, FILE *file_out) {
     _load_value_to_bc(total_bytes, file_out);
 
     /* call */
-    _call_to("_copy_bytes", file_out);
+    snprintf(copy_function_name, sizeof(copy_function_name), "copy_bytes_bank_%.3d", g_bank);
+    _call_to(copy_function_name, file_out);
   }
 
   /* 2. copy the data of all partially initialized non_const global variables in multiple calls */
@@ -4750,6 +4823,8 @@ int generate_global_variables_z80(char *file_name, FILE *file_out) {
       
         _get_variable_initialized_size(node, &bytes, &is_fully_initialized);
         if (bytes > 0) {
+          char copy_function_name[MAX_NAME_LENGTH+1];
+
           fprintf(file_out, "      ; copy partially initialized global variable \"%s\"\n", node->children[1]->label);
     
           /* target address -> hl */
@@ -4763,7 +4838,8 @@ int generate_global_variables_z80(char *file_name, FILE *file_out) {
           _load_value_to_bc(bytes, file_out);
 
           /* call */
-          _call_to("_copy_bytes", file_out);
+          snprintf(copy_function_name, sizeof(copy_function_name), "copy_bytes_bank_%.3d", g_bank);
+          _call_to(copy_function_name, file_out);
         }
       }
     }
@@ -4772,8 +4848,9 @@ int generate_global_variables_z80(char *file_name, FILE *file_out) {
   _ret(file_out);
 
   fprintf(file_out, "\n");
-  
+
   /* the copy loop */
+  /*
   _add_label("_copy_bytes", file_out, NO);
 
   _load_from_de_to_a(file_out);
@@ -4785,6 +4862,7 @@ int generate_global_variables_z80(char *file_name, FILE *file_out) {
   _or_c_to_a(file_out);
   _jr_nz_to("_copy_bytes", file_out);
   _ret(file_out);
+  */
   
   fprintf(file_out, "  .ENDS\n\n");
   

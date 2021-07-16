@@ -107,12 +107,26 @@ int main(int argc, char *argv[]) {
     }
   }
   
+  /* find all copy_bytes_bank_??? calls */
+  if (file_find_copy_bytes_calls() == FAILED) {
+    fclose(file_out);
+    return 1;
+  }
+  
+  /* ... and create the functions */
+  if (g_target == TARGET_SMS) {
+    if (arch_z80_create_copy_bytes_functions() == FAILED) {
+      fclose(file_out);
+      return 1;
+    }
+  }
+  
   /* write all ASM files into the one ASM file */
   if (file_write_all_asm_files_into_tmp_file(file_out) == FAILED) {
     fclose(file_out);
     return 1;
   }
-  
+
   fclose(file_out);
 
   /* assemble */
