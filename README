@@ -21,18 +21,19 @@ Optimize:
 
 - Optimize user written calculations like 2+a-1 -> 1+a
 - If a variable is only written to, remove the variable and all assignments
-- Keep stack frame in IX and possibly IY all the time
+- Z80: Keep stack frame in IX and possibly IY all the time
+- Local array variable initialization
 
 Fix:
 
-- Handle local array initialization inside functions better
-- Currently "data[i++] += 1;" does the increment twice...
+- Currently "data[i++] += 1;" increments i twice...
 
 Add:
 
 - Add support for struct {};
 - Add support for #if, #elif, #else and #endif
 - Add support for free const strings
+- Add support for extern variables
 
 
 NOTE

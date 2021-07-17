@@ -46,11 +46,6 @@
 #define ERROR_WRN  9
 #define ERROR_ERR 10
 
-#define DEFINITION_TYPE_VALUE         0
-#define DEFINITION_TYPE_STRING        1
-#define DEFINITION_TYPE_STACK         2
-#define DEFINITION_TYPE_ADDRESS_LABEL 3
-
 /* want to use longer strings and labels? change this - PS. it doesn't contain the null terminator */
 #define MAX_NAME_LENGTH 255
 #define MAX_FLOAT_DIGITS 25

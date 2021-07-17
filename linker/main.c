@@ -161,13 +161,9 @@ int main(int argc, char *argv[]) {
     return 1;
   }
 
-  /* write a link file that will place all the sections in correct banks and slots */
-  if (g_target == TARGET_SMS) {
-    if (arch_z80_write_link_file(g_target, g_object_file_name, file_out) == FAILED) {
-      fclose(file_out);
-      return 1;
-    }
-  }
+  /* write a link file */
+  fprintf(file_out, "[objects]\n");
+  fprintf(file_out, "%s\n", g_object_file_name);
 
   fclose(file_out);
 

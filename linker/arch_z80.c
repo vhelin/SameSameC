@@ -104,68 +104,6 @@ int arch_z80_write_system_init(int target, FILE *file_out) {
 }
 
 
-int arch_z80_write_link_file(int target, char *object_file_name, FILE *file_out) {
-
-  /*
-  char section_name[MAX_NAME_LENGTH+1];
-  int got_any;
-  */
-  
-  fprintf(file_out, "[objects]\n");
-  fprintf(file_out, "%s\n", object_file_name);
-
-  /* place .SECTIONs and .RAMSECTIONs into suitable banks and slots */
-
-  /* .SECTIONs... */
-  /*
-  got_any = NO;
-  if (target == TARGET_SMS) {
-    struct file *f;
-
-    f = g_files_first;
-    while (f != NULL) {
-      while (file_find_next_section(f, section_name, sizeof(section_name)) == SUCCEEDED) {
-        if (got_any == NO) {
-          fprintf(file_out, "\n");
-          fprintf(file_out, "[sections]\n");
-          got_any = YES;
-        }
-
-        fprintf(file_out, "bank 0 slot \"ROMSlot1\" org 0 \"%s\"\n", section_name);
-      }
-      
-      f = f->next;
-    }
-  }
-  */
-
-  /* .RAMSECTIONs... */
-  /*
-  got_any = NO;
-  if (target == TARGET_SMS) {
-    struct file *f;
-
-    f = g_files_first;
-    while (f != NULL) {
-      while (file_find_next_ramsection(f, section_name, sizeof(section_name)) == SUCCEEDED) {
-        if (got_any == NO) {
-          fprintf(file_out, "\n");
-          fprintf(file_out, "[ramsections]\n");
-          got_any = YES;
-        }
-
-        fprintf(file_out, "bank 0 slot \"RAMSlot1\" org 0 \"%s\"\n", section_name);
-      }
-      
-      f = f->next;
-    }
-  }
-  */
-
-  return SUCCEEDED;
-}
-
-
 int arch_z80_create_copy_bytes_functions(void) {
 
   struct file *f;
