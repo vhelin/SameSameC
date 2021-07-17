@@ -109,12 +109,6 @@ static void _load_de_with_offset_to_ix(int offset, FILE *file_out) {
 }
 
 
-static void _load_b_to_a(FILE *file_out) {
-
-  fprintf(file_out, "      LD  A,B\n");
-}
-
-
 static void _load_value_to_ix(int value, FILE *file_out) {
 
   fprintf(file_out, "      LD  IX,%d\n", value);
@@ -180,12 +174,6 @@ static void _load_value_into_iy(int value, int offset, FILE *file_out) {
     fprintf(file_out, "      LD  (IY+%d),%d\n", offset, value);
   else
     fprintf(file_out, "      LD  (IY%d),%d\n", offset, value);
-}
-
-
-static void _load_from_de_to_a(FILE *file_out) {
-
-  fprintf(file_out, "      LD  A,(DE)\n");
 }
 
 
@@ -308,12 +296,6 @@ static void _load_from_ix_to_register(int offset, char reg, FILE *file_out) {
     fprintf(file_out, "      LD  %s,(IX+%d)\n", name, offset);
   else
     fprintf(file_out, "      LD  %s,(IX%d)\n", name, offset);
-}
-
-
-static void _load_a_into_hl(FILE *file_out) {
-
-  fprintf(file_out, "      LD  (HL),A\n");
 }
 
 
@@ -478,12 +460,6 @@ static void _sub_from_ix_from_a(int offset, FILE *file_out) {
     fprintf(file_out, "      SUB A,(IX+%d)\n", offset);
   else
     fprintf(file_out, "      SUB A,(IX%d)\n", offset);
-}
-
-
-static void _or_c_to_a(FILE *file_out) {
-
-  fprintf(file_out, "      OR  A,C\n");
 }
 
 
@@ -674,12 +650,6 @@ static void _jump_nz_to(char *label, FILE *file_out) {
 }
 
 
-static void _jr_nz_to(char *label, FILE *file_out) {
-
-  fprintf(file_out, "      JR  NZ,%s\n", label);
-}
-
-
 static void _call_to(char *label, FILE *file_out) {
 
   fprintf(file_out, "      CALL %s\n", label);
@@ -722,12 +692,6 @@ static void _inc_a(FILE *file_out) {
 }
 
 
-static void _inc_de(FILE *file_out) {
-
-  fprintf(file_out, "      INC DE\n");
-}
-
-
 static void _inc_hl(FILE *file_out) {
 
   fprintf(file_out, "      INC HL\n");
@@ -737,12 +701,6 @@ static void _inc_hl(FILE *file_out) {
 static void _dec_a(FILE *file_out) {
 
   fprintf(file_out, "      DEC A\n");
-}
-
-
-static void _dec_bc(FILE *file_out) {
-
-  fprintf(file_out, "      DEC BC\n");
 }
 
 

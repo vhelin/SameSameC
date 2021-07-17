@@ -25,7 +25,7 @@ Optimize:
 
 Fix:
 
-- Handle arrays inside functions better
+- Handle local array initialization inside functions better
 - Currently "data[i++] += 1;" does the increment twice...
 
 Add:

@@ -64,8 +64,8 @@ int main(int argc, char *argv[]) {
     printf("-q       Quiet\n");
     printf("-v       Verbose messages\n\n");
     printf("Achitectures:\n");
-    printf("-lSMS    Link a SMS ROM\n\n");
-    printf("EXAMPLE: %s -lSMS -v -o game.rom main.asm menu.asm music.asm\n\n", argv[0]);
+    printf("-lsms    Link a SMS ROM\n\n");
+    printf("EXAMPLE: %s -lsms -v -o game.rom main.asm menu.asm music.asm\n\n", argv[0]);
     return 0;
   }
 
@@ -209,7 +209,7 @@ int parse_flags(char **flags, int flagc) {
       g_quiet = YES;
       continue;
     }
-    else if (!strcmp(flags[count], "-lSMS")) {
+    else if (!strcmp(flags[count], "-lsms")) {
       g_target = TARGET_SMS;
       continue;
     }    

@@ -207,12 +207,14 @@ int definition_add_token(struct definition *d, struct token *t) {
   }
   
   /* are the previous tokens arguments? */
-  if (g_latest_token->id == TOKEN_ID_SYMBOL && g_latest_token->value == '(') {
-    d->parenthesis++;
-    d->had_parenthesis = YES;
+  if (g_latest_token != NULL) {
+    if (g_latest_token->id == TOKEN_ID_SYMBOL && g_latest_token->value == '(') {
+      d->parenthesis++;
+      d->had_parenthesis = YES;
+    }
+    else if (g_latest_token->id == TOKEN_ID_SYMBOL && g_latest_token->value == ')')
+      d->parenthesis--;
   }
-  else if (g_latest_token->id == TOKEN_ID_SYMBOL && g_latest_token->value == ')')
-    d->parenthesis--;
   
   if (d->tokens_first == NULL) {
     d->tokens_first = t;

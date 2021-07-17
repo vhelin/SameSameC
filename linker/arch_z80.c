@@ -106,8 +106,10 @@ int arch_z80_write_system_init(int target, FILE *file_out) {
 
 int arch_z80_write_link_file(int target, char *object_file_name, FILE *file_out) {
 
+  /*
   char section_name[MAX_NAME_LENGTH+1];
   int got_any;
+  */
   
   fprintf(file_out, "[objects]\n");
   fprintf(file_out, "%s\n", object_file_name);

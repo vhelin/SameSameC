@@ -111,7 +111,7 @@ static int _get_plain_filename(char *output, int output_size, char *input) {
 
 int main(int argc, char *argv[]) {
 
-  int parse_flags_result, include_size = 0;
+  int parse_flags_result, include_size = 0, print_usage = YES;
   char final_name_no_extension[MAX_NAME_LENGTH + 1];
   FILE *file_out;
   
@@ -128,8 +128,12 @@ int main(int argc, char *argv[]) {
   g_ext_incdirs.max_name_size_bytes = MAX_NAME_LENGTH + 1;
 
   parse_flags_result = FAILED;
-  if (argc >= 5)
-    parse_flags_result = parse_flags(argv, argc);
+  if (argc >= 5) {
+    parse_flags_result = parse_flags(argv, argc, &print_usage);
+
+    if (parse_flags_result == FAILED && print_usage == NO)
+      return 1;
+  }
   
   if (argc < 5 || parse_flags_result == FAILED || g_backend == BACKEND_NONE) {
     printf("\nBILIBALI Compiler v1.0a. Written by Ville Helin in 2021+\n");
@@ -148,8 +152,8 @@ int main(int argc, char *argv[]) {
     printf("-I <DIR>   Include directory\n");
     printf("-D <DEF>   Declare definition\n\n");
     printf("Achitectures:\n");
-    printf("-aZ80      Compile for Z80 CPU\n\n");
-    printf("EXAMPLE: %s -aZ80 -D VERSION=1 -D TWO=2 -v -o main.asm main.blb\n\n", argv[0]);
+    printf("-mz80      Compile for Z80 CPU\n\n");
+    printf("EXAMPLE: %s -mz80 -D VERSION=1 -D TWO=2 -v -o main.asm main.blb\n\n", argv[0]);
     return 0;
   }
 
@@ -208,7 +212,7 @@ int main(int argc, char *argv[]) {
 }
 
 
-int parse_flags(char **flags, int flagc) {
+int parse_flags(char **flags, int flagc, int *print_usage) {
 
   int asm_name_def = 0, count;
   char *str_build;
@@ -236,15 +240,27 @@ int parse_flags(char **flags, int flagc) {
             int length = (int)strlen(flags[count+1])+(int)strlen(flags[count+3])+2;
             str_build = calloc(length, 1);
             snprintf(str_build, length, "%s=%s", flags[count+1], flags[count+3]);
-            parse_and_add_definition(str_build, NO);
+            if (parse_and_add_definition(str_build, NO) == FAILED) {
+              *print_usage = NO;
+              free(str_build);
+              return FAILED;
+            }
             free(str_build);
             count += 2;
           }
-          else
-            parse_and_add_definition(flags[count+1], NO);
+          else {
+            if (parse_and_add_definition(flags[count+1], NO) == FAILED) {
+              *print_usage = NO;
+              return FAILED;
+            }
+          }
         }
-        else
-          parse_and_add_definition(flags[count+1], NO);
+        else {
+          if (parse_and_add_definition(flags[count+1], NO) == FAILED) {
+            *print_usage = NO;
+            return FAILED;
+          }
+        }
       }
       else
         return FAILED;
@@ -319,7 +335,7 @@ int parse_flags(char **flags, int flagc) {
       g_quiet = YES;
       continue;
     }
-    else if (!strcmp(flags[count], "-aZ80")) {
+    else if (!strcmp(flags[count], "-mz80")) {
       g_backend = BACKEND_Z80;
       continue;
     }    
@@ -334,7 +350,10 @@ int parse_flags(char **flags, int flagc) {
         /* legacy support? */
         if (strncmp(flags[count], "-D", 2) == 0) {
           /* old define */
-          parse_and_add_definition(flags[count], YES);
+          if (parse_and_add_definition(flags[count], YES) == FAILED) {
+            *print_usage = NO;
+            return FAILED;
+          }
           continue;
         }
         else if (strncmp(flags[count], "-I", 2) == 0) {
@@ -453,16 +472,53 @@ void procedures_at_exit(void) {
 }
 
 
-static int _add_a_new_definition(char *name, double d, char *s, int type, int s_length) {
+static int _add_a_new_definition(char *name, double d, char *s, int id) {
 
-  return FAILED;
+  struct definition *definition;
+  struct token *t;
+  
+  /* get rid of an old definition with the same name, if one exists */
+  undefine(name);
+
+  definition = define(name);
+
+  if (definition == NULL)
+    return FAILED;  
+
+  t = calloc(sizeof(struct token), 1);
+  if (t == NULL) {
+    print_error("_add_a_new_definition(): Out of memory while allocating a new token.\n", ERROR_DIR);
+    return FAILED;
+  }
+
+  t->id = id;
+  t->value = (int)d;
+  t->value_double = d;
+  t->next = NULL;
+
+  if (s == NULL)
+    t->label = NULL;
+  else {
+    t->label = calloc(strlen(s) + 1, 1);
+    if (t->label == NULL) {
+      print_error("_add_a_new_definition(): Out of memory while allocating a new token.\n", ERROR_DIR);
+      token_free(t);
+      return FAILED;
+    }
+    strncpy(t->label, s, strlen(s) + 1);
+  }
+  
+  if (definition_add_token(definition, t) == FAILED)
+    return FAILED;
+  
+  return SUCCEEDED;
 }
 
 
 int parse_and_add_definition(char *c, int contains_flag) {
 
   char n[MAX_NAME_LENGTH + 1], *value;
-  int i;
+  int i, k;
 
   /* skip the flag? */
   if (contains_flag == YES)
@@ -473,7 +529,7 @@ int parse_and_add_definition(char *c, int contains_flag) {
   n[i] = 0;
 
   if (*c == 0)
-    return _add_a_new_definition(n, 0.0, NULL, DEFINITION_TYPE_VALUE, 0);
+    return _add_a_new_definition(n, 0.0, NULL, TOKEN_ID_VALUE_INT);
   else if (*c == '=') {
     c++;
     if (*c == 0)
@@ -482,9 +538,11 @@ int parse_and_add_definition(char *c, int contains_flag) {
     value = c;
     
     /* hexadecimal value? */
-    if (*c == '$' || ((c[strlen(c)-1] == 'h' || c[strlen(c)-1] == 'H') && (*c >= '0' && *c <= '9'))) {
+    if (*c == '$' || (strlen(c) > 2 && *c == '0' && (*(c+1) == 'x' || *(c+1) == 'X')) || ((c[strlen(c)-1] == 'h' || c[strlen(c)-1] == 'H') && (*c >= '0' && *c <= '9'))) {
       if (*c == '$')
         c++;
+      else if (strlen(c) > 2 && *c == '0' && (*(c+1) == 'x' || *(c+1) == 'X'))
+        c += 2;
       for (i = 0; *c != 0; c++) {
         if (*c >= '0' && *c <= '9')
           i = (i << 4) + *c - '0';
@@ -495,24 +553,41 @@ int parse_and_add_definition(char *c, int contains_flag) {
         else if ((*c == 'h' || *c == 'H') && *(c+1) == 0)
           break;
         else {
-          fprintf(stderr, "PARSE_AND_ADD_DEFINITION: Error in value (%s).\n", value);
+          fprintf(stderr, "parse_and_add_definition(): Error in value (%s).\n", value);
           return FAILED;
         }
       }
-      return _add_a_new_definition(n, (double)i, NULL, DEFINITION_TYPE_VALUE, 0);
+      return _add_a_new_definition(n, (double)i, NULL, TOKEN_ID_VALUE_INT);
     }
 
+    /* binary value? */
+    if (*c == '%' || (strlen(c) > 2 && *c == '0' && (*(c+1) == 'b' || *(c+1) == 'B'))) {
+      if (*c == '%')
+        c++;
+      else
+        c += 2;
+      for (i = 0, k = 0; *c != 0 && k < 32; k++, c++) {
+        if (*c == '0' || *c == '1')
+          i = (i << 1) + *c - '0';
+        else {
+          fprintf(stderr, "parse_and_add_definition(): Error in value (%s).\n", value);
+          return FAILED;
+        }
+      }
+      return _add_a_new_definition(n, (double)i, NULL, TOKEN_ID_VALUE_INT);
+    }
+    
     /* decimal value? */
     if (*c >= '0' && *c <= '9') {
       for (i = 0; *c != 0; c++) {
         if (*c >= '0' && *c <= '9')
           i = (i * 10) + *c - '0';
         else {
-          fprintf(stderr, "PARSE_AND_ADD_DEFINITION: Error in value (%s).\n", value);
+          fprintf(stderr, "parse_and_add_definition(): Error in value (%s).\n", value);
           return FAILED;
         }
       }
-      return _add_a_new_definition(n, (double)i, NULL, DEFINITION_TYPE_VALUE, 0);
+      return _add_a_new_definition(n, (double)i, NULL, TOKEN_ID_VALUE_INT);
     }
 
     /* quoted string? */
@@ -537,9 +612,9 @@ int parse_and_add_definition(char *c, int contains_flag) {
       s[t] = 0;
       
       if (*c == 0)
-        result = _add_a_new_definition(n, 0.0, s, DEFINITION_TYPE_STRING, (int)strlen(s));
+        result = _add_a_new_definition(n, strlen(s) + 1, s, TOKEN_ID_BYTES);
       else {
-        fprintf(stderr, "PARSE_AND_ADD_DEFINITION: Incorrectly terminated quoted string (%s).\n", value);
+        fprintf(stderr, "parse_and_add_definition(): Incorrectly terminated quoted string (%s).\n", value);
         result = FAILED;
       }
       
@@ -548,7 +623,7 @@ int parse_and_add_definition(char *c, int contains_flag) {
     }
 
     /* unquoted string */
-    return _add_a_new_definition(n, 0.0, c, DEFINITION_TYPE_STRING, (int)strlen(c));
+    return _add_a_new_definition(n, strlen(c) + 1, c, TOKEN_ID_VALUE_STRING);
   }
 
   return FAILED;
