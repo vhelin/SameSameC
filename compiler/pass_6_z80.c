@@ -4312,7 +4312,7 @@ static int _add_const_variables(struct tree_node *const_variables[256], int cons
 }
 
 
-static int _copy_non_const_array_constants(struct tac *t, struct tree_node *node, int last, struct tree_node *function_node, FILE *file_out) {
+static int _copy_non_const_array_constants(struct tac *t, struct tree_node *node, int items, struct tree_node *function_node, FILE *file_out) {
 
   char copy_function_name[MAX_NAME_LENGTH+1];
   int offset, size, type;
@@ -4333,7 +4333,7 @@ static int _copy_non_const_array_constants(struct tac *t, struct tree_node *node
   _load_label_to_de(node->children[1]->label, file_out);
 
   /* counter -> bc */
-  _load_value_to_bc(size * (last + 1), file_out);
+  _load_value_to_bc(size * items, file_out);
 
   /* call */
   snprintf(copy_function_name, sizeof(copy_function_name), "copy_bytes_bank_%.3d", g_bank);
@@ -4511,19 +4511,29 @@ int generate_asm_z80(FILE *file_out) {
               const_variables[const_variables_count++] = node;
             }
             else {
-              /* if the variable is in fact an array with more than 1 constants, then we need to bulk copy those constants */
-              int constants = 0, last = -1, j;
+              /* if the variable is in fact an array with more than 3 constants, then we need to bulk copy those constants */
+              int constants = 0, size = -1, j, items = 0;
 
               /* calculate how many constants there are in the array */
-              for (j = 0; j < node->added_children - 2; j++) {
-                if (tree_node_is_expression_just_a_constant(node->children[2 + j]) == YES) {
-                  constants++;
-                  last = j;
+              for (j = 2; j < node->added_children; j++) {
+                if (tree_node_is_expression_just_a_constant(node->children[j]) == YES) {
+                  if (node->children[j]->type == TREE_NODE_TYPE_BYTES) {
+                    constants += node->children[j]->value;
+                    items += node->children[j]->value;
+                  }
+                  else {
+                    constants++;
+                    items++;
+                  }
+                  
+                  size = items;
                 }
+                else
+                  items++;
               }
 
               if (constants > 3) {
-                _copy_non_const_array_constants(t, node, last, function_node, file_out);
+                _copy_non_const_array_constants(t, node, size, function_node, file_out);
 
                 /* the constants in this array need to be available for a bulk copy at the end of the function, just like
                    constant variables... */

@@ -493,7 +493,11 @@ static int _add_a_new_definition(char *name, double d, char *s, int id) {
 
   t->id = id;
   t->value = (int)d;
-  t->value_double = d;
+  /* is it a string inside quotes? */
+  if (id == TOKEN_ID_BYTES)
+    t->value_double = -1.0;
+  else
+    t->value_double = d;
   t->next = NULL;
 
   if (s == NULL)

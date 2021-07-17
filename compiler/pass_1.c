@@ -544,7 +544,7 @@ int evaluate_token(int type) {
 
     memcpy(tmp, g_tmp, g_ss + 1);
     
-    return token_add(TOKEN_ID_BYTES, g_ss + 1, 0.0, tmp);
+    return token_add(TOKEN_ID_BYTES, g_ss + 1, -1.0, tmp);
   }
   
   /* a string */

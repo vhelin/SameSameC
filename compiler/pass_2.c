@@ -766,9 +766,8 @@ int create_factor(void) {
   else if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == ':') {
     return FINISHED;
   }
-  else if (g_token_current->id == TOKEN_ID_BYTES) {
+  else if (g_token_current->id == TOKEN_ID_BYTES)
     node = allocate_tree_node_bytes(g_token_current);
-  }
   else {
     _print_loose_token_error(g_token_current);
     return FAILED;

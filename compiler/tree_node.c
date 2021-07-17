@@ -512,12 +512,15 @@ struct tree_node *allocate_tree_node_bytes(struct token *t) {
     return FAILED;
   }
 
+  /* is value_double == -1.0 then this is a 0 terminated string */
+  node->value_double = t->value_double;
+
   /* copy data */
   memcpy(node->label, t->label, t->value);
 
   /* copy the number of bytes */
   node->value = t->value;
-  
+
   return node;
 }
 
@@ -540,7 +543,7 @@ int tree_node_get_create_variable_data_items(struct tree_node *node) {
 
 int tree_node_is_expression_just_a_constant(struct tree_node *node) {
 
-  if (node->type == TREE_NODE_TYPE_VALUE_INT || node->type == TREE_NODE_TYPE_VALUE_DOUBLE)
+  if (node->type == TREE_NODE_TYPE_VALUE_INT || node->type == TREE_NODE_TYPE_VALUE_DOUBLE || node->type == TREE_NODE_TYPE_BYTES)
     return YES;
   
   return NO;

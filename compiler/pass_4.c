@@ -367,8 +367,12 @@ static int _generate_il_create_variable(struct tree_node *node) {
 
     /* calculate how many constants there are in the array */
     for (i = 0; i < node->added_children - 2; i++) {
-      if (tree_node_is_expression_just_a_constant(node->children[2 + i]) == YES)
-        constants++;
+      if (tree_node_is_expression_just_a_constant(node->children[2 + i]) == YES) {
+        if (node->children[2 + i]->type == TREE_NODE_TYPE_BYTES)
+          constants += node->value;
+        else
+          constants++;
+      }
     }
 
     /* in pass_6 we'll copy these constants when encountering TAC_OP_CREATE_VARIABLE, so the

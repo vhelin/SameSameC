@@ -160,6 +160,12 @@ static void _print_simple_tree_node(struct tree_node *node) {
     print_expression(node->children[0]);
     fprintf(stderr, "]");
   }
+  else if (node->type == TREE_NODE_TYPE_BYTES) {
+    if (node->value_double == -1.0)
+      fprintf(stderr, "\"%s\", 0", node->label);
+    else
+      fprintf(stderr, "[%d bytes]", node->value);
+  }
   else
     fprintf(stderr, "?");
 }
