@@ -1,4 +1,26 @@
 
+  .RAMSECTION "global_variables_test2_ram" BANK 0 SLOT 3 FREE
+    g_adder__static_____test2_blb_472857760 DB
+  .ENDS
+
+  .BANK 0 SLOT 0
+  .ORG $0000
+
+  .SECTION "global_variables_test2_rom" FREE
+    global_variable_rom_g_adder__static_____test2_blb_472857760:
+      .DB 0
+  .ENDS
+
+  .SECTION "global_variables_test2_init" FREE
+    global_variables_test2_init:
+      ; copy all fully initialized global variables in a single call
+      LD  HL,g_adder__static_____test2_blb_472857760
+      LD  DE,global_variable_rom_g_adder__static_____test2_blb_472857760
+      LD  BC,1
+      CALL copy_bytes_bank_000
+      RET
+  .ENDS
+
   .BANK 0 SLOT 0
   .ORG $0000
 
@@ -38,14 +60,57 @@
       ; TAC: variable "_i_2" size 1 offset -5 type n
       ; -----------------------------------------------------------------
       ; =================================================================
-      ; ../test2.blb:13: while (1) {
+      ; ../test2.blb:13: initialize_adder(&g_adder);
+      ; =================================================================
+      ; -----------------------------------------------------------------
+      ; TAC: r0.uint16 (uint16) := &g_adder.uint16 (uint16)
+      ; -----------------------------------------------------------------
+      LD  HL,g_adder__static_____test2_blb_472857760
+      ; offset -7
+      LD  (IX-7),L
+      LD  (IX-6),H
+      ; -----------------------------------------------------------------
+      ; TAC: initialize_adder(r0.uint16)
+      ; -----------------------------------------------------------------
+      LD  HL,0
+      ADD HL,SP
+      DEC HL
+      LD  BC,_return_1
+      PUSH BC
+      PUSH DE
+      ; new stack frame -> IX
+      LD  IX,0
+      LD  B,H
+      LD  C,L
+      ADD IX,BC
+      ; old stack frame -> IY
+      LD  IY,0
+      ADD IY,DE
+      ; copy argument 1
+      LD  C,(IY-7)
+      LD  B,(IY-6)
+      LD  (IX-5),C
+      LD  (IX-4),B
+      ; new stack frame -> DE
+      LD  D,H
+      LD  E,L
+      JP  initialize_adder__static_____test2_blb_1782096306
+    _return_1:
+      ; new stack frame -> IX
+      LD  IX,0
+      ADD IX,DE
+      ; old stack frame address -> DE
+      LD  E,(IX-3)
+      LD  D,(IX-2)
+      ; =================================================================
+      ; ../test2.blb:15: while (1) {
       ; =================================================================
       ; -----------------------------------------------------------------
       ; TAC: _label_1:
       ; -----------------------------------------------------------------
     _label_1:
       ; =================================================================
-      ; ../test2.blb:14: __z80_out[0xBF] = 0x00;
+      ; ../test2.blb:16: __z80_out[0xBF] = 0x00;
       ; =================================================================
       ; -----------------------------------------------------------------
       ; TAC: __z80_out.uint8 (uint8)[191.uint8 (uint8)] := 0.uint8 (uint8)
@@ -53,7 +118,7 @@
       LD  A,0
       OUT ($BF),A
       ; =================================================================
-      ; ../test2.blb:15: __z80_out[0xBF] = 0xC0;
+      ; ../test2.blb:17: __z80_out[0xBF] = 0xC0;
       ; =================================================================
       ; -----------------------------------------------------------------
       ; TAC: __z80_out.uint8 (uint8)[191.uint8 (uint8)] := 192.uint8 (uint8)
@@ -61,7 +126,7 @@
       LD  A,192
       OUT ($BF),A
       ; =================================================================
-      ; ../test2.blb:17: for (i = 0; i < 32; i++) {
+      ; ../test2.blb:19: for (i = 0; i < 32; i++) {
       ; =================================================================
       ; -----------------------------------------------------------------
       ; TAC: i.uint8 (uint8) := 0.uint8 (uint8)
@@ -75,12 +140,13 @@
       ; -----------------------------------------------------------------
     _label_3:
       ; -----------------------------------------------------------------
-      ; TAC: r0.uint8 (uint8) := 0.uint8 (uint8)
+      ; TAC: r0.uint16 (uint8) := 0.uint8 (uint8)
       ; -----------------------------------------------------------------
       ; offset -7
       LD  IX,0
       ADD IX,DE
       LD  (IX-7),0
+      LD  (IX-6),0
       ; -----------------------------------------------------------------
       ; TAC: if i.uint8 (uint8) < 32.uint8 (uint8) jmp _label_6
       ; -----------------------------------------------------------------
@@ -98,18 +164,19 @@
       ; -----------------------------------------------------------------
     _label_6:
       ; -----------------------------------------------------------------
-      ; TAC: r0.uint8 (uint8) := 1.uint8 (uint8)
+      ; TAC: r0.uint16 (uint8) := 1.uint8 (uint8)
       ; -----------------------------------------------------------------
       ; offset -7
       LD  IX,0
       ADD IX,DE
       LD  (IX-7),1
+      LD  (IX-6),0
       ; -----------------------------------------------------------------
       ; TAC: _label_7:
       ; -----------------------------------------------------------------
     _label_7:
       ; -----------------------------------------------------------------
-      ; TAC: if r0.uint8 (uint8) == 0.uint8 (uint8) jmp _label_5
+      ; TAC: if r0.uint16 (uint8) == 0.uint8 (uint8) jmp _label_5
       ; -----------------------------------------------------------------
       ; offset -7
       LD  IX,0
@@ -119,7 +186,7 @@
       SUB A,B
       JP  Z,_label_5
       ; =================================================================
-      ; ../test2.blb:18: __z80_out[0xBE] = color;
+      ; ../test2.blb:20: __z80_out[0xBE] = color;
       ; =================================================================
       ; -----------------------------------------------------------------
       ; TAC: __z80_out.uint8 (uint8)[190.uint8 (uint8)] := color.uint8 (uint8)
@@ -150,7 +217,7 @@
       ; -----------------------------------------------------------------
     _label_5:
       ; =================================================================
-      ; ../test2.blb:21: add_to_color(&color, g_adder);
+      ; ../test2.blb:23: add_to_color(&color, g_adder);
       ; =================================================================
       ; -----------------------------------------------------------------
       ; TAC: r0.uint16 (uint16) := &color.uint16 (uint16)
@@ -169,7 +236,7 @@
       LD  HL,0
       ADD HL,SP
       DEC HL
-      LD  BC,_return_1
+      LD  BC,_return_2
       PUSH BC
       PUSH DE
       ; new stack frame -> IX
@@ -186,14 +253,14 @@
       LD  (IX-5),C
       LD  (IX-4),B
       ; copy argument 2
-      LD  IY,g_adder
+      LD  IY,g_adder__static_____test2_blb_472857760
       LD  C,(IY+0)
       LD  (IX-6),C
       ; new stack frame -> DE
       LD  D,H
       LD  E,L
       JP  add_to_color
-    _return_1:
+    _return_2:
       ; new stack frame -> IX
       LD  IX,0
       ADD IX,DE
@@ -204,6 +271,49 @@
       ; TAC: jmp _label_1
       ; -----------------------------------------------------------------
       JP  _label_1
+  .ENDS
+
+  .SECTION "initialize_adder__static_____test2_blb_1782096306" FREE
+    ; =================================================================
+    ; ../test2.blb:28: static void initialize_adder(int8 *adder) {
+    ; =================================================================
+    initialize_adder__static_____test2_blb_1782096306:
+      ; A  - tmp
+      ; BC - tmp
+      ; DE - frame pointer
+      ; HL - tmp
+      ; SP - stack pointer
+      ; IX - tmp
+      ; IY - tmp
+      ; allocate space for the stack frame
+      LD  HL,-5
+      ADD HL,DE
+      LD  SP,HL
+      ; -----------------------------------------------------------------
+      ; TAC: variable "adder" size 2 offset -5 type a
+      ; -----------------------------------------------------------------
+      ; =================================================================
+      ; ../test2.blb:30: adder[0] = 1;
+      ; =================================================================
+      ; -----------------------------------------------------------------
+      ; TAC: adder.uint16 (int8)[0.uint8 (uint8)] := 1.uint8 (uint8)
+      ; -----------------------------------------------------------------
+      ; offset -5
+      LD  IY,0
+      ADD IY,DE
+      LD  C,(IY-5)
+      LD  B,(IY-4)
+      LD  IY,0
+      ADD IY,BC
+      LD  (IY+0),1
+      ; -----------------------------------------------------------------
+      ; TAC: return
+      ; -----------------------------------------------------------------
+      ; bytes -1 and 0 of stack frame contain the return address
+      LD  HL,-1
+      ADD HL,DE
+      LD  SP,HL
+      RET
   .ENDS
 
   .SECTION "mainmain" FREE
@@ -224,14 +334,14 @@
       LD  HL,0
       ADD HL,SP
       DEC HL
-      LD  BC,_return_2
+      LD  BC,_return_3
       PUSH BC
       PUSH DE
       ; new stack frame -> DE
       LD  D,H
       LD  E,L
       JP  main
-    _return_2:
+    _return_3:
       ; new stack frame -> IX
       LD  IX,0
       ADD IX,DE

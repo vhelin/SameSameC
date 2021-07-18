@@ -359,7 +359,7 @@ int pass_2(void) {
 #endif
 
   while (g_token_current != NULL) {
-    int is_extern = NO;
+    int is_extern = NO, is_static = NO;
     
     if (g_token_current->id == TOKEN_ID_EXTERN) {
       is_extern = YES;
@@ -367,9 +367,15 @@ int pass_2(void) {
       /* next token */
       _next_token();
     }
+    else if (g_token_current->id == TOKEN_ID_STATIC) {
+      is_static = YES;
+
+      /* next token */
+      _next_token();
+    }
     
     if (g_token_current->id == TOKEN_ID_VARIABLE_TYPE) {
-      if (create_variable_or_function(is_extern) == FAILED)
+      if (create_variable_or_function(is_extern, is_static) == FAILED)
         return FAILED;
 
       if (g_block_level != 0) {
@@ -2451,7 +2457,7 @@ struct tree_node *create_array(double pointer_depth, int variable_type, char *na
 }
 
 
-int create_variable_or_function(int is_extern) {
+int create_variable_or_function(int is_extern, int is_static) {
 
   int variable_type, pointer_depth, is_const_1 = NO;
   char name[MAX_NAME_LENGTH + 1];
@@ -2597,6 +2603,8 @@ int create_variable_or_function(int is_extern) {
           node->flags |= TREE_NODE_FLAG_CONST_2;
         if (is_extern == YES)
           node->flags |= TREE_NODE_FLAG_EXTERN;
+        if (is_static == YES)
+          node->flags |= TREE_NODE_FLAG_STATIC;
 
         if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == ';') {
           /* next token */
@@ -2638,7 +2646,9 @@ int create_variable_or_function(int is_extern) {
         node->flags |= TREE_NODE_FLAG_CONST_2;
       if (is_extern == YES)
         node->flags |= TREE_NODE_FLAG_EXTERN;
-        
+      if (is_static == YES)
+        node->flags |= TREE_NODE_FLAG_STATIC;
+
       /* add to global lists */
       if (symbol_table_add_symbol(node, node->children[1]->label, g_block_level, line_number, file_id) == FAILED) {
         free_tree_node(node);
@@ -2686,6 +2696,8 @@ int create_variable_or_function(int is_extern) {
         g_open_function_definition->flags |= TREE_NODE_FLAG_CONST_1;
       if (is_const_2 == YES)
         g_open_function_definition->flags |= TREE_NODE_FLAG_CONST_2;
+      if (is_static == YES)
+        g_open_function_definition->flags |= TREE_NODE_FLAG_STATIC;
       
       /* start collecting the argument types and names */
       while (1) {

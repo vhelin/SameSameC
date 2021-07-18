@@ -1,5 +1,5 @@
 
-int8 g_adder = 1;
+int8 g_adder = 0;
 
 void add_to_color(uint8 *color, uint8 adder) {
 

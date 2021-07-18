@@ -123,6 +123,9 @@ int pass_4(void) {
   if (make_sure_all_tacs_have_definition_nodes() == FAILED)
     return FAILED;
 
+  if (rename_static_variables_and_functions() == FAILED)
+    return FAILED;
+  
   return SUCCEEDED;
 }
 
@@ -1254,5 +1257,51 @@ int generate_il(void) {
     }
   }
   
+  return SUCCEEDED;
+}
+
+
+int rename_static_variables_and_functions(void) {
+
+  char new_name[MAX_NAME_LENGTH+1], source_name[MAX_NAME_LENGTH+1], *s;
+  int i, j, length;
+
+  for (i = 0; i < g_global_nodes->added_children; i++) {
+    struct tree_node *node = g_global_nodes->children[i];
+    if ((node->flags & TREE_NODE_FLAG_STATIC) == TREE_NODE_FLAG_STATIC) {
+      /* give it a new, hopefully unique name, to mimic staticness! */
+
+      /* get the source file name without special characters */
+      s = get_file_name(node->file_id);
+      length = strlen(s);
+
+      for (j = 0; j < length; j++) {
+        if (s[j] >= 'a' && s[j] <= 'z')
+          source_name[j] = s[j];
+        else if (s[j] >= 'A' && s[j] <= 'Z')
+          source_name[j] = s[j];
+        else if (s[j] >= '0' && s[j] <= '9')
+          source_name[j] = s[j];
+        else
+          source_name[j] = '_';
+      }
+      source_name[j] = 0;
+      
+      snprintf(new_name, sizeof(new_name), "%s__static__%s_%d", node->children[1]->label, source_name, rand());
+
+      /* free the old label */
+      free(node->children[1]->label);
+
+      /* allocate new, bigger one */
+      node->children[1]->label = calloc(strlen(new_name) + 1, 1);
+      if (node->children[1]->label == NULL) {
+        print_error("rename_static_variables_and_functions(): Out of memory while allocating a string for a tree node.\n", ERROR_ERR);
+        return FAILED;
+      }
+
+      strcpy(node->children[1]->label, new_name);
+    }
+  }
+
   return SUCCEEDED;
 }

@@ -271,6 +271,7 @@ struct token {
 #define TOKEN_ID_ASM           18
 #define TOKEN_ID_HINT          19
 #define TOKEN_ID_EXTERN        20
+#define TOKEN_ID_STATIC        21
 
 #define SYMBOL_LOGICAL_OR   0
 #define SYMBOL_LOGICAL_AND  1
@@ -330,7 +331,7 @@ struct tree_node {
   int children_max;
   struct tree_node **children;
   struct local_variables *local_variables;
-  char flags;
+  unsigned char flags;
   int  reads;
   int  writes;
 };
@@ -341,6 +342,7 @@ struct tree_node {
 #define TREE_NODE_FLAG_PUREASM       (1 << 3)
 #define TREE_NODE_FLAG_GLOBAL        (1 << 4)
 #define TREE_NODE_FLAG_EXTERN        (1 << 5)
+#define TREE_NODE_FLAG_STATIC        (1 << 6)
 
 #define TREE_NODE_TYPE_CREATE_VARIABLE      0
 #define TREE_NODE_TYPE_ASSIGNMENT           1

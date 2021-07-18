@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 #include "main.h"
 #include "defines.h"
@@ -122,6 +123,8 @@ int main(int argc, char *argv[]) {
 
   atexit(procedures_at_exit);
 
+  srand((unsigned int)time(NULL));
+  
   /* initialize our external include dir collection */
   g_ext_incdirs.count = 0;
   g_ext_incdirs.names = NULL;

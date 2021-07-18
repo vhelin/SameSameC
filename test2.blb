@@ -2,13 +2,15 @@
 #define ONE(var1, var2) \
             (var1-var2)
 
-extern int8 g_adder;
+static int8 g_adder = 0;
 extern void add_to_color(uint8 *color, uint8 adder);
 
 void main(void) {
 
   uint8 color = 0;
   uint8 i;
+
+  initialize_adder(&g_adder);
 
   while (1) {
     __z80_out[0xBF] = 0x00;
@@ -20,4 +22,10 @@ void main(void) {
 
     add_to_color(&color, g_adder);
   }
+}
+
+
+static void initialize_adder(int8 *adder) {
+
+  adder[0] = 1;
 }
