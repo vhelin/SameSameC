@@ -155,7 +155,7 @@ static int _find_end_of_il_block(int start, int *is_last_block) {
 static int _find_end_of_il_function(int start, int *is_last_function) {
 
   int j = start;
-
+  
   *is_last_function = NO;
 
   if (start >= g_tacs_count - 1) {
@@ -1642,6 +1642,9 @@ int optimize_il(void) {
 
   int optimizations_counter, loop = 1;
 
+  if (g_tacs_count <= 0)
+    return SUCCEEDED;
+
   /* run all optimizations until no optimizations are done */
   while (1) {
     optimizations_counter = 0;
@@ -1762,6 +1765,9 @@ int compress_register_names(void) {
 
   int *register_usage, *register_new_names;
   int i, j, new_name;
+
+  if (g_tacs_count <= 0)
+    return SUCCEEDED;
 
   i = 0;
   while (1) {
@@ -1947,6 +1953,9 @@ int reuse_registers(void) {
 
   int *register_usage;
   int i, j, r1, r2;
+
+  if (g_tacs_count <= 0)
+    return SUCCEEDED;
 
   i = 0;
   while (1) {
@@ -2671,6 +2680,9 @@ int reorder_global_variables(void) {
   for (i = 0; i < g_global_nodes->added_children; i++) {
     struct tree_node *node = g_global_nodes->children[i];
     if (node != NULL && node->type == TREE_NODE_TYPE_CREATE_VARIABLE) {
+      if ((node->flags & TREE_NODE_FLAG_EXTERN) == TREE_NODE_FLAG_EXTERN)
+        continue;
+
       if (global_variables >= 1024) {
         fprintf(stderr, "reorder_global_variables(): You have more than 1024 global variables, and we ran out of buffer! Please submit a bug report!\n");
         return FAILED;
@@ -2690,11 +2702,14 @@ int reorder_global_variables(void) {
     }
   }
   
-  /* 1. collect fully initialized non-const variables */
+  /* 1. collect fully initialized non-const non-extern variables */
   index = 0;
   for (i = 0; i < g_global_nodes->added_children; i++) {
     struct tree_node *node = g_global_nodes->children[i];
     if (node != NULL && node->type == TREE_NODE_TYPE_CREATE_VARIABLE) {
+      if ((node->flags & TREE_NODE_FLAG_EXTERN) == TREE_NODE_FLAG_EXTERN)
+        continue;
+      
       if ((node->flags & TREE_NODE_FLAG_DATA_IS_CONST) == 0) {
         if (node->value == 0) {
           /* not an array */
@@ -2710,10 +2725,13 @@ int reorder_global_variables(void) {
     }
   }
 
-  /* 2. collect partially initialized non-const variables */
+  /* 2. collect partially initialized non-const non-extern variables */
   for (i = 0; i < g_global_nodes->added_children; i++) {
     struct tree_node *node = g_global_nodes->children[i];
     if (node != NULL && node->type == TREE_NODE_TYPE_CREATE_VARIABLE) {
+      if ((node->flags & TREE_NODE_FLAG_EXTERN) == TREE_NODE_FLAG_EXTERN)
+        continue;
+      
       if ((node->flags & TREE_NODE_FLAG_DATA_IS_CONST) == 0) {
         if (node->value > 0) {
           /* an array */
@@ -2725,10 +2743,13 @@ int reorder_global_variables(void) {
     }
   }
 
-  /* 3. collect uninitialized and const variables */
+  /* 3. collect uninitialized and const non-extern variables */
   for (i = 0; i < g_global_nodes->added_children; i++) {
     struct tree_node *node = g_global_nodes->children[i];
     if (node != NULL && node->type == TREE_NODE_TYPE_CREATE_VARIABLE) {
+      if ((node->flags & TREE_NODE_FLAG_EXTERN) == TREE_NODE_FLAG_EXTERN)
+        continue;
+      
       if (node->value == 0) {
         /* not an array */
         if (node->added_children == 2 || (node->flags & TREE_NODE_FLAG_DATA_IS_CONST) == TREE_NODE_FLAG_DATA_IS_CONST)

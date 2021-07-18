@@ -103,7 +103,7 @@ void skip_whitespace(void) {
 
 int is_char_a_symbol(char c) {
 
-  if (c == '=' || c == '>' || c == '<' || c == '!' || c == '+' || c == '-' || c == '*' || c == '%' || c == '/' || c == '(' || c == ')' || c == '&' || c == '|' || c == ';' || c == ':' || c == '~' || c == '^' || c == '{' || c == '}' || c == '[' || c == ']' || c == ',')
+  if (c == '=' || c == '>' || c == '<' || c == '!' || c == '+' || c == '-' || c == '*' || c == '/' || c == '(' || c == ')' || c == '&' || c == '|' || c == ';' || c == ':' || c == '~' || c == '^' || c == '{' || c == '}' || c == '[' || c == ']' || c == ',')
     return YES;
   else
     return NO;
@@ -280,8 +280,11 @@ int get_next_token(void) {
     return GET_NEXT_TOKEN_INT;
   }
 
-  if (c == '0' && g_buffer[g_source_pointer+1] == 'b') {
-    g_source_pointer += 2;
+  if (c == '%' || (c == '0' && g_buffer[g_source_pointer+1] == 'b')) {
+    if (c == '%')
+      g_source_pointer++;
+    else
+      g_source_pointer += 2;
     for (g_parsed_int = 0, k = 0; k < 32; k++, g_source_pointer++) {
       c = g_buffer[g_source_pointer];
       if (c == '0' || c == '1')

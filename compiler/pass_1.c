@@ -579,6 +579,10 @@ int evaluate_token(int type) {
     if (strcaselesscmp(g_tmp, "return") == 0)
       return token_add(TOKEN_ID_RETURN, 0, 0.0, NULL);
 
+    /* extern */
+    if (strcaselesscmp(g_tmp, "extern") == 0)
+      return token_add(TOKEN_ID_EXTERN, 0, 0.0, NULL);
+
     /* else */
     if (strcaselesscmp(g_tmp, "else") == 0)
       return token_add(TOKEN_ID_ELSE, 0, 0.0, NULL);

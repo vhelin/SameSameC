@@ -4615,6 +4615,9 @@ int generate_global_variables_z80(char *file_name, FILE *file_out) {
   for (i = 0; i < g_global_nodes->added_children; i++) {
     struct tree_node *node = g_global_nodes->children[i];
     if (node != NULL && node->type == TREE_NODE_TYPE_CREATE_VARIABLE) {
+      if ((node->flags & TREE_NODE_FLAG_EXTERN) == TREE_NODE_FLAG_EXTERN)
+        continue;
+
       if ((node->flags & TREE_NODE_FLAG_DATA_IS_CONST) == 0) {
         length = strlen(node->children[1]->label);
         if (length > max_length)
@@ -4634,6 +4637,9 @@ int generate_global_variables_z80(char *file_name, FILE *file_out) {
   for (i = 0; i < g_global_nodes->added_children; i++) {
     struct tree_node *node = g_global_nodes->children[i];
     if (node != NULL && node->type == TREE_NODE_TYPE_CREATE_VARIABLE) {
+      if ((node->flags & TREE_NODE_FLAG_EXTERN) == TREE_NODE_FLAG_EXTERN)
+        continue;
+
       if ((node->flags & TREE_NODE_FLAG_DATA_IS_CONST) == 0) {
         length = strlen(node->children[1]->label);
 
@@ -4700,6 +4706,9 @@ int generate_global_variables_z80(char *file_name, FILE *file_out) {
   for (i = 0; i < g_global_nodes->added_children; i++) {
     struct tree_node *node = g_global_nodes->children[i];
     if (node != NULL && node->type == TREE_NODE_TYPE_CREATE_VARIABLE) {
+      if ((node->flags & TREE_NODE_FLAG_EXTERN) == TREE_NODE_FLAG_EXTERN)
+        continue;
+
       if ((node->flags & TREE_NODE_FLAG_DATA_IS_CONST) == 0)
         snprintf(label_tmp, sizeof(label_tmp), "global_variable_rom_%s", node->children[1]->label);
       else
@@ -4753,6 +4762,9 @@ int generate_global_variables_z80(char *file_name, FILE *file_out) {
   for (i = 0; i < g_global_nodes->added_children; i++) {
     struct tree_node *node = g_global_nodes->children[i];
     if (node != NULL && node->type == TREE_NODE_TYPE_CREATE_VARIABLE) {
+      if ((node->flags & TREE_NODE_FLAG_EXTERN) == TREE_NODE_FLAG_EXTERN)
+        continue;
+      
       if ((node->flags & TREE_NODE_FLAG_DATA_IS_CONST) == 0) {
         if (node_1st == NULL)
           node_1st = node;
@@ -4790,6 +4802,9 @@ int generate_global_variables_z80(char *file_name, FILE *file_out) {
   for (; i < g_global_nodes->added_children; i++) {
     struct tree_node *node = g_global_nodes->children[i];
     if (node != NULL && node->type == TREE_NODE_TYPE_CREATE_VARIABLE) {
+      if ((node->flags & TREE_NODE_FLAG_EXTERN) == TREE_NODE_FLAG_EXTERN)
+        continue;
+
       if ((node->flags & TREE_NODE_FLAG_DATA_IS_CONST) == 0) {
         if (node_1st == NULL)
           node_1st = node;

@@ -61,6 +61,7 @@ static int g_was_main_function_defined = NO;
 static void _check_ast_block(struct tree_node *node);
 static void _check_ast_function_call(struct tree_node *node);
 static void _check_ast_expression(struct tree_node *node);
+static void _next_token(void);
 
 
 #if defined(DEBUG_PASS_2)
@@ -358,8 +359,17 @@ int pass_2(void) {
 #endif
 
   while (g_token_current != NULL) {
+    int is_extern = NO;
+    
+    if (g_token_current->id == TOKEN_ID_EXTERN) {
+      is_extern = YES;
+
+      /* next token */
+      _next_token();
+    }
+    
     if (g_token_current->id == TOKEN_ID_VARIABLE_TYPE) {
-      if (create_variable_or_function() == FAILED)
+      if (create_variable_or_function(is_extern) == FAILED)
         return FAILED;
 
       if (g_block_level != 0) {
@@ -2441,7 +2451,7 @@ struct tree_node *create_array(double pointer_depth, int variable_type, char *na
 }
 
 
-int create_variable_or_function(void) {
+int create_variable_or_function(int is_extern) {
 
   int variable_type, pointer_depth, is_const_1 = NO;
   char name[MAX_NAME_LENGTH + 1];
@@ -2535,6 +2545,13 @@ int create_variable_or_function(void) {
       _next_token();
 
       if (symbol == '=') {
+        if (is_extern == YES) {
+          g_current_line_number = g_token_previous->line_number;
+          g_current_filename_id = g_token_previous->file_id;
+          print_error("Extern variable definitions don't take initializers.\n", ERROR_ERR);
+          return FAILED;
+        }
+        
         /* create_expression() will put all tree_nodes it parses to g_open_expression */
         if (_open_expression_push() == FAILED)
           return FAILED;
@@ -2578,6 +2595,8 @@ int create_variable_or_function(void) {
           node->flags |= TREE_NODE_FLAG_CONST_1;
         if (is_const_2 == YES)
           node->flags |= TREE_NODE_FLAG_CONST_2;
+        if (is_extern == YES)
+          node->flags |= TREE_NODE_FLAG_EXTERN;
 
         if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == ';') {
           /* next token */
@@ -2617,7 +2636,9 @@ int create_variable_or_function(void) {
         node->flags |= TREE_NODE_FLAG_CONST_1;
       if (is_const_2 == YES)
         node->flags |= TREE_NODE_FLAG_CONST_2;
-      
+      if (is_extern == YES)
+        node->flags |= TREE_NODE_FLAG_EXTERN;
+        
       /* add to global lists */
       if (symbol_table_add_symbol(node, node->children[1]->label, g_block_level, line_number, file_id) == FAILED) {
         free_tree_node(node);
@@ -2800,6 +2821,11 @@ int create_variable_or_function(void) {
           }
           
           /* start parsing the function block */
+
+          if (is_extern == YES && g_open_function_definition->type == TREE_NODE_TYPE_FUNCTION_DEFINITION) {
+            print_error("Function definitions cannot be extern.\n", ERROR_ERR);
+            return FAILED;
+          }
 
           if (_open_block_push() == FAILED) {
             free_tree_node(g_open_function_definition);

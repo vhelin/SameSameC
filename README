@@ -33,7 +33,7 @@ Add:
 - Add support for struct {};
 - Add support for #if, #elif, #else and #endif
 - Add support for free const strings
-- Add support for extern variables
+- Add support for static variables and functions
 
 
 NOTE
