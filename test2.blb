@@ -1,8 +1,51 @@
 
+#if TWO > 1 && 1 == 1 && 1 > 2
+
+  #if 1 == 1
+
+    #if 1 > 0
+    #elif 2 > 0
+    #endif
+
+  #elif 2 == 2
+  #elif 3 == 3
+  #else
+  #endif
+
+  #if 1 > 2
+  #else
+  #endif
+
+#elif 1 == 0 || 1
+
+  #if 1 > 2
+  #elif 2 > 3
+  #else
+static int8 g_adder = 0;
+  #endif
+
+#else
+
+  #if 1 == 1
+
+    #if 1 > 0
+    #elif 2 > 0
+    #endif
+
+  #elif 2 == 2
+  #elif 3 == 3
+  #else
+  #endif
+
+  #if 1 > 2
+  #endif
+
+#endif
+
+
 #define ONE(var1, var2) \
             (var1-var2)
 
-static int8 g_adder = 0;
 extern void add_to_color(uint8 *color, uint8 adder);
 
 void main(void) {

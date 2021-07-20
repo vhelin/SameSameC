@@ -21,18 +21,18 @@
 
 
 extern int g_verbose_mode, g_source_pointer, g_ss, g_input_float_mode, g_parsed_int, g_open_files, g_expect_calculations;
-extern int g_latest_stack, g_input_number_return_linefeed;
+extern int g_latest_stack, g_get_next_token_return_linefeed;
 extern double g_parsed_double;
 extern char g_tmp[4096], g_error_message[sizeof(g_tmp) + MAX_NAME_LENGTH + 1 + 1024];
 extern struct stack *g_stacks_first, *g_stacks_tmp, *g_stacks_last, *g_stacks_header_first, *g_stacks_header_last;
 extern char g_xyz[512], *g_buffer, g_tmp[4096], g_label[MAX_NAME_LENGTH + 1];
 extern struct active_file_info *g_active_file_info_first, *g_active_file_info_last, *g_active_file_info_tmp;
 extern struct file_name_info *g_file_name_info_first, *g_file_name_info_last, *g_file_name_info_tmp;
-extern struct token *g_latest_token;
+extern struct token *g_latest_token, *g_token_first, *g_token_last, *g_token_current;
 
-char g_current_directive[MAX_NAME_LENGTH + 1];
+char g_current_directive[MAX_NAME_LENGTH + 1], g_skip_elifs[256];
 
-int g_inside_define = NO;
+int g_inside_define = NO, g_ifdef_index = -1;
 
 
 int pass_1(void) {
@@ -139,7 +139,7 @@ static int _parse_filesize(void) {
     return FAILED;
   }
 
-  f = fopen(g_tmp, "r");
+  f = fopen(g_tmp, "rb");
   if (f == NULL) {
     snprintf(g_error_message, sizeof(g_error_message), "\"__filesize() cannot open file \"%s\".\n", g_tmp);
     print_error(g_error_message, ERROR_DIR);
@@ -178,7 +178,7 @@ static int _parse_incbin(void) {
     return FAILED;
   }
 
-  f = fopen(g_tmp, "r");
+  f = fopen(g_tmp, "rb");
   if (f == NULL) {
     snprintf(g_error_message, sizeof(g_error_message), "\"__incbin() cannot open file \"%s\".\n", g_tmp);
     print_error(g_error_message, ERROR_DIR);
@@ -296,7 +296,7 @@ static int _parse_define(void) {
     return FAILED;
 
   /* make get_next_token() return linefeeds */
-  g_input_number_return_linefeed = YES;
+  g_get_next_token_return_linefeed = YES;
 
   /* for token_add() */
   g_inside_define = YES;
@@ -328,7 +328,7 @@ static int _parse_define(void) {
   }
 
   /* make get_next_token() not to return linefeeds */
-  g_input_number_return_linefeed = NO;
+  g_get_next_token_return_linefeed = NO;
   
   g_inside_define = NO;
 
@@ -359,7 +359,7 @@ static int _parse_definition(void) {
     /* parse arguments */
 
     /* make get_next_token() return linefeeds */
-    g_input_number_return_linefeed = YES;
+    g_get_next_token_return_linefeed = YES;
 
     /* for token_add() inside evaluate_token() */
     g_inside_define = YES;
@@ -420,7 +420,7 @@ static int _parse_definition(void) {
     }
 
     /* make get_next_token() not to return linefeeds */
-    g_input_number_return_linefeed = NO;
+    g_get_next_token_return_linefeed = NO;
   
     g_inside_define = NO;
 
@@ -465,6 +465,125 @@ static int _parse_definition(void) {
     
     /* free the arguments data as we've processed the definition call */
     definition_free_arguments_data(definition);
+  }
+
+  return SUCCEEDED;
+}
+
+
+static int _parse_if_elif(int *result) {
+
+  struct token *token_1st, *token_last, *token_current, *t;
+  int tokens = 0, q, file_id, line_number;
+  
+  /* make get_next_token() return linefeeds */
+  g_get_next_token_return_linefeed = YES;
+
+  /* store the currently last token */
+  token_last = g_token_last;
+  token_current = g_token_current;
+
+  line_number = g_active_file_info_tmp->line_current;
+  file_id = g_active_file_info_tmp->filename_id;
+
+  while (1) {
+    q = get_next_token();
+      
+    if (q == FAILED)
+      return FAILED;
+    /* the end of the condition? */
+    if (q == GET_NEXT_TOKEN_LINEFEED)
+      break;
+
+    /* evaluate and add token to the tokens list */
+    q = evaluate_token(q);
+
+    if (tokens == 0) {
+      /* this is the token where the condition starts */
+      token_1st = g_latest_token;
+    }
+
+    tokens++;
+
+    if (q == FAILED)
+      return FAILED;
+  }
+
+  /* tokens of the condition have been created -> try to solve the condition */
+  g_token_current = token_1st;
+  
+  if (stack_calculate_tokens(result) != SUCCEEDED) {
+    g_active_file_info_tmp->line_current = line_number;
+    g_active_file_info_tmp->filename_id = file_id;
+    print_error("_parse_if(): The condition must be solvable and the result must be an integer.\n", ERROR_DIR);
+    return FAILED;
+  }
+
+  /* make get_next_token() not to return linefeeds */
+  g_get_next_token_return_linefeed = NO;
+
+  /* free the condition's tokens */
+  while (token_1st != NULL) {
+    t = token_1st->next;
+    token_free(token_1st);
+    token_1st = t;
+  }
+
+  /* repair g_token_last etc. */
+  if (token_last == NULL) {
+    /* the tokens of the condition were the first tokens */
+    g_token_first = NULL;
+    g_token_last = NULL;
+    g_latest_token = NULL;
+  }
+  else {
+    g_token_last = token_last;
+    g_token_last->next = NULL;
+    g_latest_token = token_last;
+  }
+
+  g_token_current = token_current;
+
+  return SUCCEEDED;
+}
+
+
+static int _fast_forward_to_next_elif_else_endif(void) {
+
+  int q, depth = 0, line_number, file_id;
+  
+  line_number = g_active_file_info_tmp->line_current;
+  file_id = g_active_file_info_tmp->filename_id;
+
+  while (1) {
+    q = get_next_token();
+    if (q == FAILED)
+      return FAILED;
+
+    if (q == GET_NEXT_TOKEN_STRING) {
+      if (strcaselesscmp(g_tmp, "#if") == 0) {
+	depth++;
+      }
+      else if (strcaselesscmp(g_tmp, "#else") == 0) {
+	if (depth == 0)
+	  return SUCCEEDED;
+      }
+      else if (strcaselesscmp(g_tmp, "#elif") == 0) {
+	if (depth == 0)
+	  return SUCCEEDED;
+      }
+      else if (strcaselesscmp(g_tmp, "#endif") == 0) {
+	if (depth == 0)
+	  return SUCCEEDED;
+	depth--;
+      }
+      else if (strcaselesscmp(g_tmp, ".E") == 0) {
+	g_active_file_info_tmp->line_current = line_number;
+	g_active_file_info_tmp->filename_id = file_id;
+	print_error("#endif is missing!\n", ERROR_DIR);
+	return FAILED;
+      }
+    }
   }
 
   return SUCCEEDED;
@@ -638,6 +757,105 @@ int evaluate_token(int type) {
     /* __incbin() */
     if (strcaselesscmp(g_tmp, "__incbin") == 0)
       return _parse_incbin();
+
+    /* #if */
+    if (strcaselesscmp(g_tmp, "#if") == 0) {
+      int result;
+
+      while (1) {
+	if (_parse_if_elif(&result) == FAILED)
+	  return FAILED;
+
+	if (result != 0) {
+	  /* condition is true */
+	  if (g_ifdef_index >= 255) {
+	    print_error("Out of #ifdef stack.\n", ERROR_DIR);
+	    return FAILED;
+	  }
+	  
+	  g_skip_elifs[++g_ifdef_index] = YES;
+
+	  return SUCCEEDED;
+	}
+	else {
+	  /* condition is false */
+	  if (_fast_forward_to_next_elif_else_endif() == FAILED)
+	    return FAILED;
+
+	  if (strcaselesscmp(g_tmp, "#else") == 0) {
+	    if (g_ifdef_index >= 255) {
+	      print_error("Out of #ifdef stack.\n", ERROR_DIR);
+	      return FAILED;
+	    }
+	    
+	    g_skip_elifs[++g_ifdef_index] = NO;
+
+	    return SUCCEEDED;
+	  }
+	  else if (strcaselesscmp(g_tmp, "#endif") == 0)
+	    return SUCCEEDED;
+	}
+      }
+    }
+
+    /* #else */
+    if (strcaselesscmp(g_tmp, "#else") == 0) {
+      if (g_ifdef_index < 0) {
+	print_error("Encountered #else without parsing #if before it.\n", ERROR_DIR);
+	return FAILED;
+      }
+    
+      if (g_skip_elifs[g_ifdef_index] == YES) {
+	if (_fast_forward_to_next_elif_else_endif() == FAILED)
+	  return FAILED;
+
+	if (strcaselesscmp(g_tmp, "#endif") != 0) {
+	  snprintf(g_error_message, sizeof(g_error_message), "Expected #endif, but got %s instead.\n", g_tmp);
+	  print_error(g_error_message, ERROR_DIR);
+	  return FAILED;
+	}
+      }
+
+      g_ifdef_index--;
+
+      return SUCCEEDED;
+    }
+
+    /* #elif */
+    if (strcaselesscmp(g_tmp, "#elif") == 0) {
+      if (g_ifdef_index < 0) {
+	print_error("Encountered #elif without parsing #if before it.\n", ERROR_DIR);
+	return FAILED;
+      }
+
+      if (g_skip_elifs[g_ifdef_index] == YES) {
+	while (1) {
+	  if (_fast_forward_to_next_elif_else_endif() == FAILED)
+	    return FAILED;
+
+	  if (strcaselesscmp(g_tmp, "#endif") == 0) {
+	    g_ifdef_index--;
+	    return SUCCEEDED;
+	  }
+	}
+      }
+      else {
+	print_error("We have an internal error with #elif skipping state. Please submit a bug report!\n", ERROR_DIR);
+	return FAILED;
+      }
+    }
+    
+    /* #endif */
+    if (strcaselesscmp(g_tmp, "#endif") == 0) {
+      if (g_ifdef_index < 0) {
+	print_error("Encountered #endif without parsing #if before it.\n", ERROR_DIR);
+	return FAILED;
+      }
+
+      g_ifdef_index--;
+
+      return SUCCEEDED;
+    }
     
     /* #include */
     if (strcaselesscmp(g_tmp, "#include") == 0) {

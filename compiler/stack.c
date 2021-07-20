@@ -229,13 +229,6 @@ int stack_calculate_tree_node(struct tree_node *node, int *value) {
       fprintf(stderr, "GOT STACK ITEM &&\n");
 #endif
     }
-    else if (child->type == TREE_NODE_TYPE_SYMBOL && child->value == SYMBOL_LOGICAL_AND) {
-      si[q].type = STACK_ITEM_TYPE_OPERATOR;
-      si[q].value = SI_OP_LOGICAL_AND;
-#if DEBUG_STACK
-      fprintf(stderr, "GOT STACK ITEM &&\n");
-#endif
-    }
     else if (child->type == TREE_NODE_TYPE_SYMBOL && child->value == SYMBOL_SHIFT_LEFT) {
       si[q].type = STACK_ITEM_TYPE_OPERATOR;
       si[q].value = SI_OP_SHIFT_LEFT;
@@ -460,6 +453,9 @@ int stack_calculate_tokens(int *value) {
     si[q].sign = 0x123456;
     si[q].value = 0x123456;
     si[q].string[0] = 0;
+
+    if (g_token_current == NULL)
+      break;
 
     if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == '-') {
       si[q].type = STACK_ITEM_TYPE_OPERATOR;
@@ -975,7 +971,7 @@ int stack_calculate(int *value, struct stack_item *si, int q, int save_if_cannot
 
   /* only one string? */
   if (d == 1 && ta[0].type == STACK_ITEM_TYPE_STRING) {
-    fprintf(stderr, "stack_calculate(): WARNING! THIS LABEL (%s) IS MISSING IT'S DEFINITION! Please submit a bug report!\n", ta[0].string);
+    fprintf(stderr, "stack_calculate(): The label \"%s\" cannot be turned into a value.\n", ta[0].string);
     strcpy(g_label, ta[0].string);
     g_label_definition = NULL;
     return INPUT_NUMBER_STRING;
