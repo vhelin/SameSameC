@@ -1,57 +1,21 @@
 
-#if TWO > 1 && 1 == 1 && 1 > 2
-
-  #if 1 == 1
-
-    #if 1 > 0
-    #elif 2 > 0
-    #endif
-
-  #elif 2 == 2
-  #elif 3 == 3
-  #else
-  #endif
-
-  #if 1 > 2
-  #else
-  #endif
-
-#elif 1 == 0 || 1
-
-  #if 1 > 2
-  #elif 2 > 3
-  #else
-static int8 g_adder = 0;
-  #endif
-
-#else
-
-  #if 1 == 1
-
-    #if 1 > 0
-    #elif 2 > 0
-    #endif
-
-  #elif 2 == 2
-  #elif 3 == 3
-  #else
-  #endif
-
-  #if 1 > 2
-  #endif
-
-#endif
-
+struct block {
+  u8 value1;
+  u8 value2;
+  u8 value3;
+  u8 value4;
+};
 
 #define ONE(var1, var2) \
             (var1-var2)
 
-extern void add_to_color(uint8 *color, uint8 adder);
+extern void add_to_color(u8 *color, u8 adder);
+extern s8 g_adder;
 
 void main(void) {
 
-  uint8 color = 0;
-  uint8 i;
+  u8 color = 0;
+  u8 i;
 
   initialize_adder(&g_adder);
 
@@ -68,7 +32,7 @@ void main(void) {
 }
 
 
-static void initialize_adder(int8 *adder) {
+static void initialize_adder(s8 *adder) {
 
   adder[0] = 1;
 }

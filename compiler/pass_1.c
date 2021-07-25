@@ -671,19 +671,19 @@ int evaluate_token(int type) {
     /* check reserved strings */
     
     /* int8 */
-    if (strcaselesscmp(g_tmp, "int8") == 0)
+    if (strcaselesscmp(g_tmp, "int8") == 0 || strcaselesscmp(g_tmp, "s8") == 0)
       return token_add(TOKEN_ID_VARIABLE_TYPE, VARIABLE_TYPE_INT8, 0.0, NULL);
 
     /* uint8 */
-    if (strcaselesscmp(g_tmp, "uint8") == 0)
+    if (strcaselesscmp(g_tmp, "uint8") == 0 || strcaselesscmp(g_tmp, "u8") == 0)
       return token_add(TOKEN_ID_VARIABLE_TYPE, VARIABLE_TYPE_UINT8, 0.0, NULL);
 
     /* int16 */
-    if (strcaselesscmp(g_tmp, "int16") == 0)
+    if (strcaselesscmp(g_tmp, "int16") == 0 || strcaselesscmp(g_tmp, "s16") == 0)
       return token_add(TOKEN_ID_VARIABLE_TYPE, VARIABLE_TYPE_INT16, 0.0, NULL);
 
     /* uint16 */
-    if (strcaselesscmp(g_tmp, "uint16") == 0)
+    if (strcaselesscmp(g_tmp, "uint16") == 0 || strcaselesscmp(g_tmp, "u16") == 0)
       return token_add(TOKEN_ID_VARIABLE_TYPE, VARIABLE_TYPE_UINT16, 0.0, NULL);
 
     /* void */
@@ -693,6 +693,10 @@ int evaluate_token(int type) {
     /* const */
     if (strcaselesscmp(g_tmp, "const") == 0)
       return token_add(TOKEN_ID_VARIABLE_TYPE, VARIABLE_TYPE_CONST, 0.0, NULL);
+
+    /* struct */
+    if (strcaselesscmp(g_tmp, "struct") == 0)
+      return token_add(TOKEN_ID_VARIABLE_TYPE, VARIABLE_TYPE_STRUCT, 0.0, NULL);
 
     /* return */
     if (strcaselesscmp(g_tmp, "return") == 0)

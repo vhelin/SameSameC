@@ -13,6 +13,7 @@ int create_factor(void);
 int create_block(struct tree_node *open_function_definition, int expect_curly_braces);
 int create_condition(void);
 int create_statement(void);
+int create_struct(int is_extern, int is_static, int is_const_1);
 char *get_token_simple(struct token *t);
 void check_ast(void);
 

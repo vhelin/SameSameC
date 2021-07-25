@@ -297,6 +297,7 @@ struct token {
 #define VARIABLE_TYPE_UINT8  4
 #define VARIABLE_TYPE_UINT16 5
 #define VARIABLE_TYPE_CONST  6
+#define VARIABLE_TYPE_STRUCT 7
 
 struct local_variable {
   struct tree_node *node;
@@ -332,8 +333,8 @@ struct tree_node {
   struct tree_node **children;
   struct local_variables *local_variables;
   unsigned char flags;
-  int  reads;
-  int  writes;
+  int reads;
+  int writes;
 };
 
 #define TREE_NODE_FLAG_CONST_1       (1 << 0)

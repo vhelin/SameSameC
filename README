@@ -31,7 +31,6 @@ Fix:
 Add:
 
 - Add support for struct
-- Add support for #if, #elif, #else and #endif
 - Add support for free const strings
 - Add support for casting and type checks
 
