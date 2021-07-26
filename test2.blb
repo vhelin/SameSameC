@@ -4,6 +4,7 @@ struct block {
   u8 value2;
   u8 value3;
   u8 value4;
+  struct block *next;
 };
 
 #define ONE(var1, var2) \
@@ -23,9 +24,9 @@ void main(void) {
     __z80_out[0xBF] = 0x00;
     __z80_out[0xBF] = 0xC0;
 
-    for (i = 0; i < 32; i++) {
-      __z80_out[0xBE] = color;
-    }
+    for (i = 0; i < 32; i++)
+      if (i < 32)
+        __z80_out[0xBE] = color;
 
     add_to_color(&color, g_adder);
   }

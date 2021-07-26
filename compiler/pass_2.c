@@ -1639,7 +1639,7 @@ int create_statement(void) {
         return FAILED;
       }
 
-      if (create_block(NULL, NO) == FAILED) {
+      if (create_block(NULL, NO, YES) == FAILED) {
         free_tree_node(node);
         return FAILED;
       }
@@ -1673,6 +1673,8 @@ int create_statement(void) {
     _next_token();
 
     while (1) {
+      int is_multiline_block = NO;
+      
       if (g_token_current->id != TOKEN_ID_SYMBOL || g_token_current->value != '(') {
         snprintf(g_error_message, sizeof(g_error_message), "Expected '(', but got %s.\n", get_token_simple(g_token_current));
         print_error(g_error_message, ERROR_ERR);
@@ -1708,12 +1710,8 @@ int create_statement(void) {
       /* next token */
       _next_token();
 
-      if (g_token_current->id != TOKEN_ID_SYMBOL || g_token_current->value != '{') {
-        snprintf(g_error_message, sizeof(g_error_message), "Expected '{', but got %s.\n", get_token_simple(g_token_current));
-        print_error(g_error_message, ERROR_ERR);
-        free_tree_node(node);
-        return FAILED;
-      }
+      if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == '{')
+        is_multiline_block = YES;
 
       /* start parsing a block */
       
@@ -1722,7 +1720,7 @@ int create_statement(void) {
         return FAILED;
       }
 
-      if (create_block(NULL, YES) == FAILED) {
+      if (create_block(NULL, is_multiline_block, is_multiline_block) == FAILED) {
         free_tree_node(node);
         return FAILED;
       }
@@ -1737,18 +1735,21 @@ int create_statement(void) {
         return SUCCEEDED;
       }
 
-      /* next token */
+      /* skip "else" */
       _next_token();
       
-      if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == '{') {
+      if ((g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == '{') || g_token_current->id != TOKEN_ID_IF) {
         /* the final block */
-
+        
+        if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == '{')
+          is_multiline_block = YES;
+        
         if (_open_block_push() == FAILED) {
           free_tree_node(node);
           return FAILED;
         }
 
-        if (create_block(NULL, YES) == FAILED) {
+        if (create_block(NULL, is_multiline_block, is_multiline_block) == FAILED) {
           free_tree_node(node);
           return FAILED;
         }
@@ -1822,6 +1823,8 @@ int create_statement(void) {
     return SUCCEEDED;
   }
   else if (g_token_current->id == TOKEN_ID_WHILE) {
+    int is_multiline_block = NO;
+    
     /* while */
     
     /* next token */
@@ -1866,12 +1869,8 @@ int create_statement(void) {
     /* next token */
     _next_token();
 
-    if (g_token_current->id != TOKEN_ID_SYMBOL || g_token_current->value != '{') {
-      snprintf(g_error_message, sizeof(g_error_message), "Expected '{', but got %s.\n", get_token_simple(g_token_current));
-      print_error(g_error_message, ERROR_ERR);
-      free_tree_node(node);
-      return FAILED;
-    }
+    if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == '{')
+      is_multiline_block = YES;
 
     /* start parsing a block */
       
@@ -1880,7 +1879,7 @@ int create_statement(void) {
       return FAILED;
     }
 
-    if (create_block(NULL, YES) == FAILED) {
+    if (create_block(NULL, is_multiline_block, is_multiline_block) == FAILED) {
       free_tree_node(node);
       return FAILED;
     }
@@ -1893,6 +1892,8 @@ int create_statement(void) {
     return SUCCEEDED;    
   }
   else if (g_token_current->id == TOKEN_ID_FOR) {
+    int is_multiline_block = NO;
+    
     /* for */
 
     /* next token */
@@ -2003,12 +2004,8 @@ int create_statement(void) {
     tree_node_add_child(node, _get_current_open_block());
     _open_block_pop();
     
-    if (g_token_current->id != TOKEN_ID_SYMBOL || g_token_current->value != '{') {
-      snprintf(g_error_message, sizeof(g_error_message), "Expected '{', but got %s.\n", get_token_simple(g_token_current));
-      print_error(g_error_message, ERROR_ERR);
-      free_tree_node(node);
-      return FAILED;
-    }
+    if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == '{')
+      is_multiline_block = YES;
 
     /* start parsing a block */
       
@@ -2017,7 +2014,7 @@ int create_statement(void) {
       return FAILED;
     }
 
-    if (create_block(NULL, YES) == FAILED) {
+    if (create_block(NULL, is_multiline_block, is_multiline_block) == FAILED) {
       free_tree_node(node);
       return FAILED;
     }
@@ -2180,7 +2177,7 @@ int create_statement(void) {
 }
 
 
-int create_block(struct tree_node *open_function_definition, int expect_curly_braces) {
+int create_block(struct tree_node *open_function_definition, int expect_curly_braces, int is_multiline_block) {
 
   int result, i;
 
@@ -2279,22 +2276,26 @@ int create_block(struct tree_node *open_function_definition, int expect_curly_br
     }
     if (result == FINISHED)
       break;
+    if (is_multiline_block == NO)
+      break;
   }
-  
-  if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == '}') {
-    if (expect_curly_braces == YES) {
-      /* next token */
-      _next_token();
+
+  if (is_multiline_block == YES) {
+    if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == '}') {
+      if (expect_curly_braces == YES) {
+        /* next token */
+        _next_token();
+      }
     }
-  }
-  else if (g_token_current->id == TOKEN_ID_CASE || g_token_current->id == TOKEN_ID_DEFAULT) {
-  }
-  else {
-    snprintf(g_error_message, sizeof(g_error_message), "Expected '}', but got %s.\n", get_token_simple(g_token_current));
-    print_error(g_error_message, ERROR_ERR);
-    free_symbol_table_items(g_block_level);
-    g_block_level--;
-    return FAILED;
+    else if (g_token_current->id == TOKEN_ID_CASE || g_token_current->id == TOKEN_ID_DEFAULT) {
+    }
+    else {
+      snprintf(g_error_message, sizeof(g_error_message), "Expected '}', but got %s.\n", get_token_simple(g_token_current));
+      print_error(g_error_message, ERROR_ERR);
+      free_symbol_table_items(g_block_level);
+      g_block_level--;
+      return FAILED;
+    }
   }
   
   free_symbol_table_items(g_block_level);
@@ -2860,7 +2861,7 @@ int create_variable_or_function(int is_extern, int is_static) {
           }
 
           /* parse the function */
-          if (create_block(g_open_function_definition, YES) == FAILED) {
+          if (create_block(g_open_function_definition, YES, YES) == FAILED) {
             free_tree_node(_get_current_open_block());
             _open_block_pop();
             return FAILED;
@@ -3411,14 +3412,15 @@ int _create_struct_definition(char *struct_name) {
   /* skip "{" */
   _next_token();
 
-  while(1) {
-
+  while (1) {
     if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == '}') {
       /* skip "}" */
       _next_token();
 
       break;
     }
+
+    _next_token();
   }
 
   if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == ';') {
@@ -3437,7 +3439,7 @@ int _create_struct_definition(char *struct_name) {
 int create_struct(int is_extern, int is_static, int is_const_1) {
 
   char struct_name[MAX_NAME_LENGTH + 1];
-  int pointer_depth;
+  struct tree_node *node;
    
   /* skip "struct" */
   _next_token();
@@ -3461,7 +3463,8 @@ int create_struct(int is_extern, int is_static, int is_const_1) {
   }
   
   while (1) {
-    int is_const_2 = NO, file_id, line_number;
+    int is_const_2 = NO, file_id, line_number, pointer_depth, symbol;
+    char name[MAX_NAME_LENGTH + 1];
 
     if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == ',') {
       /* next token */
@@ -3487,7 +3490,7 @@ int create_struct(int is_extern, int is_static, int is_const_1) {
     if (g_token_current->id != TOKEN_ID_VALUE_STRING) {
       g_current_line_number = g_token_previous->line_number;
       g_current_filename_id = g_token_previous->file_id;
-      snprintf(g_error_message, sizeof(g_error_message), "\"%s\" must be followed by a variable or function name.\n", g_variable_types[variable_type]);
+      snprintf(g_error_message, sizeof(g_error_message), "\"struct %s\" must be followed by a variable name.\n", struct_name);
       print_error(g_error_message, ERROR_ERR);
       return FAILED;
     }
@@ -3504,110 +3507,64 @@ int create_struct(int is_extern, int is_static, int is_const_1) {
     if (g_token_current->id != TOKEN_ID_SYMBOL || (g_token_current->value != '=' &&
                                                    g_token_current->value != ';' &&
                                                    g_token_current->value != ',' &&
-                                                   g_token_current->value != '[' &&
-                                                   g_token_current->value != '(')) {
+                                                   g_token_current->value != '[')) {
       g_current_line_number = g_token_previous->line_number;
       g_current_filename_id = g_token_previous->file_id;
-      snprintf(g_error_message, sizeof(g_error_message), "\"%s\" must be followed by a ';', ',', '=', '[' or '('.\n", name);
+      snprintf(g_error_message, sizeof(g_error_message), "\"%s\" must be followed by a ';', ',', '=' or '['.\n", name);
       print_error(g_error_message, ERROR_ERR);
       return FAILED;
     }
 
-    if (g_token_current->value == '=' || g_token_current->value == ';' || g_token_current->value == '[' || g_token_current->value == ',') {
-      /* a variable definition */
-      int symbol = g_token_current->value;
+    symbol = g_token_current->value;
 
-      /* next token */
-      _next_token();
+    /* next token */
+    _next_token();
 
-      if (symbol == '=') {
-        if (is_extern == YES) {
-          g_current_line_number = g_token_previous->line_number;
-          g_current_filename_id = g_token_previous->file_id;
-          print_error("Extern variable definitions don't take initializers.\n", ERROR_ERR);
-          return FAILED;
-        }
-        
-        /* create_expression() will put all tree_nodes it parses to g_open_expression */
-        if (_open_expression_push() == FAILED)
-          return FAILED;
-
-        /* possibly parse a calculation */
-        if (create_expression() == FAILED)
-          return FAILED;
-
-        /*
-          result = stack_calculate_tokens(&g_parsed_int);
-
-          fprintf(stderr, "GOT FROM STACK CALCULATE: ");
-
-          if (result == SUCCEEDED)
-          fprintf(stderr, "INT: %d\n", g_parsed_int);
-          else if (result == INPUT_NUMBER_FLOAT)
-          fprintf(stderr, "DOUBLE: %g\n", g_parsed_double);
-          else if (result == INPUT_NUMBER_STRING)
-          fprintf(stderr, "STRING: %s\n", g_label);
-          else if (result == INPUT_NUMBER_STACK)
-          fprintf(stderr, "STACK: %d\n", g_latest_stack);
-        */
+    if (symbol == '=') {
+      if (is_extern == YES) {
+        g_current_line_number = g_token_previous->line_number;
+        g_current_filename_id = g_token_previous->file_id;
+        print_error("Extern variable definitions don't take initializers.\n", ERROR_ERR);
+        return FAILED;
       }
-      else if (symbol == '[') {
-        /* array */
-        node = create_array(pointer_depth, variable_type, name, line_number, file_id);
-        if (node == NULL)
-          return FAILED;
         
-        /* add to global lists */
-        if (symbol_table_add_symbol(node, node->children[1]->label, g_block_level, line_number, file_id) == FAILED) {
-          free_tree_node(node);
-          return FAILED;
-        }
-      
-        if (tree_node_add_child(g_global_nodes, node) == FAILED)
-          return FAILED;
-
-        /* store const flags */
-        if (is_const_1 == YES)
-          node->flags |= TREE_NODE_FLAG_CONST_1;
-        if (is_const_2 == YES)
-          node->flags |= TREE_NODE_FLAG_CONST_2;
-        if (is_extern == YES)
-          node->flags |= TREE_NODE_FLAG_EXTERN;
-        if (is_static == YES)
-          node->flags |= TREE_NODE_FLAG_STATIC;
-
-        if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == ';') {
-          /* next token */
-          _next_token();
-
-          return SUCCEEDED;
-        }
-
-        continue;
-      }
-
-      node = allocate_tree_node_with_children(TREE_NODE_TYPE_CREATE_VARIABLE, 3);
-      if (node == NULL)
+      /* create_expression() will put all tree_nodes it parses to g_open_expression */
+      if (_open_expression_push() == FAILED)
         return FAILED;
 
-      /* use the line where the name was given */
-      node->file_id = file_id;
-      node->line_number = line_number;
-      
-      tree_node_add_child(node, allocate_tree_node_variable_type(variable_type));
-      tree_node_add_child(node, allocate_tree_node_value_string(name));
-      if (symbol == '=') {
-        tree_node_add_child(node, _get_current_open_expression());
-        _open_expression_pop();
-      }
+      /* possibly parse a calculation */
+      if (create_expression() == FAILED)
+        return FAILED;
 
-      if (node->children[0] == NULL || node->children[1] == NULL || (symbol == '=' && node->children[2] == NULL)) {
+      /*
+        result = stack_calculate_tokens(&g_parsed_int);
+
+        fprintf(stderr, "GOT FROM STACK CALCULATE: ");
+
+        if (result == SUCCEEDED)
+        fprintf(stderr, "INT: %d\n", g_parsed_int);
+        else if (result == INPUT_NUMBER_FLOAT)
+        fprintf(stderr, "DOUBLE: %g\n", g_parsed_double);
+        else if (result == INPUT_NUMBER_STRING)
+        fprintf(stderr, "STRING: %s\n", g_label);
+        else if (result == INPUT_NUMBER_STACK)
+        fprintf(stderr, "STACK: %d\n", g_latest_stack);
+      */
+    }
+    else if (symbol == '[') {
+      /* array */
+      node = create_array(pointer_depth, VARIABLE_TYPE_STRUCT, name, line_number, file_id);
+      if (node == NULL)
+        return FAILED;
+        
+      /* add to global lists */
+      if (symbol_table_add_symbol(node, node->children[1]->label, g_block_level, line_number, file_id) == FAILED) {
         free_tree_node(node);
         return FAILED;
       }
-
-      /* store the pointer depth (0 - not a pointer, 1+ - is a pointer) */
-      node->children[0]->value_double = pointer_depth;
+      
+      if (tree_node_add_child(g_global_nodes, node) == FAILED)
+        return FAILED;
 
       /* store const flags */
       if (is_const_1 == YES)
@@ -3618,25 +3575,69 @@ int create_struct(int is_extern, int is_static, int is_const_1) {
         node->flags |= TREE_NODE_FLAG_EXTERN;
       if (is_static == YES)
         node->flags |= TREE_NODE_FLAG_STATIC;
-
-      /* add to global lists */
-      if (symbol_table_add_symbol(node, node->children[1]->label, g_block_level, line_number, file_id) == FAILED) {
-        free_tree_node(node);
-        return FAILED;
-      }
-      
-      if (tree_node_add_child(g_global_nodes, node) == FAILED)
-        return FAILED;
-
-      if (symbol == ';')
-        return SUCCEEDED;
-
+      node->flags |= TREE_NODE_FLAG_STRUCT;
+    
       if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == ';') {
         /* next token */
         _next_token();
 
         return SUCCEEDED;
       }
+
+      continue;
+    }
+
+    node = allocate_tree_node_with_children(TREE_NODE_TYPE_CREATE_VARIABLE, 3);
+    if (node == NULL)
+      return FAILED;
+
+    /* use the line where the name was given */
+    node->file_id = file_id;
+    node->line_number = line_number;
+      
+    tree_node_add_child(node, allocate_tree_node_variable_type(VARIABLE_TYPE_STRUCT));
+    tree_node_add_child(node, allocate_tree_node_value_string(name));
+    if (symbol == '=') {
+      tree_node_add_child(node, _get_current_open_expression());
+      _open_expression_pop();
+    }
+
+    if (node->children[0] == NULL || node->children[1] == NULL || (symbol == '=' && node->children[2] == NULL)) {
+      free_tree_node(node);
+      return FAILED;
+    }
+
+    /* store the pointer depth (0 - not a pointer, 1+ - is a pointer) */
+    node->children[0]->value_double = pointer_depth;
+
+    /* store const flags */
+    if (is_const_1 == YES)
+      node->flags |= TREE_NODE_FLAG_CONST_1;
+    if (is_const_2 == YES)
+      node->flags |= TREE_NODE_FLAG_CONST_2;
+    if (is_extern == YES)
+      node->flags |= TREE_NODE_FLAG_EXTERN;
+    if (is_static == YES)
+      node->flags |= TREE_NODE_FLAG_STATIC;
+    node->flags |= TREE_NODE_FLAG_STRUCT;
+
+    /* add to global lists */
+    if (symbol_table_add_symbol(node, node->children[1]->label, g_block_level, line_number, file_id) == FAILED) {
+      free_tree_node(node);
+      return FAILED;
+    }
+      
+    if (tree_node_add_child(g_global_nodes, node) == FAILED)
+      return FAILED;
+
+    if (symbol == ';')
+      return SUCCEEDED;
+
+    if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == ';') {
+      /* next token */
+      _next_token();
+
+      return SUCCEEDED;
     }
   }
   

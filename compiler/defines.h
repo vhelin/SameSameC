@@ -344,6 +344,7 @@ struct tree_node {
 #define TREE_NODE_FLAG_GLOBAL        (1 << 4)
 #define TREE_NODE_FLAG_EXTERN        (1 << 5)
 #define TREE_NODE_FLAG_STATIC        (1 << 6)
+#define TREE_NODE_FLAG_STRUCT        (1 << 7)
 
 #define TREE_NODE_TYPE_CREATE_VARIABLE      0
 #define TREE_NODE_TYPE_ASSIGNMENT           1
