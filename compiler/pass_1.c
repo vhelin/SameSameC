@@ -698,6 +698,14 @@ int evaluate_token(int type) {
     if (strcaselesscmp(g_tmp, "struct") == 0)
       return token_add(TOKEN_ID_VARIABLE_TYPE, VARIABLE_TYPE_STRUCT, 0.0, NULL);
 
+    /* union */
+    if (strcaselesscmp(g_tmp, "union") == 0)
+      return token_add(TOKEN_ID_VARIABLE_TYPE, VARIABLE_TYPE_UNION, 0.0, NULL);
+
+    /* sizeof */
+    if (strcaselesscmp(g_tmp, "sizeof") == 0)
+      return token_add(TOKEN_ID_SIZEOF, 0, 0.0, NULL);
+
     /* return */
     if (strcaselesscmp(g_tmp, "return") == 0)
       return token_add(TOKEN_ID_RETURN, 0, 0.0, NULL);

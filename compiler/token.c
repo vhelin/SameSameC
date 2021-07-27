@@ -14,7 +14,7 @@
 extern struct active_file_info *g_active_file_info_first, *g_active_file_info_last, *g_active_file_info_tmp;
 extern char g_tmp[4096], g_error_message[sizeof(g_tmp) + MAX_NAME_LENGTH + 1 + 1024];
 extern int g_inside_define;
-extern char *g_variable_types[];
+extern char *g_variable_types[9];
 extern char *g_two_char_symbols[];
 
 struct token *g_token_first = NULL, *g_token_last = NULL, *g_latest_token = NULL;

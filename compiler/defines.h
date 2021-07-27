@@ -272,6 +272,7 @@ struct token {
 #define TOKEN_ID_HINT          19
 #define TOKEN_ID_EXTERN        20
 #define TOKEN_ID_STATIC        21
+#define TOKEN_ID_SIZEOF        22
 
 #define SYMBOL_LOGICAL_OR   0
 #define SYMBOL_LOGICAL_AND  1
@@ -298,6 +299,7 @@ struct token {
 #define VARIABLE_TYPE_UINT16 5
 #define VARIABLE_TYPE_CONST  6
 #define VARIABLE_TYPE_STRUCT 7
+#define VARIABLE_TYPE_UNION  8
 
 struct local_variable {
   struct tree_node *node;

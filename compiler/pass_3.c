@@ -24,7 +24,7 @@
 
 extern struct tree_node *g_global_nodes, *g_label_definition;
 extern int g_verbose_mode, g_input_float_mode, g_current_filename_id, g_current_line_number;
-extern char *g_variable_types[8], *g_two_char_symbols[10], g_label[MAX_NAME_LENGTH + 1];
+extern char *g_variable_types[9], *g_two_char_symbols[10], g_label[MAX_NAME_LENGTH + 1];
 extern char g_tmp[4096], g_error_message[sizeof(g_tmp) + MAX_NAME_LENGTH + 1 + 1024];
 extern double g_parsed_double;
 
