@@ -18,6 +18,7 @@
 #include "symbol_table.h"
 #include "inline_asm.h"
 #include "inline_asm_z80.h"
+#include "struct_item.h"
 
 
 /* define this for DEBUG */
@@ -3515,6 +3516,29 @@ void check_ast(void) {
 
 int _create_struct_union_definition(char *struct_name, int variable_type) {
 
+  struct struct_item *stack[256];
+  struct struct_item *s;
+  int depth = 0;
+
+  if (find_struct_item(struct_name) != NULL) {
+    snprintf(g_error_message, sizeof(g_error_message), "struct/union \"%s\" is already defined.\n", struct_name);
+    print_error(g_error_message, ERROR_ERR);
+    return FAILED;
+  }
+
+  if (variable_type == VARIABLE_TYPE_STRUCT)
+    variable_type = STRUCT_ITEM_TYPE_STRUCT;
+  else if (variable_type == VARIABLE_TYPE_UNION)
+    variable_type = STRUCT_ITEM_TYPE_UNION;
+  
+  s = allocate_struct_item(struct_name, variable_type);
+  if (s == NULL)
+    return FAILED;
+
+  add_struct_item(s);
+  
+  stack[depth] = s;
+  
   /* skip "{" */
   _next_token();
 
@@ -3523,7 +3547,96 @@ int _create_struct_union_definition(char *struct_name, int variable_type) {
       /* skip "}" */
       _next_token();
 
-      break;
+      depth--;
+
+      if (depth < 0)
+        break;
+      else {
+        if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == ';') {
+          /* the struct/union has no name... */
+
+          /* skip ';' */
+          _next_token();
+        }
+        else if (g_token_current->id == TOKEN_ID_VALUE_STRING) {
+          /* the struct/union has a name! */
+          strcpy(s->name, g_token_current->label);
+
+          /* skip the name */
+          _next_token();
+          
+          if (!(g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == ';')) {
+            print_error("struct/union name must be followed by a ';'.\n", ERROR_ERR);
+            return FAILED;
+          }
+
+          /* skip ';' */
+          _next_token();
+        }
+      }
+
+      s = stack[depth];
+    }
+
+    if (g_token_current->id == TOKEN_ID_VARIABLE_TYPE) {
+      int type, pointer_depth = 0, is_const_1 = NO, is_const_2 = NO;
+
+      if (g_token_current->id == TOKEN_ID_VARIABLE_TYPE && g_token_current->value == VARIABLE_TYPE_CONST) {
+        is_const_1 = YES;
+
+        /* next token */
+        _next_token();
+      }
+
+      if (g_token_current->id != TOKEN_ID_VARIABLE_TYPE) {
+        print_error("\"const\" must be followed by a variable type.\n", ERROR_ERR);
+        return FAILED;
+      }
+
+      type = g_token_current->value;
+      
+      /* next token */
+      _next_token();
+
+      while (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == '*') {
+        pointer_depth++;
+
+        /* next token */
+        _next_token();
+      }
+
+      if (pointer_depth > 0 && g_token_current->id == TOKEN_ID_VARIABLE_TYPE && g_token_current->value == VARIABLE_TYPE_CONST) {
+        is_const_2 = YES;
+
+        /* next token */
+        _next_token();
+      }
+
+      if ((type == VARIABLE_TYPE_STRUCT || type == VARIABLE_TYPE_UNION) && g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == '{') {
+        /* a struct/union definition */
+        if (type == VARIABLE_TYPE_STRUCT)
+          variable_type = STRUCT_ITEM_TYPE_STRUCT;
+        else if (type == VARIABLE_TYPE_UNION)
+          variable_type = STRUCT_ITEM_TYPE_UNION;
+
+        if (depth >= 255) {
+          print_error("Out of struct/union stack depth! Please submit a bug report!\n", ERROR_ERR);
+          return FAILED;
+        }
+
+        s = allocate_struct_item("", variable_type);
+        if (s == NULL)
+          return FAILED;
+
+        struct_item_add_child(stack[depth], s);
+        stack[++depth] = s;
+  
+        /* skip "{" */
+        _next_token();
+      }
+      else {
+
+      }
     }
 
     _next_token();
@@ -3553,7 +3666,7 @@ int create_struct_union(int is_extern, int is_static, int is_const_1, int variab
   if (g_token_current->id != TOKEN_ID_VALUE_STRING) {
     g_current_line_number = g_token_previous->line_number;
     g_current_filename_id = g_token_previous->file_id;
-    snprintf(g_error_message, sizeof(g_error_message), "\"struct/union\" must be followed by a struct/union name.\n");
+    snprintf(g_error_message, sizeof(g_error_message), "struct/union must be followed by a struct/union name.\n");
     print_error(g_error_message, ERROR_ERR);
     return FAILED;
   }
@@ -3565,7 +3678,16 @@ int create_struct_union(int is_extern, int is_static, int is_const_1, int variab
 
   if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == '{') {
     /* this is a struct/union definition! */
-    return _create_struct_union_definition(struct_name, variable_type);
+    if (_create_struct_union_definition(struct_name, variable_type) == FAILED)
+      return FAILED;
+
+    /* no instances? */
+    if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == ';') {
+      /* next token */
+      _next_token();
+
+      return SUCCEEDED;
+    }
   }
   
   while (1) {
@@ -3596,7 +3718,7 @@ int create_struct_union(int is_extern, int is_static, int is_const_1, int variab
     if (g_token_current->id != TOKEN_ID_VALUE_STRING) {
       g_current_line_number = g_token_previous->line_number;
       g_current_filename_id = g_token_previous->file_id;
-      snprintf(g_error_message, sizeof(g_error_message), "\"struct %s\" must be followed by a variable name.\n", struct_name);
+      snprintf(g_error_message, sizeof(g_error_message), "struct/union \"%s\" must be followed by a variable name.\n", struct_name);
       print_error(g_error_message, ERROR_ERR);
       return FAILED;
     }

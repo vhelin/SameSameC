@@ -18,6 +18,7 @@
 #include "definition.h"
 #include "symbol_table.h"
 #include "inline_asm.h"
+#include "struct_item.h"
 #include "token.h"
 #include "tac.h"
 #include "pass_1.h"
@@ -462,6 +463,7 @@ void procedures_at_exit(void) {
   free(g_register_reads);
   free(g_register_writes);
 
+  free_struct_items();
   source_files_free();
   
   /* remove the tmp files */

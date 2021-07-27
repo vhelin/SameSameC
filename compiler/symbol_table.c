@@ -112,7 +112,7 @@ int symbol_table_add_symbol(struct tree_node *node, char *name, int level, int l
     if (j == g_symbol_table_size) {
       g_current_filename_id = file_id;
       g_current_line_number = line_number;
-      print_error("No empty slot for a new symbol in the symbol table even though there should be room for it! Please submit a bug report\n", ERROR_DIR);
+      print_error("No empty slot for a new symbol in the symbol table even though there should be room for it! Please submit a bug report!\n", ERROR_DIR);
       return FAILED;
     }
   }

@@ -5,9 +5,9 @@ LD = gcc
 LDFLAGS = -lm
 WLAFLAGS = $(CFLAGS)
 
-CFILES = main.c parse.c include_file.c stack.c printf.c definition.c pass_1.c pass_2.c pass_3.c pass_4.c pass_5.c pass_6_z80.c tree_node.c symbol_table.c il.c tac.c source_line_manager.c inline_asm.c inline_asm_z80.c token.c
-HFILES = main.h parse.h include_file.h stack.h printf.h definition.h pass_1.h pass_2.h pass_3.h pass_4.h pass_5.h pass_6_z80.h tree_node.h symbol_table.h il.h tac.h source_line_manager.h inline_asm.h inline_asm_z80.h token.h
-OFILES = main.o parse.o include_file.o stack.o printf.o definition.o pass_1.o pass_2.o pass_3.o pass_4.o pass_5.o pass_6_z80.o tree_node.o symbol_table.o il.o tac.o source_line_manager.o inline_asm.o inline_asm_z80.o token.o
+CFILES = main.c parse.c include_file.c stack.c printf.c definition.c pass_1.c pass_2.c pass_3.c pass_4.c pass_5.c pass_6_z80.c tree_node.c symbol_table.c il.c tac.c source_line_manager.c inline_asm.c inline_asm_z80.c token.c struct_item.c
+HFILES = main.h parse.h include_file.h stack.h printf.h definition.h pass_1.h pass_2.h pass_3.h pass_4.h pass_5.h pass_6_z80.h tree_node.h symbol_table.h il.h tac.h source_line_manager.h inline_asm.h inline_asm_z80.h token.h struct_item.h
+OFILES = main.o parse.o include_file.o stack.o printf.o definition.o pass_1.o pass_2.o pass_3.o pass_4.o pass_5.o pass_6_z80.o tree_node.o symbol_table.o il.o tac.o source_line_manager.o inline_asm.o inline_asm_z80.o token.o struct_item.o
 
 
 all: $(OFILES) makefile
@@ -73,9 +73,12 @@ inline_asm.o: inline_asm.c defines.h inline_asm.h makefile
 inline_asm_z80.o: inline_asm_z80.c defines.h inline_asm_z80.h makefile
 	$(CC) $(CFLAGS) inline_asm_z80.c
 
+struct_item.o: struct_item.c defines.h struct_item.h makefile
+	$(CC) $(CFLAGS) struct_item.c
+
 
 $(OFILES): $(HFILES)
 
 
 clean:
-	rm *.o ; rm *~ ; rm bilibalic
+	rm *.o ; rm *~ ; rm bilibalic ; rm bilibalic.exe.stackdump
