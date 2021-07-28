@@ -901,6 +901,42 @@ static int _generate_il_create_while(struct tree_node *node) {
 }
 
 
+static int _generate_il_create_do(struct tree_node *node) {
+
+  int label_start, label_exit;
+  
+  /* update file id and line number for all TACs and error messages */
+  g_current_filename_id = node->file_id;
+  g_current_line_number = node->line_number;
+
+  label_start = ++g_temp_label_id;
+  label_exit = ++g_temp_label_id;
+
+  /* label of start */
+  add_tac_label(generate_temp_label(label_start));
+
+  _enter_breakable(label_exit, label_start);
+
+  /* main block */
+  if (_generate_il_create_block(node->children[0]) == FAILED)
+    return FAILED;
+
+  _exit_breakable();  
+  
+  /* condition */
+  if (_generate_il_create_condition(node->children[1], label_exit) == FAILED)
+    return FAILED;
+  
+  /* jump back to start */
+  add_tac_jump(generate_temp_label(label_start));
+  
+  /* label of exit */
+  add_tac_label(generate_temp_label(label_exit));
+
+  return SUCCEEDED;
+}
+
+
 static int _generate_il_create_for(struct tree_node *node) {
 
   int label_condition, label_increments, label_exit;
@@ -1113,6 +1149,8 @@ static int _generate_il_create_statement(struct tree_node *node) {
     r = _generate_il_create_switch(node);
   else if (node->type == TREE_NODE_TYPE_WHILE)
     r = _generate_il_create_while(node);
+  else if (node->type == TREE_NODE_TYPE_DO)
+    r = _generate_il_create_do(node);
   else if (node->type == TREE_NODE_TYPE_FOR)
     r = _generate_il_create_for(node);
   else if (node->type == TREE_NODE_TYPE_INCREMENT_DECREMENT)

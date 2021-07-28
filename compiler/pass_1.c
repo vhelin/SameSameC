@@ -730,6 +730,10 @@ int evaluate_token(int type) {
     if (strcaselesscmp(g_tmp, "while") == 0)
       return token_add(TOKEN_ID_WHILE, 0, 0.0, NULL);
 
+    /* do */
+    if (strcaselesscmp(g_tmp, "do") == 0)
+      return token_add(TOKEN_ID_DO, 0, 0.0, NULL);
+
     /* for */
     if (strcaselesscmp(g_tmp, "for") == 0)
       return token_add(TOKEN_ID_FOR, 0, 0.0, NULL);

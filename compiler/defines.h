@@ -273,6 +273,7 @@ struct token {
 #define TOKEN_ID_EXTERN        20
 #define TOKEN_ID_STATIC        21
 #define TOKEN_ID_SIZEOF        22
+#define TOKEN_ID_DO            23
 
 #define SYMBOL_LOGICAL_OR   0
 #define SYMBOL_LOGICAL_AND  1
@@ -380,6 +381,7 @@ struct tree_node {
 #define TREE_NODE_TYPE_DEAD                29
 #define TREE_NODE_TYPE_BYTES               30
 #define TREE_NODE_TYPE_ASM                 31
+#define TREE_NODE_TYPE_DO                  32
 
 struct symbol_table_item {
   int level;
@@ -500,6 +502,26 @@ struct inline_asm {
   struct asm_line *asm_line_first;
   struct asm_line *asm_line_last;
   struct inline_asm *next;
+};
+
+#define STRUCT_ITEM_TYPE_STRUCT 0
+#define STRUCT_ITEM_TYPE_UNION  1
+#define STRUCT_ITEM_TYPE_ITEM   2
+#define STRUCT_ITEM_TYPE_ARRAY  3
+
+struct struct_item {
+  int type;
+  int variable_type;
+  int pointer_depth;
+  int array_items;
+  char name[MAX_NAME_LENGTH + 1];
+  char struct_name[MAX_NAME_LENGTH + 1];
+  int offset;
+  int size;
+  struct struct_item **children;
+  int max_children;
+  int added_children;
+  struct struct_item *next;
 };
 
 #endif /* _DEFINES_H */

@@ -392,6 +392,24 @@ static void _print_while(struct tree_node *node) {
 }
 
 
+static void _print_do(struct tree_node *node) {
+
+  if (node == NULL)
+    return;
+
+  if (node->added_children != 2) {
+    fprintf(stderr, "We have a DO with added_children != 2! Please submit a bug report!\n");
+    return;
+  }
+
+  fprintf(stderr, "%sdo {\n", _get_current_indentation());
+  _print_block(node->children[0]);
+  fprintf(stderr, "%s} while (", _get_current_indentation());
+  _print_condition(node->children[1], 0);
+  fprintf(stderr, ");\n");
+}
+
+
 static void _print_for(struct tree_node *node) {
 
   if (node == NULL)
@@ -474,6 +492,8 @@ static void _print_statement(struct tree_node *node, int line) {
     _print_switch(node);
   else if (node->type == TREE_NODE_TYPE_WHILE)
     _print_while(node);
+  else if (node->type == TREE_NODE_TYPE_DO)
+    _print_do(node);
   else if (node->type == TREE_NODE_TYPE_FOR)
     _print_for(node);
   else if (node->type == TREE_NODE_TYPE_LABEL) {
@@ -890,6 +910,22 @@ static void _simplify_expressions_while(struct tree_node *node) {
 }
 
 
+static void _simplify_expressions_do(struct tree_node *node) {
+
+  int i;
+  
+  if (node == NULL)
+    return;
+
+  for (i = 0; i < node->added_children; i++) {
+    if (node->children[i]->type == TREE_NODE_TYPE_CONDITION)
+      _simplify_expressions_condition(node->children[i]);
+    else if (node->children[i]->type == TREE_NODE_TYPE_BLOCK)
+      _simplify_expressions_block(node->children[i]);
+  }
+}
+
+
 static void _simplify_expressions_for(struct tree_node *node) {
 
   int i;
@@ -923,6 +959,8 @@ static void _simplify_expressions_statement(struct tree_node *node) {
     _simplify_expressions_if(node);
   else if (node->type == TREE_NODE_TYPE_WHILE)
     _simplify_expressions_while(node);
+  else if (node->type == TREE_NODE_TYPE_DO)
+    _simplify_expressions_do(node);
   else if (node->type == TREE_NODE_TYPE_FOR)
     _simplify_expressions_for(node);
   else if (node->type == TREE_NODE_TYPE_SWITCH)

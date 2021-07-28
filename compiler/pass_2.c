@@ -115,6 +115,8 @@ static void _print_token(struct token *t) {
     fprintf(stderr, "TOKEN: STATIC       : static\n");
   else if (t->id == TOKEN_ID_SIZEOF)
     fprintf(stderr, "TOKEN: SIZEOF       : sizeof\n");
+  else if (t->id == TOKEN_ID_DO)
+    fprintf(stderr, "TOKEN: DO           : do\n");
   /*
   else if (t->id == TOKEN_ID_CHANGE_FILE)
     fprintf(stderr, "TOKEN: CHANGE FILE  : %s\n", get_file_name(t->value));
@@ -1998,6 +2000,94 @@ int create_statement(void) {
 
     return SUCCEEDED;    
   }
+  else if (g_token_current->id == TOKEN_ID_DO) {
+    int is_multiline_block = NO;
+    
+    /* do */
+    
+    /* next token */
+    _next_token();
+
+    node = allocate_tree_node_with_children(TREE_NODE_TYPE_DO, 2);
+    if (node == NULL)
+      return FAILED;
+
+    if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == '{')
+      is_multiline_block = YES;
+
+    /* start parsing a block */
+      
+    if (_open_block_push() == FAILED) {
+      free_tree_node(node);
+      return FAILED;
+    }
+
+    if (create_block(NULL, is_multiline_block, is_multiline_block) == FAILED) {
+      free_tree_node(node);
+      return FAILED;
+    }
+
+    tree_node_add_child(node, _get_current_open_block());
+    _open_block_pop();
+
+    tree_node_add_child(_get_current_open_block(), node);
+
+    if (g_token_current->id != TOKEN_ID_WHILE) {
+      print_error("Was expecting \"while\", got something else instead.\n", ERROR_ERR);
+      free_tree_node(node);
+      return FAILED;
+    }
+
+    /* skip "while" */
+    _next_token();
+
+    if (g_token_current->id != TOKEN_ID_SYMBOL || g_token_current->value != '(') {
+      snprintf(g_error_message, sizeof(g_error_message), "Expected '(', but got %s.\n", get_token_simple(g_token_current));
+      print_error(g_error_message, ERROR_ERR);
+      free_tree_node(node);
+      return FAILED;
+    }
+
+    /* next token */
+    _next_token();
+
+    /* create_condition() will put all tree_nodes it parses to g_open_condition */
+    if (_open_condition_push() == FAILED) {
+      free_tree_node(node);
+      return FAILED;
+    }
+
+    if (create_condition() == FAILED) {
+      _open_condition_pop();
+      free_tree_node(node);
+      return FAILED;
+    }
+
+    tree_node_add_child(node, _get_current_open_condition());
+    _open_condition_pop();
+      
+    if (g_token_current->id != TOKEN_ID_SYMBOL || g_token_current->value != ')') {
+      snprintf(g_error_message, sizeof(g_error_message), "Expected ')', but got %s.\n", get_token_simple(g_token_current));
+      print_error(g_error_message, ERROR_ERR);
+      free_tree_node(node);
+      return FAILED;
+    }
+
+    /* next token */
+    _next_token();
+
+    if (g_token_current->id != TOKEN_ID_SYMBOL || g_token_current->value != ';') {
+      snprintf(g_error_message, sizeof(g_error_message), "Expected ';', but got %s.\n", get_token_simple(g_token_current));
+      print_error(g_error_message, ERROR_ERR);
+      free_tree_node(node);
+      return FAILED;
+    }
+
+    /* next token */
+    _next_token();
+    
+    return SUCCEEDED;    
+  }
   else if (g_token_current->id == TOKEN_ID_FOR) {
     int is_multiline_block = NO;
     
@@ -3384,6 +3474,22 @@ static void _check_ast_while(struct tree_node *node) {
 }
 
 
+static void _check_ast_do(struct tree_node *node) {
+
+  int i;
+  
+  if (node == NULL)
+    return;
+
+  for (i = 0; i < node->added_children; i++) {
+    if (node->children[i]->type == TREE_NODE_TYPE_CONDITION)
+      _check_ast_condition(node->children[i]);
+    else if (node->children[i]->type == TREE_NODE_TYPE_BLOCK)
+      _check_ast_block(node->children[i]);
+  }
+}
+
+
 static void _check_ast_for(struct tree_node *node) {
 
   int i;
@@ -3435,6 +3541,8 @@ static void _check_ast_statement(struct tree_node *node) {
     _check_ast_if(node);
   else if (node->type == TREE_NODE_TYPE_WHILE)
     _check_ast_while(node);
+  else if (node->type == TREE_NODE_TYPE_DO)
+    _check_ast_do(node);
   else if (node->type == TREE_NODE_TYPE_FOR)
     _check_ast_for(node);
   else if (node->type == TREE_NODE_TYPE_SWITCH)
@@ -3516,8 +3624,7 @@ void check_ast(void) {
 
 int _create_struct_union_definition(char *struct_name, int variable_type) {
 
-  struct struct_item *stack[256];
-  struct struct_item *s;
+  struct struct_item *stack[256], *s;
   int depth = 0;
 
   if (find_struct_item(struct_name) != NULL) {
@@ -3577,9 +3684,9 @@ int _create_struct_union_definition(char *struct_name, int variable_type) {
 
       s = stack[depth];
     }
-
-    if (g_token_current->id == TOKEN_ID_VARIABLE_TYPE) {
-      int type, pointer_depth = 0, is_const_1 = NO, is_const_2 = NO;
+    else if (g_token_current->id == TOKEN_ID_VARIABLE_TYPE) {
+      int pointer_depth = 0, is_const_1 = NO, is_const_2 = NO, got_struct_name = NO;
+      char struct_name[MAX_NAME_LENGTH + 1];
 
       if (g_token_current->id == TOKEN_ID_VARIABLE_TYPE && g_token_current->value == VARIABLE_TYPE_CONST) {
         is_const_1 = YES;
@@ -3593,11 +3700,21 @@ int _create_struct_union_definition(char *struct_name, int variable_type) {
         return FAILED;
       }
 
-      type = g_token_current->value;
+      variable_type = g_token_current->value;
       
       /* next token */
       _next_token();
 
+      if (variable_type == VARIABLE_TYPE_STRUCT || variable_type == VARIABLE_TYPE_UNION) {
+        if (g_token_current->id == TOKEN_ID_VALUE_STRING) {
+          strcpy(struct_name, g_token_current->label);
+          got_struct_name = YES;
+
+          /* next token */
+          _next_token();
+        }
+      }
+      
       while (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == '*') {
         pointer_depth++;
 
@@ -3612,11 +3729,11 @@ int _create_struct_union_definition(char *struct_name, int variable_type) {
         _next_token();
       }
 
-      if ((type == VARIABLE_TYPE_STRUCT || type == VARIABLE_TYPE_UNION) && g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == '{') {
-        /* a struct/union definition */
-        if (type == VARIABLE_TYPE_STRUCT)
+      if ((variable_type == VARIABLE_TYPE_STRUCT || variable_type == VARIABLE_TYPE_UNION) && g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == '{' && pointer_depth == 0 && got_struct_name == NO && is_const_1 == NO && is_const_2 == NO) {
+        /* local struct/union definition */
+        if (variable_type == VARIABLE_TYPE_STRUCT)
           variable_type = STRUCT_ITEM_TYPE_STRUCT;
-        else if (type == VARIABLE_TYPE_UNION)
+        else if (variable_type == VARIABLE_TYPE_UNION)
           variable_type = STRUCT_ITEM_TYPE_UNION;
 
         if (depth >= 255) {
@@ -3635,19 +3752,77 @@ int _create_struct_union_definition(char *struct_name, int variable_type) {
         _next_token();
       }
       else {
+        struct struct_item *child;
 
+        if (g_token_current->id != TOKEN_ID_VALUE_STRING) {
+          print_error("union/struct member needs a name!\n", ERROR_ERR);
+          return FAILED;
+        }
+
+        /* NOTE! variable_type here might be wrong */
+        child = allocate_struct_item(g_token_current->label, STRUCT_ITEM_TYPE_ITEM);
+        if (child == NULL)
+          return FAILED;
+
+        struct_item_add_child(s, child);
+
+        /* skip the name */
+        _next_token();
+
+        if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == '[') {
+          /* it's an array! */
+          int items;
+
+          /* skip '[' */
+          _next_token();
+
+          if (stack_calculate_tokens(&items) != SUCCEEDED) {
+            print_error("The array size must be solved here.\n", ERROR_ERR);
+            return FAILED;
+          }
+
+          child->type = STRUCT_ITEM_TYPE_ARRAY;
+          child->array_items = items;
+          
+          if (!(g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == ']')) {
+            snprintf(g_error_message, sizeof(g_error_message), "Expected ']', but got %s.\n", get_token_simple(g_token_current));
+            print_error(g_error_message, ERROR_ERR);
+            return FAILED;
+          }
+
+          /* skip ']' */
+          _next_token();
+        }
+        else {
+          child->type = STRUCT_ITEM_TYPE_ITEM;
+        }
+
+        child->variable_type = variable_type;
+
+        if (variable_type == VARIABLE_TYPE_STRUCT || variable_type == VARIABLE_TYPE_UNION)
+          strcpy(child->struct_name, struct_name);
+
+        /* offset and size are calculated later */
+        
+        if (!(g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == ';')) {
+          snprintf(g_error_message, sizeof(g_error_message), "Expected ';', but got %s.\n", get_token_simple(g_token_current));
+          print_error(g_error_message, ERROR_ERR);
+          return FAILED;
+        }
+
+        /* skip ';' */
+        _next_token();
       }
     }
-
-    _next_token();
+    else {
+      snprintf(g_error_message, sizeof(g_error_message), "Expected a variable type or a '}', but got %s.\n", get_token_simple(g_token_current));
+      print_error(g_error_message, ERROR_ERR);
+      return FAILED;
+    }
   }
 
-  if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == ';') {
-    /* skip ";" */
-    _next_token();
-
+  if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == ';')
     return SUCCEEDED;
-  }
 
   print_error("Was expecting ';', got something else.\n", ERROR_ERR);
     
@@ -3660,7 +3835,7 @@ int create_struct_union(int is_extern, int is_static, int is_const_1, int variab
   char struct_name[MAX_NAME_LENGTH + 1];
   struct tree_node *node;
    
-  /* skip "struct" */
+  /* skip "struct/union" */
   _next_token();
 
   if (g_token_current->id != TOKEN_ID_VALUE_STRING) {
