@@ -36,7 +36,7 @@ extern struct stack *g_stacks_first, *g_stacks_tmp, *g_stacks_last, *g_stacks_he
 extern struct token *g_token_first, *g_token_last;
 
 int g_current_filename_id = -1, g_current_line_number = -1;
-char *g_variable_types[9] = { "none", "void", "int8", "int16", "uint8", "uint16", "const", "struct", "union" };
+char *g_variable_types[9] = { "none", "void", "s8", "s16", "u8", "u16", "const", "struct", "union" };
 char *g_two_char_symbols[16] = { "||", "&&", "<=", ">=", "==", "!=", "<<", ">>", "++", "--", "-=", "+=", "*=", "/=", "|=", "&=" };
 
 static struct tree_node *g_open_function_definition = NULL;
@@ -422,6 +422,10 @@ int pass_2(void) {
       return _print_loose_token_error(g_token_current);
     }
   }
+
+  /* calculate struct sizes and item offsets */
+  if (calculate_struct_items() == FAILED)
+    return FAILED;
 
   check_ast();
   if (g_check_ast_failed == YES)
@@ -3745,6 +3749,9 @@ int _create_struct_union_definition(char *struct_name, int variable_type) {
         if (s == NULL)
           return FAILED;
 
+        s->file_id = g_token_current->file_id;
+        s->line_number = g_token_current->line_number;
+        
         struct_item_add_child(stack[depth], s);
         stack[++depth] = s;
   
@@ -3753,16 +3760,29 @@ int _create_struct_union_definition(char *struct_name, int variable_type) {
       }
       else {
         struct struct_item *child;
+        int i;
 
         if (g_token_current->id != TOKEN_ID_VALUE_STRING) {
           print_error("union/struct member needs a name!\n", ERROR_ERR);
           return FAILED;
         }
 
+        /* is it already defined? */
+        for (i = 0; i < s->added_children; i++) {
+          if (strcmp(s->children[i]->name, g_token_current->label) == 0) {
+            snprintf(g_error_message, sizeof(g_error_message), "\"%s\" is already defined in struct/union \"%s\".\n", g_token_current->label, s->name);
+            print_error(g_error_message, ERROR_ERR);
+            return FAILED;
+          }
+        }
+
         /* NOTE! variable_type here might be wrong */
         child = allocate_struct_item(g_token_current->label, STRUCT_ITEM_TYPE_ITEM);
         if (child == NULL)
           return FAILED;
+
+        child->file_id = g_token_current->file_id;
+        child->line_number = g_token_current->line_number;
 
         struct_item_add_child(s, child);
 
@@ -3798,6 +3818,7 @@ int _create_struct_union_definition(char *struct_name, int variable_type) {
         }
 
         child->variable_type = variable_type;
+        child->pointer_depth = pointer_depth;
 
         if (variable_type == VARIABLE_TYPE_STRUCT || variable_type == VARIABLE_TYPE_UNION)
           strcpy(child->struct_name, struct_name);

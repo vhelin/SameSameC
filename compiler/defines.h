@@ -514,6 +514,8 @@ struct struct_item {
   int variable_type;
   int pointer_depth;
   int array_items;
+  int file_id;
+  int line_number;
   char name[MAX_NAME_LENGTH + 1];
   char struct_name[MAX_NAME_LENGTH + 1];
   int offset;

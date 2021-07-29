@@ -15,6 +15,7 @@
 #include "pass_3.h"
 #include "tree_node.h"
 #include "inline_asm.h"
+#include "struct_item.h"
 
 
 /* define this for DEBUG */
@@ -198,6 +199,11 @@ static void _print_create_variable(struct tree_node *node) {
     return;
 
   fprintf(stderr, "%s", _get_current_indentation());
+
+  if ((node->flags & TREE_NODE_FLAG_EXTERN) == TREE_NODE_FLAG_EXTERN)
+    fprintf(stderr, "extern ");
+  if ((node->flags & TREE_NODE_FLAG_STATIC) == TREE_NODE_FLAG_STATIC)
+    fprintf(stderr, "static ");
   if ((node->flags & TREE_NODE_FLAG_CONST_1) == TREE_NODE_FLAG_CONST_1)
     fprintf(stderr, "const ");
   
@@ -550,6 +556,10 @@ static void _print_function_definition(struct tree_node *node) {
   if (node == NULL)
     return;
 
+  if ((node->flags & TREE_NODE_FLAG_EXTERN) == TREE_NODE_FLAG_EXTERN)
+    fprintf(stderr, "extern ");
+  if ((node->flags & TREE_NODE_FLAG_STATIC) == TREE_NODE_FLAG_STATIC)
+    fprintf(stderr, "static ");
   if ((node->flags & TREE_NODE_FLAG_CONST_1) == TREE_NODE_FLAG_CONST_1)
     fprintf(stderr, "const ");
 
@@ -618,6 +628,8 @@ static void _print_global_nodes(void) {
   fprintf(stderr, "///////////////////////////////////////////////////////////////////////\n");
   fprintf(stderr, "// TREE NODES\n");
   fprintf(stderr, "///////////////////////////////////////////////////////////////////////\n");
+
+  print_struct_items();
 
   for (i = 0; i < g_global_nodes->added_children; i++)
     _print_global_node(g_global_nodes->children[i]);

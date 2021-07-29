@@ -3,15 +3,14 @@ struct block {
   u8 value1;
   u8 value2;
   u8 value3;
-  u8 value4;
   union {
     u16 partA;
     u16 partB;
-    u8  array[8];
+    u8  arrayC[8];
   };
   u8 array[8];
   struct block *next;
-};
+} g_block;
 
 #define ONE(var1, var2) \
             (var1-var2)
