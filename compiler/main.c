@@ -1,6 +1,6 @@
 
 /*
-  bilibali-compiler - by ville helin <ville.helin@iki.fi>. this is gpl software.
+  SameSameC-compiler - by ville helin <ville.helin@iki.fi>. this is gpl software.
 */
 
 #include <ctype.h>
@@ -34,8 +34,8 @@
 __near long __stack = 200000;
 #endif
 
-char g_version_string[] = "$VER: bilibali-compiler 1.0a (28.6.2021)";
-char g_bilibali_version[] = "1.0";
+char g_version_string[] = "$VER: SameSameC-compiler 1.0a (28.6.2021)";
+char g_samesamec_version[] = "1.0";
 
 char *g_tmp_name = NULL;
 
@@ -118,7 +118,7 @@ int main(int argc, char *argv[]) {
   FILE *file_out;
   
   if (sizeof(double) != 8) {
-    fprintf(stderr, "MAIN: sizeof(double) == %d != 8. BILIBALI-COMPILER will not work properly.\n", (int)sizeof(double));
+    fprintf(stderr, "MAIN: sizeof(double) == %d != 8. SameSameC-COMPILER will not work properly.\n", (int)sizeof(double));
     return 1;
   }
 
@@ -140,9 +140,9 @@ int main(int argc, char *argv[]) {
   }
   
   if (argc < 5 || parse_flags_result == FAILED || g_backend == BACKEND_NONE) {
-    printf("\nBILIBALI Compiler v1.0a. Written by Ville Helin in 2021+\n");
-#ifdef BILIBALI_DEBUG
-    printf("*** BILIBALI_DEBUG defined - this executable is running in DEBUG mode ***\n");
+    printf("\nSameSameC Compiler v1.0a. Written by Ville Helin in 2021+\n");
+#ifdef SAMESAMEC_DEBUG
+    printf("*** SAMESAMEC_DEBUG defined - this executable is running in DEBUG mode ***\n");
 #endif
     printf("%s\n\n", g_version_string);
     printf("USAGE: %s <ARCHITECTURE> [OPTIONS] -o <ASM FILE> <SOURCE FILE>\n\n", argv[0]);

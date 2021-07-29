@@ -11,7 +11,7 @@ OFILES = main.o file.o printf.o arch_z80.o
 
 
 all: $(OFILES) makefile
-	$(LD) $(LDFLAGS) $(OFILES) -o bilibalil
+	$(LD) $(LDFLAGS) $(OFILES) -o samesamecl
 
 main.o: main.c defines.h main.h makefile
 	$(CC) $(CFLAGS) main.c
@@ -30,4 +30,4 @@ $(OFILES): $(HFILES)
 
 
 clean:
-	rm *.o ; rm *~ ; rm bilibalil
+	rm *.o ; rm *~ ; rm samesamecl

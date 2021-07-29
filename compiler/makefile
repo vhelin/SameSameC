@@ -11,7 +11,7 @@ OFILES = main.o parse.o include_file.o stack.o printf.o definition.o pass_1.o pa
 
 
 all: $(OFILES) makefile
-	$(LD) $(LDFLAGS) $(OFILES) -o bilibalic
+	$(LD) $(LDFLAGS) $(OFILES) -o samesamecc
 
 main.o: main.c defines.h main.h makefile
 	$(CC) $(CFLAGS) main.c
@@ -81,4 +81,4 @@ $(OFILES): $(HFILES)
 
 
 clean:
-	rm *.o ; rm *~ ; rm bilibalic ; rm bilibalic.exe.stackdump
+	rm *.o ; rm *~ ; rm samesamecc ; rm samesamecc.exe.stackdump

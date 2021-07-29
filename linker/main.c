@@ -1,6 +1,6 @@
 
 /*
-  bilibali-linker - by ville helin <ville.helin@iki.fi>. this is gpl software.
+  SameSameC-linker - by ville helin <ville.helin@iki.fi>. this is gpl software.
 */
 
 #include <ctype.h>
@@ -23,8 +23,8 @@
 
 extern struct file *g_files_first;
 
-char g_version_string[] = "$VER: bilibali-linker 1.0a (28.6.2021)";
-char g_bilibali_version[] = "1.0";
+char g_version_string[] = "$VER: SameSameC-linker 1.0a (28.6.2021)";
+char g_samesamec_version[] = "1.0";
 
 int g_verbose = NO, g_quiet = NO, g_target = TARGET_NONE, g_final_name_index = -1;
 char g_asm_file_name[MAX_NAME_LENGTH+1], g_object_file_name[MAX_NAME_LENGTH+1], g_link_file_name[MAX_NAME_LENGTH+1];
@@ -38,7 +38,7 @@ int main(int argc, char *argv[]) {
   FILE *file_out;
   
   if (sizeof(double) != 8) {
-    fprintf(stderr, "MAIN: sizeof(double) == %d != 8. BILIBALI-LINKER will not work properly.\n", (int)sizeof(double));
+    fprintf(stderr, "MAIN: sizeof(double) == %d != 8. SameSameC-LINKER will not work properly.\n", (int)sizeof(double));
     return 1;
   }
 
@@ -54,9 +54,9 @@ int main(int argc, char *argv[]) {
     parse_flags_result = parse_flags(argv, argc);
   
   if (argc < 5 || parse_flags_result == FAILED || g_target == TARGET_NONE || g_final_name_index < 0 || g_final_name_index == argc) {
-    printf("\nBILIBALI Linker v1.0a. Written by Ville Helin in 2021+\n");
-#ifdef BILIBALI_DEBUG
-    printf("*** BILIBALI_DEBUG defined - this executable is running in DEBUG mode ***\n");
+    printf("\nSameSameC Linker v1.0a. Written by Ville Helin in 2021+\n");
+#ifdef SAMESAMEC_DEBUG
+    printf("*** SAMESAMEC_DEBUG defined - this executable is running in DEBUG mode ***\n");
 #endif
     printf("%s\n\n", g_version_string);
     printf("USAGE: %s <ARCHITECTURE> [OPTIONS] -o <ROM/PRG FILE> <ASM FILES>\n\n", argv[0]);

@@ -1,13 +1,13 @@
 
----------------------------------------------------------------------------------
-   BILIBALI - Yet Another ANSI C89 Like Language Cross Compiler For 8-bit CPUs
-                          Written by 2021 Ville Helin
----------------------------------------------------------------------------------
+------------------------------------------------------------------------------
+                            SameSameC (ButDifferent)
+       Yet Another ANSI C89 Like Language Cross Compiler For 8-bit CPUs
+                           Written by 2021 Ville Helin
+-------------------------------------------------------------------------------
 
-This is currently under development, and hosted in a private repository. So
-you should not be able to read this. :) Public release comes when it's working
-well enough. BILIBALI is GPL v2 software. Read the LICENSE file for more
-information. Some pieces of code were taken from WLA DX, but not so many.
+This is currently under development, use it on your own risk. SameSameC is
+GPL v2 software. Read the LICENSE file for more information. Some pieces of
+code were taken from WLA DX, but not so many.
 
 I will not approve pull requests as I want to do this myself. Up to the point
 when I decide I've had enough. :) Ideas, bug reports and feature requests are
@@ -43,6 +43,7 @@ Programmed using:
 - "Basics of Compiler Design"
   - http://web.archive.org/web/20120915222417/http://www.diku.dk/hjemmesider/ansatte/torbenm/Basics/basics_lulu2.pdf
 - beer
+- sugar wine
 - imagination
 - emacs
 
