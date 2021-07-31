@@ -49,7 +49,9 @@ int pass_5(void) {
 #endif
 
   if (optimize_for_inc() == FAILED)
-    return FAILED;  
+    return FAILED;
+  if (turn_some_muls_and_divs_into_shifts() == FAILED)
+    return FAILED;
   if (optimize_il() == FAILED)
     return FAILED;
   /* make life easier for reuse_registers() */
@@ -2635,6 +2637,35 @@ int optimize_for_inc(void) {
       tac_swap_args(t);
   }
   
+  return SUCCEEDED;
+}
+
+
+int turn_some_muls_and_divs_into_shifts(void) {
+
+  int i, shift, multiplier;
+
+  for (i = 0; i < g_tacs_count; i++) {
+    struct tac *t = &g_tacs[i];
+
+    shift = 1;
+    multiplier = 2;
+
+    while (shift < 8) {
+      if (t->op == TAC_OP_MUL && t->arg2_type == TAC_ARG_TYPE_CONSTANT && ((int)t->arg2_d) == multiplier) {
+        t->op = TAC_OP_SHIFT_LEFT;
+        t->arg2_d = shift;
+      }
+      if (t->op == TAC_OP_DIV && t->arg2_type == TAC_ARG_TYPE_CONSTANT && ((int)t->arg2_d) == multiplier) {
+        t->op = TAC_OP_SHIFT_RIGHT;
+        t->arg2_d = shift;
+      }
+
+      shift++;
+      multiplier *= 2;
+    }
+  }
+
   return SUCCEEDED;
 }
 

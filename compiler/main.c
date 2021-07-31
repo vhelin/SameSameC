@@ -1,6 +1,6 @@
 
 /*
-  SameSameC-compiler - by ville helin <ville.helin@iki.fi>. this is gpl software.
+  SameSameC compiler - by ville helin <ville.helin@iki.fi>. this is gpl v2 software.
 */
 
 #include <ctype.h>
@@ -34,8 +34,8 @@
 __near long __stack = 200000;
 #endif
 
-char g_version_string[] = "$VER: SameSameC-compiler 1.0a (28.6.2021)";
-char g_samesamec_version[] = "1.0";
+char g_version_string[] = "$VER: SameSameC compiler 0.9a (30.7.2021)";
+char g_samesamec_version[] = "0.9";
 
 char *g_tmp_name = NULL;
 

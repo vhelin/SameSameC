@@ -13,22 +13,28 @@
 
 extern int g_current_filename_id, g_current_line_number;
 
-static int g_variable_type_priorities[6] = {
+static int g_variable_type_priorities[9] = {
   0, /* VARIABLE_TYPE_NONE */
   1, /* VARIABLE_TYPE_VOID */
   2, /* VARIABLE_TYPE_INT8 */
   4, /* VARIABLE_TYPE_INT16 */
   3, /* VARIABLE_TYPE_UINT8 */
-  5  /* VARIABLE_TYPE_UINT16 */
+  5, /* VARIABLE_TYPE_UINT16 */
+  0, /* VARIABLE_TYPE_CONST */
+  0, /* VARIABLE_TYPE_STRUCT */
+  0  /* VARIABLE_TYPE_UNION */
 };
 
-static int g_variable_type_sizes[6] = {
+static int g_variable_type_sizes[9] = {
   0,  /* VARIABLE_TYPE_NONE */
   0,  /* VARIABLE_TYPE_VOID */
   8,  /* VARIABLE_TYPE_INT8 */
   16, /* VARIABLE_TYPE_INT16 */
   8,  /* VARIABLE_TYPE_UINT8 */
-  16  /* VARIABLE_TYPE_UINT16 */
+  16, /* VARIABLE_TYPE_UINT16 */
+  0,  /* VARIABLE_TYPE_CONST */
+  0,  /* VARIABLE_TYPE_STRUCT */
+  0   /* VARIABLE_TYPE_UNION */
 };
 
 

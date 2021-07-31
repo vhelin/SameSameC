@@ -207,7 +207,11 @@ static void _print_create_variable(struct tree_node *node) {
   if ((node->flags & TREE_NODE_FLAG_CONST_1) == TREE_NODE_FLAG_CONST_1)
     fprintf(stderr, "const ");
   
-  fprintf(stderr, "%s %s", g_variable_types[node->children[0]->value], _get_pointer_stars(node->children[0]));
+  fprintf(stderr, "%s ", g_variable_types[node->children[0]->value]);
+  if (node->children[0]->value == VARIABLE_TYPE_STRUCT)
+    fprintf(stderr, "%s ", node->children[0]->children[0]->label);
+  if (node->children[0]->value_double > 0)
+    fprintf(stderr, "%s ", _get_pointer_stars(node->children[0]));
 
   if ((node->flags & TREE_NODE_FLAG_CONST_2) == TREE_NODE_FLAG_CONST_2)
     fprintf(stderr, " const ");

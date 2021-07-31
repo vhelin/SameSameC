@@ -103,7 +103,7 @@ void skip_whitespace(void) {
 
 int is_char_a_symbol(char c) {
 
-  if (c == '=' || c == '>' || c == '<' || c == '!' || c == '+' || c == '-' || c == '*' || c == '/' || c == '(' || c == ')' || c == '&' || c == '|' || c == ';' || c == ':' || c == '~' || c == '^' || c == '{' || c == '}' || c == '[' || c == ']' || c == ',')
+  if (c == '=' || c == '>' || c == '<' || c == '!' || c == '+' || c == '-' || c == '*' || c == '/' || c == '(' || c == ')' || c == '&' || c == '|' || c == ';' || c == ':' || c == '~' || c == '^' || c == '{' || c == '}' || c == '[' || c == ']' || c == ',' || c == '.')
     return YES;
   else
     return NO;
@@ -112,7 +112,7 @@ int is_char_a_symbol(char c) {
 
 int is_char_a_letter(char c) {
 
-  if (c == '_' || c == '.')
+  if (c == '_' || c == '@')
     return YES;
   if (c >= 'a' && c <= 'z')
     return YES;
@@ -196,7 +196,8 @@ int get_next_token(void) {
           (c == '*' && c2 == '=') ||
           (c == '/' && c2 == '=') ||
           (c == '|' && c2 == '=') ||
-          (c == '&' && c2 == '=')) {
+          (c == '&' && c2 == '=') ||
+          (c == '-' && c2 == '>')) {
         g_ss = 2;
         g_tmp[0] = c;
         g_tmp[1] = c2;
@@ -378,6 +379,6 @@ int get_next_token(void) {
     
     return GET_NEXT_TOKEN_INT;
   }  
-  
+
   return FAILED;
 }

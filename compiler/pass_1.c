@@ -62,7 +62,7 @@ int pass_1(void) {
     */
 
     q = evaluate_token(q);
-
+    
     if (q == SUCCEEDED)
       continue;
     else if (q == EVALUATE_TOKEN_EOP) {
@@ -577,7 +577,7 @@ static int _fast_forward_to_next_elif_else_endif(void) {
 	  return SUCCEEDED;
 	depth--;
       }
-      else if (strcaselesscmp(g_tmp, ".E") == 0) {
+      else if (strcaselesscmp(g_tmp, "@E") == 0) {
 	g_active_file_info_tmp->line_current = line_number;
 	g_active_file_info_tmp->filename_id = file_id;
 	print_error("#endif is missing!\n", ERROR_DIR);
@@ -632,6 +632,8 @@ int evaluate_token(int type) {
         value = SYMBOL_EQUAL_OR;
       else if (g_tmp[0] == '&' && g_tmp[1] == '=')
         value = SYMBOL_EQUAL_AND;
+      else if (g_tmp[0] == '-' && g_tmp[1] == '>')
+        value = SYMBOL_POINTER;
       else {
         snprintf(g_error_message, sizeof(g_error_message), "Unhandled two character symbol \"%c%c\"! Please submit a bug report!\n", g_tmp[0], g_tmp[1]);
         print_error(g_error_message, ERROR_ERR);
@@ -911,11 +913,11 @@ int evaluate_token(int type) {
     if (strcaselesscmp(g_tmp, "#define") == 0)
       return _parse_define();
       
-    /* .CHANGEFILE (INTERNAL) */
-    if (strcaselesscmp(g_tmp, ".CHANGEFILE") == 0) {
+    /* @CHANGEFILE (INTERNAL) */
+    if (strcaselesscmp(g_tmp, "@CHANGEFILE") == 0) {
       q = get_next_token();
       if (q != GET_NEXT_TOKEN_INT) {
-        print_error("Internal error in (internal) .CHANGEFILE. Please submit a bug report...\n", ERROR_DIR);
+        print_error("Internal error in (internal) @CHANGEFILE. Please submit a bug report...\n", ERROR_DIR);
         return FAILED;
       }
 
@@ -968,8 +970,8 @@ int evaluate_token(int type) {
       return SUCCEEDED;
     }
   
-    /* .E (INTERNAL) */
-    if (strcaselesscmp(g_tmp, ".E") == 0) {
+    /* @E (INTERNAL) */
+    if (strcaselesscmp(g_tmp, "@E") == 0) {
       if (g_active_file_info_last != NULL) {
         g_active_file_info_tmp = g_active_file_info_last;
         g_active_file_info_last = g_active_file_info_last->prev;

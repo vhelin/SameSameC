@@ -291,6 +291,7 @@ struct token {
 #define SYMBOL_EQUAL_DIV   13
 #define SYMBOL_EQUAL_OR    14
 #define SYMBOL_EQUAL_AND   15
+#define SYMBOL_POINTER     16
 
 #define VARIABLE_TYPE_NONE   0
 #define VARIABLE_TYPE_VOID   1

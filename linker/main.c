@@ -1,6 +1,6 @@
 
 /*
-  SameSameC-linker - by ville helin <ville.helin@iki.fi>. this is gpl software.
+  SameSameC linker - by ville helin <ville.helin@iki.fi>. this is gpl v2 software.
 */
 
 #include <ctype.h>
@@ -23,8 +23,8 @@
 
 extern struct file *g_files_first;
 
-char g_version_string[] = "$VER: SameSameC-linker 1.0a (28.6.2021)";
-char g_samesamec_version[] = "1.0";
+char g_version_string[] = "$VER: SameSameC linker 0.9a (30.7.2021)";
+char g_samesamec_version[] = "0.9";
 
 int g_verbose = NO, g_quiet = NO, g_target = TARGET_NONE, g_final_name_index = -1;
 char g_asm_file_name[MAX_NAME_LENGTH+1], g_object_file_name[MAX_NAME_LENGTH+1], g_link_file_name[MAX_NAME_LENGTH+1];

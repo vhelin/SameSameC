@@ -2,16 +2,17 @@
 ------------------------------------------------------------------------------
                             SameSameC (ButDifferent)
        Yet Another ANSI C89 Like Language Cross Compiler For 8-bit CPUs
-                           Written by 2021 Ville Helin
+                          Written by 2021 Ville Helin
 -------------------------------------------------------------------------------
 
 This is currently under development, use it on your own risk. SameSameC is
 GPL v2 software. Read the LICENSE file for more information. Some pieces of
-code were taken from WLA DX, but not so many.
+code were taken from WLA DX (https://github.com/vhelin/wla-dx), but not
+so many.
 
 I will not approve pull requests as I want to do this myself. Up to the point
-when I decide I've had enough. :) Ideas, bug reports and feature requests are
-welcome, though.
+when I decide I've learned enough. :) Ideas, bug reports and feature requests
+are welcome, though.
 
 
 TODO
@@ -30,9 +31,14 @@ Fix:
 
 Add:
 
-- Add support for struct
+- Add support for struct (Work-In-Progress...)
 - Add support for free const strings
-- Add support for casting and type checks
+- Add support for explicit casting and type checks
+- Add more backends (GB-Z80, 6502, 65816...)
+- Add scripts so it can be compiled on an Amiga (OS 2.0+) using SAS/C
+- Create a Visual Studio solution file (for compiling on/for a Windows computer)
+- Add CI (Windows XP+ and Linux) using Azure Pipelines
+- Add test projects
 
 
 NOTE
@@ -44,7 +50,8 @@ Programmed using:
   - http://web.archive.org/web/20120915222417/http://www.diku.dk/hjemmesider/ansatte/torbenm/Basics/basics_lulu2.pdf
 - beer
 - sugar wine
+- gin long drinks
 - imagination
 - emacs
 
-Should compile anywhere ANSI C89 is supported.
+Should compile anywhere ANSI C89 source code can be compiled.

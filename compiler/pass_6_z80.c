@@ -19,6 +19,7 @@
 #include "il.h"
 #include "tac.h"
 #include "inline_asm.h"
+#include "struct_item.h"
 
 
 extern struct tree_node *g_global_nodes;
@@ -4652,11 +4653,24 @@ int generate_global_variables_z80(char *file_name, FILE *file_out) {
         if (elements == 0)
           elements = 1;
         element_type = tree_node_get_max_var_type(node->children[0]);
-        element_size = get_variable_type_size(element_type);
+        if (element_type == VARIABLE_TYPE_STRUCT) {
+          struct struct_item *si;
 
-        if (element_size != 8 && element_size != 16) {
-          fprintf(stderr, "generate_global_variables_z80(): Unsupported global variable \"%s\" size %d! Please submit a bug report!\n", node->children[1]->label, element_size);
-          return FAILED;
+          si = find_struct_item(node->children[0]->children[0]->label);
+          if (si == NULL) {
+            fprintf(stderr, "generate_global_variables_z80(): Cannot find struct/union \"%s\"! Please submit a bug report!\n", node->children[0]->children[0]->label);
+            return FAILED;
+          }
+
+          element_size = si->size * 8;
+        }
+        else {
+          element_size = get_variable_type_size(element_type);
+
+          if (element_size != 8 && element_size != 16) {
+            fprintf(stderr, "generate_global_variables_z80(): Unsupported global variable \"%s\" size %d! Please submit a bug report!\n", node->children[1]->label, element_size);
+            return FAILED;
+          }
         }
 
         /* check element types */
@@ -4673,7 +4687,10 @@ int generate_global_variables_z80(char *file_name, FILE *file_out) {
           }
         }
 
-        if (elements == 1) {
+        if (element_type == VARIABLE_TYPE_STRUCT) {
+          fprintf(file_out, "DSB %d*%d", element_size / 8, elements);
+        }
+        else if (node->value == 1) {
           /* not an array */
           if (element_size == 8)
             fprintf(file_out, "DB");

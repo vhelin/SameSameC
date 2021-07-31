@@ -10,6 +10,7 @@
 #include "printf.h"
 #include "symbol_table.h"
 #include "main.h"
+#include "struct_item.h"
 
 
 extern char g_tmp[4096], g_error_message[sizeof(g_tmp) + MAX_NAME_LENGTH + 1 + 1024], g_label[MAX_NAME_LENGTH + 1];
@@ -40,7 +41,7 @@ struct symbol_table_item *symbol_table_find_symbol(char *name) {
     print_error("Trying to find a symbol from symbol table with name NULL! Please submit a bug report!\n", ERROR_DIR);
     return NULL;
   }
-  
+
   for (i = 0; i < g_symbol_table_size; i++) {
     if (g_symbol_table[i] == NULL)
       continue;

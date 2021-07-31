@@ -3842,12 +3842,7 @@ int _create_struct_union_definition(char *struct_name, int variable_type) {
     }
   }
 
-  if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == ';')
-    return SUCCEEDED;
-
-  print_error("Was expecting ';', got something else.\n", ERROR_ERR);
-    
-  return FAILED;
+  return SUCCEEDED;
 }
 
 
@@ -4021,6 +4016,7 @@ int create_struct_union(int is_extern, int is_static, int is_const_1, int variab
       
     tree_node_add_child(node, allocate_tree_node_variable_type(VARIABLE_TYPE_STRUCT));
     tree_node_add_child(node, allocate_tree_node_value_string(name));
+    tree_node_add_child(node->children[0], allocate_tree_node_value_string(struct_name));
     if (symbol == '=') {
       tree_node_add_child(node, _get_current_open_expression());
       _open_expression_pop();

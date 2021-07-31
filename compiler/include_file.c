@@ -205,9 +205,9 @@ int include_file(char *name, int *include_size, char *namespace) {
   }
 
   if (namespace == NULL || namespace[0] == 0)
-    snprintf(change_file_buffer, sizeof(change_file_buffer), "%c.CHANGEFILE %d NONAMESPACE%c", 0xA, id, 0xA);
+    snprintf(change_file_buffer, sizeof(change_file_buffer), "%c@CHANGEFILE %d NONAMESPACE%c", 0xA, id, 0xA);
   else
-    snprintf(change_file_buffer, sizeof(change_file_buffer), "%c.CHANGEFILE %d NAMESPACE %s%c", 0xA, id, namespace, 0xA);
+    snprintf(change_file_buffer, sizeof(change_file_buffer), "%c@CHANGEFILE %d NAMESPACE %s%c", 0xA, id, namespace, 0xA);
   change_file_buffer_size = (int)strlen(change_file_buffer);
 
   /* reallocate buffer */
@@ -244,7 +244,7 @@ int include_file(char *name, int *include_size, char *namespace) {
     g_size += change_file_buffer_size;
 
     g_buffer[g_size++] = 0xA;
-    g_buffer[g_size++] = '.';
+    g_buffer[g_size++] = '@';
     g_buffer[g_size++] = 'E';
     g_buffer[g_size++] = ' ';
 
@@ -284,7 +284,7 @@ int include_file(char *name, int *include_size, char *namespace) {
   inz += change_file_buffer_size;
 
   g_tmp_a[inz++] = 0xA;
-  g_tmp_a[inz++] = '.';
+  g_tmp_a[inz++] = '@';
   g_tmp_a[inz++] = 'E';
   g_tmp_a[inz++] = ' ';
 
