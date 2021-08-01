@@ -7,6 +7,12 @@ struct block {
     u16 partA;
     u16 partB;
     u8  arrayC[8];
+    struct {
+      u8 hello1;
+      u8 hello2;
+      u8 hello3;
+      u8 hello4;
+    };
   };
   struct {
     u8  health;
@@ -31,8 +37,6 @@ void main(void) {
 
   initialize_adder(&g_adder);
 
-  //g_block.value1 = 1;
-
   do {
     __z80_out[0xBF] = 0x00;
     __z80_out[0xBF] = 0xC0;
@@ -49,4 +53,7 @@ void main(void) {
 static void initialize_adder(s8 *adder) {
 
   adder[0] = 1;
+
+  g_block.value3++;
+  //g_block.array[0+1+2]++;
 }

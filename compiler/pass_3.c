@@ -96,6 +96,31 @@ void print_expression(struct tree_node *node) {
 }
 
 
+static void _print_struct_access(struct tree_node *node) {
+
+  int i;
+
+  for (i = 0; i < node->added_children; i++) {
+    struct tree_node *child = node->children[i];
+
+    if (child->type == TREE_NODE_TYPE_VALUE_STRING)
+      fprintf(stderr, "%s", child->label);
+    else if (child->type == TREE_NODE_TYPE_SYMBOL) {
+      if (child->value <= SYMBOL_POINTER)
+        fprintf(stderr, "%s", g_two_char_symbols[child->value]);
+      else
+        fprintf(stderr, "%c", child->value);
+    }
+    else if (child->type == TREE_NODE_TYPE_EXPRESSION)
+      print_expression(child);
+    else if (child->type == TREE_NODE_TYPE_VALUE_INT || child->type == TREE_NODE_TYPE_VALUE_STRING)
+      _print_simple_tree_node(child);
+    else
+      fprintf(stderr, "?");
+  }
+}
+
+
 static void _print_simple_tree_node(struct tree_node *node) {
 
   int i;
@@ -112,7 +137,7 @@ static void _print_simple_tree_node(struct tree_node *node) {
   else if (node->type == TREE_NODE_TYPE_VALUE_STRING)
     fprintf(stderr, "%s", node->label);
   else if (node->type == TREE_NODE_TYPE_SYMBOL) {
-    if (node->value <= SYMBOL_DECREMENT)
+    if (node->value <= SYMBOL_POINTER)
       fprintf(stderr, "%s", g_two_char_symbols[node->value]);
     else
       fprintf(stderr, "%c", node->value);
@@ -134,7 +159,10 @@ static void _print_simple_tree_node(struct tree_node *node) {
   else if (node->type == TREE_NODE_TYPE_INCREMENT_DECREMENT) {
     if (node->value_double > 0.0) {
       /* post */
-      fprintf(stderr, "%s", node->label);
+      if (node->added_children > 0)
+        _print_struct_access(node);
+      else
+        fprintf(stderr, "%s", node->label);
       if (node->value == SYMBOL_INCREMENT)
         fprintf(stderr, "++");
       else if (node->value == SYMBOL_DECREMENT)
@@ -150,7 +178,10 @@ static void _print_simple_tree_node(struct tree_node *node) {
         fprintf(stderr, "--");
       else
         fprintf(stderr, "?");
-      fprintf(stderr, "%s", node->label);
+      if (node->added_children > 0)
+        _print_struct_access(node);
+      else
+        fprintf(stderr, "%s", node->label);
     }
   }
   else if (node->type == TREE_NODE_TYPE_GET_ADDRESS) {
@@ -910,6 +941,20 @@ static void _simplify_expressions_switch(struct tree_node *node) {
 }
 
 
+static void _simplify_expressions_increment_decrement(struct tree_node *node) {
+
+  int i;
+  
+  if (node == NULL)
+    return;
+
+  for (i = 0; i < node->added_children; i++) {
+    if (node->children[i]->type == TREE_NODE_TYPE_EXPRESSION)
+      _simplify_expressions(node->children[i]);
+  }
+}
+
+
 static void _simplify_expressions_while(struct tree_node *node) {
 
   int i;
@@ -981,6 +1026,8 @@ static void _simplify_expressions_statement(struct tree_node *node) {
     _simplify_expressions_for(node);
   else if (node->type == TREE_NODE_TYPE_SWITCH)
     _simplify_expressions_switch(node);
+  else if (node->type == TREE_NODE_TYPE_INCREMENT_DECREMENT)
+    _simplify_expressions_increment_decrement(node);
 }
 
 

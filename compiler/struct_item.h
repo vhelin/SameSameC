@@ -10,5 +10,6 @@ int calculate_struct_items(void);
 int print_struct_items(void);
 struct struct_item *allocate_struct_item(char *name, int type);
 struct struct_item *find_struct_item(char *name);
+struct struct_item *find_struct_item_child(struct struct_item *s, char *name);
 
 #endif

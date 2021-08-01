@@ -9,8 +9,10 @@
 #include <string.h>
 #include <time.h>
 
-#include "main.h"
 #include "defines.h"
+#include "tree_node.h"
+#include "token.h"
+#include "main.h"
 #include "printf.h"
 #include "parse.h"
 #include "include_file.h"
@@ -19,7 +21,6 @@
 #include "symbol_table.h"
 #include "inline_asm.h"
 #include "struct_item.h"
-#include "token.h"
 #include "tac.h"
 #include "pass_1.h"
 #include "pass_2.h"
@@ -34,7 +35,7 @@
 __near long __stack = 200000;
 #endif
 
-char g_version_string[] = "$VER: SameSameC compiler 0.9a (30.7.2021)";
+char g_version_string[] = "$VER: SameSameC compiler 0.9a (2.8.2021)";
 char g_samesamec_version[] = "0.9";
 
 char *g_tmp_name = NULL;
@@ -701,6 +702,28 @@ int localize_path(char *path) {
   }
 
   return SUCCEEDED;
+}
+
+
+int print_error_using_tree_node(char *error, int type, struct tree_node *node) {
+
+  g_current_filename_id = node->file_id;
+  g_current_line_number = node->line_number;
+
+  print_error(error, type);
+
+  return FAILED;
+}
+
+
+int print_error_using_token(char *error, int type, struct token *t) {
+
+  g_current_filename_id = t->file_id;
+  g_current_line_number = t->line_number;
+
+  print_error(error, type);
+
+  return FAILED;
 }
 
 

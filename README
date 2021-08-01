@@ -24,6 +24,7 @@ Optimize:
 - If a variable is only written to, remove the variable and all assignments
 - Z80: Keep stack frame in IX and possibly IY all the time
 - Local array variable initialization
+- Reduce code bloat (parser, print_error()...)
 
 Fix:
 
@@ -34,6 +35,7 @@ Add:
 - Add support for struct (Work-In-Progress...)
 - Add support for free const strings
 - Add support for explicit casting and type checks
+- Add support for arrays with more than one dimension
 - Add more backends (GB-Z80, 6502, 65816...)
 - Add scripts so it can be compiled on an Amiga (OS 2.0+) using SAS/C
 - Create a Visual Studio solution file (for compiling on/for a Windows computer)

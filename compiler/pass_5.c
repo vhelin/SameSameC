@@ -729,7 +729,7 @@ static int _optimize_il_9(int *optimizations_counter) {
       if (current < 0 || next < 0)
         break;
 
-      if (g_tacs[current].op == TAC_OP_ASSIGNMENT && g_tacs[next].op == TAC_OP_ARRAY_ASSIGNMENT &&
+      if (g_tacs[current].op == TAC_OP_ASSIGNMENT && g_tacs[next].op == TAC_OP_ARRAY_WRITE &&
           g_tacs[current].result_type == TAC_ARG_TYPE_TEMP && g_tacs[next].arg1_type == TAC_ARG_TYPE_TEMP &&
           (int)g_tacs[current].result_d == (int)g_tacs[next].arg1_d &&
           g_register_reads[(int)g_tacs[current].result_d] == 1 && g_register_writes[(int)g_tacs[current].result_d] == 1) {
@@ -780,7 +780,7 @@ static int _optimize_il_10(int *optimizations_counter) {
       if (current < 0 || next < 0)
         break;
 
-      if (g_tacs[current].op == TAC_OP_ASSIGNMENT && g_tacs[next].op == TAC_OP_ARRAY_ASSIGNMENT &&
+      if (g_tacs[current].op == TAC_OP_ASSIGNMENT && g_tacs[next].op == TAC_OP_ARRAY_WRITE &&
           g_tacs[current].result_type == TAC_ARG_TYPE_TEMP && g_tacs[next].arg2_type == TAC_ARG_TYPE_TEMP &&
           (int)g_tacs[current].result_d == (int)g_tacs[next].arg2_d &&
           g_register_reads[(int)g_tacs[current].result_d] == 1 && g_register_writes[(int)g_tacs[current].result_d] == 1) {
@@ -2270,7 +2270,7 @@ int propagate_operand_types(void) {
       if (t->result_var_type == VARIABLE_TYPE_NONE)
         fprintf(stderr, "propagate_operand_types(): Couldn't find type for RESULT!\n");
     }
-    else if (op == TAC_OP_ARRAY_ASSIGNMENT) {
+    else if (op == TAC_OP_ARRAY_WRITE) {
       if (_find_operand_type(&t->arg1_var_type, t->arg1_type, (int)t->arg1_d, t->arg1_s, t->arg1_node, NO) == FAILED)
         return FAILED;
       if (_find_operand_type(&t->arg2_var_type, t->arg2_type, (int)t->arg2_d, t->arg2_s, t->arg2_node, NO) == FAILED)

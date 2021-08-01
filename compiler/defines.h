@@ -383,6 +383,7 @@ struct tree_node {
 #define TREE_NODE_TYPE_BYTES               30
 #define TREE_NODE_TYPE_ASM                 31
 #define TREE_NODE_TYPE_DO                  32
+#define TREE_NODE_TYPE_STRUCT_ACCESS       33
 
 struct symbol_table_item {
   int level;
@@ -440,7 +441,7 @@ struct tac {
 #define TAC_OP_ADD                2
 #define TAC_OP_SUB                3
 #define TAC_OP_ASSIGNMENT         4
-#define TAC_OP_ARRAY_ASSIGNMENT   5
+#define TAC_OP_ARRAY_WRITE        5
 #define TAC_OP_CREATE_VARIABLE    6
 #define TAC_OP_MUL                7
 #define TAC_OP_JUMP               8

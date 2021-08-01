@@ -203,7 +203,7 @@ void print_tac(struct tac *t, int is_comment, FILE *file_out) {
     fprintf(file_out, " := ");      
     _print_tac_arg(t->arg1_type, t->arg1_d, t->arg1_s, t->arg1_var_type, t->arg1_var_type_promoted, file_out);
   }
-  else if (t->op == TAC_OP_ARRAY_ASSIGNMENT) {
+  else if (t->op == TAC_OP_ARRAY_WRITE) {
     if (is_comment == NO)
       fprintf(file_out, "  ");
     _print_tac_arg(t->result_type, t->result_d, t->result_s, t->result_var_type, t->result_var_type_promoted, file_out);

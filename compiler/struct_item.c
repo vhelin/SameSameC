@@ -81,6 +81,22 @@ struct struct_item *find_struct_item(char *name) {
 }
 
 
+struct struct_item *find_struct_item_child(struct struct_item *s, char *name) {
+
+  int i;
+  
+  if (s == NULL)
+    return NULL;
+  
+  for (i = 0; i < s->added_children; i++) {
+    if (strcmp(s->children[i]->name, name) == 0)
+      return s->children[i];
+  }
+
+  return NULL;
+}
+
+
 struct struct_item *allocate_struct_item(char *name, int type) {
 
   struct struct_item *s;

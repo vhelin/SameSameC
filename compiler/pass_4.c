@@ -19,6 +19,7 @@
 #include "tac.h"
 #include "inline_asm.h"
 #include "inline_asm_z80.h"
+#include "struct_item.h"
 
 
 extern struct tree_node *g_global_nodes;
@@ -62,6 +63,101 @@ static void _exit_breakable(void) {
     fprintf(stderr, "_exit_breakable(): Breakable stack is already empty! Please submit a bug report!\n");
   else
     g_breakable_stack_items_level--;
+}
+
+
+static int _generate_il_calculate_struct_access_address(struct tree_node *node, int *final_type) {
+
+  int fregister = g_temp_r++, i, cregister;
+  struct struct_item *si;
+  struct tac *t;
+
+  si = find_struct_item(node->definition->children[0]->children[0]->label);
+  if (si == NULL) {
+    snprintf(g_error_message, sizeof(g_error_message), "_generate_il_calculate_struct_access_address(): Struct \"%s\"'s definition is missing! Please submit a bug report!\n", node->definition->children[0]->children[0]->label);
+    return print_error_using_tree_node(g_error_message, ERROR_ERR, node);
+  }
+  
+  t = add_tac();
+  if (t == NULL)
+    return FAILED;
+
+  cregister = g_temp_r++;
+
+  /* read the variable's starting address */
+  if (node->children[1]->type != TREE_NODE_TYPE_SYMBOL) {
+    snprintf(g_error_message, sizeof(g_error_message), "_generate_il_calculate_struct_access_address(): Pointer node is corrupted (1)! Please submit a bug report!\n");
+    return print_error_using_tree_node(g_error_message, ERROR_ERR, node->children[1]);
+  }
+
+  if (node->children[1]->value == '.') {
+    t->op = TAC_OP_GET_ADDRESS;
+    tac_set_result(t, TAC_ARG_TYPE_TEMP, cregister, NULL);
+    tac_set_arg1(t, TAC_ARG_TYPE_LABEL, 0, node->children[0]->label);
+  }
+  else if (node->children[1]->value == SYMBOL_POINTER) {
+    t->op = TAC_OP_ASSIGNMENT;
+    tac_set_result(t, TAC_ARG_TYPE_TEMP, cregister, NULL);
+    tac_set_arg1(t, TAC_ARG_TYPE_LABEL, 0, node->children[0]->label);
+  }
+  else {
+    snprintf(g_error_message, sizeof(g_error_message), "_generate_il_calculate_struct_access_address(): Pointer node is corrupted (2)! Please submit a bug report!\n");
+    return print_error_using_tree_node(g_error_message, ERROR_ERR, node->children[1]);
+  }
+
+  /* find the definition */
+  tac_try_find_definition(t, node->children[0]->label, NULL, TAC_USE_ARG1);
+
+  i = 2;
+  while (i < node->added_children) {
+    if (node->children[i]->type == TREE_NODE_TYPE_VALUE_STRING) {
+      /* find the struct/union member */
+      struct struct_item *si_old = si;
+      
+      si = find_struct_item_child(si, node->children[i]->label);
+      if (si == NULL) {
+        snprintf(g_error_message, sizeof(g_error_message), "_generate_il_calculate_struct_access_address(): Cannot find member \"%s\" of struct/union \"%s\"!\n", node->children[i]->label, si_old->name);
+        return print_error_using_tree_node(g_error_message, ERROR_ERR, node->children[i]);
+      }
+
+      t = add_tac();
+      if (t == NULL)
+        return FAILED;
+
+      t->op = TAC_OP_ADD;
+      tac_set_arg1(t, TAC_ARG_TYPE_TEMP, cregister, node->label);
+      tac_set_arg2(t, TAC_ARG_TYPE_CONSTANT, si->offset, NULL);
+      tac_set_result(t, TAC_ARG_TYPE_TEMP, g_temp_r, node->label);
+
+      cregister = g_temp_r++;
+      
+      i++;
+    }
+    else {
+      snprintf(g_error_message, sizeof(g_error_message), "_generate_il_calculate_struct_access_address(): A node is corrupted (3)! Please submit a bug report!\n");
+      return print_error_using_tree_node(g_error_message, ERROR_ERR, node->children[i]);
+    }
+
+    if (i >= node->added_children)
+      break;
+
+    if (node->children[i]->type != TREE_NODE_TYPE_SYMBOL) {
+      snprintf(g_error_message, sizeof(g_error_message), "_generate_il_calculate_struct_access_address(): A node is corrupted (4)! Please submit a bug report!\n");
+      return print_error_using_tree_node(g_error_message, ERROR_ERR, node->children[i]);
+    }
+
+    /* handle '[', '.' and '->' */
+  }
+
+  t = add_tac();
+  if (t == NULL)
+    return FAILED;
+
+  t->op = TAC_OP_ASSIGNMENT;
+  tac_set_result(t, TAC_ARG_TYPE_TEMP, fregister, NULL);
+  tac_set_arg1(t, TAC_ARG_TYPE_TEMP, cregister, NULL);
+  
+  return SUCCEEDED;
 }
 
 
@@ -221,62 +317,84 @@ static int _generate_il_create_expression(struct tree_node *node) {
   }
   else if (node->type == TREE_NODE_TYPE_INCREMENT_DECREMENT) {
     int rresult;
-      
+
     if (node->value_double > 0.0) {
       /* post */
 
-      /* get the value before increment/decrement */
-      t = add_tac();
-      if (t == NULL)
-        return FAILED;
+      if (node->added_children > 0) {
+        /* struct access */
 
-      rresult = g_temp_r++;
+        /* get the value before increment/decrement */
+        fprintf(stderr, "IMPLEMENT ME 1\n");
+        exit(0);
+      }
+      else {
+        /* variable access */
+
+        /* get the value before increment/decrement */
+        t = add_tac();
+        if (t == NULL)
+          return FAILED;
+
+        rresult = g_temp_r++;
       
-      t->op = TAC_OP_ASSIGNMENT;
-      tac_set_result(t, TAC_ARG_TYPE_TEMP, rresult, NULL);
-      tac_set_arg1(t, TAC_ARG_TYPE_LABEL, 0, node->label);
+        t->op = TAC_OP_ASSIGNMENT;
+        tac_set_result(t, TAC_ARG_TYPE_TEMP, rresult, NULL);
+        tac_set_arg1(t, TAC_ARG_TYPE_LABEL, 0, node->label);
 
-      /* find the definition */
-      if (tac_try_find_definition(t, node->label, node, TAC_USE_ARG1) == FAILED)
-        return FAILED;
+        /* find the definition */
+        if (tac_try_find_definition(t, node->label, node, TAC_USE_ARG1) == FAILED)
+          return FAILED;
       
-      /* set promotions */
-      type = tree_node_get_max_var_type(node->definition->children[0]);
-      tac_promote_argument(t, type, TAC_USE_ARG1);
-      tac_promote_argument(t, type, TAC_USE_RESULT);
+        /* set promotions */
+        type = tree_node_get_max_var_type(node->definition->children[0]);
+        tac_promote_argument(t, type, TAC_USE_ARG1);
+        tac_promote_argument(t, type, TAC_USE_RESULT);
 
-      /* increment/decrement */
-      if (_generate_il_create_increment_decrement(node) == FAILED)
-        return FAILED;
+        /* increment/decrement */
+        if (_generate_il_create_increment_decrement(node) == FAILED)
+          return FAILED;
 
-      /* have the result in the latest register */
-      t = add_tac();
-      if (t == NULL)
-        return FAILED;
+        /* have the result in the latest register */
+        t = add_tac();
+        if (t == NULL)
+          return FAILED;
 
-      t->op = TAC_OP_ASSIGNMENT;
-      tac_set_result(t, TAC_ARG_TYPE_TEMP, g_temp_r++, NULL);
-      tac_set_arg1(t, TAC_ARG_TYPE_TEMP, rresult, 0);
+        t->op = TAC_OP_ASSIGNMENT;
+        tac_set_result(t, TAC_ARG_TYPE_TEMP, g_temp_r++, NULL);
+        tac_set_arg1(t, TAC_ARG_TYPE_TEMP, rresult, 0);
+      }
     }
     else {
       /* pre */
 
-      /* increment/decrement */
-      if (_generate_il_create_increment_decrement(node) == FAILED)
-        return FAILED;
+      if (node->added_children > 0) {
+        /* struct access */
 
-      /* have the result in the latest register */
-      t = add_tac();
-      if (t == NULL)
-        return FAILED;
+        /* increment/decrement */
+        fprintf(stderr, "IMPLEMENT ME 2\n");
+        exit(0);
+      }
+      else {
+        /* variable access */
+        
+        /* increment/decrement */
+        if (_generate_il_create_increment_decrement(node) == FAILED)
+          return FAILED;
 
-      t->op = TAC_OP_ASSIGNMENT;
-      tac_set_result(t, TAC_ARG_TYPE_TEMP, g_temp_r++, NULL);
-      tac_set_arg1(t, TAC_ARG_TYPE_LABEL, 0, node->label);
+        /* have the result in the latest register */
+        t = add_tac();
+        if (t == NULL)
+          return FAILED;
 
-      /* find the definition */
-      if (tac_try_find_definition(t, node->label, node, TAC_USE_ARG1) == FAILED)
-        return FAILED;
+        t->op = TAC_OP_ASSIGNMENT;
+        tac_set_result(t, TAC_ARG_TYPE_TEMP, g_temp_r++, NULL);
+        tac_set_arg1(t, TAC_ARG_TYPE_LABEL, 0, node->label);
+        
+        /* find the definition */
+        if (tac_try_find_definition(t, node->label, node, TAC_USE_ARG1) == FAILED)
+          return FAILED;
+      }
     }
   }
   else {
@@ -398,7 +516,7 @@ static int _generate_il_create_variable(struct tree_node *node) {
 
       /* i is the array index, r2 is the value */
 
-      t->op = TAC_OP_ARRAY_ASSIGNMENT;
+      t->op = TAC_OP_ARRAY_WRITE;
     
       tac_set_result(t, TAC_ARG_TYPE_LABEL, 0, node->children[1]->label);
       t->result_node = node;
@@ -449,7 +567,7 @@ static int _generate_il_create_assignment(struct tree_node *node) {
 
     /* r1 is the array index, r2 is the value */
 
-    t->op = TAC_OP_ARRAY_ASSIGNMENT;
+    t->op = TAC_OP_ARRAY_WRITE;
 
     tac_set_result(t, TAC_ARG_TYPE_LABEL, 0, node->children[0]->label);
     tac_set_arg1(t, TAC_ARG_TYPE_TEMP, r2, NULL);
@@ -992,36 +1110,83 @@ static int _generate_il_create_increment_decrement(struct tree_node *node) {
   g_current_filename_id = node->file_id;
   g_current_line_number = node->line_number;
 
-  t = add_tac();
-  if (t == NULL)
-    return FAILED;
+  if (node->added_children > 0) {
+    /* struct access */
+    int raddress = g_temp_r, rtemp, final_type;
 
-  if ((int)node->value == SYMBOL_INCREMENT)
-    t->op = TAC_OP_ADD;
-  else
-    t->op = TAC_OP_SUB;
+    if (_generate_il_calculate_struct_access_address(node, &final_type) == FAILED)
+      return FAILED;
 
-  tac_set_arg1(t, TAC_ARG_TYPE_LABEL, 0, node->label);
-  tac_set_arg2(t, TAC_ARG_TYPE_CONSTANT, 1, NULL);
-  tac_set_result(t, TAC_ARG_TYPE_LABEL, 0, node->label);
-  
-  /* find the definition */
-  tac_try_find_definition(t, node->label, NULL, TAC_USE_ARG1);
-  tac_try_find_definition(t, node->label, NULL, TAC_USE_RESULT);
+    t = add_tac();
+    if (t == NULL)
+      return FAILED;
 
-  if ((node->definition->children[0]->value_double == 0 && (node->definition->flags & TREE_NODE_FLAG_CONST_1) == TREE_NODE_FLAG_CONST_1) ||
-      (node->definition->children[0]->value_double > 0 && (node->definition->flags & TREE_NODE_FLAG_CONST_2) == TREE_NODE_FLAG_CONST_2)) {
-    snprintf(g_error_message, sizeof(g_error_message), "_generate_il_create_increment_decrement(): Variable \"%s\" was declared \"const\". Cannot modify.\n", node->label);
-    print_error(g_error_message, ERROR_ERR);
+    rtemp = g_temp_r++;
 
-    return FAILED;
+    /* read the value */
+    t->op = TAC_OP_ARRAY_READ;
+    tac_set_arg1(t, TAC_ARG_TYPE_TEMP, raddress, NULL);
+    tac_set_arg2(t, TAC_ARG_TYPE_CONSTANT, 0, NULL);
+    tac_set_result(t, TAC_ARG_TYPE_TEMP, rtemp, NULL);
+
+    /* inc/dec */
+    t = add_tac();
+    if (t == NULL)
+      return FAILED;
+
+    if ((int)node->value == SYMBOL_INCREMENT)
+      t->op = TAC_OP_ADD;
+    else
+      t->op = TAC_OP_SUB;
+
+    tac_set_arg1(t, TAC_ARG_TYPE_TEMP, rtemp, NULL);
+    tac_set_arg2(t, TAC_ARG_TYPE_CONSTANT, 1, NULL);
+    tac_set_result(t, TAC_ARG_TYPE_TEMP, rtemp, NULL);
+
+    /* write back */
+    t = add_tac();
+    if (t == NULL)
+      return FAILED;
+
+    t->op = TAC_OP_ARRAY_WRITE;
+    tac_set_arg1(t, TAC_ARG_TYPE_TEMP, rtemp, NULL);
+    tac_set_arg2(t, TAC_ARG_TYPE_CONSTANT, 0, NULL);
+    tac_set_result(t, TAC_ARG_TYPE_TEMP, raddress, NULL);
   }
+  else {
+    /* variable access */
+    
+    t = add_tac();
+    if (t == NULL)
+      return FAILED;
+
+    if ((int)node->value == SYMBOL_INCREMENT)
+      t->op = TAC_OP_ADD;
+    else
+      t->op = TAC_OP_SUB;
+
+    tac_set_arg1(t, TAC_ARG_TYPE_LABEL, 0, node->label);
+    tac_set_arg2(t, TAC_ARG_TYPE_CONSTANT, 1, NULL);
+    tac_set_result(t, TAC_ARG_TYPE_LABEL, 0, node->label);
   
-  /* set promotions */
-  type = tree_node_get_max_var_type(t->result_node->children[0]);
-  tac_promote_argument(t, type, TAC_USE_ARG1);
-  tac_promote_argument(t, type, TAC_USE_ARG2);
-  tac_promote_argument(t, type, TAC_USE_RESULT);
+    /* find the definition */
+    tac_try_find_definition(t, node->label, NULL, TAC_USE_ARG1);
+    tac_try_find_definition(t, node->label, NULL, TAC_USE_RESULT);
+
+    if ((node->definition->children[0]->value_double == 0 && (node->definition->flags & TREE_NODE_FLAG_CONST_1) == TREE_NODE_FLAG_CONST_1) ||
+        (node->definition->children[0]->value_double > 0 && (node->definition->flags & TREE_NODE_FLAG_CONST_2) == TREE_NODE_FLAG_CONST_2)) {
+      snprintf(g_error_message, sizeof(g_error_message), "_generate_il_create_increment_decrement(): Variable \"%s\" was declared \"const\". Cannot modify.\n", node->label);
+      print_error(g_error_message, ERROR_ERR);
+
+      return FAILED;
+    }
+  
+    /* set promotions */
+    type = tree_node_get_max_var_type(t->result_node->children[0]);
+    tac_promote_argument(t, type, TAC_USE_ARG1);
+    tac_promote_argument(t, type, TAC_USE_ARG2);
+    tac_promote_argument(t, type, TAC_USE_RESULT);
+  }
   
   return SUCCEEDED;
 }

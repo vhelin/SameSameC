@@ -2107,7 +2107,7 @@ static int _generate_asm_z80_out_write_z80(struct tac *t, FILE *file_out, struct
 }
 
 
-static int _generate_asm_array_assignment_z80(struct tac *t, FILE *file_out, struct tree_node *function_node) {
+static int _generate_asm_array_write_z80(struct tac *t, FILE *file_out, struct tree_node *function_node) {
 
   int result_offset = -1, arg1_offset = -1, arg2_offset = -1, var_type, ix_offset = 0, iy_offset = 0;
 
@@ -2193,7 +2193,7 @@ static int _generate_asm_array_assignment_z80(struct tac *t, FILE *file_out, str
         _load_value_to_b(0, file_out);
       }
       else {
-        fprintf(stderr, "_generate_asm_array_assignment_z80(): Unhandled 8-bit ARG2! Please submit a bug report!\n");
+        fprintf(stderr, "_generate_asm_array_write_z80(): Unhandled 8-bit ARG2! Please submit a bug report!\n");
         return FAILED;
       }
     }
@@ -2335,7 +2335,7 @@ static int _generate_asm_array_assignment_z80(struct tac *t, FILE *file_out, str
                (var_type == VARIABLE_TYPE_INT8 || var_type == VARIABLE_TYPE_UINT8)) {
       }
       else {
-        fprintf(stderr, "_generate_asm_array_assignment_z80: Unhandled 8-bit ARG1! Please submit a bug report!\n");
+        fprintf(stderr, "_generate_asm_array_write_z80: Unhandled 8-bit ARG1! Please submit a bug report!\n");
         return FAILED;
       }
     }
@@ -4464,8 +4464,8 @@ int generate_asm_z80(FILE *file_out) {
           if (_generate_asm_array_read_z80(t, file_out, function_node) == FAILED)
             return FAILED;
         }
-        else if (op == TAC_OP_ARRAY_ASSIGNMENT) {
-          if (_generate_asm_array_assignment_z80(t, file_out, function_node) == FAILED)
+        else if (op == TAC_OP_ARRAY_WRITE) {
+          if (_generate_asm_array_write_z80(t, file_out, function_node) == FAILED)
             return FAILED;
         }
         else if (op == TAC_OP_SHIFT_LEFT || op == TAC_OP_SHIFT_RIGHT) {
