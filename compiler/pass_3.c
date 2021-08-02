@@ -764,12 +764,9 @@ static int _simplify_expression(struct tree_node *node) {
           int items = child->definition->added_children - 2;
 
           if (index >= items || index < 0) {
-            g_current_filename_id = child->file_id;
-            g_current_line_number = child->line_number;
-            snprintf(g_error_message, sizeof(g_error_message), "_simplify_expression(): Trying to access array item %d, but the array has only %d items!\n", index, items);
-            print_error(g_error_message, ERROR_ERR);
             g_simplify_expressions_failed = YES;
-            return FAILED;
+            snprintf(g_error_message, sizeof(g_error_message), "_simplify_expression(): Trying to access array item %d, but the array has only %d items!\n", index, items);
+            return print_error_using_tree_node(g_error_message, ERROR_ERR, child);
           }
 
           if (child->definition->children[2 + index]->type == TREE_NODE_TYPE_VALUE_INT) {
@@ -1039,11 +1036,9 @@ static void _simplify_expressions_block(struct tree_node *node) {
     return;
 
   if (node->type != TREE_NODE_TYPE_BLOCK) {
-    g_current_filename_id = node->file_id;
-    g_current_line_number = node->line_number;
-    snprintf(g_error_message, sizeof(g_error_message), "_simplify_expressions_block(): Was expecting TREE_NODE_TYPE_BLOCK, got %d instead! Please submit a bug report!\n", node->type);
-    print_error(g_error_message, ERROR_ERR);
     g_simplify_expressions_failed = YES;
+    snprintf(g_error_message, sizeof(g_error_message), "_simplify_expressions_block(): Was expecting TREE_NODE_TYPE_BLOCK, got %d instead! Please submit a bug report!\n", node->type);
+    print_error_using_tree_node(g_error_message, ERROR_ERR, node);
     return;
   }
 
@@ -1074,11 +1069,9 @@ static void _simplify_expressions_global_node(struct tree_node *node) {
     /* nothing to simplify here */
   }
   else {
-    g_current_filename_id = node->file_id;
-    g_current_line_number = node->line_number;
-    snprintf(g_error_message, sizeof(g_error_message), "_simplify_expressions_global_node(): Unknown global node type %d! Please submit a bug report!\n", node->type);
-    print_error(g_error_message, ERROR_ERR);
     g_simplify_expressions_failed = YES;
+    snprintf(g_error_message, sizeof(g_error_message), "_simplify_expressions_global_node(): Unknown global node type %d! Please submit a bug report!\n", node->type);
+    print_error_using_tree_node(g_error_message, ERROR_ERR, node);
   }
 }
 

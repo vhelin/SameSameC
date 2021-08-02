@@ -73,12 +73,11 @@ int pass_1(void) {
     }
     else if (q == FAILED) {
       snprintf(g_error_message, sizeof(g_error_message), "Couldn't parse \"%s\".\n", g_tmp);
-      print_error(g_error_message, ERROR_ERR);
-      return FAILED;
+      return print_error(g_error_message, ERROR_ERR);
     }
     else {
-      printf("PASS_1: Internal error, unknown return type %d.\n", q);
-      return FAILED;
+      snprintf(g_error_message, sizeof(g_error_message), "PASS_1: Internal error, unknown return type %d.\n", q);
+      return print_error(g_error_message, ERROR_ERR);
     }
   }
 
@@ -128,22 +127,17 @@ static int _parse_filesize(void) {
   FILE *f;
 
   token = get_next_token();
-  if (token != GET_NEXT_TOKEN_SYMBOL || g_tmp[0] != '(') {
-    print_error("\"__filesize()\" is missing its first parenthesis.\n", ERROR_DIR);
-    return FAILED;
-  }
+  if (token != GET_NEXT_TOKEN_SYMBOL || g_tmp[0] != '(')
+    return print_error("\"__filesize()\" is missing its first parenthesis.\n", ERROR_DIR);
 
   token = get_next_token();
-  if (token != GET_NEXT_TOKEN_STRING_DATA) {
-    print_error("\"__filesize()\" needs a file name.\n", ERROR_DIR);
-    return FAILED;
-  }
+  if (token != GET_NEXT_TOKEN_STRING_DATA)
+    return print_error("\"__filesize()\" needs a file name.\n", ERROR_DIR);
 
   f = fopen(g_tmp, "rb");
   if (f == NULL) {
     snprintf(g_error_message, sizeof(g_error_message), "\"__filesize() cannot open file \"%s\".\n", g_tmp);
-    print_error(g_error_message, ERROR_DIR);
-    return FAILED;
+    return print_error(g_error_message, ERROR_DIR);
   }
 
   fseek(f, 0, SEEK_END);
@@ -151,10 +145,8 @@ static int _parse_filesize(void) {
   fclose(f);
 
   token = get_next_token();
-  if (token != GET_NEXT_TOKEN_SYMBOL || g_tmp[0] != ')') {
-    print_error("\"__filesize()\" is missing its second parenthesis.\n", ERROR_DIR);
-    return FAILED;
-  }
+  if (token != GET_NEXT_TOKEN_SYMBOL || g_tmp[0] != ')')
+    return print_error("\"__filesize()\" is missing its second parenthesis.\n", ERROR_DIR);
 
   return token_add(TOKEN_ID_VALUE_INT, file_size, 0.0, NULL);
 }
@@ -167,22 +159,17 @@ static int _parse_incbin(void) {
   FILE *f;
 
   token = get_next_token();
-  if (token != GET_NEXT_TOKEN_SYMBOL || g_tmp[0] != '(') {
-    print_error("\"__incbin()\" is missing its first parenthesis.\n", ERROR_DIR);
-    return FAILED;
-  }
+  if (token != GET_NEXT_TOKEN_SYMBOL || g_tmp[0] != '(')
+    return print_error("\"__incbin()\" is missing its first parenthesis.\n", ERROR_DIR);
 
   token = get_next_token();
-  if (token != GET_NEXT_TOKEN_STRING_DATA) {
-    print_error("\"__incbin()\" needs a file name.\n", ERROR_DIR);
-    return FAILED;
-  }
+  if (token != GET_NEXT_TOKEN_STRING_DATA)
+    return print_error("\"__incbin()\" needs a file name.\n", ERROR_DIR);
 
   f = fopen(g_tmp, "rb");
   if (f == NULL) {
     snprintf(g_error_message, sizeof(g_error_message), "\"__incbin() cannot open file \"%s\".\n", g_tmp);
-    print_error(g_error_message, ERROR_DIR);
-    return FAILED;
+    return print_error(g_error_message, ERROR_DIR);
   }
 
   fseek(f, 0, SEEK_END);
@@ -191,20 +178,17 @@ static int _parse_incbin(void) {
 
   data = calloc(file_size, 1);
   if (data == NULL) {
-    snprintf(g_error_message, sizeof(g_error_message), "Out of memory while allocating memory for __incbin()'ed \"%s\".\n", g_tmp);
-    print_error(g_error_message, ERROR_DIR);
     fclose(f);
-    return FAILED;
+    snprintf(g_error_message, sizeof(g_error_message), "Out of memory while allocating memory for __incbin()'ed \"%s\".\n", g_tmp);
+    return print_error(g_error_message, ERROR_DIR);
   }
 
   fread(data, 1, file_size, f);
   fclose(f);
 
   token = get_next_token();
-  if (token != GET_NEXT_TOKEN_SYMBOL || g_tmp[0] != ')') {
-    print_error("\"__incbin()\" is missing its second parenthesis.\n", ERROR_DIR);
-    return FAILED;
-  }
+  if (token != GET_NEXT_TOKEN_SYMBOL || g_tmp[0] != ')')
+    return print_error("\"__incbin()\" is missing its second parenthesis.\n", ERROR_DIR);
 
   /* NOTE! in the case of TOKEN_ID_BYTES token_add() will eat the memory block "data" and it'll be assigned to a "token" */
   return token_add(TOKEN_ID_BYTES, file_size, 0.0, (char *)data);
@@ -217,10 +201,8 @@ static int _parse_asm(void) {
   int token;
   
   token = get_next_token();
-  if (token != GET_NEXT_TOKEN_SYMBOL || g_tmp[0] != '(') {
-    print_error("\"__asm()\" is missing its first parenthesis.\n", ERROR_DIR);
-    return FAILED;
-  }
+  if (token != GET_NEXT_TOKEN_SYMBOL || g_tmp[0] != '(')
+    return print_error("\"__asm()\" is missing its first parenthesis.\n", ERROR_DIR);
 
   ia = inline_asm_add();
   if (ia == NULL)
@@ -251,10 +233,8 @@ static int _parse_asm(void) {
     }
     else if (token == GET_NEXT_TOKEN_SYMBOL && g_tmp[0] == ')')
       break;
-    else {
-      print_error("Expected a string, ',' or ')', but got something else.\n", ERROR_DIR);
-      return FAILED;
-    }
+    else
+      return print_error("Expected a string, ',' or ')', but got something else.\n", ERROR_DIR);
   }
 
   /* the end */
@@ -262,9 +242,7 @@ static int _parse_asm(void) {
   if (token == GET_NEXT_TOKEN_SYMBOL && g_tmp[0] == ';')
     return SUCCEEDED;
 
-  print_error("Expected a ';', but got something else.\n", ERROR_DIR);
-
-  return FAILED;
+  return print_error("Expected a ';', but got something else.\n", ERROR_DIR);
 }
 
 
@@ -274,10 +252,8 @@ static int _parse_define(void) {
   int token_count = 0, q;
 
   q = get_next_token();
-  if (q != GET_NEXT_TOKEN_STRING) {
-    print_error("#define needs a definition name\n", ERROR_DIR);
-    return FAILED;
-  }
+  if (q != GET_NEXT_TOKEN_STRING)
+    return print_error("#define needs a definition name\n", ERROR_DIR);
       
   /* get rid of an old definition with the same name, if one exists */
   undefine(g_tmp);
@@ -285,8 +261,7 @@ static int _parse_define(void) {
   /*
     if (definition_get(g_tmp) != NULL) {
     snprintf(g_error_message, sizeof(g_error_message), "Definition \"%s\" already exists.\n", g_tmp);
-    print_error(g_error_message, ERROR_DIR);
-    return FAILED;
+    return print_error(g_error_message, ERROR_DIR);
     }
   */
 
@@ -311,8 +286,7 @@ static int _parse_define(void) {
       if (token_count == 0) {
         /* no tokens? */
         snprintf(g_error_message, sizeof(g_error_message), "Definition \"%s\" cannot be empty.\n", definition->name);
-        print_error(g_error_message, ERROR_DIR);
-        return FAILED;
+        return print_error(g_error_message, ERROR_DIR);
       }
           
       break;
@@ -366,10 +340,8 @@ static int _parse_definition(void) {
 
     q = get_next_token();
 
-    if (q != GET_NEXT_TOKEN_SYMBOL || g_tmp[0] != '(') {
-      print_error("_parse_definition(): Was expecting '(', but got something else instead.\n", ERROR_DIR);
-      return FAILED;
-    }
+    if (q != GET_NEXT_TOKEN_SYMBOL || g_tmp[0] != '(')
+      return print_error("_parse_definition(): Was expecting '(', but got something else instead.\n", ERROR_DIR);
 
     t = definition->arguments_first;
     argument = 0;
@@ -380,14 +352,12 @@ static int _parse_definition(void) {
         return FAILED;
       if (q == GET_NEXT_TOKEN_LINEFEED) {
         snprintf(g_error_message, sizeof(g_error_message), "Definition \"%s\" is missing arguments.\n", definition->name);
-        print_error(g_error_message, ERROR_DIR);
-        return FAILED;
+        return print_error(g_error_message, ERROR_DIR);
       }
       if (q == GET_NEXT_TOKEN_SYMBOL && g_tmp[0] == ')') {
         if (t->next != NULL) {
           snprintf(g_error_message, sizeof(g_error_message), "Definition \"%s\" was not called with enough arguments.\n", definition->name);
-          print_error(g_error_message, ERROR_DIR);
-          return FAILED;
+          return print_error(g_error_message, ERROR_DIR);
         }
 
         break;
@@ -397,8 +367,7 @@ static int _parse_definition(void) {
         
         if (t == NULL) {
           snprintf(g_error_message, sizeof(g_error_message), "Trying to call definition \"%s\" with too many arguments.\n", definition->name);
-          print_error(g_error_message, ERROR_DIR);
-          return FAILED;
+          return print_error(g_error_message, ERROR_DIR);
         }
 
         argument++;
@@ -515,8 +484,7 @@ static int _parse_if_elif(int *result) {
   if (stack_calculate_tokens(result) != SUCCEEDED) {
     g_active_file_info_tmp->line_current = line_number;
     g_active_file_info_tmp->filename_id = file_id;
-    print_error("_parse_if(): The condition must be solvable and the result must be an integer.\n", ERROR_DIR);
-    return FAILED;
+    return print_error("_parse_if(): The condition must be solvable and the result must be an integer.\n", ERROR_DIR);
   }
 
   /* make get_next_token() not to return linefeeds */
@@ -580,8 +548,7 @@ static int _fast_forward_to_next_elif_else_endif(void) {
       else if (strcaselesscmp(g_tmp, "@E") == 0) {
 	g_active_file_info_tmp->line_current = line_number;
 	g_active_file_info_tmp->filename_id = file_id;
-	print_error("#endif is missing!\n", ERROR_DIR);
-	return FAILED;
+	return print_error("#endif is missing!\n", ERROR_DIR);
       }
     }
   }
@@ -636,8 +603,7 @@ int evaluate_token(int type) {
         value = SYMBOL_POINTER;
       else {
         snprintf(g_error_message, sizeof(g_error_message), "Unhandled two character symbol \"%c%c\"! Please submit a bug report!\n", g_tmp[0], g_tmp[1]);
-        print_error(g_error_message, ERROR_ERR);
-        return FAILED;
+        return print_error(g_error_message, ERROR_ERR);
       }
     }
 
@@ -659,8 +625,7 @@ int evaluate_token(int type) {
     tmp = calloc(g_ss + 1, 1);
     if (tmp == NULL) {
       snprintf(g_error_message, sizeof(g_error_message), "Out of memory while allocating room for string \"%s\"\n", g_tmp);
-      print_error(g_error_message, ERROR_ERR);
-      return FAILED;
+      return print_error(g_error_message, ERROR_ERR);
     }
 
     memcpy(tmp, g_tmp, g_ss + 1);
@@ -786,10 +751,8 @@ int evaluate_token(int type) {
 
 	if (result != 0) {
 	  /* condition is true */
-	  if (g_ifdef_index >= 255) {
-	    print_error("Out of #ifdef stack.\n", ERROR_DIR);
-	    return FAILED;
-	  }
+	  if (g_ifdef_index >= 255)
+	    return print_error("Out of #ifdef stack.\n", ERROR_DIR);
 	  
 	  g_skip_elifs[++g_ifdef_index] = YES;
 
@@ -801,10 +764,8 @@ int evaluate_token(int type) {
 	    return FAILED;
 
 	  if (strcaselesscmp(g_tmp, "#else") == 0) {
-	    if (g_ifdef_index >= 255) {
-	      print_error("Out of #ifdef stack.\n", ERROR_DIR);
-	      return FAILED;
-	    }
+	    if (g_ifdef_index >= 255)
+	      return print_error("Out of #ifdef stack.\n", ERROR_DIR);
 	    
 	    g_skip_elifs[++g_ifdef_index] = NO;
 
@@ -818,10 +779,8 @@ int evaluate_token(int type) {
 
     /* #else */
     if (strcaselesscmp(g_tmp, "#else") == 0) {
-      if (g_ifdef_index < 0) {
-	print_error("Encountered #else without parsing #if before it.\n", ERROR_DIR);
-	return FAILED;
-      }
+      if (g_ifdef_index < 0)
+	return print_error("Encountered #else without parsing #if before it.\n", ERROR_DIR);
     
       if (g_skip_elifs[g_ifdef_index] == YES) {
 	if (_fast_forward_to_next_elif_else_endif() == FAILED)
@@ -829,8 +788,7 @@ int evaluate_token(int type) {
 
 	if (strcaselesscmp(g_tmp, "#endif") != 0) {
 	  snprintf(g_error_message, sizeof(g_error_message), "Expected #endif, but got %s instead.\n", g_tmp);
-	  print_error(g_error_message, ERROR_DIR);
-	  return FAILED;
+	  return print_error(g_error_message, ERROR_DIR);
 	}
       }
 
@@ -841,10 +799,8 @@ int evaluate_token(int type) {
 
     /* #elif */
     if (strcaselesscmp(g_tmp, "#elif") == 0) {
-      if (g_ifdef_index < 0) {
-	print_error("Encountered #elif without parsing #if before it.\n", ERROR_DIR);
-	return FAILED;
-      }
+      if (g_ifdef_index < 0)
+	return print_error("Encountered #elif without parsing #if before it.\n", ERROR_DIR);
 
       if (g_skip_elifs[g_ifdef_index] == YES) {
 	while (1) {
@@ -857,18 +813,14 @@ int evaluate_token(int type) {
 	  }
 	}
       }
-      else {
-	print_error("We have an internal error with #elif skipping state. Please submit a bug report!\n", ERROR_DIR);
-	return FAILED;
-      }
+      else
+	return print_error("We have an internal error with #elif skipping state. Please submit a bug report!\n", ERROR_DIR);
     }
     
     /* #endif */
     if (strcaselesscmp(g_tmp, "#endif") == 0) {
-      if (g_ifdef_index < 0) {
-	print_error("Encountered #endif without parsing #if before it.\n", ERROR_DIR);
-	return FAILED;
-      }
+      if (g_ifdef_index < 0)
+	return print_error("Encountered #endif without parsing #if before it.\n", ERROR_DIR);
 
       g_ifdef_index--;
 
@@ -880,10 +832,8 @@ int evaluate_token(int type) {
       int include_size;
       
       q = get_next_token();
-      if (q != GET_NEXT_TOKEN_STRING_DATA) {
-        print_error("#include needs a file name.\n", ERROR_DIR);
-        return FAILED;
-      }
+      if (q != GET_NEXT_TOKEN_STRING_DATA)
+        return print_error("#include needs a file name.\n", ERROR_DIR);
 
       if (include_file(g_tmp, &include_size, NULL) == FAILED)
         return FAILED;
@@ -900,8 +850,7 @@ int evaluate_token(int type) {
       q = get_next_token();
       if (q != GET_NEXT_TOKEN_STRING) {
         snprintf(g_error_message, sizeof(g_error_message), "%s needs a definition name.\n", name);
-        print_error(g_error_message, ERROR_DIR);
-        return FAILED;
+        return print_error(g_error_message, ERROR_DIR);
       }
 
       undefine(g_tmp);
@@ -916,16 +865,13 @@ int evaluate_token(int type) {
     /* @CHANGEFILE (INTERNAL) */
     if (strcaselesscmp(g_tmp, "@CHANGEFILE") == 0) {
       q = get_next_token();
-      if (q != GET_NEXT_TOKEN_INT) {
-        print_error("Internal error in (internal) @CHANGEFILE. Please submit a bug report...\n", ERROR_DIR);
-        return FAILED;
-      }
+      if (q != GET_NEXT_TOKEN_INT)
+        return print_error("Internal error in (internal) @CHANGEFILE. Please submit a bug report...\n", ERROR_DIR);
 
       g_active_file_info_tmp = calloc(sizeof(struct active_file_info), 1);
       if (g_active_file_info_tmp == NULL) {
         snprintf(g_error_message, sizeof(g_error_message), "Out of memory while trying allocate error tracking data structure.\n");
-        print_error(g_error_message, ERROR_DIR);
-        return FAILED;
+        return print_error(g_error_message, ERROR_DIR);
       }
       g_active_file_info_tmp->next = NULL;
 
@@ -950,10 +896,8 @@ int evaluate_token(int type) {
 
         q = get_next_token();
 
-        if (q != GET_NEXT_TOKEN_STRING) {
-          print_error("Internal error: Namespace string is missing.\n", ERROR_DIR);
-          return FAILED;
-        }
+        if (q != GET_NEXT_TOKEN_STRING)
+          return print_error("Internal error: Namespace string is missing.\n", ERROR_DIR);
 
         strcpy(g_active_file_info_tmp->namespace, g_label);
       }
@@ -962,10 +906,8 @@ int evaluate_token(int type) {
 
         g_active_file_info_tmp->namespace[0] = 0;
       }
-      else {
-        print_error("Internal error: NAMESPACE/NONAMESPACE is missing.\n", ERROR_DIR);
-        return FAILED;
-      }
+      else
+        return print_error("Internal error: NAMESPACE/NONAMESPACE is missing.\n", ERROR_DIR);
 
       return SUCCEEDED;
     }

@@ -12,6 +12,7 @@
 #include "defines.h"
 #include "tree_node.h"
 #include "token.h"
+#include "tac.h"
 #include "main.h"
 #include "printf.h"
 #include "parse.h"
@@ -21,7 +22,6 @@
 #include "symbol_table.h"
 #include "inline_asm.h"
 #include "struct_item.h"
-#include "tac.h"
 #include "pass_1.h"
 #include "pass_2.h"
 #include "pass_3.h"
@@ -492,10 +492,8 @@ static int _add_a_new_definition(char *name, double d, char *s, int id) {
     return FAILED;  
 
   t = calloc(sizeof(struct token), 1);
-  if (t == NULL) {
-    print_error("_add_a_new_definition(): Out of memory while allocating a new token.\n", ERROR_DIR);
-    return FAILED;
-  }
+  if (t == NULL)
+    return print_error("_add_a_new_definition(): Out of memory while allocating a new token.\n", ERROR_DIR);
 
   t->id = id;
   t->value = (int)d;
@@ -511,9 +509,8 @@ static int _add_a_new_definition(char *name, double d, char *s, int id) {
   else {
     t->label = calloc(strlen(s) + 1, 1);
     if (t->label == NULL) {
-      print_error("_add_a_new_definition(): Out of memory while allocating a new token.\n", ERROR_DIR);
       token_free(t);
-      return FAILED;
+      return print_error("_add_a_new_definition(): Out of memory while allocating a new token.\n", ERROR_DIR);
     }
     strncpy(t->label, s, strlen(s) + 1);
   }
@@ -727,7 +724,18 @@ int print_error_using_token(char *error, int type, struct token *t) {
 }
 
 
-void print_error(char *error, int type) {
+int print_error_using_tac(char *error, int type, struct tac *t) {
+
+  g_current_filename_id = t->file_id;
+  g_current_line_number = t->line_number;
+
+  print_error(error, type);
+
+  return FAILED;
+}
+
+
+int print_error(char *error, int type) {
 
   char error_dir[] = "DIRECTIVE_ERROR:";
   char error_unf[] = "UNFOLD_ALIASES:";
@@ -784,13 +792,13 @@ void print_error(char *error, int type) {
     break;
   case ERROR_NONE:
     fprintf(stderr, "%s:%d: %s", get_file_name(filename_id), line_current, error);
-    return;
+    return FAILED;
   }
 
   fprintf(stderr, "%s:%d: %s %s", get_file_name(filename_id), line_current, t, error);
   fflush(stderr);
 
-  return;
+  return FAILED;
 }
 
 

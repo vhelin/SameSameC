@@ -24,7 +24,7 @@ Optimize:
 - If a variable is only written to, remove the variable and all assignments
 - Z80: Keep stack frame in IX and possibly IY all the time
 - Local array variable initialization
-- Reduce code bloat (parser, print_error()...)
+- Reduce code bloat (parser...)
 
 Fix:
 

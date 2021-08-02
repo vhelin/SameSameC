@@ -86,17 +86,14 @@ int inline_asm_add_asm_line(struct inline_asm *ia, char *line, int length, int l
   struct asm_line *al;
 
   al = calloc(sizeof(struct asm_line), 1);
-  if (al == NULL) {
-    print_error("Out of memory error while allocating a new asm_line struct.\n", ERROR_ERR);
-    return FAILED;
-  }
+  if (al == NULL)
+    return print_error("Out of memory error while allocating a new asm_line struct.\n", ERROR_ERR);
   
   al->line = calloc(length, 1);
   if (al->line == NULL) {
-    snprintf(g_error_message, sizeof(g_error_message), "Out of memory while allocating room for string \"%s\"\n", line);
-    print_error(g_error_message, ERROR_ERR);
     free(al);
-    return FAILED;
+    snprintf(g_error_message, sizeof(g_error_message), "Out of memory while allocating room for string \"%s\"\n", line);
+    return print_error(g_error_message, ERROR_ERR);
   }
 
   memcpy(al->line, line, length);

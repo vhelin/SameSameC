@@ -1776,12 +1776,8 @@ static int _generate_asm_array_read_z80(struct tac *t, FILE *file_out, struct tr
 
   /* error for a read from __z80_out */
   if (t->arg1_type == TAC_ARG_TYPE_LABEL && strcmp(t->arg1_s, "__z80_out") == 0) {
-    g_current_filename_id = t->file_id;
-    g_current_line_number = t->line_number;
     snprintf(g_error_message, sizeof(g_error_message), "_generate_arm_array_read_z80(): You cannot read from \"__z80_out\"!\n");
-    print_error(g_error_message, ERROR_ERR);
-
-    return FAILED;
+    return print_error_using_tac(g_error_message, ERROR_ERR, t);
   }
   
   /* result */
@@ -2117,12 +2113,8 @@ static int _generate_asm_array_write_z80(struct tac *t, FILE *file_out, struct t
 
   /* error for a write to __z80_in */
   if (t->result_type == TAC_ARG_TYPE_LABEL && strcmp(t->result_s, "__z80_in") == 0) {
-    g_current_filename_id = t->file_id;
-    g_current_line_number = t->line_number;
     snprintf(g_error_message, sizeof(g_error_message), "_generate_arm_array_assignment_z80(): You cannot write to \"__z80_in\"!\n");
-    print_error(g_error_message, ERROR_ERR);
-
-    return FAILED;
+    return print_error_using_tac(g_error_message, ERROR_ERR, t);
   }
   
   /* result */
@@ -4263,12 +4255,8 @@ static int _add_const_variables(struct tree_node *const_variables[256], int cons
         if (node->children[j]->type != TREE_NODE_TYPE_VALUE_INT &&
             node->children[j]->type != TREE_NODE_TYPE_VALUE_DOUBLE &&
             node->children[j]->type != TREE_NODE_TYPE_BYTES) {
-          g_current_filename_id = node->file_id;
-          g_current_line_number = node->line_number;
           snprintf(g_error_message, sizeof(g_error_message), "_add_const_variables(): Const variable (\"%s\") can only be initialized with an immediate number!\n", node->children[1]->label);
-          print_error(g_error_message, ERROR_ERR);
-
-          return FAILED;
+          return print_error_using_tree_node(g_error_message, ERROR_ERR, node);
         }
       }
     }
@@ -4678,12 +4666,8 @@ int generate_global_variables_z80(char *file_name, FILE *file_out) {
           if (node->children[j]->type != TREE_NODE_TYPE_VALUE_INT &&
               node->children[j]->type != TREE_NODE_TYPE_VALUE_DOUBLE &&
               node->children[j]->type != TREE_NODE_TYPE_BYTES) {
-            g_current_filename_id = node->file_id;
-            g_current_line_number = node->line_number;
             snprintf(g_error_message, sizeof(g_error_message), "generate_global_variables_z80(): Global variable (\"%s\") can only be initialized with an immediate number!\n", node->children[1]->label);
-            print_error(g_error_message, ERROR_ERR);
-
-            return FAILED;
+            return print_error_using_tree_node(g_error_message, ERROR_ERR, node);
           }
         }
 

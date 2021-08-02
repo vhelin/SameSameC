@@ -393,8 +393,7 @@ int pass_2(void) {
 
       if (g_block_level != 0) {
         snprintf(g_error_message, sizeof(g_error_message), "g_block_level should be 0 here, but it's %d instead! Please submit a bug report!\n", g_block_level);
-        print_error(g_error_message, ERROR_ERR);
-        return FAILED;
+        return print_error(g_error_message, ERROR_ERR);
       }
 
       if (g_was_main_function_defined == YES) {
@@ -578,8 +577,7 @@ static int _parse_struct_access(struct tree_node *node) {
 
         if (!(g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == ']')) {
           snprintf(g_error_message, sizeof(g_error_message), "Expected ']', but got %s.\n", get_token_simple(g_token_current));
-          print_error(g_error_message, ERROR_ERR);
-          return FAILED;
+          return print_error(g_error_message, ERROR_ERR);
         }
 
         if (_add_symbol_as_child(node, g_token_current->value) == FAILED)
@@ -591,8 +589,7 @@ static int _parse_struct_access(struct tree_node *node) {
     }
     else {
       snprintf(g_error_message, sizeof(g_error_message), "Expected a struct/union member name, but got %s.\n", get_token_simple(g_token_current));
-      print_error(g_error_message, ERROR_ERR);
-      return FAILED;
+      return print_error(g_error_message, ERROR_ERR);
     }
   }
 }
@@ -707,10 +704,9 @@ int create_factor(void) {
       _open_expression_pop();
     
       if (g_token_current->id != TOKEN_ID_SYMBOL || g_token_current->value != ']') {
-        snprintf(g_error_message, sizeof(g_error_message), "Expected ']', but got %s.\n", get_token_simple(g_token_current));
-        print_error(g_error_message, ERROR_ERR);
         free_tree_node(node);
-        return FAILED;
+        snprintf(g_error_message, sizeof(g_error_message), "Expected ']', but got %s.\n", get_token_simple(g_token_current));
+        return print_error(g_error_message, ERROR_ERR);
       }
 
        /* next token */
@@ -769,8 +765,7 @@ int create_factor(void) {
 
     if (!(g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == '(')) {
       snprintf(g_error_message, sizeof(g_error_message), "Expected '(', but got %s.\n", get_token_simple(g_token_current));
-      print_error(g_error_message, ERROR_ERR);
-      return FAILED;
+      return print_error(g_error_message, ERROR_ERR);
     }
 
     /* skip '(' */
@@ -833,9 +828,8 @@ int create_factor(void) {
         item = symbol_table_find_symbol(node->children[0]->label);
         if (item == NULL) {
           snprintf(g_error_message, sizeof(g_error_message), "Could not find \"%s\" in the symbol table.\n", node->children[0]->label);
-          print_error(g_error_message, ERROR_ERR);
           free_tree_node(node);
-          return FAILED;
+          return print_error(g_error_message, ERROR_ERR);
         }
 
         elements = item->node->value;
@@ -859,8 +853,7 @@ int create_factor(void) {
 
     if (!(g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == ')')) {
       snprintf(g_error_message, sizeof(g_error_message), "Expected ')', but got %s.\n", get_token_simple(g_token_current));
-      print_error(g_error_message, ERROR_ERR);
-      return FAILED;
+      return print_error(g_error_message, ERROR_ERR);
     }
     
     node = allocate_tree_node_value_int(size);
@@ -879,8 +872,7 @@ int create_factor(void) {
 
     if (g_token_current->id != TOKEN_ID_VALUE_STRING) {
       snprintf(g_error_message, sizeof(g_error_message), "Expected a variable name, but got %s.\n", get_token_simple(g_token_current));
-      print_error(g_error_message, ERROR_ERR);
-      return FAILED;
+      return print_error(g_error_message, ERROR_ERR);
     }
 
     node = allocate_tree_node_value_string(g_token_current->label);
@@ -914,8 +906,7 @@ int create_factor(void) {
 
     if (g_token_current->id != TOKEN_ID_VALUE_STRING) {
       snprintf(g_error_message, sizeof(g_error_message), "Expected a variable name, but got %s.\n", get_token_simple(g_token_current));
-      print_error(g_error_message, ERROR_ERR);
-      return FAILED;
+      return print_error(g_error_message, ERROR_ERR);
     }
 
     node = allocate_tree_node_value_string(g_token_current->label);
@@ -957,10 +948,9 @@ int create_factor(void) {
       _open_expression_pop();
 
       if (g_token_current->id != TOKEN_ID_SYMBOL || g_token_current->value != ']') {
-        snprintf(g_error_message, sizeof(g_error_message), "Expected ']', but got %s.\n", get_token_simple(g_token_current));
-        print_error(g_error_message, ERROR_ERR);
         free_tree_node(node);
-        return FAILED;
+        snprintf(g_error_message, sizeof(g_error_message), "Expected ']', but got %s.\n", get_token_simple(g_token_current));
+        return print_error(g_error_message, ERROR_ERR);
       }
     
       /* next token */
@@ -997,10 +987,9 @@ int create_factor(void) {
     _open_expression_pop();
     
     if (g_token_current->id != TOKEN_ID_SYMBOL || g_token_current->value != ')') {
-      snprintf(g_error_message, sizeof(g_error_message), "Expected ')', but got %s.\n", get_token_simple(g_token_current));
-      print_error(g_error_message, ERROR_ERR);
       free_tree_node(expression);
-      return FAILED;
+      snprintf(g_error_message, sizeof(g_error_message), "Expected ')', but got %s.\n", get_token_simple(g_token_current));
+      return print_error(g_error_message, ERROR_ERR);
     }
 
     node = allocate_tree_node_symbol(g_token_current->value);
@@ -1231,10 +1220,8 @@ int create_statement(void) {
 
       variable_type = g_token_current->value;
 
-      if (variable_type == VARIABLE_TYPE_CONST) {
-        print_error("\"const const\" doesn't make any sense.\n", ERROR_ERR);
-        return FAILED;
-      }
+      if (variable_type == VARIABLE_TYPE_CONST)
+        return print_error("\"const const\" doesn't make any sense.\n", ERROR_ERR);
 
       /* next token */
       _next_token();
@@ -1333,8 +1320,7 @@ int create_statement(void) {
         
         if (!(g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == ';')) {
           snprintf(g_error_message, sizeof(g_error_message), "Expected ';' or ',', but got %s.\n", get_token_simple(g_token_current));
-          print_error(g_error_message, ERROR_ERR);
-          return FAILED;
+          return print_error(g_error_message, ERROR_ERR);
         }
 
         /* add to symbol table */
@@ -1372,9 +1358,8 @@ int create_statement(void) {
         node->flags |= TREE_NODE_FLAG_CONST_2;
 
       if (node->children[0] == NULL || node->children[1] == NULL || (symbol == '=' && node->children[2] == NULL)) {
-        print_error("_create_statement(): Out of memory error.\n", ERROR_ERR);
         free_tree_node(node);
-        return FAILED;
+        return print_error("_create_statement(): Out of memory error.\n", ERROR_ERR);
       }
     
       tree_node_add_child(_get_current_open_block(), node);
@@ -1398,8 +1383,7 @@ int create_statement(void) {
       
       if (!(g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == ';')) {
         snprintf(g_error_message, sizeof(g_error_message), "Expected ';' or ',', but got %s.\n", get_token_simple(g_token_current));
-        print_error(g_error_message, ERROR_ERR);
-        return FAILED;
+        return print_error(g_error_message, ERROR_ERR);
       }
 
       /* next token */
@@ -1508,8 +1492,7 @@ int create_statement(void) {
 
       if (!(g_token_current->id == TOKEN_ID_SYMBOL && (g_token_current->value == ';' || g_token_current->value == ')')))  {
         snprintf(g_error_message, sizeof(g_error_message), "Expected ')' / ';', but got %s.\n", get_token_simple(g_token_current));
-        print_error(g_error_message, ERROR_ERR);
-        return FAILED;
+        return print_error(g_error_message, ERROR_ERR);
       }
 
       /* next token */
@@ -1558,10 +1541,9 @@ int create_statement(void) {
         _open_expression_pop();
 
         if (g_token_current->id != TOKEN_ID_SYMBOL || g_token_current->value != ']') {
-          snprintf(g_error_message, sizeof(g_error_message), "Expected ']', but got %s.\n", get_token_simple(g_token_current));
-          print_error(g_error_message, ERROR_ERR);
           free_tree_node(node_index);
-          return FAILED;
+          snprintf(g_error_message, sizeof(g_error_message), "Expected ']', but got %s.\n", get_token_simple(g_token_current));
+          return print_error(g_error_message, ERROR_ERR);
         }
     
         /* next token */
@@ -1589,13 +1571,12 @@ int create_statement(void) {
                                                        g_token_current->value != SYMBOL_EQUAL_DIV &&
                                                        g_token_current->value != SYMBOL_EQUAL_OR &&
                                                        g_token_current->value != SYMBOL_EQUAL_AND)) {
-          snprintf(g_error_message, sizeof(g_error_message), "Expected '=', but got %s.\n", get_token_simple(g_token_current));
-          print_error(g_error_message, ERROR_ERR);
           if (target_node != NULL)
             free_tree_node(target_node);
           else
             free_tree_node(node_index);
-          return FAILED;
+          snprintf(g_error_message, sizeof(g_error_message), "Expected '=', but got %s.\n", get_token_simple(g_token_current));
+          return print_error(g_error_message, ERROR_ERR);
         }
 
         symbol = g_token_current->value;
@@ -1796,8 +1777,7 @@ int create_statement(void) {
     }
     else {
       snprintf(g_error_message, sizeof(g_error_message), "Expected '}' / ',' / ';', but got %s.\n", get_token_simple(g_token_current));
-      print_error(g_error_message, ERROR_ERR);
-      return FAILED;
+      return print_error(g_error_message, ERROR_ERR);
     }
 
     /* next token */
@@ -1816,10 +1796,9 @@ int create_statement(void) {
     _next_token();
 
     if (g_token_current->id != TOKEN_ID_SYMBOL || g_token_current->value != '(') {
-      snprintf(g_error_message, sizeof(g_error_message), "Expected '(', but got %s.\n", get_token_simple(g_token_current));
-      print_error(g_error_message, ERROR_ERR);
       free_tree_node(node);
-      return FAILED;
+      snprintf(g_error_message, sizeof(g_error_message), "Expected '(', but got %s.\n", get_token_simple(g_token_current));
+      return print_error(g_error_message, ERROR_ERR);
     }
 
     /* next token */
@@ -1841,20 +1820,18 @@ int create_statement(void) {
     _open_expression_pop();
 
     if (g_token_current->id != TOKEN_ID_SYMBOL || g_token_current->value != ')') {
-      snprintf(g_error_message, sizeof(g_error_message), "Expected ')', but got %s.\n", get_token_simple(g_token_current));
-      print_error(g_error_message, ERROR_ERR);
       free_tree_node(node);
-      return FAILED;
+      snprintf(g_error_message, sizeof(g_error_message), "Expected ')', but got %s.\n", get_token_simple(g_token_current));
+      return print_error(g_error_message, ERROR_ERR);
     }
 
     /* next token */
     _next_token();
 
     if (g_token_current->id != TOKEN_ID_SYMBOL || g_token_current->value != '{') {
-      snprintf(g_error_message, sizeof(g_error_message), "Expected '{', but got %s.\n", get_token_simple(g_token_current));
-      print_error(g_error_message, ERROR_ERR);
       free_tree_node(node);
-      return FAILED;
+      snprintf(g_error_message, sizeof(g_error_message), "Expected '{', but got %s.\n", get_token_simple(g_token_current));
+      return print_error(g_error_message, ERROR_ERR);
     }
 
     /* next token */
@@ -1871,10 +1848,9 @@ int create_statement(void) {
       }
 
       if (g_token_current->id != TOKEN_ID_CASE && g_token_current->id != TOKEN_ID_DEFAULT) {
-        snprintf(g_error_message, sizeof(g_error_message), "Expected 'case' or 'default', but got %s.\n", get_token_simple(g_token_current));
-        print_error(g_error_message, ERROR_ERR);
         free_tree_node(node);
-        return FAILED;
+        snprintf(g_error_message, sizeof(g_error_message), "Expected 'case' or 'default', but got %s.\n", get_token_simple(g_token_current));
+        return print_error(g_error_message, ERROR_ERR);
       }
 
       if (g_token_current->id == TOKEN_ID_DEFAULT)
@@ -1903,10 +1879,9 @@ int create_statement(void) {
       }
       
       if (g_token_current->id != TOKEN_ID_SYMBOL || g_token_current->value != ':') {
-        snprintf(g_error_message, sizeof(g_error_message), "Expected ':', but got %s.\n", get_token_simple(g_token_current));
-        print_error(g_error_message, ERROR_ERR);
         free_tree_node(node);
-        return FAILED;
+        snprintf(g_error_message, sizeof(g_error_message), "Expected ':', but got %s.\n", get_token_simple(g_token_current));
+        return print_error(g_error_message, ERROR_ERR);
       }
 
       /* next token */
@@ -1929,10 +1904,9 @@ int create_statement(void) {
 
       if (is_case == NO) {
         if (g_token_current->id != TOKEN_ID_SYMBOL || g_token_current->value != '}') {
-          snprintf(g_error_message, sizeof(g_error_message), "Expected '}', but got %s.\n", get_token_simple(g_token_current));
-          print_error(g_error_message, ERROR_ERR);
           free_tree_node(node);
-          return FAILED;
+          snprintf(g_error_message, sizeof(g_error_message), "Expected '}', but got %s.\n", get_token_simple(g_token_current));
+          return print_error(g_error_message, ERROR_ERR);
         }
       }
     }
@@ -1956,10 +1930,9 @@ int create_statement(void) {
       int is_multiline_block = NO;
       
       if (g_token_current->id != TOKEN_ID_SYMBOL || g_token_current->value != '(') {
-        snprintf(g_error_message, sizeof(g_error_message), "Expected '(', but got %s.\n", get_token_simple(g_token_current));
-        print_error(g_error_message, ERROR_ERR);
         free_tree_node(node);
-        return FAILED;
+        snprintf(g_error_message, sizeof(g_error_message), "Expected '(', but got %s.\n", get_token_simple(g_token_current));
+        return print_error(g_error_message, ERROR_ERR);
       }
 
       /* next token */
@@ -1981,10 +1954,9 @@ int create_statement(void) {
       _open_condition_pop();
       
       if (g_token_current->id != TOKEN_ID_SYMBOL || g_token_current->value != ')') {
-        snprintf(g_error_message, sizeof(g_error_message), "Expected ')', but got %s.\n", get_token_simple(g_token_current));
-        print_error(g_error_message, ERROR_ERR);
         free_tree_node(node);
-        return FAILED;
+        snprintf(g_error_message, sizeof(g_error_message), "Expected ')', but got %s.\n", get_token_simple(g_token_current));
+        return print_error(g_error_message, ERROR_ERR);
       }
 
       /* next token */
@@ -2044,10 +2016,9 @@ int create_statement(void) {
       }
 
       if (g_token_current->id != TOKEN_ID_IF) {
-        snprintf(g_error_message, sizeof(g_error_message), "Expected 'if', but got %s.\n", get_token_simple(g_token_current));
-        print_error(g_error_message, ERROR_ERR);
         free_tree_node(node);
-        return FAILED;
+        snprintf(g_error_message, sizeof(g_error_message), "Expected 'if', but got %s.\n", get_token_simple(g_token_current));
+        return print_error(g_error_message, ERROR_ERR);
       }
 
       /* next token */
@@ -2065,8 +2036,7 @@ int create_statement(void) {
 
     if (g_token_current->id != TOKEN_ID_VALUE_STRING) {
       snprintf(g_error_message, sizeof(g_error_message), "Expected a variable name, but got %s.\n", get_token_simple(g_token_current));
-      print_error(g_error_message, ERROR_ERR);
-      return FAILED;
+      return print_error(g_error_message, ERROR_ERR);
     }
 
     strncpy(name, g_token_current->label, MAX_NAME_LENGTH);
@@ -2076,8 +2046,7 @@ int create_statement(void) {
 
     if (g_token_current->id != TOKEN_ID_SYMBOL || g_token_current->value != ';') {
       snprintf(g_error_message, sizeof(g_error_message), "Expected ';', but got %s.\n", get_token_simple(g_token_current));
-      print_error(g_error_message, ERROR_ERR);
-      return FAILED;
+      return print_error(g_error_message, ERROR_ERR);
     }
 
     /* next token */
@@ -2115,10 +2084,9 @@ int create_statement(void) {
       return FAILED;
 
     if (g_token_current->id != TOKEN_ID_SYMBOL || g_token_current->value != '(') {
-      snprintf(g_error_message, sizeof(g_error_message), "Expected '(', but got %s.\n", get_token_simple(g_token_current));
-      print_error(g_error_message, ERROR_ERR);
       free_tree_node(node);
-      return FAILED;
+      snprintf(g_error_message, sizeof(g_error_message), "Expected '(', but got %s.\n", get_token_simple(g_token_current));
+      return print_error(g_error_message, ERROR_ERR);
     }
 
     /* next token */
@@ -2140,10 +2108,9 @@ int create_statement(void) {
     _open_condition_pop();
       
     if (g_token_current->id != TOKEN_ID_SYMBOL || g_token_current->value != ')') {
-      snprintf(g_error_message, sizeof(g_error_message), "Expected ')', but got %s.\n", get_token_simple(g_token_current));
-      print_error(g_error_message, ERROR_ERR);
       free_tree_node(node);
-      return FAILED;
+      snprintf(g_error_message, sizeof(g_error_message), "Expected ')', but got %s.\n", get_token_simple(g_token_current));
+      return print_error(g_error_message, ERROR_ERR);
     }
 
     /* next token */
@@ -2204,19 +2171,18 @@ int create_statement(void) {
     tree_node_add_child(_get_current_open_block(), node);
 
     if (g_token_current->id != TOKEN_ID_WHILE) {
-      print_error("Was expecting \"while\", got something else instead.\n", ERROR_ERR);
       free_tree_node(node);
-      return FAILED;
+      snprintf(g_error_message, sizeof(g_error_message), "Expected 'while', but got %s.\n", get_token_simple(g_token_current));
+      return print_error(g_error_message, ERROR_ERR);
     }
 
     /* skip "while" */
     _next_token();
 
     if (g_token_current->id != TOKEN_ID_SYMBOL || g_token_current->value != '(') {
-      snprintf(g_error_message, sizeof(g_error_message), "Expected '(', but got %s.\n", get_token_simple(g_token_current));
-      print_error(g_error_message, ERROR_ERR);
       free_tree_node(node);
-      return FAILED;
+      snprintf(g_error_message, sizeof(g_error_message), "Expected '(', but got %s.\n", get_token_simple(g_token_current));
+      return print_error(g_error_message, ERROR_ERR);
     }
 
     /* next token */
@@ -2238,20 +2204,18 @@ int create_statement(void) {
     _open_condition_pop();
       
     if (g_token_current->id != TOKEN_ID_SYMBOL || g_token_current->value != ')') {
-      snprintf(g_error_message, sizeof(g_error_message), "Expected ')', but got %s.\n", get_token_simple(g_token_current));
-      print_error(g_error_message, ERROR_ERR);
       free_tree_node(node);
-      return FAILED;
+      snprintf(g_error_message, sizeof(g_error_message), "Expected ')', but got %s.\n", get_token_simple(g_token_current));
+      return print_error(g_error_message, ERROR_ERR);
     }
 
     /* next token */
     _next_token();
 
     if (g_token_current->id != TOKEN_ID_SYMBOL || g_token_current->value != ';') {
-      snprintf(g_error_message, sizeof(g_error_message), "Expected ';', but got %s.\n", get_token_simple(g_token_current));
-      print_error(g_error_message, ERROR_ERR);
       free_tree_node(node);
-      return FAILED;
+      snprintf(g_error_message, sizeof(g_error_message), "Expected ';', but got %s.\n", get_token_simple(g_token_current));
+      return print_error(g_error_message, ERROR_ERR);
     }
 
     /* next token */
@@ -2272,10 +2236,9 @@ int create_statement(void) {
       return FAILED;
 
     if (g_token_current->id != TOKEN_ID_SYMBOL || g_token_current->value != '(') {
-      snprintf(g_error_message, sizeof(g_error_message), "Expected '(', but got %s.\n", get_token_simple(g_token_current));
-      print_error(g_error_message, ERROR_ERR);
       free_tree_node(node);
-      return FAILED;
+      snprintf(g_error_message, sizeof(g_error_message), "Expected '(', but got %s.\n", get_token_simple(g_token_current));
+      return print_error(g_error_message, ERROR_ERR);
     }
 
     /* next token */
@@ -2331,10 +2294,9 @@ int create_statement(void) {
     _open_condition_pop();
       
     if (g_token_current->id != TOKEN_ID_SYMBOL || g_token_current->value != ';') {
-      snprintf(g_error_message, sizeof(g_error_message), "Expected ';', but got %s.\n", get_token_simple(g_token_current));
-      print_error(g_error_message, ERROR_ERR);
       free_tree_node(node);
-      return FAILED;
+      snprintf(g_error_message, sizeof(g_error_message), "Expected ';', but got %s.\n", get_token_simple(g_token_current));
+      return print_error(g_error_message, ERROR_ERR);
     }
 
     /* next token */
@@ -2448,8 +2410,7 @@ int create_statement(void) {
 
       if (g_token_current->id != TOKEN_ID_SYMBOL || g_token_current->value != ';') {
         snprintf(g_error_message, sizeof(g_error_message), "Expected ';', but got %s.\n", get_token_simple(g_token_current));
-        print_error(g_error_message, ERROR_ERR);
-        return FAILED;
+        return print_error(g_error_message, ERROR_ERR);
       }
 
       /* next token */
@@ -2470,8 +2431,7 @@ int create_statement(void) {
     
     if (g_token_current->id != TOKEN_ID_SYMBOL || g_token_current->value != ';') {
       snprintf(g_error_message, sizeof(g_error_message), "Expected ';', but got %s.\n", get_token_simple(g_token_current));
-      print_error(g_error_message, ERROR_ERR);
-      return FAILED;
+      return print_error(g_error_message, ERROR_ERR);
     }
 
     /* next token */
@@ -2491,8 +2451,7 @@ int create_statement(void) {
     
     if (g_token_current->id != TOKEN_ID_SYMBOL || g_token_current->value != ';') {
       snprintf(g_error_message, sizeof(g_error_message), "Expected ';', but got %s.\n", get_token_simple(g_token_current));
-      print_error(g_error_message, ERROR_ERR);
-      return FAILED;
+      return print_error(g_error_message, ERROR_ERR);
     }
 
     /* next token */
@@ -2539,9 +2498,7 @@ int create_statement(void) {
   }
   
   snprintf(g_error_message, sizeof(g_error_message), "Expected a statement, but got %s.\n", get_token_simple(g_token_current));
-  print_error(g_error_message, ERROR_ERR);
-  
-  return FAILED;
+  return print_error(g_error_message, ERROR_ERR);
 }
 
 
@@ -2623,11 +2580,10 @@ int create_block(struct tree_node *open_function_definition, int expect_curly_br
   
   if (expect_curly_braces == YES) {
     if (g_token_current->id != TOKEN_ID_SYMBOL || g_token_current->value != '{') {
-      snprintf(g_error_message, sizeof(g_error_message), "Expected '{', but got %s.\n", get_token_simple(g_token_current));
-      print_error(g_error_message, ERROR_ERR);
       free_symbol_table_items(g_block_level);
       g_block_level--;
-      return FAILED;
+      snprintf(g_error_message, sizeof(g_error_message), "Expected '{', but got %s.\n", get_token_simple(g_token_current));
+      return print_error(g_error_message, ERROR_ERR);
     }
 
     /* next token */
@@ -2658,11 +2614,10 @@ int create_block(struct tree_node *open_function_definition, int expect_curly_br
     else if (g_token_current->id == TOKEN_ID_CASE || g_token_current->id == TOKEN_ID_DEFAULT) {
     }
     else {
-      snprintf(g_error_message, sizeof(g_error_message), "Expected '}', but got %s.\n", get_token_simple(g_token_current));
-      print_error(g_error_message, ERROR_ERR);
       free_symbol_table_items(g_block_level);
       g_block_level--;
-      return FAILED;
+      snprintf(g_error_message, sizeof(g_error_message), "Expected '}', but got %s.\n", get_token_simple(g_token_current));
+      return print_error(g_error_message, ERROR_ERR);
     }
   }
   
@@ -2704,9 +2659,9 @@ struct tree_node *create_array(double pointer_depth, int variable_type, char *na
     _next_token();
 
     if (g_token_current->id != TOKEN_ID_SYMBOL || g_token_current->value != ']') {
+      free_tree_node(node);
       snprintf(g_error_message, sizeof(g_error_message), "Expected ']', but got %s.\n", get_token_simple(g_token_current));
       print_error(g_error_message, ERROR_ERR);
-      free_tree_node(node);
       return NULL;
     }
 
@@ -2718,9 +2673,9 @@ struct tree_node *create_array(double pointer_depth, int variable_type, char *na
     _next_token();
   }
   else {
+    free_tree_node(node);
     snprintf(g_error_message, sizeof(g_error_message), "Expected array size or ']', but got %s.\n", get_token_simple(g_token_current));
     print_error(g_error_message, ERROR_ERR);
-    free_tree_node(node);
     return NULL;
   }
 
@@ -2734,9 +2689,9 @@ struct tree_node *create_array(double pointer_depth, int variable_type, char *na
     /* read the items */
     
     if (g_token_current->id != TOKEN_ID_SYMBOL || g_token_current->value != '=') {
+      free_tree_node(node);
       snprintf(g_error_message, sizeof(g_error_message), "Expected '=', but got %s.\n", get_token_simple(g_token_current));
       print_error(g_error_message, ERROR_ERR);
-      free_tree_node(node);
       return NULL;
     }
 
@@ -2753,9 +2708,9 @@ struct tree_node *create_array(double pointer_depth, int variable_type, char *na
       if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == ',') {
       }
       else if (g_token_current->id != TOKEN_ID_SYMBOL || g_token_current->value != ';') {
+        free_tree_node(node);
         snprintf(g_error_message, sizeof(g_error_message), "Expected ',' or ';', but got %s.\n", get_token_simple(g_token_current));
         print_error(g_error_message, ERROR_ERR);
-        free_tree_node(node);
         return NULL;
       }
 
@@ -2764,9 +2719,9 @@ struct tree_node *create_array(double pointer_depth, int variable_type, char *na
 
     if (skip == NO) {
       if (g_token_current->id != TOKEN_ID_SYMBOL || g_token_current->value != '{') {
+        free_tree_node(node);
         snprintf(g_error_message, sizeof(g_error_message), "Expected '{', but got %s.\n", get_token_simple(g_token_current));
         print_error(g_error_message, ERROR_ERR);
-        free_tree_node(node);
         return NULL;
       }
 
@@ -2813,8 +2768,8 @@ struct tree_node *create_array(double pointer_depth, int variable_type, char *na
   added_items = tree_node_get_create_variable_data_items(node);
 
   if (array_size == 0 && added_items == 0) {
-    print_error("An array without any items doesn't make sense.\n", ERROR_ERR);
     free_tree_node(node);
+    print_error("An array without any items doesn't make sense.\n", ERROR_ERR);
     return NULL;
   }
 
@@ -2857,10 +2812,8 @@ int create_variable_or_function(int is_extern, int is_static) {
 
     variable_type = g_token_current->value;
 
-    if (variable_type == VARIABLE_TYPE_CONST) {
-      print_error("\"const const\" doesn't make any sense.\n", ERROR_ERR);
-      return FAILED;
-    }
+    if (variable_type == VARIABLE_TYPE_CONST)
+      return print_error("\"const const\" doesn't make any sense.\n", ERROR_ERR);
     
     /* next token */
     _next_token();
@@ -3090,10 +3043,8 @@ int create_variable_or_function(int is_extern, int is_static) {
 
             variable_type = g_token_current->value;
 
-            if (variable_type == VARIABLE_TYPE_CONST) {
-              print_error("\"const const\" doesn't make any sense.\n", ERROR_ERR);
-              return FAILED;
-            }
+            if (variable_type == VARIABLE_TYPE_CONST)
+              return print_error("\"const const\" doesn't make any sense.\n", ERROR_ERR);
 
             /* next token */
             _next_token();
@@ -3140,11 +3091,10 @@ int create_variable_or_function(int is_extern, int is_static) {
           tree_node_add_child(g_open_function_definition, node);
         
           if (g_token_current->id != TOKEN_ID_VALUE_STRING) {
-            snprintf(g_error_message, sizeof(g_error_message), "Expected an argument name, but got %s.\n", get_token_simple(g_token_current));
-            print_error(g_error_message, ERROR_ERR);
             free_tree_node(g_open_function_definition);
             g_open_function_definition = NULL;
-            return FAILED;
+            snprintf(g_error_message, sizeof(g_error_message), "Expected an argument name, but got %s.\n", get_token_simple(g_token_current));
+            return print_error(g_error_message, ERROR_ERR);
           }
 
           node = allocate_tree_node_value_string(g_token_current->label);
@@ -3174,8 +3124,7 @@ int create_variable_or_function(int is_extern, int is_static) {
             if (g_open_function_definition->added_children > 2 ||
                 g_open_function_definition->children[0]->value != VARIABLE_TYPE_VOID ||
                 g_open_function_definition->children[0]->value_double > 0) {
-              print_error("A __pureasm function must be of type \"void name(void)\".\n", ERROR_ERR);
-              return FAILED;
+              return print_error("A __pureasm function must be of type \"void name(void)\".\n", ERROR_ERR);
             }
             
             /* this token is '__pureasm' */
@@ -3199,10 +3148,8 @@ int create_variable_or_function(int is_extern, int is_static) {
           
           /* start parsing the function block */
 
-          if (is_extern == YES && g_open_function_definition->type == TREE_NODE_TYPE_FUNCTION_DEFINITION) {
-            print_error("Function definitions cannot be extern.\n", ERROR_ERR);
-            return FAILED;
-          }
+          if (is_extern == YES && g_open_function_definition->type == TREE_NODE_TYPE_FUNCTION_DEFINITION)
+            return print_error("Function definitions cannot be extern.\n", ERROR_ERR);
 
           if (_open_block_push() == FAILED) {
             free_tree_node(g_open_function_definition);
@@ -3239,19 +3186,15 @@ int create_variable_or_function(int is_extern, int is_static) {
           /* is it "main"? */
           if (strcmp(node->children[1]->label, "main") == 0) {
             /* yes, check that it's correctly defined */
-            if (node->children[0]->value != VARIABLE_TYPE_VOID || node->added_children > 3) {
-              print_error("main()'s definition must be \"void main(void)\".\n", ERROR_ERR);
-              return FAILED;
-            }
+            if (node->children[0]->value != VARIABLE_TYPE_VOID || node->added_children > 3)
+              return print_error("main()'s definition must be \"void main(void)\".\n", ERROR_ERR);
 
             g_was_main_function_defined = YES;
           }
 
           /* is it "mainmain"? */
-          if (strcmp(node->children[1]->label, "mainmain") == 0 && function_file_id >= 0) {
-            print_error("mainmain() cannot be defined as it's a reserved function name.\n", ERROR_ERR);
-            return FAILED;
-          }
+          if (strcmp(node->children[1]->label, "mainmain") == 0 && function_file_id >= 0)
+            return print_error("mainmain() cannot be defined as it's a reserved function name.\n", ERROR_ERR);
 
           /* check that __pureasm functions contain only __asm() items */
           if ((node->flags & TREE_NODE_FLAG_PUREASM) == TREE_NODE_FLAG_PUREASM) {
@@ -3271,8 +3214,7 @@ int create_variable_or_function(int is_extern, int is_static) {
         }
         else {
           snprintf(g_error_message, sizeof(g_error_message), "Expected a variable type or a ')', but got %s.\n", get_token_simple(g_token_current));
-          print_error(g_error_message, ERROR_ERR);
-          return FAILED;
+          return print_error(g_error_message, ERROR_ERR);
         }
       }
     }
@@ -3788,8 +3730,7 @@ int _create_struct_union_definition(char *struct_name, int variable_type) {
 
   if (find_struct_item(struct_name) != NULL) {
     snprintf(g_error_message, sizeof(g_error_message), "struct/union \"%s\" is already defined.\n", struct_name);
-    print_error(g_error_message, ERROR_ERR);
-    return FAILED;
+    return print_error(g_error_message, ERROR_ERR);
   }
 
   if (variable_type == VARIABLE_TYPE_STRUCT)
@@ -3831,10 +3772,8 @@ int _create_struct_union_definition(char *struct_name, int variable_type) {
           /* skip the name */
           _next_token();
           
-          if (!(g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == ';')) {
-            print_error("struct/union name must be followed by a ';'.\n", ERROR_ERR);
-            return FAILED;
-          }
+          if (!(g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == ';'))
+            return print_error("struct/union name must be followed by a ';'.\n", ERROR_ERR);
 
           /* skip ';' */
           _next_token();
@@ -3854,10 +3793,8 @@ int _create_struct_union_definition(char *struct_name, int variable_type) {
         _next_token();
       }
 
-      if (g_token_current->id != TOKEN_ID_VARIABLE_TYPE) {
-        print_error("\"const\" must be followed by a variable type.\n", ERROR_ERR);
-        return FAILED;
-      }
+      if (g_token_current->id != TOKEN_ID_VARIABLE_TYPE)
+        return print_error("\"const\" must be followed by a variable type.\n", ERROR_ERR);
 
       variable_type = g_token_current->value;
       
@@ -3895,10 +3832,8 @@ int _create_struct_union_definition(char *struct_name, int variable_type) {
         else if (variable_type == VARIABLE_TYPE_UNION)
           variable_type = STRUCT_ITEM_TYPE_UNION;
 
-        if (depth >= 255) {
-          print_error("Out of struct/union stack depth! Please submit a bug report!\n", ERROR_ERR);
-          return FAILED;
-        }
+        if (depth >= 255)
+          return print_error("Out of struct/union stack depth! Please submit a bug report!\n", ERROR_ERR);
 
         s = allocate_struct_item("", variable_type);
         if (s == NULL)
@@ -3917,17 +3852,14 @@ int _create_struct_union_definition(char *struct_name, int variable_type) {
         struct struct_item *child;
         int i;
 
-        if (g_token_current->id != TOKEN_ID_VALUE_STRING) {
-          print_error("union/struct member needs a name!\n", ERROR_ERR);
-          return FAILED;
-        }
+        if (g_token_current->id != TOKEN_ID_VALUE_STRING)
+          return print_error("union/struct member needs a name!\n", ERROR_ERR);
 
         /* is it already defined? */
         for (i = 0; i < s->added_children; i++) {
           if (strcmp(s->children[i]->name, g_token_current->label) == 0) {
             snprintf(g_error_message, sizeof(g_error_message), "\"%s\" is already defined in struct/union \"%s\".\n", g_token_current->label, s->name);
-            print_error(g_error_message, ERROR_ERR);
-            return FAILED;
+            return print_error(g_error_message, ERROR_ERR);
           }
         }
 
@@ -3951,18 +3883,15 @@ int _create_struct_union_definition(char *struct_name, int variable_type) {
           /* skip '[' */
           _next_token();
 
-          if (stack_calculate_tokens(&items) != SUCCEEDED) {
-            print_error("The array size must be solved here.\n", ERROR_ERR);
-            return FAILED;
-          }
+          if (stack_calculate_tokens(&items) != SUCCEEDED)
+            return print_error("The array size must be solved here.\n", ERROR_ERR);
 
           child->type = STRUCT_ITEM_TYPE_ARRAY;
           child->array_items = items;
           
           if (!(g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == ']')) {
             snprintf(g_error_message, sizeof(g_error_message), "Expected ']', but got %s.\n", get_token_simple(g_token_current));
-            print_error(g_error_message, ERROR_ERR);
-            return FAILED;
+            return print_error(g_error_message, ERROR_ERR);
           }
 
           /* skip ']' */
@@ -3982,8 +3911,7 @@ int _create_struct_union_definition(char *struct_name, int variable_type) {
         
         if (!(g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == ';')) {
           snprintf(g_error_message, sizeof(g_error_message), "Expected ';', but got %s.\n", get_token_simple(g_token_current));
-          print_error(g_error_message, ERROR_ERR);
-          return FAILED;
+          return print_error(g_error_message, ERROR_ERR);
         }
 
         /* skip ';' */
@@ -3992,8 +3920,7 @@ int _create_struct_union_definition(char *struct_name, int variable_type) {
     }
     else {
       snprintf(g_error_message, sizeof(g_error_message), "Expected a variable type or a '}', but got %s.\n", get_token_simple(g_token_current));
-      print_error(g_error_message, ERROR_ERR);
-      return FAILED;
+      return print_error(g_error_message, ERROR_ERR);
     }
   }
 

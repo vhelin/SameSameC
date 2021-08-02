@@ -120,8 +120,7 @@ static int _collect_arguments_from_tokens(struct definition *d) {
   if (t->id != TOKEN_ID_SYMBOL || t->value != '(') {
     g_current_filename_id = t->file_id;
     g_current_line_number = t->line_number;
-    print_error("_collect_arguments_from_tokens(): '(' should be the first token on the argument tokens list.\n", ERROR_DIR);
-    return FAILED;
+    return print_error("_collect_arguments_from_tokens(): '(' should be the first token on the argument tokens list.\n", ERROR_DIR);
   }
 
   next = t->next;
@@ -159,8 +158,7 @@ static int _collect_arguments_from_tokens(struct definition *d) {
       g_current_filename_id = t->file_id;
       g_current_line_number = t->line_number;
       snprintf(g_error_message, sizeof(g_error_message), "_collect_arguments_from_tokens(): Unexpected token %s in the argument token list.\n", get_token_simple(t));
-      print_error(g_error_message, ERROR_ERR);
-      return FAILED;
+      return print_error(g_error_message, ERROR_ERR);
     }
     
     t = t->next;
@@ -172,15 +170,13 @@ static int _collect_arguments_from_tokens(struct definition *d) {
   d->arguments_data_first = calloc(sizeof(struct token *) * arguments, 1);
   if (d->arguments_data_first == NULL) {
     snprintf(g_error_message, sizeof(g_error_message), "Out of memory while trying to allocate argument data list for definition \"%s\".\n", d->name);
-    print_error(g_error_message, ERROR_DIR);
-    return FAILED;
+    return print_error(g_error_message, ERROR_DIR);
   }
 
   d->arguments_data_last = calloc(sizeof(struct token *) * arguments, 1);
   if (d->arguments_data_last == NULL) {
     snprintf(g_error_message, sizeof(g_error_message), "Out of memory while trying to allocate argument data list for definition \"%s\".\n", d->name);
-    print_error(g_error_message, ERROR_DIR);
-    return FAILED;
+    return print_error(g_error_message, ERROR_DIR);
   }
 
   for (i = 0; i < arguments; i++) {

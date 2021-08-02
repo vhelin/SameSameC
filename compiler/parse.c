@@ -162,10 +162,9 @@ int get_next_token(void) {
         g_tmp[g_ss++] = g_buffer[g_source_pointer++];
     }
 
-    if (g_buffer[g_source_pointer] == 0xA) {
-      print_error("GET_NEXT_TOKEN: String wasn't terminated properly.\n", ERROR_NONE);
-      return FAILED;
-    }
+    if (g_buffer[g_source_pointer] == 0xA)
+      return print_error("GET_NEXT_TOKEN: String wasn't terminated properly.\n", ERROR_NONE);
+
     g_tmp[g_ss] = 0;
     g_source_pointer++;
 
@@ -224,10 +223,8 @@ int get_next_token(void) {
       g_tmp[g_ss] = g_buffer[g_source_pointer];
     g_tmp[g_ss] = 0;
 
-    if (g_ss >= MAX_NAME_LENGTH) {
-      print_error("GET_NEXT_TOKEN: The string is too long...\n", ERROR_NONE);
-      return FAILED;
-    }
+    if (g_ss >= MAX_NAME_LENGTH)
+      return print_error("GET_NEXT_TOKEN: The string is too long...\n", ERROR_NONE);
 
     return GET_NEXT_TOKEN_STRING;
   }
@@ -331,10 +328,9 @@ int get_next_token(void) {
         }
       }
       else if (c == '.') {
-        if (q == 1) {
-          print_error("Syntax error.\n", ERROR_NUM);
-          return FAILED;
-        }
+        if (q == 1)
+          return print_error("Syntax error.\n", ERROR_NUM);
+
         c = g_buffer[g_source_pointer+1];
         if (c >= '0' && c <= '9') {
           /* float mode, read decimals */
@@ -346,8 +342,7 @@ int get_next_token(void) {
       }
       else if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')) {
         /* a number directly followed by a letter when parsing a integer/float -> syntax error */
-        print_error("Syntax error.\n", ERROR_NUM);
-        return FAILED;
+        return print_error("Syntax error.\n", ERROR_NUM);
       }
       else
         break;

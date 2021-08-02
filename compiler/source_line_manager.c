@@ -80,14 +80,12 @@ int get_source_line(int file_id, int line_number, FILE *file_out) {
 
   if (s == NULL) {
     snprintf(g_error_message, sizeof(g_error_message), "Cannot find source file \"%s\"! Please submit a bug report!\n", get_file_name(file_id));
-    print_error(g_error_message, ERROR_INC);
-    return FAILED;
+    return print_error(g_error_message, ERROR_INC);
   }
 
   if (line_number < 1 || line_number > s->lines_total) {
     snprintf(g_error_message, sizeof(g_error_message), "Line number %d of source file \"%s\" is out of bounds [1, %d]! Please submit a bug report!\n", line_number, get_file_name(file_id), s->lines_total);
-    print_error(g_error_message, ERROR_INC);
-    return FAILED;
+    return print_error(g_error_message, ERROR_INC);
   }
 
   i = s->line_pointers[line_number - 1];
@@ -125,8 +123,7 @@ int load_source_file(char *file_name, int file_id) {
   f = fopen(file_name, "rb");
   if (f == NULL) {
     snprintf(g_error_message, sizeof(g_error_message), "Cannot open file \"%s\" for reading.\n", file_name);
-    print_error(g_error_message, ERROR_INC);
-    return FAILED;
+    return print_error(g_error_message, ERROR_INC);
   }
     
   fseek(f, 0, SEEK_END);

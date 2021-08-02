@@ -74,10 +74,8 @@ int token_add(int id, int value, double value_double, char *label) {
   struct token *t;
 
   t = calloc(sizeof(struct token), 1);
-  if (t == NULL) {
-    print_error("token_add(): Out of memory while allocating a new token.\n", ERROR_DIR);
-    return FAILED;
-  }
+  if (t == NULL)
+    return print_error("token_add(): Out of memory while allocating a new token.\n", ERROR_DIR);
 
   t->id = id;
   t->value = value;
@@ -113,9 +111,8 @@ int token_add(int id, int value, double value_double, char *label) {
     else {
       t->label = calloc(strlen(label)+1, 1);
       if (t->label == NULL) {
-        print_error("Out of memory while allocating a new token.\n", ERROR_DIR);
         token_free(t);
-        return FAILED;
+        return print_error("Out of memory while allocating a new token.\n", ERROR_DIR);
       }
       strncpy(t->label, label, strlen(label));
     }

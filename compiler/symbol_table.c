@@ -62,15 +62,13 @@ int symbol_table_add_symbol(struct tree_node *node, char *name, int level, int l
   if (name == NULL) {
     g_current_filename_id = file_id;
     g_current_line_number = line_number;
-    print_error("Adding a NULL symbol to symbol table! Please submit a bug report!\n", ERROR_DIR);
-    return FAILED;
+    return print_error("Adding a NULL symbol to symbol table! Please submit a bug report!\n", ERROR_DIR);
   }
 
   if (node == NULL) {
     g_current_filename_id = file_id;
     g_current_line_number = line_number;
-    print_error("Adding a NULL node to symbol table! Please submit a bug report!\n", ERROR_DIR);
-    return FAILED;
+    return print_error("Adding a NULL node to symbol table! Please submit a bug report!\n", ERROR_DIR);
   }
   
   /* try to find the name in the symbol table */
@@ -92,8 +90,7 @@ int symbol_table_add_symbol(struct tree_node *node, char *name, int level, int l
       if (g_symbol_table == NULL) {
         g_current_filename_id = file_id;
         g_current_line_number = line_number;
-        print_error("Out of memory while enlarging symbol table!\n", ERROR_DIR);
-        return FAILED;
+        return print_error("Out of memory while enlarging symbol table!\n", ERROR_DIR);
       }
 
       for (j = g_symbol_table_size; j < new_symbol_table_size; j++)
@@ -113,8 +110,7 @@ int symbol_table_add_symbol(struct tree_node *node, char *name, int level, int l
     if (j == g_symbol_table_size) {
       g_current_filename_id = file_id;
       g_current_line_number = line_number;
-      print_error("No empty slot for a new symbol in the symbol table even though there should be room for it! Please submit a bug report!\n", ERROR_DIR);
-      return FAILED;
+      return print_error("No empty slot for a new symbol in the symbol table even though there should be room for it! Please submit a bug report!\n", ERROR_DIR);
     }
   }
 
@@ -124,25 +120,22 @@ int symbol_table_add_symbol(struct tree_node *node, char *name, int level, int l
     g_current_filename_id = file_id;
     g_current_line_number = line_number;
     snprintf(g_error_message, sizeof(g_error_message), "\"%s\" is already defined on this level.\n", name);
-    print_error(g_error_message, ERROR_ERR);
-    return FAILED;
+    return print_error(g_error_message, ERROR_ERR);
   }
 
   item = calloc(sizeof(struct symbol_table_item), 1);
   if (item == NULL) {
     g_current_filename_id = file_id;
     g_current_line_number = line_number;
-    print_error("Out of memory while allocating a new symbol table item.\n", ERROR_DIR);
-    return FAILED;
+    return print_error("Out of memory while allocating a new symbol table item.\n", ERROR_DIR);
   }
 
   item->label = calloc(strlen(name) + 1, 1);
   if (item->label == NULL) {
+    free(item);
     g_current_filename_id = file_id;
     g_current_line_number = line_number;
-    print_error("Out of memory while allocating a new symbol table item.\n", ERROR_DIR);
-    free(item);
-    return FAILED;
+    return print_error("Out of memory while allocating a new symbol table item.\n", ERROR_DIR);
   }
 
   item->level = level;

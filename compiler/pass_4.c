@@ -147,6 +147,16 @@ static int _generate_il_calculate_struct_access_address(struct tree_node *node, 
     }
 
     /* handle '[', '.' and '->' */
+    if (node->children[i]->value == '.') {
+    }
+    else if (node->children[i]->value == SYMBOL_POINTER) {
+    }
+    else if (node->children[i]->value == '[') {
+    }
+    else {
+      snprintf(g_error_message, sizeof(g_error_message), "_generate_il_calculate_struct_access_address(): Unhandled symbol in struct access! Please submit a bug report!\n");
+      return print_error_using_tree_node(g_error_message, ERROR_ERR, node->children[i]);
+    }
   }
 
   t = add_tac();
@@ -172,7 +182,7 @@ int make_sure_all_tacs_have_definition_nodes(void) {
     if (t->op == TAC_OP_DEAD)
       continue;
 
-    /* jump labels don't have definition nodes as they were generated when IL was generated */
+    /* jumps don't have definition nodes as they were generated when IL was generated */
     if (t->op == TAC_OP_JUMP ||
         t->op == TAC_OP_JUMP_EQ ||
         t->op == TAC_OP_JUMP_NEQ ||
@@ -219,6 +229,8 @@ int pass_4(void) {
   if (make_sure_all_tacs_have_definition_nodes() == FAILED)
     return FAILED;
 
+  /* to have something in the C sense 'static' in the going-to-be-generated-asm,
+     we'll rename them so that they'll have unique names within the project */
   if (rename_static_variables_and_functions() == FAILED)
     return FAILED;
   
@@ -399,9 +411,7 @@ static int _generate_il_create_expression(struct tree_node *node) {
   }
   else {
     snprintf(g_error_message, sizeof(g_error_message), "_generate_il_create_expression(): Unsupported tree node %d!\n", node->type);
-    print_error(g_error_message, ERROR_ERR);
-
-    return FAILED;
+    return print_error(g_error_message, ERROR_ERR);
   }
 
   return SUCCEEDED;
@@ -614,9 +624,7 @@ static int _generate_il_create_assignment(struct tree_node *node) {
       (is_array_assignment == NO && node->children[0]->definition->children[0]->value_double > 0 && (node->children[0]->definition->flags & TREE_NODE_FLAG_CONST_2) == TREE_NODE_FLAG_CONST_2) ||
       (is_array_assignment == YES && (node->children[0]->definition->flags & TREE_NODE_FLAG_CONST_1) == TREE_NODE_FLAG_CONST_1)) {    
     snprintf(g_error_message, sizeof(g_error_message), "_generate_il_create_assignment(): Variable \"%s\" was declared \"const\". Cannot modify.\n", node->children[0]->label);
-    print_error(g_error_message, ERROR_ERR);
-
-    return FAILED;
+    return print_error(g_error_message, ERROR_ERR);
   }
   
   return SUCCEEDED;
@@ -738,8 +746,7 @@ static int _generate_il_create_return(struct tree_node *node) {
 
     if (g_current_function->children[0]->value != VARIABLE_TYPE_VOID) {
       snprintf(g_error_message, sizeof(g_error_message), "_generate_il_create_return(): The function \"%s\" needs to return a value.\n", g_current_function->children[1]->label);
-      print_error(g_error_message, ERROR_ERR);
-      return FAILED;
+      return print_error(g_error_message, ERROR_ERR);
     }
     
     t = add_tac();
@@ -754,8 +761,7 @@ static int _generate_il_create_return(struct tree_node *node) {
 
     if (g_current_function->children[0]->value == VARIABLE_TYPE_VOID) {
       snprintf(g_error_message, sizeof(g_error_message), "_generate_il_create_return(): The function \"%s\" doesn't return anything.\n", g_current_function->children[1]->label);
-      print_error(g_error_message, ERROR_ERR);
-      return FAILED;
+      return print_error(g_error_message, ERROR_ERR);
     }
 
     /* create expression */
@@ -795,8 +801,7 @@ static int _generate_il_create_condition(struct tree_node *node, int false_label
 
   if (node->type != TREE_NODE_TYPE_CONDITION) {
     snprintf(g_error_message, sizeof(g_error_message), "_generate_il_create_condition(): Was expecting TREE_NODE_TYPE_CONDITION, but got %d instead.\n", node->type);
-    print_error(g_error_message, ERROR_ERR);
-    return FAILED;
+    return print_error(g_error_message, ERROR_ERR);
   }
 
   r1 = g_temp_r;
@@ -838,11 +843,8 @@ static int _generate_il_create_switch(struct tree_node *node) {
 
   labels = (int *)calloc(sizeof(int) * node->added_children, 1);
   if (labels == NULL) {
-    g_current_filename_id = node->file_id;
-    g_current_line_number = node->line_number;
     snprintf(g_error_message, sizeof(g_error_message), "_generate_il_create_switch(): Out of memory error.\n");
-    print_error(g_error_message, ERROR_ERR);
-    return FAILED;
+    return print_error_using_tree_node(g_error_message, ERROR_ERR, node);
   }
   
   /* reserve labels */
@@ -1176,9 +1178,7 @@ static int _generate_il_create_increment_decrement(struct tree_node *node) {
     if ((node->definition->children[0]->value_double == 0 && (node->definition->flags & TREE_NODE_FLAG_CONST_1) == TREE_NODE_FLAG_CONST_1) ||
         (node->definition->children[0]->value_double > 0 && (node->definition->flags & TREE_NODE_FLAG_CONST_2) == TREE_NODE_FLAG_CONST_2)) {
       snprintf(g_error_message, sizeof(g_error_message), "_generate_il_create_increment_decrement(): Variable \"%s\" was declared \"const\". Cannot modify.\n", node->label);
-      print_error(g_error_message, ERROR_ERR);
-
-      return FAILED;
+      return print_error(g_error_message, ERROR_ERR);
     }
   
     /* set promotions */
@@ -1220,9 +1220,7 @@ static int _generate_il_create_continue(struct tree_node *node) {
 
   if (g_breakable_stack_items_level < 0) {
     snprintf(g_error_message, sizeof(g_error_message), "_generate_il_create_continue(): continue does nothing here, nothing to continue.\n");
-    print_error(g_error_message, ERROR_ERR);
-
-    return FAILED;
+    return print_error(g_error_message, ERROR_ERR);
   }
 
   /* jump to the next iteration */
@@ -1401,8 +1399,7 @@ static int _generate_il_create_function(struct tree_node *node) {
   
   if (node->children[0]->value != VARIABLE_TYPE_VOID || node->children[0]->value_double > 0) {
     snprintf(g_error_message, sizeof(g_error_message), "_generate_il_create_function(): The function \"%s\" doesn't end to a return, but its return type is not void!\n", node->children[1]->label);
-    print_error(g_error_message, ERROR_ERR);
-    return FAILED;
+    return print_error(g_error_message, ERROR_ERR);
   }
   
   t = add_tac();
@@ -1497,10 +1494,8 @@ int rename_static_variables_and_functions(void) {
 
       /* allocate new, bigger one */
       node->children[1]->label = calloc(strlen(new_name) + 1, 1);
-      if (node->children[1]->label == NULL) {
-        print_error("rename_static_variables_and_functions(): Out of memory while allocating a string for a tree node.\n", ERROR_ERR);
-        return FAILED;
-      }
+      if (node->children[1]->label == NULL)
+        return print_error("rename_static_variables_and_functions(): Out of memory while allocating a string for a tree node.\n", ERROR_ERR);
 
       strcpy(node->children[1]->label, new_name);
     }

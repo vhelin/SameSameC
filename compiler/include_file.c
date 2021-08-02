@@ -180,8 +180,7 @@ int include_file(char *name, int *include_size, char *namespace) {
       if (n != NULL)
         free(n);
       snprintf(g_error_message, sizeof(g_error_message), "Out of memory while trying allocate info structure for file \"%s\".\n", g_full_name);
-      print_error(g_error_message, ERROR_INC);
-      return FAILED;
+      return print_error(g_error_message, ERROR_INC);
     }
     g_file_name_info_tmp->next = NULL;
 
@@ -218,8 +217,7 @@ int include_file(char *name, int *include_size, char *namespace) {
     g_include_in_tmp = calloc(sizeof(char) * file_size, 1);
     if (g_include_in_tmp == NULL) {
       snprintf(g_error_message, sizeof(g_error_message), "Out of memory while trying to allocate room for \"%s\".\n", g_full_name);
-      print_error(g_error_message, ERROR_INC);
-      return FAILED;
+      return print_error(g_error_message, ERROR_INC);
     }
 
     g_include_in_tmp_size = file_size;
@@ -233,8 +231,7 @@ int include_file(char *name, int *include_size, char *namespace) {
     g_buffer = calloc(sizeof(char) * (change_file_buffer_size + (file_size + 4)), 1);
     if (g_buffer == NULL) {
       snprintf(g_error_message, sizeof(g_error_message), "Out of memory while trying to allocate room for \"%s\".\n", g_full_name);
-      print_error(g_error_message, ERROR_INC);
-      return FAILED;
+      return print_error(g_error_message, ERROR_INC);
     }
 
     memcpy(g_buffer, change_file_buffer, change_file_buffer_size);
@@ -256,8 +253,7 @@ int include_file(char *name, int *include_size, char *namespace) {
   tmp_b = calloc(sizeof(char) * (g_size + change_file_buffer_size + file_size + 4), 1);
   if (tmp_b == NULL) {
     snprintf(g_error_message, sizeof(g_error_message), "Out of memory while trying to expand the project to incorporate file \"%s\".\n", g_full_name);
-    print_error(g_error_message, ERROR_INC);
-    return FAILED;
+    return print_error(g_error_message, ERROR_INC);
   }
 
   /* reallocate g_tmp_a */
@@ -267,10 +263,9 @@ int include_file(char *name, int *include_size, char *namespace) {
 
     g_tmp_a = calloc(sizeof(char) * (change_file_buffer_size + file_size + 4), 1);
     if (g_tmp_a == NULL) {
-      snprintf(g_error_message, sizeof(g_error_message), "Out of memory while allocating new room for \"%s\".\n", g_full_name);
-      print_error(g_error_message, ERROR_INC);
       free(tmp_b);
-      return FAILED;
+      snprintf(g_error_message, sizeof(g_error_message), "Out of memory while allocating new room for \"%s\".\n", g_full_name);
+      return print_error(g_error_message, ERROR_INC);
     }
 
     g_tmp_a_size = change_file_buffer_size + file_size + 4;
@@ -328,10 +323,9 @@ int incbin_file(char *name, int *id, int *swap, int *skip, int *read) {
       free(n);
     if (in_tmp != NULL)
       free(in_tmp);
-    snprintf(g_error_message, sizeof(g_error_message), "Out of memory while allocating data structure for \"%s\".\n", g_full_name);
-    print_error(g_error_message, ERROR_INB);
     fclose(f);
-    return FAILED;
+    snprintf(g_error_message, sizeof(g_error_message), "Out of memory while allocating data structure for \"%s\".\n", g_full_name);
+    return print_error(g_error_message, ERROR_INB);
   }
 
   /* read the whole file into a buffer */
@@ -457,8 +451,7 @@ int preprocess_file(char *input, char *input_end, char *out_buffer, int *out_siz
             ;
           if (input >= input_end) {
             snprintf(g_error_message, sizeof(g_error_message), "Comment wasn't terminated properly in file \"%s\".\n", file_name);
-            print_error(g_error_message, ERROR_INC);
-            return FAILED;
+            return print_error(g_error_message, ERROR_INC);
           }
           if (*input == 0x0A) {
             *output = 0x0A;

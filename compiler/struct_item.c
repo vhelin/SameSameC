@@ -104,7 +104,7 @@ struct struct_item *allocate_struct_item(char *name, int type) {
   s = (struct struct_item *)calloc(sizeof(struct struct_item), 1);
   if (s == NULL) {
     print_error("Out of memory error while allocating a new struct_item.\n", ERROR_DIR);
-    return FAILED;
+    return NULL;
   }
 
   s->type = type;
@@ -134,10 +134,8 @@ int struct_item_add_child(struct struct_item *s, struct struct_item *child) {
     else
       s->children = (struct struct_item **)realloc(s->children, sizeof(struct struct_item *) * (s->max_children + 8));
 
-    if (s->children == NULL) {
-      print_error("Out of memory error while allocating children for a struct_item.\n", ERROR_DIR);
-      return FAILED;
-    }
+    if (s->children == NULL)
+      return print_error("Out of memory error while allocating children for a struct_item.\n", ERROR_DIR);
 
     s->max_children += 8;
   }
@@ -189,8 +187,7 @@ static int _calculate_struct_item(struct struct_item *s) {
         g_current_line_number = s->line_number;
         g_current_filename_id = s->file_id;
         snprintf(g_error_message, sizeof(g_error_message), "Cannot find struct/union \"%s\".\n", s->struct_name);
-        print_error(g_error_message, ERROR_ERR);
-        return FAILED;
+        return print_error(g_error_message, ERROR_ERR);
       }
 
       if (s->pointer_depth > 0)

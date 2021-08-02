@@ -123,10 +123,8 @@ int il_stack_calculate_expression(struct tree_node *node, int calculate_max_var_
 #endif
     }
     else if (child->type == TREE_NODE_TYPE_SYMBOL && child->value == '%') {
-      if (q == 0) {
-        print_error("Syntax error. Invalid use of modulo.\n", ERROR_STC);
-        return FAILED;
-      }
+      if (q == 0)
+        return print_error("Syntax error. Invalid use of modulo.\n", ERROR_STC);
       si[z].type = STACK_ITEM_TYPE_OPERATOR;
       si[z].value = SI_OP_MODULO;
 #if defined(DEBUG_IL)
@@ -376,8 +374,7 @@ int il_stack_calculate_expression(struct tree_node *node, int calculate_max_var_
       
       if (return_var_type == VARIABLE_TYPE_NONE || return_var_type == VARIABLE_TYPE_VOID) {
         snprintf(g_error_message, sizeof(g_error_message), "Function \"%s\" doesn't return a value yet we are trying to use the return value!\n", t->arg1_node->children[1]->label);
-        print_error(g_error_message, ERROR_STC);
-        return FAILED;
+        return print_error(g_error_message, ERROR_STC);
       }
 
       /* promote to the maximum of this expression */
@@ -439,25 +436,19 @@ int il_stack_calculate_expression(struct tree_node *node, int calculate_max_var_
       si[z].value = g_temp_r - 1;
       si[z].sign = SI_SIGN_POSITIVE;      
     }
-    else if (child->type == TREE_NODE_TYPE_BYTES) {
-      print_error("Having raw bytes inside an expression doesn't make any sense.\n", ERROR_STC);
-      return FAILED;
-    }
+    else if (child->type == TREE_NODE_TYPE_BYTES)
+      return print_error("Having raw bytes inside an expression doesn't make any sense.\n", ERROR_STC);
     else {
       fprintf(stderr, "_il_stack_calculate_expression(): Got an unhandled tree_node of type %d! Please submit a bug report!\n", child->type);
       return FAILED;
     }
 
-    if (z >= 255) {
-      print_error("Out of stack space.\n", ERROR_STC);
-      return FAILED;
-    }
+    if (z >= 255)
+      return print_error("Out of stack space.\n", ERROR_STC);
   }
 
-  if (b != 0) {
-    print_error("Unbalanced parentheses.\n", ERROR_STC);
-    return FAILED;
-  }
+  if (b != 0)
+    return print_error("Unbalanced parentheses.\n", ERROR_STC);
   
   return il_stack_calculate(si, z, rresult);
 }
@@ -496,10 +487,8 @@ int il_stack_calculate(struct stack_item *si, int q, int rresult) {
     /* NOT VERY USEFUL IN BILIBALI
     if ((q - k) != 1 && si[k].type == STACK_ITEM_TYPE_OPERATOR && si[k + 1].type == STACK_ITEM_TYPE_OPERATOR && si[k + 1].value != SI_OP_BANK
         && si[k + 1].value != SI_OP_HIGH_BYTE && si[k + 1].value != SI_OP_LOW_BYTE) {
-      if (si[k].value != SI_OP_LEFT && si[k].value != SI_OP_RIGHT && si[k + 1].value != SI_OP_LEFT && si[k + 1].value != SI_OP_RIGHT) {
-        print_error("Error in computation syntax.\n", ERROR_STC);
-        return FAILED;
-      }
+      if (si[k].value != SI_OP_LEFT && si[k].value != SI_OP_RIGHT && si[k + 1].value != SI_OP_LEFT && si[k + 1].value != SI_OP_RIGHT)
+        return print_error("Error in computation syntax.\n", ERROR_STC);
     }
     */
     if (si[k].type == STACK_ITEM_TYPE_OPERATOR && si[k].value == SI_OP_SUB && b == 1) {
@@ -530,10 +519,8 @@ int il_stack_calculate(struct stack_item *si, int q, int rresult) {
           l++;
         }
 
-        if (o != 0) {
-          print_error("Unbalanced parentheses.\n", ERROR_STC);
-          return FAILED;
-        }
+        if (o != 0)
+          return print_error("Unbalanced parentheses.\n", ERROR_STC);
 
         si[k].type = STACK_ITEM_TYPE_DELETED;
       }
@@ -661,9 +648,7 @@ static int _increment_decrement(char *label, int increment) {
   if ((t->arg1_node->children[0]->value_double == 0 && (t->arg1_node->flags & TREE_NODE_FLAG_CONST_1) == TREE_NODE_FLAG_CONST_1) ||
       (t->arg1_node->children[0]->value_double > 0 && (t->arg1_node->flags & TREE_NODE_FLAG_CONST_2) == TREE_NODE_FLAG_CONST_2)) {
     snprintf(g_error_message, sizeof(g_error_message), "_increment_decrement(): Variable \"%s\" was declared \"const\". Cannot modify.\n", label);
-    print_error(g_error_message, ERROR_ERR);
-
-    return FAILED;
+    return print_error(g_error_message, ERROR_ERR);
   }
 
   /* promote to the maximum of this expression */

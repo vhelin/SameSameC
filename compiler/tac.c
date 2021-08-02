@@ -635,8 +635,7 @@ int tac_try_find_definition(struct tac *t, char *label, struct tree_node *node, 
     else
       fprintf(stderr, "tac_try_find_definition(): Filename and line number can be wrong...\n");
     snprintf(g_error_message, sizeof(g_error_message), "tac_try_find_definition(): Cannot find \"%s\"! Please submit a bug report!\n", label);
-    print_error(g_error_message, ERROR_ERR);
-    return FAILED;
+    return print_error(g_error_message, ERROR_ERR);
   }
 
   if (tac_use == TAC_USE_RESULT)

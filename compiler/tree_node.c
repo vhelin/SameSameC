@@ -58,10 +58,8 @@ int tree_node_flatten(struct tree_node *node) {
     return SUCCEEDED;
 
   children = calloc(sizeof(struct tree_node *) * items, 1);
-  if (children == NULL) {
-    print_error("Out of memory while flattening an expression tree node.\n", ERROR_ERR);
-    return FAILED;
-  }
+  if (children == NULL)
+    return print_error("Out of memory while flattening an expression tree node.\n", ERROR_ERR);
 
   /* copy the items */
   for (i = 0, j = 0; i < node->added_children; i++) {
@@ -227,10 +225,8 @@ int tree_node_does_contain_expressions(struct tree_node *node) {
 
 int tree_node_add_child(struct tree_node *node, struct tree_node *child) {
 
-  if (child == NULL) {
-    print_error("Trying to add a NULL child to a node!\n", ERROR_ERR);
-    return FAILED;
-  }
+  if (child == NULL)
+    return print_error("Trying to add a NULL child to a node!\n", ERROR_ERR);
 
   if (node->added_children >= node->children_max) {
     /* try to increase the child list size */
@@ -238,10 +234,8 @@ int tree_node_add_child(struct tree_node *node, struct tree_node *child) {
     int i;
 
     node->children = realloc(node->children, sizeof(struct tree_node *) * new_children_max);
-    if (node->children == NULL) {    
-      print_error("Cannot increase node's child list!\n", ERROR_ERR);
-      return FAILED;
-    }
+    if (node->children == NULL)
+      return print_error("Cannot increase node's child list!\n", ERROR_ERR);
 
     for (i = node->children_max; i < new_children_max; i++)
       node->children[i] = NULL;
@@ -468,10 +462,8 @@ int tree_node_set_string(struct tree_node *node, char *string) {
     free(node->label);
   
   node->label = calloc(strlen(string) + 1, 1);
-  if (node->label == NULL) {
-    print_error("Out of memory while allocating a string for a tree node.\n", ERROR_ERR);
-    return FAILED;
-  }
+  if (node->label == NULL)
+    return print_error("Out of memory while allocating a string for a tree node.\n", ERROR_ERR);
 
   strcpy(node->label, string);
 
@@ -515,7 +507,7 @@ struct tree_node *allocate_tree_node_bytes(struct token *t) {
   node->label = calloc(t->value, 1);
   if (node->label == NULL) {
     print_error("Out of memory while allocating memory for a tree node.\n", ERROR_ERR);
-    return FAILED;
+    return NULL;
   }
 
   /* is value_double == -1.0 then this is a 0 terminated string */
