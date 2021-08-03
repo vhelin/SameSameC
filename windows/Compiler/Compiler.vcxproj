@@ -1,0 +1,126 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|Win32">
+      <Configuration>Debug</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|Win32">
+      <Configuration>Release</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="..\..\compiler\definition.c" />
+    <ClCompile Include="..\..\compiler\il.c" />
+    <ClCompile Include="..\..\compiler\include_file.c" />
+    <ClCompile Include="..\..\compiler\inline_asm.c" />
+    <ClCompile Include="..\..\compiler\inline_asm_z80.c" />
+    <ClCompile Include="..\..\compiler\main.c" />
+    <ClCompile Include="..\..\compiler\parse.c" />
+    <ClCompile Include="..\..\compiler\pass_1.c" />
+    <ClCompile Include="..\..\compiler\pass_2.c" />
+    <ClCompile Include="..\..\compiler\pass_3.c" />
+    <ClCompile Include="..\..\compiler\pass_4.c" />
+    <ClCompile Include="..\..\compiler\pass_5.c" />
+    <ClCompile Include="..\..\compiler\pass_6_z80.c" />
+    <ClCompile Include="..\..\compiler\printf.c" />
+    <ClCompile Include="..\..\compiler\source_line_manager.c" />
+    <ClCompile Include="..\..\compiler\stack.c" />
+    <ClCompile Include="..\..\compiler\struct_item.c" />
+    <ClCompile Include="..\..\compiler\symbol_table.c" />
+    <ClCompile Include="..\..\compiler\tac.c" />
+    <ClCompile Include="..\..\compiler\token.c" />
+    <ClCompile Include="..\..\compiler\tree_node.c" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="..\..\compiler\defines.h" />
+    <ClInclude Include="..\..\compiler\definition.h" />
+    <ClInclude Include="..\..\compiler\il.h" />
+    <ClInclude Include="..\..\compiler\include_file.h" />
+    <ClInclude Include="..\..\compiler\inline_asm.h" />
+    <ClInclude Include="..\..\compiler\inline_asm_z80.h" />
+    <ClInclude Include="..\..\compiler\main.h" />
+    <ClInclude Include="..\..\compiler\parse.h" />
+    <ClInclude Include="..\..\compiler\pass_1.h" />
+    <ClInclude Include="..\..\compiler\pass_2.h" />
+    <ClInclude Include="..\..\compiler\pass_3.h" />
+    <ClInclude Include="..\..\compiler\pass_4.h" />
+    <ClInclude Include="..\..\compiler\pass_5.h" />
+    <ClInclude Include="..\..\compiler\pass_6_z80.h" />
+    <ClInclude Include="..\..\compiler\printf.h" />
+    <ClInclude Include="..\..\compiler\source_line_manager.h" />
+    <ClInclude Include="..\..\compiler\stack.h" />
+    <ClInclude Include="..\..\compiler\struct_item.h" />
+    <ClInclude Include="..\..\compiler\symbol_table.h" />
+    <ClInclude Include="..\..\compiler\tac.h" />
+    <ClInclude Include="..\..\compiler\token.h" />
+    <ClInclude Include="..\..\compiler\tree_node.h" />
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <ProjectGuid>{66440EB5-F401-4636-B28F-B5DBE96D0203}</ProjectGuid>
+    <Keyword>Win32Proj</Keyword>
+    <RootNamespace>Compiler</RootNamespace>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <LinkIncremental>true</LinkIncremental>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <LinkIncremental>false</LinkIncremental>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <ClCompile>
+      <PrecompiledHeader>
+      </PrecompiledHeader>
+      <WarningLevel>Level3</WarningLevel>
+      <Optimization>Disabled</Optimization>
+      <PreprocessorDefinitions>WIN32;_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <PrecompiledHeader>
+      </PrecompiledHeader>
+      <Optimization>MaxSpeed</Optimization>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <PreprocessorDefinitions>WIN32;NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <OptimizeReferences>true</OptimizeReferences>
+    </Link>
+  </ItemDefinitionGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+  </ImportGroup>
+</Project>

@@ -1,0 +1,29 @@
+
+# SameSameC files
+*.o
+*.lib
+*.bin
+*~
+*.asm
+
+# Compiled files
+*.o
+*.obj
+*.dll
+*.so
+*.a
+*.exe
+
+# Visual Studio generated files
+.vs
+*.dir
+*.tlog
+*.VC.*
+*.log
+*.ipch
+*.idb
+*.pdb
+*.ilk
+*.ipdb
+*.iobj
+*.recipe

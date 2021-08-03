@@ -43,8 +43,9 @@ Add:
 - Add more backends (GB-Z80, 6502, 65816...)
 - Add scripts so it can be compiled on an Amiga (OS 2.0+) using SAS/C
 - Create a Visual Studio solution file (for compiling on/for a Windows computer)
-- Add CI (Windows XP+) using Azure Pipelines
 - Add test projects
+- Document all TREE_NODE_TYPE_* use cases
+- Create a list of supported ANSI C89 features (and the new features)
 
 
 NOTE

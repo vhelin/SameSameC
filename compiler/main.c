@@ -173,10 +173,10 @@ int main(int argc, char *argv[]) {
   if (include_file(g_asm_name, &include_size, NULL) == FAILED)
     return 1;
 
-  /* tokenize */
+  /* tokenize, handle all #if, #else, etc. */
   if (pass_1() == FAILED)
     return 1;
-  /* parse assembly code */
+  /* parse SameSameC code, create an abstract syntax tree (AST), check that AST is ok */
   if (pass_2() == FAILED)
     return 1;
 

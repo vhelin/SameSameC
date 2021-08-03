@@ -1,0 +1,26 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 11.00
+# Visual C++ Express 2010
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Compiler", "Compiler\Compiler.vcxproj", "{66440EB5-F401-4636-B28F-B5DBE96D0203}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Linker", "Linker\Linker.vcxproj", "{726D5F4C-83E9-469E-9F81-85B896B72490}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Win32 = Debug|Win32
+		Release|Win32 = Release|Win32
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{66440EB5-F401-4636-B28F-B5DBE96D0203}.Debug|Win32.ActiveCfg = Debug|Win32
+		{66440EB5-F401-4636-B28F-B5DBE96D0203}.Debug|Win32.Build.0 = Debug|Win32
+		{66440EB5-F401-4636-B28F-B5DBE96D0203}.Release|Win32.ActiveCfg = Release|Win32
+		{66440EB5-F401-4636-B28F-B5DBE96D0203}.Release|Win32.Build.0 = Release|Win32
+		{726D5F4C-83E9-469E-9F81-85B896B72490}.Debug|Win32.ActiveCfg = Debug|Win32
+		{726D5F4C-83E9-469E-9F81-85B896B72490}.Debug|Win32.Build.0 = Debug|Win32
+		{726D5F4C-83E9-469E-9F81-85B896B72490}.Release|Win32.ActiveCfg = Release|Win32
+		{726D5F4C-83E9-469E-9F81-85B896B72490}.Release|Win32.Build.0 = Release|Win32
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+EndGlobal
