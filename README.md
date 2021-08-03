@@ -8,7 +8,7 @@ GPL v2 software. Read the LICENSE file for more information. Some pieces of
 code were taken from WLA DX (https://github.com/vhelin/wla-dx), but not
 so many.
 
-I will not approve pull requests as I want to do this myself. Up to the point
+I will not approve pull requests as I want to do this myself, up to the point
 when I decide I've learned enough. :) Ideas, bug reports and feature requests
 are welcome, though.
 
@@ -16,8 +16,8 @@ are welcome, though.
 Azure Pipelines
 ---------------
 
-Linux: [![Build Status](https://dev.azure.com/villehelin0486/villehelin/_apis/build/status/vhelin.SameSameC%20Linux?branchName=master)](https://dev.azure.com/villehelin0486/villehelin/_build/latest?definitionId=1&branchName=master)
-Windows: [![Build Status](https://dev.azure.com/villehelin0486/villehelin/_apis/build/status/vhelin.SameSameC%20Windows?branchName=master)](https://dev.azure.com/villehelin0486/villehelin/_build/latest?definitionId=2&branchName=master)
+Linux: [![Build Status](https://dev.azure.com/villehelin0486/villehelin/_apis/build/status/vhelin.SameSameC%20Linux?branchName=master)](https://dev.azure.com/villehelin0486/villehelin/_build/latest?definitionId=4&branchName=master)
+Windows: [![Build Status](https://dev.azure.com/villehelin0486/villehelin/_apis/build/status/vhelin.SameSameC%20Windows?branchName=master)](https://dev.azure.com/villehelin0486/villehelin/_build/latest?definitionId=5&branchName=master)
 
 
 TODO
@@ -43,7 +43,6 @@ Add:
 - Add support for arrays with more than one dimension
 - Add more backends (GB-Z80, 6502, 65816...)
 - Add scripts so it can be compiled on an Amiga (OS 2.0+) using SAS/C
-- Create a Visual Studio solution file (for compiling on/for a Windows computer)
 - Add test projects
 - Document all TREE_NODE_TYPE_* use cases
 - Create a list of supported ANSI C89 features (and the new features)
