@@ -1,9 +1,7 @@
+SameSameC (ButDifferent)
+------------------------
 
-------------------------------------------------------------------------------
-                            SameSameC (ButDifferent)
-       Yet Another ANSI C89 Like Language Cross Compiler For 8-bit CPUs
-                          Written by 2021 Ville Helin
--------------------------------------------------------------------------------
+Yet Another ANSI C89 Like Language Cross Compiler For 8-bit CPUs. Written by 2021 Ville Helin.
 
 This is currently under development, use it on your own risk. SameSameC is
 GPL v2 software. Read the LICENSE file for more information. Some pieces of
