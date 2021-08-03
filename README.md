@@ -15,6 +15,12 @@ when I decide I've learned enough. :) Ideas, bug reports and feature requests
 are welcome, though.
 
 
+Azure Pipelines
+---------------
+
+Linux: [![Build Status](https://dev.azure.com/villehelin0486/villehelin/_apis/build/status/vhelin.SameSameC%20Linux?branchName=master)](https://dev.azure.com/villehelin0486/villehelin/_build/latest?definitionId=1&branchName=master)
+
+
 TODO
 ----
 
@@ -39,7 +45,7 @@ Add:
 - Add more backends (GB-Z80, 6502, 65816...)
 - Add scripts so it can be compiled on an Amiga (OS 2.0+) using SAS/C
 - Create a Visual Studio solution file (for compiling on/for a Windows computer)
-- Add CI (Windows XP+ and Linux) using Azure Pipelines
+- Add CI (Windows XP+) using Azure Pipelines
 - Add test projects
 
 
