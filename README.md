@@ -13,8 +13,8 @@ when I decide I've learned enough. :) Ideas, bug reports and feature requests
 are welcome, though.
 
 
-Azure Pipelines
----------------
+Azure Pipelines CI
+------------------
 
 Linux: [![Build Status](https://dev.azure.com/villehelin0486/villehelin/_apis/build/status/vhelin.SameSameC%20Linux?branchName=master)](https://dev.azure.com/villehelin0486/villehelin/_build/latest?definitionId=4&branchName=master)
 Windows: [![Build Status](https://dev.azure.com/villehelin0486/villehelin/_apis/build/status/vhelin.SameSameC%20Windows?branchName=master)](https://dev.azure.com/villehelin0486/villehelin/_build/latest?definitionId=5&branchName=master)
@@ -42,7 +42,6 @@ Add:
 - Add support for explicit casting and type checks
 - Add support for arrays with more than one dimension
 - Add more backends (GB-Z80, 6502, 65816...)
-- Add scripts so it can be compiled on an Amiga (OS 2.0+) using SAS/C
 - Add test projects
 - Document all TREE_NODE_TYPE_* use cases
 - Create a list of supported ANSI C89 features (and the new features)

@@ -589,7 +589,7 @@ int il_stack_calculate(struct stack_item *si, int q, int rresult) {
           b++;
         }
         else {
-          int priority = get_op_priority(si[k].value);
+          int priority = get_op_priority((int)(si[k].value));
           
           b--;
           while (b != -1 && op[b] != SI_OP_LEFT && get_op_priority(op[b]) >= priority) {

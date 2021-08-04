@@ -1,0 +1,85 @@
+
+CMATH = MATH=STANDARD
+MATH = m
+
+CC = sc
+CFLAGS = define AMIGA=1 define NDEBUG=1
+LINKER = slink
+LLIB = LIB LIB:sc$(MATH).lib LIB:sc.lib LIB:amiga.lib
+LFLAGS = STRIPDEBUG NOICONS
+
+OFILES = definition.o il.o include_file.o inline_asm.o inline_asm_z80.o main.o parse.o pass_1.o pass_2.o pass_3.o pass_4.o pass_5.o pass_6_z80.o printf.o source_line_manager.o stack.o struct_item.o symbol_table.o tac.o token.o tree_node.o
+
+
+all: main
+
+main: $(OFILES) smakefile scoptions
+	$(LINKER) $(LFLAGS) FROM LIB:c.o $(OFILES) TO samesamecc $(LLIB)
+
+
+definition.o: definition.c definition.h defines.h
+	$(CC) $(CFLAGS) definition.c
+
+il.o: il.c il.h defines.h
+	$(CC) $(CFLAGS) il.c
+
+include_file.o: include_file.c include_file.h defines.h
+	$(CC) $(CFLAGS) include_file.c
+
+inline_asm.o: inline_asm.c inline_asm.h defines.h
+	$(CC) $(CFLAGS) inline_asm.c
+
+inline_asm_z80.o: inline_asm_z80.c inline_asm_z80.h defines.h
+	$(CC) $(CFLAGS) inline_asm_z80.c
+
+main.o: main.c main.h defines.h
+	$(CC) $(CFLAGS) main.c
+
+parse.o: parse.c parse.h defines.h
+	$(CC) $(CFLAGS) parse.c
+
+pass_1.o: pass_1.c pass_1.h defines.h
+	$(CC) $(CFLAGS) pass_1.c
+
+pass_2.o: pass_2.c pass_2.h defines.h
+	$(CC) $(CFLAGS) pass_2.c
+
+pass_3.o: pass_3.c pass_3.h defines.h
+	$(CC) $(CFLAGS) pass_3.c
+
+pass_4.o: pass_4.c pass_4.h defines.h
+	$(CC) $(CFLAGS) pass_4.c
+
+pass_5.o: pass_5.c pass_5.h defines.h
+	$(CC) $(CFLAGS) pass_5.c
+
+pass_6_z80.o: pass_6_z80.c pass_6_z80.h defines.h
+	$(CC) $(CFLAGS) pass_6_z80.c
+
+printf.o: printf.c printf.h defines.h
+	$(CC) $(CFLAGS) printf.c
+
+source_line_manager.o: source_line_manager.c source_line_manager.h defines.h
+	$(CC) $(CFLAGS) source_line_manager.c
+
+stack.o: stack.c stack.h defines.h
+	$(CC) $(CFLAGS) stack.c
+
+struct_item.o: struct_item.c struct_item.h defines.h
+	$(CC) $(CFLAGS) struct_item.c
+
+symbol_table.o: symbol_table.c symbol_table.h defines.h
+	$(CC) $(CFLAGS) symbol_table.c
+
+tac.o: tac.c tac.h defines.h
+	$(CC) $(CFLAGS) tac.c
+
+token.o: token.c token.h defines.h
+	$(CC) $(CFLAGS) token.c
+
+tree_node.o: tree_node.c tree_node.h defines.h
+	$(CC) $(CFLAGS) tree_node.c
+
+
+clean:
+	delete \#?.o \#?.lnk \#?.info samesamecc
