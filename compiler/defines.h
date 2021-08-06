@@ -384,6 +384,7 @@ struct tree_node {
 #define TREE_NODE_TYPE_ASM                 31
 #define TREE_NODE_TYPE_DO                  32
 #define TREE_NODE_TYPE_STRUCT_ACCESS       33
+#define TREE_NODE_TYPE_SIZEOF              34
 
 struct symbol_table_item {
   int level;

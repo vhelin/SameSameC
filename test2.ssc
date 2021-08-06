@@ -33,7 +33,7 @@ void main(void) {
 
   u8 array[32];
   u8 color = 0;
-  u8 i;
+  u8 i = sizeof(g_block);
 
   initialize_adder(&g_adder);
 

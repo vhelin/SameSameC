@@ -422,7 +422,7 @@ int pass_2(void) {
     }
   }
 
-  /* calculate struct sizes and item offsets */
+  /* calculate struct sizes and member offsets */
   if (calculate_struct_items() == FAILED)
     return FAILED;
 
@@ -758,6 +758,7 @@ int create_factor(void) {
     }
   }
   else if (g_token_current->id == TOKEN_ID_SIZEOF) {
+    struct tree_node *delayed_node = NULL;
     int size = 0;
     
     /* next token */
@@ -783,7 +784,20 @@ int create_factor(void) {
         /* skip 'struct/union' */
         _next_token();
 
-        fprintf(stderr, "TODO: IMPLEMENT ME!\n");
+        if (g_token_current->id != TOKEN_ID_VALUE_STRING)
+          return print_error("sizeof() needs struct/union's name.\n", ERROR_ERR);
+
+        /* at this point struct/unions don't have valid sizes - we need to delay this calculation */
+
+        delayed_node = allocate_tree_node_value_string(g_token_current->label);
+        if (delayed_node == NULL)
+          return FAILED;
+
+        delayed_node->type = TREE_NODE_TYPE_SIZEOF;
+        delayed_node->flags |= TREE_NODE_FLAG_STRUCT;
+
+        /* skip the name */
+        _next_token();
       }
       else {
         /* built-in type */
@@ -803,8 +817,15 @@ int create_factor(void) {
       }
 
       /* pointer size is 2 bytes */
-      if (pointer_depth > 0)
+      if (pointer_depth > 0) {
         size = 2;
+
+        /* no need to figure out the size of the delayed node, pointers are always worth 2 bytes */
+        if (delayed_node != NULL) {
+          free_tree_node(delayed_node);
+          delayed_node = NULL;
+        }
+      }
     }
     else {
       /* it's either a variable or an expression */
@@ -827,18 +848,36 @@ int create_factor(void) {
         
         item = symbol_table_find_symbol(node->children[0]->label);
         if (item == NULL) {
-          snprintf(g_error_message, sizeof(g_error_message), "Could not find \"%s\" in the symbol table.\n", node->children[0]->label);
-          free_tree_node(node);
-          return print_error(g_error_message, ERROR_ERR);
+          /* at this point we don't know the variable (it must be global) - we need to delay this calculation */
+
+          delayed_node = allocate_tree_node_value_string(node->children[0]->label);
+          if (delayed_node == NULL)
+            return FAILED;
+
+          delayed_node->type = TREE_NODE_TYPE_SIZEOF;
         }
+        else {
+          if (item->node->type == TREE_NODE_TYPE_CREATE_VARIABLE && (item->node->children[0]->value == VARIABLE_TYPE_STRUCT ||
+                                                                     item->node->children[0]->value == VARIABLE_TYPE_UNION)) {
+            /* at this point struct/unions don't have valid sizes - we need to delay this calculation */
 
-        elements = item->node->value;
-        if (elements == 0)
-          elements = 1;
-        element_type = tree_node_get_max_var_type(item->node->children[0]);
-        element_size = get_variable_type_size(element_type) / 8;
+            delayed_node = allocate_tree_node_value_string(item->node->children[0]->children[0]->label);
+            if (delayed_node == NULL)
+              return FAILED;
 
-        size = elements * element_size;
+            delayed_node->type = TREE_NODE_TYPE_SIZEOF;
+            delayed_node->flags |= TREE_NODE_FLAG_STRUCT;
+          }
+          else {
+            elements = item->node->value;
+            if (elements == 0)
+              elements = 1;
+            element_type = tree_node_get_max_var_type(item->node->children[0]);
+            element_size = get_variable_type_size(element_type) / 8;
+
+            size = elements * element_size;
+          }
+        }
       }
       else {
         /* expression */
@@ -855,8 +894,11 @@ int create_factor(void) {
       snprintf(g_error_message, sizeof(g_error_message), "Expected ')', but got %s.\n", get_token_simple(g_token_current));
       return print_error(g_error_message, ERROR_ERR);
     }
-    
-    node = allocate_tree_node_value_int(size);
+
+    if (delayed_node != NULL)
+      node = delayed_node;
+    else
+      node = allocate_tree_node_value_int(size);
   }
   else if (g_token_current->id == TOKEN_ID_VALUE_INT) {
     node = allocate_tree_node_value_int(g_token_current->value);
@@ -3342,6 +3384,16 @@ static void _check_ast_simple_tree_node(struct tree_node *node) {
           _check_ast_expression(node->children[i]);
       }
     }
+  }
+  else if (node->type == TREE_NODE_TYPE_SIZEOF) {
+    fprintf(stderr, "HELLO\n");
+    if ((node->flags & TREE_NODE_FLAG_STRUCT) == TREE_NODE_FLAG_STRUCT) {
+      /* sizeof(struct x) */
+    }
+    else {
+      /* sizeof(g_x) */
+    }
+    exit(0);
   }
   else
     return;

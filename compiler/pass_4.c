@@ -68,7 +68,7 @@ static void _exit_breakable(void) {
 
 static int _generate_il_calculate_struct_access_address(struct tree_node *node, int *final_type) {
 
-  int fregister = g_temp_r++, i, cregister;
+  int fregister = g_temp_r++, i, cregister, skip = NO;
   struct struct_item *si;
   struct tac *t;
 
@@ -110,34 +110,38 @@ static int _generate_il_calculate_struct_access_address(struct tree_node *node, 
 
   i = 2;
   while (i < node->added_children) {
-    if (node->children[i]->type == TREE_NODE_TYPE_VALUE_STRING) {
-      /* find the struct/union member */
-      struct struct_item *si_old = si;
+    if (skip == NO) {
+      if (node->children[i]->type == TREE_NODE_TYPE_VALUE_STRING) {
+        /* find the struct/union member */
+        struct struct_item *si_old = si;
       
-      si = find_struct_item_child(si, node->children[i]->label);
-      if (si == NULL) {
-        snprintf(g_error_message, sizeof(g_error_message), "_generate_il_calculate_struct_access_address(): Cannot find member \"%s\" of struct/union \"%s\"!\n", node->children[i]->label, si_old->name);
+        si = find_struct_item_child(si, node->children[i]->label);
+        if (si == NULL) {
+          snprintf(g_error_message, sizeof(g_error_message), "_generate_il_calculate_struct_access_address(): Cannot find member \"%s\" of struct/union \"%s\"!\n", node->children[i]->label, si_old->name);
+          return print_error_using_tree_node(g_error_message, ERROR_ERR, node->children[i]);
+        }
+
+        t = add_tac();
+        if (t == NULL)
+          return FAILED;
+        
+        t->op = TAC_OP_ADD;
+        tac_set_result(t, TAC_ARG_TYPE_TEMP, g_temp_r, NULL);
+        tac_set_arg1(t, TAC_ARG_TYPE_TEMP, cregister, NULL);
+        tac_set_arg2(t, TAC_ARG_TYPE_CONSTANT, si->offset, NULL);
+        
+        cregister = g_temp_r++;
+        
+        i++;
+      }
+      else {
+        snprintf(g_error_message, sizeof(g_error_message), "_generate_il_calculate_struct_access_address(): A node is corrupted (3)! Please submit a bug report!\n");
         return print_error_using_tree_node(g_error_message, ERROR_ERR, node->children[i]);
       }
-
-      t = add_tac();
-      if (t == NULL)
-        return FAILED;
-
-      t->op = TAC_OP_ADD;
-      tac_set_arg1(t, TAC_ARG_TYPE_TEMP, cregister, node->label);
-      tac_set_arg2(t, TAC_ARG_TYPE_CONSTANT, si->offset, NULL);
-      tac_set_result(t, TAC_ARG_TYPE_TEMP, g_temp_r, node->label);
-
-      cregister = g_temp_r++;
-      
-      i++;
-    }
-    else {
-      snprintf(g_error_message, sizeof(g_error_message), "_generate_il_calculate_struct_access_address(): A node is corrupted (3)! Please submit a bug report!\n");
-      return print_error_using_tree_node(g_error_message, ERROR_ERR, node->children[i]);
     }
 
+    skip = NO;
+    
     if (i >= node->added_children)
       break;
 
@@ -147,11 +151,31 @@ static int _generate_il_calculate_struct_access_address(struct tree_node *node, 
     }
 
     /* handle '[', '.' and '->' */
+
     if (node->children[i]->value == '.') {
+      /* nothing needs to be done here as in the next step we just add the struct member's offset to the pointer... */
+      i++;
     }
     else if (node->children[i]->value == SYMBOL_POINTER) {
+      t = add_tac();
+      if (t == NULL)
+        return FAILED;
+
+      t->op = TAC_OP_ARRAY_READ;
+      tac_set_result(t, TAC_ARG_TYPE_TEMP, g_temp_r, NULL);
+      tac_set_arg1(t, TAC_ARG_TYPE_TEMP, cregister, NULL);
+      tac_set_arg2(t, TAC_ARG_TYPE_CONSTANT, 0, NULL);      
+
+      cregister = g_temp_r++;
+
+      i++;
     }
     else if (node->children[i]->value == '[') {
+      i++;
+
+      
+      
+      skip = YES;
     }
     else {
       snprintf(g_error_message, sizeof(g_error_message), "_generate_il_calculate_struct_access_address(): Unhandled symbol in struct access! Please submit a bug report!\n");
