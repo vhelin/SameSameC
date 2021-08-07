@@ -361,7 +361,7 @@ void print_tac(struct tac *t, int is_comment, FILE *file_out) {
     else
       pre = pre_1;
     
-    ia = inline_asm_find(t->result_d);
+    ia = inline_asm_find((int)t->result_d);
     if (ia == NULL)
       return;
 

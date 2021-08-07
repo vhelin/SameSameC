@@ -981,12 +981,12 @@ static int _generate_asm_assignment_z80(struct tac *t, FILE *file_out, struct tr
 
   /* result */
 
-  if (find_stack_offset(t->result_type, t->result_s, t->result_d, t->result_node, &result_offset, function_node) == FAILED)
+  if (find_stack_offset(t->result_type, t->result_s, (int)t->result_d, t->result_node, &result_offset, function_node) == FAILED)
     return FAILED;
   
   /* arg1 */
 
-  if (find_stack_offset(t->arg1_type, t->arg1_s, t->arg1_d, t->arg1_node, &arg1_offset, function_node) == FAILED)
+  if (find_stack_offset(t->arg1_type, t->arg1_s, (int)t->arg1_d, t->arg1_node, &arg1_offset, function_node) == FAILED)
     return FAILED;
   
   /* generate asm */
@@ -1094,17 +1094,17 @@ static int _generate_asm_add_sub_or_and_z80_8bit(struct tac *t, FILE *file_out, 
   
   /* result */
 
-  if (find_stack_offset(t->result_type, t->result_s, t->result_d, t->result_node, &result_offset, function_node) == FAILED)
+  if (find_stack_offset(t->result_type, t->result_s, (int)t->result_d, t->result_node, &result_offset, function_node) == FAILED)
     return FAILED;
   
   /* arg1 */
 
-  if (find_stack_offset(t->arg1_type, t->arg1_s, t->arg1_d, t->arg1_node, &arg1_offset, function_node) == FAILED)
+  if (find_stack_offset(t->arg1_type, t->arg1_s, (int)t->arg1_d, t->arg1_node, &arg1_offset, function_node) == FAILED)
     return FAILED;
 
   /* arg2 */
 
-  if (find_stack_offset(t->arg2_type, t->arg2_s, t->arg2_d, t->arg2_node, &arg2_offset, function_node) == FAILED)
+  if (find_stack_offset(t->arg2_type, t->arg2_s, (int)t->arg2_d, t->arg2_node, &arg2_offset, function_node) == FAILED)
     return FAILED;
     
   /* generate asm */
@@ -1285,17 +1285,17 @@ static int _generate_asm_add_sub_or_and_z80_16bit(struct tac *t, FILE *file_out,
   
   /* result */
 
-  if (find_stack_offset(t->result_type, t->result_s, t->result_d, t->result_node, &result_offset, function_node) == FAILED)
+  if (find_stack_offset(t->result_type, t->result_s, (int)t->result_d, t->result_node, &result_offset, function_node) == FAILED)
     return FAILED;
   
   /* arg1 */
 
-  if (find_stack_offset(t->arg1_type, t->arg1_s, t->arg1_d, t->arg1_node, &arg1_offset, function_node) == FAILED)
+  if (find_stack_offset(t->arg1_type, t->arg1_s, (int)t->arg1_d, t->arg1_node, &arg1_offset, function_node) == FAILED)
     return FAILED;
 
   /* arg2 */
 
-  if (find_stack_offset(t->arg2_type, t->arg2_s, t->arg2_d, t->arg2_node, &arg2_offset, function_node) == FAILED)
+  if (find_stack_offset(t->arg2_type, t->arg2_s, (int)t->arg2_d, t->arg2_node, &arg2_offset, function_node) == FAILED)
     return FAILED;
     
   /* generate asm */
@@ -1512,18 +1512,18 @@ static int _generate_asm_get_address_z80(struct tac *t, FILE *file_out, struct t
   
   /* result */
 
-  if (find_stack_offset(t->result_type, t->result_s, t->result_d, t->result_node, &result_offset, function_node) == FAILED)
+  if (find_stack_offset(t->result_type, t->result_s, (int)t->result_d, t->result_node, &result_offset, function_node) == FAILED)
     return FAILED;
   
   /* arg1 */
 
-  if (find_stack_offset(t->arg1_type, t->arg1_s, t->arg1_d, t->arg1_node, &arg1_offset, function_node) == FAILED)
+  if (find_stack_offset(t->arg1_type, t->arg1_s, (int)t->arg1_d, t->arg1_node, &arg1_offset, function_node) == FAILED)
     return FAILED;
 
   /* arg2 */
 
   if (op == TAC_OP_GET_ADDRESS_ARRAY) {
-    if (find_stack_offset(t->arg2_type, t->arg2_s, t->arg2_d, t->arg2_node, &arg2_offset, function_node) == FAILED)
+    if (find_stack_offset(t->arg2_type, t->arg2_s, (int)t->arg2_d, t->arg2_node, &arg2_offset, function_node) == FAILED)
       return FAILED;
   }
   
@@ -1671,12 +1671,12 @@ static int _generate_asm_z80_in_read_z80(struct tac *t, FILE *file_out, struct t
 
   /* result */
 
-  if (find_stack_offset(t->result_type, t->result_s, t->result_d, t->result_node, &result_offset, function_node) == FAILED)
+  if (find_stack_offset(t->result_type, t->result_s, (int)t->result_d, t->result_node, &result_offset, function_node) == FAILED)
     return FAILED;
   
   /* arg2 */
 
-  if (find_stack_offset(t->arg2_type, t->arg2_s, t->arg2_d, t->arg2_node, &arg2_offset, function_node) == FAILED)
+  if (find_stack_offset(t->arg2_type, t->arg2_s, (int)t->arg2_d, t->arg2_node, &arg2_offset, function_node) == FAILED)
     return FAILED;
   
   /* generate asm */
@@ -1782,17 +1782,17 @@ static int _generate_asm_array_read_z80(struct tac *t, FILE *file_out, struct tr
   
   /* result */
 
-  if (find_stack_offset(t->result_type, t->result_s, t->result_d, t->result_node, &result_offset, function_node) == FAILED)
+  if (find_stack_offset(t->result_type, t->result_s, (int)t->result_d, t->result_node, &result_offset, function_node) == FAILED)
     return FAILED;
   
   /* arg1 */
 
-  if (find_stack_offset(t->arg1_type, t->arg1_s, t->arg1_d, t->arg1_node, &arg1_offset, function_node) == FAILED)
+  if (find_stack_offset(t->arg1_type, t->arg1_s, (int)t->arg1_d, t->arg1_node, &arg1_offset, function_node) == FAILED)
     return FAILED;
 
   /* arg2 */
 
-  if (find_stack_offset(t->arg2_type, t->arg2_s, t->arg2_d, t->arg2_node, &arg2_offset, function_node) == FAILED)
+  if (find_stack_offset(t->arg2_type, t->arg2_s, (int)t->arg2_d, t->arg2_node, &arg2_offset, function_node) == FAILED)
     return FAILED;
   
   /* generate asm */
@@ -2013,12 +2013,12 @@ static int _generate_asm_z80_out_write_z80(struct tac *t, FILE *file_out, struct
 
   /* arg1 */
 
-  if (find_stack_offset(t->arg1_type, t->arg1_s, t->arg1_d, t->arg1_node, &arg1_offset, function_node) == FAILED)
+  if (find_stack_offset(t->arg1_type, t->arg1_s, (int)t->arg1_d, t->arg1_node, &arg1_offset, function_node) == FAILED)
     return FAILED;
 
   /* arg2 */
 
-  if (find_stack_offset(t->arg2_type, t->arg2_s, t->arg2_d, t->arg2_node, &arg2_offset, function_node) == FAILED)
+  if (find_stack_offset(t->arg2_type, t->arg2_s, (int)t->arg2_d, t->arg2_node, &arg2_offset, function_node) == FAILED)
     return FAILED;
   
   /* generate asm */
@@ -2119,17 +2119,17 @@ static int _generate_asm_array_write_z80(struct tac *t, FILE *file_out, struct t
   
   /* result */
 
-  if (find_stack_offset(t->result_type, t->result_s, t->result_d, t->result_node, &result_offset, function_node) == FAILED)
+  if (find_stack_offset(t->result_type, t->result_s, (int)t->result_d, t->result_node, &result_offset, function_node) == FAILED)
     return FAILED;
   
   /* arg1 */
 
-  if (find_stack_offset(t->arg1_type, t->arg1_s, t->arg1_d, t->arg1_node, &arg1_offset, function_node) == FAILED)
+  if (find_stack_offset(t->arg1_type, t->arg1_s, (int)t->arg1_d, t->arg1_node, &arg1_offset, function_node) == FAILED)
     return FAILED;
 
   /* arg2 */
 
-  if (find_stack_offset(t->arg2_type, t->arg2_s, t->arg2_d, t->arg2_node, &arg2_offset, function_node) == FAILED)
+  if (find_stack_offset(t->arg2_type, t->arg2_s, (int)t->arg2_d, t->arg2_node, &arg2_offset, function_node) == FAILED)
     return FAILED;
   
   /* generate asm */
@@ -2357,17 +2357,17 @@ static int _generate_asm_shift_left_right_z80_16bit(struct tac *t, FILE *file_ou
   
   /* result */
 
-  if (find_stack_offset(t->result_type, t->result_s, t->result_d, t->result_node, &result_offset, function_node) == FAILED)
+  if (find_stack_offset(t->result_type, t->result_s, (int)t->result_d, t->result_node, &result_offset, function_node) == FAILED)
     return FAILED;
   
   /* arg1 */
 
-  if (find_stack_offset(t->arg1_type, t->arg1_s, t->arg1_d, t->arg1_node, &arg1_offset, function_node) == FAILED)
+  if (find_stack_offset(t->arg1_type, t->arg1_s, (int)t->arg1_d, t->arg1_node, &arg1_offset, function_node) == FAILED)
     return FAILED;
 
   /* arg2 */
 
-  if (find_stack_offset(t->arg2_type, t->arg2_s, t->arg2_d, t->arg2_node, &arg2_offset, function_node) == FAILED)
+  if (find_stack_offset(t->arg2_type, t->arg2_s, (int)t->arg2_d, t->arg2_node, &arg2_offset, function_node) == FAILED)
     return FAILED;
     
   /* generate asm */
@@ -2576,17 +2576,17 @@ static int _generate_asm_shift_left_right_z80_8bit(struct tac *t, FILE *file_out
   
   /* result */
 
-  if (find_stack_offset(t->result_type, t->result_s, t->result_d, t->result_node, &result_offset, function_node) == FAILED)
+  if (find_stack_offset(t->result_type, t->result_s, (int)t->result_d, t->result_node, &result_offset, function_node) == FAILED)
     return FAILED;
   
   /* arg1 */
 
-  if (find_stack_offset(t->arg1_type, t->arg1_s, t->arg1_d, t->arg1_node, &arg1_offset, function_node) == FAILED)
+  if (find_stack_offset(t->arg1_type, t->arg1_s, (int)t->arg1_d, t->arg1_node, &arg1_offset, function_node) == FAILED)
     return FAILED;
 
   /* arg2 */
 
-  if (find_stack_offset(t->arg2_type, t->arg2_s, t->arg2_d, t->arg2_node, &arg2_offset, function_node) == FAILED)
+  if (find_stack_offset(t->arg2_type, t->arg2_s, (int)t->arg2_d, t->arg2_node, &arg2_offset, function_node) == FAILED)
     return FAILED;
     
   /* generate asm */
@@ -2774,17 +2774,17 @@ static int _generate_asm_mul_div_mod_z80_16bit(struct tac *t, FILE *file_out, st
   
   /* result */
 
-  if (find_stack_offset(t->result_type, t->result_s, t->result_d, t->result_node, &result_offset, function_node) == FAILED)
+  if (find_stack_offset(t->result_type, t->result_s, (int)t->result_d, t->result_node, &result_offset, function_node) == FAILED)
     return FAILED;
   
   /* arg1 */
 
-  if (find_stack_offset(t->arg1_type, t->arg1_s, t->arg1_d, t->arg1_node, &arg1_offset, function_node) == FAILED)
+  if (find_stack_offset(t->arg1_type, t->arg1_s, (int)t->arg1_d, t->arg1_node, &arg1_offset, function_node) == FAILED)
     return FAILED;
 
   /* arg2 */
 
-  if (find_stack_offset(t->arg2_type, t->arg2_s, t->arg2_d, t->arg2_node, &arg2_offset, function_node) == FAILED)
+  if (find_stack_offset(t->arg2_type, t->arg2_s, (int)t->arg2_d, t->arg2_node, &arg2_offset, function_node) == FAILED)
     return FAILED;
     
   /* generate asm */
@@ -3064,17 +3064,17 @@ static int _generate_asm_mul_div_mod_z80_8bit(struct tac *t, FILE *file_out, str
   
   /* result */
 
-  if (find_stack_offset(t->result_type, t->result_s, t->result_d, t->result_node, &result_offset, function_node) == FAILED)
+  if (find_stack_offset(t->result_type, t->result_s, (int)t->result_d, t->result_node, &result_offset, function_node) == FAILED)
     return FAILED;
   
   /* arg1 */
 
-  if (find_stack_offset(t->arg1_type, t->arg1_s, t->arg1_d, t->arg1_node, &arg1_offset, function_node) == FAILED)
+  if (find_stack_offset(t->arg1_type, t->arg1_s, (int)t->arg1_d, t->arg1_node, &arg1_offset, function_node) == FAILED)
     return FAILED;
 
   /* arg2 */
 
-  if (find_stack_offset(t->arg2_type, t->arg2_s, t->arg2_d, t->arg2_node, &arg2_offset, function_node) == FAILED)
+  if (find_stack_offset(t->arg2_type, t->arg2_s, (int)t->arg2_d, t->arg2_node, &arg2_offset, function_node) == FAILED)
     return FAILED;
     
   /* generate asm */
@@ -3339,12 +3339,12 @@ static int _generate_asm_jump_eq_lt_gt_neq_lte_gte_z80_16bit(struct tac *t, FILE
 
   /* arg1 */
 
-  if (find_stack_offset(t->arg1_type, t->arg1_s, t->arg1_d, t->arg1_node, &arg1_offset, function_node) == FAILED)
+  if (find_stack_offset(t->arg1_type, t->arg1_s, (int)t->arg1_d, t->arg1_node, &arg1_offset, function_node) == FAILED)
     return FAILED;
 
   /* arg2 */
 
-  if (find_stack_offset(t->arg2_type, t->arg2_s, t->arg2_d, t->arg2_node, &arg2_offset, function_node) == FAILED)
+  if (find_stack_offset(t->arg2_type, t->arg2_s, (int)t->arg2_d, t->arg2_node, &arg2_offset, function_node) == FAILED)
     return FAILED;
     
   /* generate asm */
@@ -3504,12 +3504,12 @@ static int _generate_asm_jump_eq_lt_gt_neq_lte_gte_z80_8bit(struct tac *t, FILE 
   
   /* arg1 */
 
-  if (find_stack_offset(t->arg1_type, t->arg1_s, t->arg1_d, t->arg1_node, &arg1_offset, function_node) == FAILED)
+  if (find_stack_offset(t->arg1_type, t->arg1_s, (int)t->arg1_d, t->arg1_node, &arg1_offset, function_node) == FAILED)
     return FAILED;
 
   /* arg2 */
 
-  if (find_stack_offset(t->arg2_type, t->arg2_s, t->arg2_d, t->arg2_node, &arg2_offset, function_node) == FAILED)
+  if (find_stack_offset(t->arg2_type, t->arg2_s, (int)t->arg2_d, t->arg2_node, &arg2_offset, function_node) == FAILED)
     return FAILED;
     
   /* generate asm */
@@ -3656,7 +3656,7 @@ static int _generate_asm_return_value_z80(struct tac *t, FILE *file_out, struct 
 
   /* arg1 */
 
-  if (find_stack_offset(t->arg1_type, t->arg1_s, t->arg1_d, t->arg1_node, &arg1_offset, function_node) == FAILED)
+  if (find_stack_offset(t->arg1_type, t->arg1_s, (int)t->arg1_d, t->arg1_node, &arg1_offset, function_node) == FAILED)
     return FAILED;
 
   /* return */
@@ -3833,7 +3833,7 @@ static int _generate_asm_function_call_z80(struct tac *t, FILE *file_out, struct
       arg = &(t->arguments[argument]);
       
       /* find the source offset in the old stack frame */
-      if (find_stack_offset(arg->type, arg->label, arg->value, arg->node, &source_offset, function_node) == FAILED)
+      if (find_stack_offset(arg->type, arg->label, (int)arg->value, arg->node, &source_offset, function_node) == FAILED)
         return FAILED;
 
       source_var_type = arg->var_type;
@@ -4028,7 +4028,7 @@ static int _generate_asm_function_call_z80(struct tac *t, FILE *file_out, struct
   if (op == TAC_OP_FUNCTION_CALL_USE_RETURN_VALUE) {
     int result_offset = -1;
 
-    if (find_stack_offset(t->result_type, t->result_s, t->result_d, t->result_node, &result_offset, function_node) == FAILED)
+    if (find_stack_offset(t->result_type, t->result_s, (int)t->result_d, t->result_node, &result_offset, function_node) == FAILED)
       return FAILED;
 
     fprintf(file_out, "      ; copy return value to its destination\n");
@@ -4191,7 +4191,7 @@ static int _generate_asm_inline_asm_z80(struct tac *t, FILE *file_out, struct tr
   struct inline_asm *ia;
   struct asm_line *al;
 
-  ia = inline_asm_find(t->result_d);
+  ia = inline_asm_find((int)t->result_d);
   if (ia == NULL)
     return FAILED;
 

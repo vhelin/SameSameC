@@ -7,10 +7,13 @@
 #include <math.h>
 
 #include "defines.h"
+#include "printf.h"
 #include "tree_node.h"
 #include "main.h"
+#include "struct_item.h"
 
 
+extern char g_tmp[4096], g_error_message[sizeof(g_tmp) + MAX_NAME_LENGTH + 1 + 1024], g_label[MAX_NAME_LENGTH + 1];
 extern int g_current_filename_id, g_current_line_number;
 
 static int g_variable_type_priorities[9] = {
@@ -87,6 +90,48 @@ int tree_node_flatten(struct tree_node *node) {
     return tree_node_flatten(node);
   
   return SUCCEEDED;
+}
+
+
+int get_variable_node_size_in_bytes(struct tree_node *node) {
+  
+  int elements, element_size, element_type, size = 0;
+
+  if (node->type != TREE_NODE_TYPE_CREATE_VARIABLE)
+    return print_error_using_tree_node("Expected a TREE_NODE_TYPE_CREATE_VARIABLE node, but got something else! Please submit a bug report!\n", ERROR_ERR, node);
+  
+  /* pointers are worth 2 bytes */
+  if (node->children[0]->value_double > 0)
+    return 2;
+
+  if ((node->flags & TREE_NODE_FLAG_STRUCT) == TREE_NODE_FLAG_STRUCT) {
+    struct struct_item *si;
+
+    /* sizeof(struct x) */
+    si = find_struct_item(node->children[0]->children[0]->label);
+    if (si == NULL) {
+      snprintf(g_error_message, sizeof(g_error_message), "Cannot find struct/union \"%s\".\n", node->children[0]->children[0]->label);
+      print_error_using_tree_node(g_error_message, ERROR_ERR, node);
+      return -1;
+    }
+
+    elements = node->value;
+    if (elements == 0)
+      elements = 1;
+    
+    size = elements * si->size;
+  }
+  else {
+    elements = node->value;
+    if (elements == 0)
+      elements = 1;
+    element_type = tree_node_get_max_var_type(node->children[0]);
+    element_size = get_variable_type_size(element_type) / 8;
+
+    size = elements * element_size;
+  }
+  
+  return size;
 }
 
 

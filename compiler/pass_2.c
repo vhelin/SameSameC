@@ -725,8 +725,6 @@ int create_factor(void) {
         if (_parse_struct_access(node) == FAILED)
           return FAILED;
 
-        fprintf(stderr, "ABC 3 %d\n", node->type);
-
         return SUCCEEDED;
       }
 
@@ -748,8 +746,6 @@ int create_factor(void) {
         /* we are handling a struct here! */
         if (_parse_struct_access(node) == FAILED)
           return FAILED;
-
-        fprintf(stderr, "ABC 4 %d\n", node->type);
 
         return SUCCEEDED;
       }
@@ -844,7 +840,6 @@ int create_factor(void) {
       if (node->added_children == 1 && node->children[0]->type == TREE_NODE_TYPE_VALUE_STRING) {
         /* variable name? */
         struct symbol_table_item *item;
-        int elements, element_size, element_type;
         
         item = symbol_table_find_symbol(node->children[0]->label);
         if (item == NULL) {
@@ -868,15 +863,8 @@ int create_factor(void) {
             delayed_node->type = TREE_NODE_TYPE_SIZEOF;
             delayed_node->flags |= TREE_NODE_FLAG_STRUCT;
           }
-          else {
-            elements = item->node->value;
-            if (elements == 0)
-              elements = 1;
-            element_type = tree_node_get_max_var_type(item->node->children[0]);
-            element_size = get_variable_type_size(element_type) / 8;
-
-            size = elements * element_size;
-          }
+          else
+            size = get_variable_node_size_in_bytes(item->node);
         }
       }
       else {
@@ -1484,8 +1472,6 @@ int create_statement(void) {
         free_tree_node(target_node);
         return FAILED;
       }
-
-      fprintf(stderr, "ABC 1 %d\n", target_node->type);
     }
 
     if (g_token_current->id != TOKEN_ID_SYMBOL || (g_token_current->value != '=' &&
@@ -1602,8 +1588,6 @@ int create_statement(void) {
 
           if (_parse_struct_access(target_node) == FAILED)
             return FAILED;
-
-          fprintf(stderr, "ABC 2 %d\n", target_node->type);
         }
 
         if (g_token_current->id != TOKEN_ID_SYMBOL || (g_token_current->value != '=' &&
@@ -3386,14 +3370,55 @@ static void _check_ast_simple_tree_node(struct tree_node *node) {
     }
   }
   else if (node->type == TREE_NODE_TYPE_SIZEOF) {
-    fprintf(stderr, "HELLO\n");
     if ((node->flags & TREE_NODE_FLAG_STRUCT) == TREE_NODE_FLAG_STRUCT) {
+      struct struct_item *si;
+
       /* sizeof(struct x) */
+      si = find_struct_item(node->label);
+      if (si == NULL) {
+        snprintf(g_error_message, sizeof(g_error_message), "Cannot find struct/union \"%s\".\n", node->label);
+        print_error_using_tree_node(g_error_message, ERROR_ERR, node);
+        g_check_ast_failed = YES;
+        return;
+      }
+
+      /* transform the node into TREE_NODE_TYPE_VALUE_INT */
+      node->type = TREE_NODE_TYPE_VALUE_INT;
+      node->value = si->size;
+
+      return;
     }
     else {
       /* sizeof(g_x) */
+      int i, size;
+
+      for (i = 0; i < g_global_nodes->added_children; i++) {
+        struct tree_node *n;
+
+        n = g_global_nodes->children[i];
+        if (n->type == TREE_NODE_TYPE_CREATE_VARIABLE && strcmp(node->label, n->children[1]->label) == 0) {
+          size = get_variable_node_size_in_bytes(n);
+          if (size < 0) {
+            g_check_ast_failed = YES;
+            return;
+          }
+          break;
+        }
+      }
+
+      if (i == g_global_nodes->added_children) {
+        snprintf(g_error_message, sizeof(g_error_message), "Cannot find variable \"%s\".\n", node->label);
+        print_error_using_tree_node(g_error_message, ERROR_ERR, node);
+        g_check_ast_failed = YES;
+        return;
+      }
+      
+      /* transform the node into TREE_NODE_TYPE_VALUE_INT */
+      node->type = TREE_NODE_TYPE_VALUE_INT;
+      node->value = size;
+
+      return;
     }
-    exit(0);
   }
   else
     return;
@@ -3747,7 +3772,7 @@ static void _check_ast_global_node(struct tree_node *node) {
   if (node == NULL)
     return;
 
-  if (node->type == TREE_NODE_TYPE_CREATE_VARIABLE || node->type == TREE_NODE_TYPE_CREATE_VARIABLE_FUNCTION_ARGUMENT)
+  if (node->type == TREE_NODE_TYPE_CREATE_VARIABLE)
     _check_ast_create_variable(node);
   else if (node->type == TREE_NODE_TYPE_FUNCTION_DEFINITION)
     _check_ast_function_definition(node);
@@ -4093,10 +4118,21 @@ int create_struct_union(int is_extern, int is_static, int is_const_1, int variab
     }
     else if (symbol == '[') {
       /* array */
+      struct tree_node *struct_node;
+      
       node = create_array(pointer_depth, VARIABLE_TYPE_STRUCT, name, line_number, file_id);
       if (node == NULL)
         return FAILED;
-        
+
+      struct_node = allocate_tree_node_value_string(struct_name);
+      if (struct_node == NULL) {
+        free_tree_node(node);
+        return FAILED;
+      }
+
+      /* add the struct name node */
+      tree_node_add_child(node->children[0], struct_node);
+
       /* add to global lists */
       if (symbol_table_add_symbol(node, node->children[1]->label, g_block_level, line_number, file_id) == FAILED) {
         free_tree_node(node);
@@ -4116,7 +4152,7 @@ int create_struct_union(int is_extern, int is_static, int is_const_1, int variab
       if (is_static == YES)
         node->flags |= TREE_NODE_FLAG_STATIC;
       node->flags |= TREE_NODE_FLAG_STRUCT;
-    
+
       if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == ';') {
         /* next token */
         _next_token();

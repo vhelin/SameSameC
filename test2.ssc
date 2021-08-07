@@ -1,26 +1,4 @@
 
-struct block {
-  u8 value1;
-  u8 value2;
-  u8 value3;
-  union {
-    u16 partA;
-    u16 partB;
-    u8  arrayC[8];
-    struct {
-      u8 hello1;
-      u8 hello2;
-      u8 hello3;
-      u8 hello4;
-    };
-  };
-  struct {
-    u8  health;
-    u8  armor;
-  } melon;
-  u8 array[8];
-  struct block *next;
-} g_block;
 u8 g_hello[8];
 
 #define ONE(var1, var2) \
@@ -49,6 +27,28 @@ void main(void) {
   } while (1);
 }
 
+struct block {
+  u8 value1;
+  u8 value2;
+  u8 value3;
+  union {
+    u16 partA;
+    u16 partB;
+    u8  arrayC[8];
+    struct {
+      u8 hello1;
+      u8 hello2;
+      u8 hello3;
+      u8 hello4;
+    };
+  };
+  struct {
+    u8  health;
+    u8  armor;
+  } melon;
+  u8 array[8];
+  struct block *next;
+} g_block;
 
 static void initialize_adder(s8 *adder) {
 
