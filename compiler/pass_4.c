@@ -173,7 +173,8 @@ static int _generate_il_calculate_struct_access_address(struct tree_node *node, 
     else if (node->children[i]->value == '[') {
       i++;
 
-      
+      fprintf(stderr, "IMPLEMENT ME!\n");
+      exit(0);
       
       skip = YES;
     }

@@ -777,6 +777,8 @@ int create_factor(void) {
       int pointer_depth = 0;
       
       if (g_token_current->value == VARIABLE_TYPE_STRUCT || g_token_current->value == VARIABLE_TYPE_UNION) {
+        int type = g_token_current->value;
+        
         /* skip 'struct/union' */
         _next_token();
 
@@ -790,7 +792,7 @@ int create_factor(void) {
           return FAILED;
 
         delayed_node->type = TREE_NODE_TYPE_SIZEOF;
-        delayed_node->flags |= TREE_NODE_FLAG_STRUCT;
+        delayed_node->value = type;
 
         /* skip the name */
         _next_token();
@@ -850,6 +852,7 @@ int create_factor(void) {
             return FAILED;
 
           delayed_node->type = TREE_NODE_TYPE_SIZEOF;
+          delayed_node->value = VARIABLE_TYPE_NONE;
         }
         else {
           if (item->node->type == TREE_NODE_TYPE_CREATE_VARIABLE && (item->node->children[0]->value == VARIABLE_TYPE_STRUCT ||
@@ -861,7 +864,7 @@ int create_factor(void) {
               return FAILED;
 
             delayed_node->type = TREE_NODE_TYPE_SIZEOF;
-            delayed_node->flags |= TREE_NODE_FLAG_STRUCT;
+            delayed_node->value = item->node->children[0]->value;
           }
           else
             size = get_variable_node_size_in_bytes(item->node);
@@ -1260,6 +1263,29 @@ int create_statement(void) {
     while (1) {
       int is_const_2 = NO, file_id, line_number;
       
+      /* it's a struct/union? */
+      if (variable_type == VARIABLE_TYPE_STRUCT || variable_type == VARIABLE_TYPE_UNION) {
+        if (create_struct_union(NO, NO, is_const_1, variable_type, NO) == FAILED)
+          return FAILED;
+
+        if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == ',') {
+          /* next token */
+          _next_token();
+
+          continue;
+        }
+
+        if (!(g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == ';')) {
+          snprintf(g_error_message, sizeof(g_error_message), "Expected ';' or ',', but got %s.\n", get_token_simple(g_token_current));
+          return print_error(g_error_message, ERROR_ERR);
+        }
+
+        /* skip ';' */
+        _next_token();
+      
+        return SUCCEEDED;
+      }
+
       pointer_depth = 0;
 
       while (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == '*') {
@@ -1275,7 +1301,7 @@ int create_statement(void) {
         /* next token */
         _next_token();
       }
-
+      
       if (g_token_current->id != TOKEN_ID_VALUE_STRING) {
         snprintf(g_error_message, sizeof(g_error_message), "\"%s\" must be followed by a variable name.\n", g_variable_types[variable_type]);
         return print_error_using_token(g_error_message, ERROR_ERR, g_token_previous);
@@ -2666,6 +2692,8 @@ struct tree_node *create_array(double pointer_depth, int variable_type, char *na
   /* use the line where the name was given */
   node->file_id = file_id;
   node->line_number = line_number;
+
+  node->flags |= TREE_NODE_FLAG_ARRAY;
   
   tree_node_add_child(node, allocate_tree_node_variable_type(variable_type));
   tree_node_add_child(node, allocate_tree_node_value_string(name));
@@ -2823,8 +2851,12 @@ int create_variable_or_function(int is_extern, int is_static) {
 
   variable_type = g_token_current->value;
 
-  if (variable_type == VARIABLE_TYPE_STRUCT || variable_type == VARIABLE_TYPE_UNION)
-    return create_struct_union(is_extern, is_static, is_const_1, variable_type);
+  if (variable_type == VARIABLE_TYPE_STRUCT || variable_type == VARIABLE_TYPE_UNION) {
+    /* skip "struct/union" */
+    _next_token();
+
+    return create_struct_union(is_extern, is_static, is_const_1, variable_type, YES);
+  }
 
   /* next token */
   _next_token();
@@ -2840,14 +2872,14 @@ int create_variable_or_function(int is_extern, int is_static) {
 
     if (variable_type == VARIABLE_TYPE_CONST)
       return print_error("\"const const\" doesn't make any sense.\n", ERROR_ERR);
-    
+
     /* next token */
     _next_token();
   }
   
   if (variable_type == VARIABLE_TYPE_STRUCT || variable_type == VARIABLE_TYPE_UNION)
-    return create_struct_union(is_extern, is_static, is_const_1, variable_type);
-
+    return create_struct_union(is_extern, is_static, is_const_1, variable_type, YES);
+  
   while (1) {
     int is_const_2 = NO, file_id, line_number;
     
@@ -3250,6 +3282,31 @@ int create_variable_or_function(int is_extern, int is_static) {
 }
 
 
+static int _process_create_variable_struct_union(struct tree_node *node) {
+
+  struct struct_item *si;
+
+  if (node->added_children <= 2)
+    return SUCCEEDED;
+
+  si = find_struct_item(node->children[0]->children[0]->label);
+  if (si == NULL) {
+    snprintf(g_error_message, sizeof(g_error_message), "Cannot find struct/union \"%s\".\n", node->children[0]->children[0]->label);
+    print_error_using_tree_node(g_error_message, ERROR_ERR, node);
+    g_check_ast_failed = YES;
+    return FAILED;
+  }
+  
+  fprintf(stderr, "ADDED C %d (%s)\n", node->added_children, node->children[1]->label);
+
+
+
+  exit(0);
+
+  return SUCCEEDED;
+}
+
+
 static void _check_ast_check_definition(struct tree_node *node) {
 
   if (node == NULL)
@@ -3370,7 +3427,7 @@ static void _check_ast_simple_tree_node(struct tree_node *node) {
     }
   }
   else if (node->type == TREE_NODE_TYPE_SIZEOF) {
-    if ((node->flags & TREE_NODE_FLAG_STRUCT) == TREE_NODE_FLAG_STRUCT) {
+    if (node->value == VARIABLE_TYPE_STRUCT || node->value == VARIABLE_TYPE_UNION) {
       struct struct_item *si;
 
       /* sizeof(struct x) */
@@ -3479,6 +3536,9 @@ static void _check_ast_create_variable(struct tree_node *node) {
 
   for (i = 2; i < node->added_children; i++)
     _check_ast_expression(node->children[i]);
+
+  if (node->children[0]->value == VARIABLE_TYPE_STRUCT || node->children[0]->value == VARIABLE_TYPE_UNION)
+    _process_create_variable_struct_union(node);
 }
 
 
@@ -4005,14 +4065,86 @@ int _create_struct_union_definition(char *struct_name, int variable_type) {
 }
 
 
-int create_struct_union(int is_extern, int is_static, int is_const_1, int variable_type) {
+static int _collect_struct_union_initializers(struct tree_node *node) {
+
+  struct tree_node *n;
+  int depth = 0;
+
+  while (1) {
+    if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == '{') {
+      depth++;
+
+      n = allocate_tree_node_symbol(g_token_current->value);
+      if (n == NULL)
+        return FAILED;
+
+      /* add the symbol to the tree node - we'll parse these symbols later */
+      if (tree_node_add_child(node, n) == FAILED) {
+        free_tree_node(n);
+        return FAILED;
+      }
+      
+      /* skip '{' */
+      _next_token();
+    }
+    else if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == '}') {
+      depth--;
+
+      n = allocate_tree_node_symbol(g_token_current->value);
+      if (n == NULL)
+        return FAILED;
+
+      /* add the symbol to the tree node - we'll parse these symbols later */
+      if (tree_node_add_child(node, n) == FAILED) {
+        free_tree_node(n);
+        return FAILED;
+      }
+
+      /* skip '}' */
+      _next_token();
+
+      if (depth <= 0)
+        return SUCCEEDED;
+    }
+    else if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == ',') {
+      n = allocate_tree_node_symbol(g_token_current->value);
+      if (n == NULL)
+        return FAILED;
+
+      /* add the symbol to the tree node - we'll parse these symbols later */
+      if (tree_node_add_child(node, n) == FAILED) {
+        free_tree_node(n);
+        return FAILED;
+      }
+
+      /* skip ',' */
+      _next_token();
+    }
+    else {
+      /* create_expression() will put all tree_nodes it parses to g_open_expression */
+      if (_open_expression_push() == FAILED)
+        return FAILED;
+
+      /* possibly parse a calculation */
+      if (create_expression() == FAILED)
+        return FAILED;
+
+      if (tree_node_add_child(node, _get_current_open_expression()) == FAILED)
+        return FAILED;
+      
+      _open_expression_pop();
+    }
+  }
+  
+  return SUCCEEDED;
+}
+
+
+int create_struct_union(int is_extern, int is_static, int is_const_1, int variable_type, int is_global) {
 
   char struct_name[MAX_NAME_LENGTH + 1];
   struct tree_node *node;
    
-  /* skip "struct/union" */
-  _next_token();
-
   if (g_token_current->id != TOKEN_ID_VALUE_STRING) {
     snprintf(g_error_message, sizeof(g_error_message), "struct/union must be followed by a struct/union name.\n");
     return print_error_using_token(g_error_message, ERROR_ERR, g_token_previous);
@@ -4038,8 +4170,8 @@ int create_struct_union(int is_extern, int is_static, int is_const_1, int variab
   }
   
   while (1) {
-    int is_const_2 = NO, file_id, line_number, pointer_depth, symbol;
-    char name[MAX_NAME_LENGTH + 1];
+    int is_const_2 = NO, file_id, line_number, pointer_depth;
+    struct tree_node *struct_node;
 
     if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == ',') {
       /* next token */
@@ -4067,125 +4199,22 @@ int create_struct_union(int is_extern, int is_static, int is_const_1, int variab
       return print_error_using_token(g_error_message, ERROR_ERR, g_token_previous);
     }
 
-    strncpy(name, g_token_current->label, MAX_NAME_LENGTH);
-
-    /* remember these for symbol_table_add_symbol() */
+    /* remember for symbol table */
     file_id = g_token_current->file_id;
     line_number = g_token_current->line_number;
-      
-    /* next token */
-    _next_token();
-
-    if (g_token_current->id != TOKEN_ID_SYMBOL || (g_token_current->value != '=' &&
-                                                   g_token_current->value != ';' &&
-                                                   g_token_current->value != ',' &&
-                                                   g_token_current->value != '[')) {
-      snprintf(g_error_message, sizeof(g_error_message), "\"%s\" must be followed by a ';', ',', '=' or '['.\n", name);
-      return print_error_using_token(g_error_message, ERROR_ERR, g_token_previous);
-    }
-
-    symbol = g_token_current->value;
-
-    /* next token */
-    _next_token();
-
-    if (symbol == '=') {
-      if (is_extern == YES)
-        return print_error_using_token("Extern variable definitions don't take initializers.\n", ERROR_ERR, g_token_previous);
-        
-      /* create_expression() will put all tree_nodes it parses to g_open_expression */
-      if (_open_expression_push() == FAILED)
-        return FAILED;
-
-      /* possibly parse a calculation */
-      if (create_expression() == FAILED)
-        return FAILED;
-
-      /*
-        result = stack_calculate_tokens(&g_parsed_int);
-
-        fprintf(stderr, "GOT FROM STACK CALCULATE: ");
-
-        if (result == SUCCEEDED)
-        fprintf(stderr, "INT: %d\n", g_parsed_int);
-        else if (result == INPUT_NUMBER_FLOAT)
-        fprintf(stderr, "DOUBLE: %g\n", g_parsed_double);
-        else if (result == INPUT_NUMBER_STRING)
-        fprintf(stderr, "STRING: %s\n", g_label);
-        else if (result == INPUT_NUMBER_STACK)
-        fprintf(stderr, "STACK: %d\n", g_latest_stack);
-      */
-    }
-    else if (symbol == '[') {
-      /* array */
-      struct tree_node *struct_node;
-      
-      node = create_array(pointer_depth, VARIABLE_TYPE_STRUCT, name, line_number, file_id);
-      if (node == NULL)
-        return FAILED;
-
-      struct_node = allocate_tree_node_value_string(struct_name);
-      if (struct_node == NULL) {
-        free_tree_node(node);
-        return FAILED;
-      }
-
-      /* add the struct name node */
-      tree_node_add_child(node->children[0], struct_node);
-
-      /* add to global lists */
-      if (symbol_table_add_symbol(node, node->children[1]->label, g_block_level, line_number, file_id) == FAILED) {
-        free_tree_node(node);
-        return FAILED;
-      }
-      
-      if (tree_node_add_child(g_global_nodes, node) == FAILED)
-        return FAILED;
-
-      /* store const flags */
-      if (is_const_1 == YES)
-        node->flags |= TREE_NODE_FLAG_CONST_1;
-      if (is_const_2 == YES)
-        node->flags |= TREE_NODE_FLAG_CONST_2;
-      if (is_extern == YES)
-        node->flags |= TREE_NODE_FLAG_EXTERN;
-      if (is_static == YES)
-        node->flags |= TREE_NODE_FLAG_STATIC;
-      node->flags |= TREE_NODE_FLAG_STRUCT;
-
-      if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == ';') {
-        /* next token */
-        _next_token();
-
-        return SUCCEEDED;
-      }
-
-      continue;
-    }
-
+    
+    /* allocate tree_node for the variable */
     node = allocate_tree_node_with_children(TREE_NODE_TYPE_CREATE_VARIABLE, 3);
     if (node == NULL)
       return FAILED;
+  
+    tree_node_add_child(node, allocate_tree_node_variable_type(variable_type));
+    tree_node_add_child(node, allocate_tree_node_value_string(g_token_current->label));
 
-    /* use the line where the name was given */
-    node->file_id = file_id;
-    node->line_number = line_number;
-      
-    tree_node_add_child(node, allocate_tree_node_variable_type(VARIABLE_TYPE_STRUCT));
-    tree_node_add_child(node, allocate_tree_node_value_string(name));
-    tree_node_add_child(node->children[0], allocate_tree_node_value_string(struct_name));
-    if (symbol == '=') {
-      tree_node_add_child(node, _get_current_open_expression());
-      _open_expression_pop();
-    }
-
-    if (node->children[0] == NULL || node->children[1] == NULL || (symbol == '=' && node->children[2] == NULL)) {
+    if (node->children[0] == NULL || node->children[1] == NULL) {
       free_tree_node(node);
       return FAILED;
     }
-
-    /* store the pointer depth (0 - not a pointer, 1+ - is a pointer) */
-    node->children[0]->value_double = pointer_depth;
 
     /* store const flags */
     if (is_const_1 == YES)
@@ -4196,27 +4225,120 @@ int create_struct_union(int is_extern, int is_static, int is_const_1, int variab
       node->flags |= TREE_NODE_FLAG_EXTERN;
     if (is_static == YES)
       node->flags |= TREE_NODE_FLAG_STATIC;
-    node->flags |= TREE_NODE_FLAG_STRUCT;
+
+    /* store the pointer depth (0 - not a pointer, 1+ - is a pointer) */
+    node->children[0]->value_double = pointer_depth;
+
+    struct_node = allocate_tree_node_value_string(struct_name);
+    if (struct_node == NULL) {
+      free_tree_node(node);
+      return FAILED;
+    }
+
+    /* add the struct name node */
+    tree_node_add_child(node->children[0], struct_node);
 
     /* add to global lists */
     if (symbol_table_add_symbol(node, node->children[1]->label, g_block_level, line_number, file_id) == FAILED) {
       free_tree_node(node);
       return FAILED;
     }
+
+    /* add the node to the AST */
+    if (is_global == YES) {
+      if (tree_node_add_child(g_global_nodes, node) == FAILED)
+        return FAILED;
+    }
+    else {
+      if (tree_node_add_child(_get_current_open_block(), node) == FAILED)
+        return FAILED;
+    }
+
+    /* next token */
+    _next_token();
+
+    if (g_token_current->id != TOKEN_ID_SYMBOL || (g_token_current->value != '=' &&
+                                                   g_token_current->value != ';' &&
+                                                   g_token_current->value != ',' &&
+                                                   g_token_current->value != '[')) {
+      snprintf(g_error_message, sizeof(g_error_message), "\"%s\" must be followed by a ';', ',', '=' or '['.\n", g_token_previous->label);
+      return print_error_using_token(g_error_message, ERROR_ERR, g_token_previous);
+    }
+
+    if (g_token_current->value == '[') {
+      int array_size = 0;
       
-    if (tree_node_add_child(g_global_nodes, node) == FAILED)
-      return FAILED;
-
-    if (symbol == ';')
-      return SUCCEEDED;
-
-    if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == ';') {
+      /* array */
+      
       /* next token */
       _next_token();
 
-      return SUCCEEDED;
+      node->flags |= TREE_NODE_FLAG_ARRAY;
+
+      if (g_token_current->id == TOKEN_ID_VALUE_INT) {
+        array_size = g_token_current->value;
+
+        /* next token */
+        _next_token();
+
+        if (g_token_current->id != TOKEN_ID_SYMBOL || g_token_current->value != ']') {
+          snprintf(g_error_message, sizeof(g_error_message), "Expected ']', but got %s.\n", get_token_simple(g_token_current));
+          return print_error(g_error_message, ERROR_ERR);
+        }
+
+        /* next token */
+        _next_token();
+      }
+      else if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == ']') {
+        /* next token */
+        _next_token();
+      }
+      else {
+        snprintf(g_error_message, sizeof(g_error_message), "Expected array size or ']', but got %s.\n", get_token_simple(g_token_current));
+        return print_error(g_error_message, ERROR_ERR);
+      }
+
+      /* store the size of the array - NOTE: this will be possbile recalculated later when we process initializers */
+      node->value = array_size;
     }
+
+    if (g_token_current->id != TOKEN_ID_SYMBOL || (g_token_current->value != '=' &&
+                                                   g_token_current->value != ';' &&
+                                                   g_token_current->value != ',')) {
+      snprintf(g_error_message, sizeof(g_error_message), "Expected '=', ';' or ',', but got %s.\n", get_token_simple(g_token_current));
+      return print_error_using_token(g_error_message, ERROR_ERR, g_token_previous);
+    }
+
+    if (g_token_current->value == ';')
+      return SUCCEEDED;
+    else if (g_token_current->value == ',') {
+      /* skip ',' */
+      _next_token();
+
+      continue;
+    }
+
+    /* skip '=' */
+    _next_token();
+
+    if (is_extern == YES)
+      return print_error_using_token("Extern variable definitions don't take initializers.\n", ERROR_ERR, g_token_previous);
+
+    if (_collect_struct_union_initializers(node) == FAILED)
+      return FAILED;
+
+    if (g_token_current->id != TOKEN_ID_SYMBOL || (g_token_current->value != ';' &&
+                                                   g_token_current->value != ',')) {
+      snprintf(g_error_message, sizeof(g_error_message), "Expected ';' or ',', but got %s.\n", get_token_simple(g_token_current));
+      return print_error_using_token(g_error_message, ERROR_ERR, g_token_previous);
+    }
+
+    if (g_token_current->value == ';')
+      return SUCCEEDED;
+
+    /* skip ',' */
+    _next_token();
   }
-  
+
   return SUCCEEDED;
 }

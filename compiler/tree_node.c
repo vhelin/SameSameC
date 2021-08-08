@@ -104,7 +104,7 @@ int get_variable_node_size_in_bytes(struct tree_node *node) {
   if (node->children[0]->value_double > 0)
     return 2;
 
-  if ((node->flags & TREE_NODE_FLAG_STRUCT) == TREE_NODE_FLAG_STRUCT) {
+  if (node->children[0]->value == VARIABLE_TYPE_STRUCT || node->children[0]->value == VARIABLE_TYPE_UNION) {
     struct struct_item *si;
 
     /* sizeof(struct x) */

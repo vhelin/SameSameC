@@ -222,6 +222,19 @@ static char *_get_pointer_stars(struct tree_node *node) {
 }
 
 
+static void _print_struct_union(struct tree_node *node) {
+
+  int i;
+  
+  for (i = 2; i < node->added_children; i++) {
+    if (node->children[i]->type == TREE_NODE_TYPE_EXPRESSION)
+      print_expression(node->children[i]);
+    else
+      _print_simple_tree_node(node->children[i]);      
+  }
+}
+
+
 static void _print_create_variable(struct tree_node *node) {
 
   int i;
@@ -253,20 +266,28 @@ static void _print_create_variable(struct tree_node *node) {
     /* not an array */
     if (node->added_children > 2) {
       fprintf(stderr, " = ");
-      print_expression(node->children[2]);
+      if (node->children[0]->value == VARIABLE_TYPE_STRUCT || node->children[0]->value == VARIABLE_TYPE_UNION)
+        _print_struct_union(node);
+      else
+        print_expression(node->children[2]);
     }
   }
   else {
     /* an array */
     fprintf(stderr, "[%d]", node->value);
     if (node->added_children > 2) {
-      fprintf(stderr, " = { ");
-      for (i = 2; i < node->added_children; i++) {
-        if (i > 2)
-          fprintf(stderr, ", ");
-        print_expression(node->children[i]);
+      fprintf(stderr, " = ");
+      if (node->children[0]->value == VARIABLE_TYPE_STRUCT || node->children[0]->value == VARIABLE_TYPE_UNION)
+        _print_struct_union(node);
+      else {
+        fprintf(stderr, " { ");
+        for (i = 2; i < node->added_children; i++) {
+          if (i > 2)
+            fprintf(stderr, ", ");
+          print_expression(node->children[i]);
+        }
+        fprintf(stderr, " }");
       }
-      fprintf(stderr, " }");
     }
   }
 

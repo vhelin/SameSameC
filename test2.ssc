@@ -50,10 +50,17 @@ struct block {
   struct block *next;
 } g_block;
 
+struct simple {
+  u8 value1;
+  u8 value2;
+};
+
 static void initialize_adder(s8 *adder) {
+
+  const struct simple g_simple[] = { 0, 1+1 };
 
   adder[0] = 1;
 
-  g_block.value3++;
+  //g_block.value3++;
   //g_block.array[0+1+2]++;
 }
