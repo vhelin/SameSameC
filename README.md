@@ -33,6 +33,7 @@ Fix:
 Add:
 
 - Add support for struct (Work-In-Progress...)
+- Improve struct/union support (ANSI C99?)
 - Add support for free const strings
 - Add support for explicit casting and type checks
 - Add support for arrays with more than one dimension

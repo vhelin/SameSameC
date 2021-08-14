@@ -68,7 +68,6 @@ static char *_get_current_end_of_statement(void) {
 }
 
 
-static void _print_simple_tree_node(struct tree_node *node);
 static void _print_block(struct tree_node *node);
 static void _simplify_expressions_block(struct tree_node *node);
 
@@ -83,7 +82,7 @@ void print_expression(struct tree_node *node) {
   }
 
   if (node->type != TREE_NODE_TYPE_EXPRESSION) {
-    _print_simple_tree_node(node);
+    print_simple_tree_node(node);
     return;
   }
 
@@ -91,7 +90,7 @@ void print_expression(struct tree_node *node) {
     if (node->children[i]->type == TREE_NODE_TYPE_EXPRESSION)
       print_expression(node->children[i]);
     else
-      _print_simple_tree_node(node->children[i]);
+      print_simple_tree_node(node->children[i]);
   }
 }
 
@@ -114,14 +113,14 @@ static void _print_struct_access(struct tree_node *node) {
     else if (child->type == TREE_NODE_TYPE_EXPRESSION)
       print_expression(child);
     else if (child->type == TREE_NODE_TYPE_VALUE_INT || child->type == TREE_NODE_TYPE_VALUE_STRING)
-      _print_simple_tree_node(child);
+      print_simple_tree_node(child);
     else
       fprintf(stderr, "?");
   }
 }
 
 
-static void _print_simple_tree_node(struct tree_node *node) {
+void print_simple_tree_node(struct tree_node *node) {
 
   int i;
   
@@ -230,7 +229,7 @@ static void _print_struct_union(struct tree_node *node) {
     if (node->children[i]->type == TREE_NODE_TYPE_EXPRESSION)
       print_expression(node->children[i]);
     else
-      _print_simple_tree_node(node->children[i]);      
+      print_simple_tree_node(node->children[i]);      
   }
 }
 
@@ -343,7 +342,7 @@ static void _print_function_call(struct tree_node *node) {
 
   fprintf(stderr, "%s", _get_current_indentation());
 
-  _print_simple_tree_node(node);
+  print_simple_tree_node(node);
 
   fprintf(stderr, "%s%s", _get_current_end_of_statement(), _get_current_end_of_line());
 }
@@ -365,7 +364,7 @@ static void _print_condition(struct tree_node *node, int level) {
     else if (node->children[i]->type == TREE_NODE_TYPE_EXPRESSION)
       print_expression(node->children[i]);
     else
-      _print_simple_tree_node(node->children[i]);
+      print_simple_tree_node(node->children[i]);
   }
 
   if (level > 0)
@@ -570,7 +569,7 @@ static void _print_statement(struct tree_node *node, int line) {
   }
   else if (node->type == TREE_NODE_TYPE_INCREMENT_DECREMENT) {
     fprintf(stderr, "%s", _get_current_indentation());
-    _print_simple_tree_node(node);
+    print_simple_tree_node(node);
     fprintf(stderr, "%s%s", _get_current_end_of_statement(), _get_current_end_of_line());
   }
   else if (node->type == TREE_NODE_TYPE_BREAK)

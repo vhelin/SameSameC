@@ -4,6 +4,8 @@
 
 int pass_3(void);
 int simplify_expressions(void);
+
 void print_expression(struct tree_node *node);
+void print_simple_tree_node(struct tree_node *node);
 
 #endif

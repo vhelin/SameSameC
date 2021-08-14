@@ -11,6 +11,7 @@
 #include "main.h"
 #include "pass_1.h"
 #include "pass_2.h"
+#include "pass_3.h"
 #include "printf.h"
 #include "stack.h"
 #include "include_file.h"
@@ -3284,7 +3285,9 @@ int create_variable_or_function(int is_extern, int is_static) {
 
 static int _process_create_variable_struct_union(struct tree_node *node) {
 
-  struct struct_item *si;
+  struct tree_node *child;
+  struct struct_item *si, *s, *stack_si[256];
+  int i, take_comma, stack_i[256], index = 0;
 
   if (node->added_children <= 2)
     return SUCCEEDED;
@@ -3297,13 +3300,189 @@ static int _process_create_variable_struct_union(struct tree_node *node) {
     return FAILED;
   }
   
-  fprintf(stderr, "ADDED C %d (%s)\n", node->added_children, node->children[1]->label);
+  fprintf(stderr, "ADDED C %d (%s) VALUE %d: ", node->added_children, node->children[1]->label, node->value);
 
+  child = node->children[2];
 
+  if (child->type != TREE_NODE_TYPE_SYMBOL || child->value != '{') {
+    snprintf(g_error_message, sizeof(g_error_message), "Expected '{', but got something else.\n");
+    return print_error(g_error_message, ERROR_ERR);
+  }
 
-  exit(0);
+  /* check that the struct/union initializer is correct */
 
-  return SUCCEEDED;
+  stack_si[index] = si;
+  stack_i[index] = 0;
+  
+  take_comma = NO;
+  for (i = 3; i < node->added_children || stack_i[index] < stack_si[index]->added_children; i++, stack_i[index]++) {
+    child = node->children[i];
+    s = stack_si[index]->children[stack_i[index]];
+
+    /* last child? */
+    if (i == node->added_children - 1) {
+      if (child->type != TREE_NODE_TYPE_SYMBOL || child->value != '}') {
+        g_check_ast_failed = YES;
+        snprintf(g_error_message, sizeof(g_error_message), "Expected '}', but got something else.\n");
+        return print_error_using_tree_node(g_error_message, ERROR_ERR, child);
+      }
+      
+      fprintf(stderr, "\n");
+
+      g_check_ast_failed = YES;
+      
+      return SUCCEEDED;
+    }
+    
+    if (child->type == TREE_NODE_TYPE_SYMBOL) {
+      print_simple_tree_node(child);
+
+      if (child->value == ',') {
+        if (take_comma == YES) {
+          stack_i[index]--;
+          take_comma = NO;
+        }
+        else {
+          g_check_ast_failed = YES;
+          snprintf(g_error_message, sizeof(g_error_message), "Did not expect ',' here.\n");
+          return print_error_using_tree_node(g_error_message, ERROR_ERR, child);
+        }
+      }
+      else if (child->value == '{') {
+        if (s->type == STRUCT_ITEM_TYPE_ITEM) {
+          g_check_ast_failed = YES;
+          snprintf(g_error_message, sizeof(g_error_message), "Expected an expression, but got '{' instead.\n");
+          return print_error_using_tree_node(g_error_message, ERROR_ERR, child);
+        }
+
+        if (take_comma == YES) {
+          g_check_ast_failed = YES;
+          snprintf(g_error_message, sizeof(g_error_message), "Expected a ',', but got '{' instead.\n");
+          return print_error_using_tree_node(g_error_message, ERROR_ERR, child);
+        }
+
+        if (s->type == STRUCT_ITEM_TYPE_ARRAY) {
+          int item;
+
+          /* check the array here */
+          i++;
+
+          for (item = 0; item < s->array_items && i < node->added_children; item++) {
+            child = node->children[i++];
+
+            if (child->type == TREE_NODE_TYPE_EXPRESSION) {
+              print_expression(child);
+            }
+            else {
+              g_check_ast_failed = YES;
+              snprintf(g_error_message, sizeof(g_error_message), "Expected an expression, but got something else.\n");
+              return print_error_using_tree_node(g_error_message, ERROR_ERR, child);
+            }
+
+            if (i >= node->added_children)
+              break;
+            
+            child = node->children[i++];
+
+            if (child->type == TREE_NODE_TYPE_SYMBOL) {
+              print_simple_tree_node(child);
+
+              if (child->value == ',') {
+                if (item >= s->array_items - 1) {
+                  g_check_ast_failed = YES;
+                  snprintf(g_error_message, sizeof(g_error_message), "Too many array members given.\n");
+                  return print_error_using_tree_node(g_error_message, ERROR_ERR, child);
+                }
+              }
+              else if (child->value == '}') {
+                take_comma = YES;
+                i--;
+                break;
+              }
+              else {
+                g_check_ast_failed = YES;
+                snprintf(g_error_message, sizeof(g_error_message), "Expected '}', or ',', but got something else.\n");
+                return print_error_using_tree_node(g_error_message, ERROR_ERR, child);
+              }
+            }
+            else {
+              g_check_ast_failed = YES;
+              snprintf(g_error_message, sizeof(g_error_message), "Expected '}', or ',', but got something else.\n");
+              return print_error_using_tree_node(g_error_message, ERROR_ERR, child);
+            }
+          }
+
+          if (i >= node->added_children) {
+            g_check_ast_failed = YES;
+            snprintf(g_error_message, sizeof(g_error_message), "Expected a '}'...\n");
+            return print_error_using_tree_node(g_error_message, ERROR_ERR, child);
+          }
+        }
+        else {
+          if (index >= 256) {
+            g_check_ast_failed = YES;
+            snprintf(g_error_message, sizeof(g_error_message), "Out of strcut_item stack space! Please submit a bug report!\n");
+            return print_error_using_tree_node(g_error_message, ERROR_ERR, child);
+          }
+
+          index++;
+
+          stack_i[index] = 0;
+          stack_si[index] = s;
+        }
+      }
+      else if (child->value == '}') {
+        index--;
+
+        if (index < 0) {
+          g_check_ast_failed = YES;
+          snprintf(g_error_message, sizeof(g_error_message), "Too many '}'!\n");
+          return print_error_using_tree_node(g_error_message, ERROR_ERR, child);
+        }
+
+        take_comma = YES;
+      }
+      else {
+        g_check_ast_failed = YES;
+        snprintf(g_error_message, sizeof(g_error_message), "Expected '}', '{' or ',', but got something else.\n");
+        return print_error_using_tree_node(g_error_message, ERROR_ERR, child);
+      }
+    }
+    else if (child->type == TREE_NODE_TYPE_EXPRESSION) {
+      if (take_comma == YES) {
+        g_check_ast_failed = YES;
+        snprintf(g_error_message, sizeof(g_error_message), "Expected  ',', but got an expression instead.\n");
+        return print_error_using_tree_node(g_error_message, ERROR_ERR, child);
+      }
+
+      if (si->type == STRUCT_ITEM_TYPE_UNION && stack_i[index] > 0) {
+        g_check_ast_failed = YES;
+        snprintf(g_error_message, sizeof(g_error_message), "When initializing an union, only one initializer can be given.\n");
+        return print_error_using_tree_node(g_error_message, ERROR_ERR, child);
+      }
+
+      if (si->type == STRUCT_ITEM_TYPE_STRUCT && stack_i[index] >= si->added_children) {
+        g_check_ast_failed = YES;
+        snprintf(g_error_message, sizeof(g_error_message), "Too many struct members given.\n");
+        return print_error_using_tree_node(g_error_message, ERROR_ERR, child);
+      }
+
+      print_expression(child);
+
+      take_comma = YES;
+    }
+    else {
+      g_check_ast_failed = YES;
+      snprintf(g_error_message, sizeof(g_error_message), "Expected an expression, '}', '{' or ',', but got something else.\n");
+      return print_error_using_tree_node(g_error_message, ERROR_ERR, child);
+    }
+  }
+
+  fprintf(stderr, "\n");
+
+  g_check_ast_failed = YES;
+  snprintf(g_error_message, sizeof(g_error_message), "The struct/union initializer was not properly terminated.\n");
+  return print_error_using_tree_node(g_error_message, ERROR_ERR, child);
 }
 
 
