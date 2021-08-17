@@ -933,6 +933,7 @@ static int _optimize_il_13(int *optimizations_counter) {
       if ((g_tacs[current].op == TAC_OP_SHIFT_RIGHT ||
            g_tacs[current].op == TAC_OP_SHIFT_LEFT ||
            g_tacs[current].op == TAC_OP_OR ||
+           g_tacs[current].op == TAC_OP_XOR ||
            g_tacs[current].op == TAC_OP_AND ||
            g_tacs[current].op == TAC_OP_MOD ||
            g_tacs[current].op == TAC_OP_MUL ||
@@ -1425,6 +1426,7 @@ static int _optimize_il_21(int *optimizations_counter) {
       if ((g_tacs[next].op == TAC_OP_SHIFT_RIGHT ||
            g_tacs[next].op == TAC_OP_SHIFT_LEFT ||
            g_tacs[next].op == TAC_OP_OR ||
+           g_tacs[next].op == TAC_OP_XOR ||
            g_tacs[next].op == TAC_OP_AND ||
            g_tacs[next].op == TAC_OP_MOD ||
            g_tacs[next].op == TAC_OP_MUL ||
@@ -1486,6 +1488,7 @@ static int _optimize_il_22(int *optimizations_counter) {
       if ((g_tacs[next].op == TAC_OP_SHIFT_RIGHT ||
            g_tacs[next].op == TAC_OP_SHIFT_LEFT ||
            g_tacs[next].op == TAC_OP_OR ||
+           g_tacs[next].op == TAC_OP_XOR ||
            g_tacs[next].op == TAC_OP_AND ||
            g_tacs[next].op == TAC_OP_MOD ||
            g_tacs[next].op == TAC_OP_MUL ||
@@ -1640,6 +1643,57 @@ static int _optimize_il_23(int *optimizations_counter) {
 }
 
 
+static int _optimize_il_24(int *optimizations_counter) {
+  
+  /*
+    rX = ~? <--- REMOVE rX if rX doesn't appear elsewhere
+    ?  = rX <--- REMOVE rX if rX doesn't appear elsewhere
+  */
+
+  int i = 0;
+
+  while (1) {
+    int is_last_function = NO;
+    int end = _find_end_of_il_function(i, &is_last_function);
+    if (end < 0)
+      return FAILED;
+
+    if (_count_and_allocate_register_usage(i, end) == FAILED)
+      return FAILED;
+
+    while (i < end) {
+      int current, next;
+
+      current = _find_next_living_tac(i);
+      next = _find_next_living_tac(current + 1);
+
+      if (current < 0 || next < 0)
+        break;
+
+      if (g_tacs[current].op == TAC_OP_COMPLEMENT && g_tacs[next].op == TAC_OP_ASSIGNMENT &&
+          g_tacs[current].result_type == TAC_ARG_TYPE_TEMP && g_tacs[next].arg1_type == TAC_ARG_TYPE_TEMP &&
+          (int)g_tacs[current].result_d == (int)g_tacs[next].arg1_d &&
+          g_register_reads[(int)g_tacs[current].result_d] == 1 && g_register_writes[(int)g_tacs[current].result_d] == 1) {
+        /* found match! rX can be skipped! */
+        if (tac_set_result(&g_tacs[current], g_tacs[next].result_type, g_tacs[next].result_d, g_tacs[next].result_s) == FAILED)
+          return FAILED;
+        g_tacs[current].result_node = g_tacs[next].result_node;
+        g_tacs[current].result_var_type_promoted = g_tacs[next].result_var_type_promoted;
+        g_tacs[next].op = TAC_OP_DEAD;
+        (*optimizations_counter)++;
+      }
+
+      i = next;
+    }
+
+    if (is_last_function == YES)
+      break;
+  }
+
+  return SUCCEEDED;
+}
+
+
 int optimize_il(void) {
 
   int optimizations_counter, loop = 1;
@@ -1696,6 +1750,8 @@ int optimize_il(void) {
     if (_optimize_il_22(&optimizations_counter) == FAILED)
       return FAILED;
     if (_optimize_il_23(&optimizations_counter) == FAILED)
+      return FAILED;
+    if (_optimize_il_24(&optimizations_counter) == FAILED)
       return FAILED;
     
     fprintf(stderr, "optimize_il(): Loop %d managed to do %d optimizations.\n", loop, optimizations_counter);
@@ -2179,6 +2235,7 @@ int propagate_operand_types(void) {
              op == TAC_OP_MOD ||
              op == TAC_OP_AND ||
              op == TAC_OP_OR ||
+             op == TAC_OP_XOR ||
              op == TAC_OP_SHIFT_LEFT ||
              op == TAC_OP_SHIFT_RIGHT) {
       if (_find_operand_type(&t->arg1_var_type, t->arg1_type, (int)t->arg1_d, t->arg1_s, t->arg1_node, NO) == FAILED)
@@ -2247,7 +2304,7 @@ int propagate_operand_types(void) {
       if (t->result_var_type == VARIABLE_TYPE_NONE)
         fprintf(stderr, "propagate_operand_types(): Couldn't find type for RESULT!\n");
     }
-    else if (op == TAC_OP_ASSIGNMENT) {
+    else if (op == TAC_OP_ASSIGNMENT || op == TAC_OP_COMPLEMENT) {
       if (_find_operand_type(&t->arg1_var_type, t->arg1_type, (int)t->arg1_d, t->arg1_s, t->arg1_node, NO) == FAILED)
         return FAILED;
       if (_find_operand_type(&t->result_var_type, t->result_type, (int)t->result_d, t->result_s, t->result_node, YES) == FAILED)

@@ -1080,7 +1080,7 @@ int create_term(void) {
   struct tree_node *node = NULL;
   int result;
 
-  if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == '!') {
+  if (g_token_current->id == TOKEN_ID_SYMBOL && (g_token_current->value == '!' || g_token_current->value == '~')) {
     node = allocate_tree_node_symbol(g_token_current->value);
     if (node == NULL)
       return FAILED;
@@ -1098,13 +1098,15 @@ int create_term(void) {
 
   while (g_token_current->id == TOKEN_ID_SYMBOL && (g_token_current->value == '*' ||
                                                     g_token_current->value == '/' ||
-                                                    g_token_current->value == SYMBOL_SHIFT_LEFT ||
-                                                    g_token_current->value == SYMBOL_SHIFT_RIGHT ||
+                                                    g_token_current->value == '~' ||
+                                                    g_token_current->value == '^' ||
                                                     g_token_current->value == '%' ||
                                                     g_token_current->value == '&' ||
                                                     g_token_current->value == '|' ||
                                                     g_token_current->value == '<' ||
                                                     g_token_current->value == '>' ||
+                                                    g_token_current->value == SYMBOL_SHIFT_LEFT ||
+                                                    g_token_current->value == SYMBOL_SHIFT_RIGHT ||
                                                     g_token_current->value == SYMBOL_EQUAL ||
                                                     g_token_current->value == SYMBOL_UNEQUAL ||
                                                     g_token_current->value == SYMBOL_LTE ||
@@ -3286,8 +3288,8 @@ int create_variable_or_function(int is_extern, int is_static) {
 static int _process_create_variable_struct_union(struct tree_node *node) {
 
   struct tree_node *child;
-  struct struct_item *si, *s, *stack_si[256];
-  int i, take_comma, stack_i[256], index = 0;
+  struct struct_item *si, *s, *stack_si[256], *initial_si;
+  int i, take_comma, stack_i[256], index = 0, structs = 0;
 
   if (node->added_children <= 2)
     return SUCCEEDED;
@@ -3302,6 +3304,9 @@ static int _process_create_variable_struct_union(struct tree_node *node) {
   
   fprintf(stderr, "ADDED C %d (%s) VALUE %d: ", node->added_children, node->children[1]->label, node->value);
 
+  /* remember the si for struct/union arrays */
+  initial_si = si;
+  
   child = node->children[2];
 
   if (child->type != TREE_NODE_TYPE_SYMBOL || child->value != '{') {
@@ -3309,15 +3314,30 @@ static int _process_create_variable_struct_union(struct tree_node *node) {
     return print_error(g_error_message, ERROR_ERR);
   }
 
+  fprintf(stderr, "{");
+  
+  i = 3;
+
+  if ((node->flags & TREE_NODE_FLAG_ARRAY) == TREE_NODE_FLAG_ARRAY) {
+    child = node->children[3];
+
+    if (child->type != TREE_NODE_TYPE_SYMBOL || child->value != '{') {
+      snprintf(g_error_message, sizeof(g_error_message), "Expected '{', but got something else.\n");
+      return print_error(g_error_message, ERROR_ERR);
+    }
+
+    fprintf(stderr, "{");
+
+    i = 4;
+  }
+
   /* check that the struct/union initializer is correct */
 
   stack_si[index] = si;
   stack_i[index] = 0;
-  
-  take_comma = NO;
-  for (i = 3; i < node->added_children || stack_i[index] < stack_si[index]->added_children; i++, stack_i[index]++) {
+
+  for (take_comma = NO; i < node->added_children || stack_i[index] < stack_si[index]->added_children; i++, stack_i[index]++) {
     child = node->children[i];
-    s = stack_si[index]->children[stack_i[index]];
 
     /* last child? */
     if (i == node->added_children - 1) {
@@ -3327,13 +3347,13 @@ static int _process_create_variable_struct_union(struct tree_node *node) {
         return print_error_using_tree_node(g_error_message, ERROR_ERR, child);
       }
       
-      fprintf(stderr, "\n");
+      fprintf(stderr, "}\n");
 
-      g_check_ast_failed = YES;
-      
       return SUCCEEDED;
     }
     
+    s = stack_si[index]->children[stack_i[index]];
+
     if (child->type == TREE_NODE_TYPE_SYMBOL) {
       print_simple_tree_node(child);
 
@@ -3434,12 +3454,69 @@ static int _process_create_variable_struct_union(struct tree_node *node) {
       else if (child->value == '}') {
         index--;
 
-        if (index < 0) {
+        if ((node->flags & TREE_NODE_FLAG_ARRAY) == TREE_NODE_FLAG_ARRAY && index < 0) {
+          structs++;
+          
+          /* do we have another array? */
+          i++;
+          
+          if (i >= node->added_children)
+            break;
+
+          child = node->children[i];
+
+          if (child->type == TREE_NODE_TYPE_SYMBOL) {
+            print_simple_tree_node(child);
+
+            if (child->value == '}') {
+              /* final '}' - process it at the beginning of this loop */
+              i--;
+              continue;
+            }
+            else if (child->value == ',') {
+              /* another struct/union in the array */
+              i++;
+
+              if (i >= node->added_children)
+                break;
+
+              child = node->children[i];
+
+              if (child->type == TREE_NODE_TYPE_SYMBOL && child->value == '{') {
+                print_simple_tree_node(child);
+
+                /* start over */
+                index = 0;
+                take_comma = NO;
+                stack_si[index] = initial_si;
+                stack_i[index] = -1;
+
+                continue;
+              }
+              else {
+                g_check_ast_failed = YES;
+                snprintf(g_error_message, sizeof(g_error_message), "Expected '{', but got something else.\n");
+                return print_error_using_tree_node(g_error_message, ERROR_ERR, child);
+              }
+            }
+            else {
+              g_check_ast_failed = YES;
+              snprintf(g_error_message, sizeof(g_error_message), "Expected '}' or ',', but got something else.\n");
+              return print_error_using_tree_node(g_error_message, ERROR_ERR, child);
+            }
+          }
+          else {
+            g_check_ast_failed = YES;
+            snprintf(g_error_message, sizeof(g_error_message), "Expected '}' or ',', but got something else.\n");
+            return print_error_using_tree_node(g_error_message, ERROR_ERR, child);
+          }
+        }
+        else if (index < 0) {
           g_check_ast_failed = YES;
           snprintf(g_error_message, sizeof(g_error_message), "Too many '}'!\n");
           return print_error_using_tree_node(g_error_message, ERROR_ERR, child);
         }
-
+        
         take_comma = YES;
       }
       else {

@@ -198,7 +198,7 @@ int stack_calculate_tree_node(struct tree_node *node, int *value) {
     }
     else if (child->type == TREE_NODE_TYPE_SYMBOL && child->value == '^') {
       si[q].type = STACK_ITEM_TYPE_OPERATOR;
-      si[q].value = SI_OP_POWER;
+      si[q].value = SI_OP_XOR;
 #if DEBUG_STACK
       fprintf(stderr, "GOT STACK ITEM ^\n");
 #endif
@@ -280,7 +280,7 @@ int stack_calculate_tree_node(struct tree_node *node, int *value) {
     }
     else if (child->type == TREE_NODE_TYPE_SYMBOL && child->value == '~') {
       si[q].type = STACK_ITEM_TYPE_OPERATOR;
-      si[q].value = SI_OP_XOR;
+      si[q].value = SI_OP_COMPLEMENT;
 #if DEBUG_STACK
       fprintf(stderr, "GOT STACK ITEM ~\n");
 #endif
@@ -501,7 +501,7 @@ int stack_calculate_tokens(int *value) {
     }
     else if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == '^') {
       si[q].type = STACK_ITEM_TYPE_OPERATOR;
-      si[q].value = SI_OP_POWER;
+      si[q].value = SI_OP_XOR;
 #if DEBUG_STACK
       fprintf(stderr, "GOT STACK ITEM ^\n");
 #endif
@@ -583,7 +583,7 @@ int stack_calculate_tokens(int *value) {
     }
     else if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == '~') {
       si[q].type = STACK_ITEM_TYPE_OPERATOR;
-      si[q].value = SI_OP_XOR;
+      si[q].value = SI_OP_COMPLEMENT;
 #if DEBUG_STACK
       fprintf(stderr, "GOT STACK ITEM ~\n");
 #endif
@@ -753,6 +753,7 @@ static struct stack_item_priority_item g_stack_item_priority_items[] = {
   { SI_OP_BANK, 110 },
   { SI_OP_NOT, 110 },
   { SI_OP_GET_ADDRESS, 110 },
+  { SI_OP_COMPLEMENT, 110 },
   { SI_OP_USE_REGISTER, 200 },
   { 999, 999 }
 };
@@ -868,16 +869,6 @@ int stack_calculate(int *value, struct stack_item *si, int q, int save_if_cannot
       else if (si[k + 1].type == STACK_ITEM_TYPE_OPERATOR && si[k + 1].value == SI_OP_LEFT)
         si[k].type = STACK_ITEM_TYPE_DELETED;
     }
-    else if (si[k].type == STACK_ITEM_TYPE_VALUE || si[k].type == STACK_ITEM_TYPE_STRING)
-      b = 0;
-    else if (si[k].type == STACK_ITEM_TYPE_OPERATOR && si[k].value == SI_OP_LEFT)
-      b = 1;
-  }
-
-  /* turn unary XORs into NOTs */
-  for (b = 1, k = 0; k < q; k++) {
-    if (si[k].type == STACK_ITEM_TYPE_OPERATOR && si[k].value == SI_OP_XOR && b == 1)
-      si[k].value = SI_OP_NOT;
     else if (si[k].type == STACK_ITEM_TYPE_VALUE || si[k].type == STACK_ITEM_TYPE_STRING)
       b = 0;
     else if (si[k].type == STACK_ITEM_TYPE_OPERATOR && si[k].value == SI_OP_LEFT)
@@ -1196,6 +1187,10 @@ int compute_stack(struct stack *sta, int x, double *result) {
           v[t - 1] = 1;
         else
           v[t - 1] = 0;
+        break;
+      case SI_OP_COMPLEMENT:
+        z = (int)v[t - 1];
+        v[t - 1] = ~z;
         break;
       case SI_OP_XOR:
         if (t <= 1) {

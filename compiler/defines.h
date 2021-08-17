@@ -116,6 +116,7 @@
 #define SI_OP_LOGICAL_OR   28
 #define SI_OP_LOGICAL_AND  29
 #define SI_OP_GET_ADDRESS  30
+#define SI_OP_COMPLEMENT   31
 
 #define SI_SIGN_POSITIVE 0
 #define SI_SIGN_NEGATIVE 1
@@ -466,6 +467,8 @@ struct tac {
 #define TAC_OP_GET_ADDRESS       26
 #define TAC_OP_GET_ADDRESS_ARRAY 27
 #define TAC_OP_ASM               28
+#define TAC_OP_XOR               29
+#define TAC_OP_COMPLEMENT        30
 
 #define TAC_ARG_TYPE_NONE     0
 #define TAC_ARG_TYPE_CONSTANT 1

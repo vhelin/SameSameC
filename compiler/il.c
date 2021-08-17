@@ -117,7 +117,7 @@ int il_stack_calculate_expression(struct tree_node *node, int calculate_max_var_
     }
     else if (child->type == TREE_NODE_TYPE_SYMBOL && child->value == '^') {
       si[z].type = STACK_ITEM_TYPE_OPERATOR;
-      si[z].value = SI_OP_POWER;
+      si[z].value = SI_OP_XOR;
 #if defined(DEBUG_IL)
       fprintf(stderr, "GOT STACK ITEM ^\n");
 #endif
@@ -161,7 +161,7 @@ int il_stack_calculate_expression(struct tree_node *node, int calculate_max_var_
     }
     else if (child->type == TREE_NODE_TYPE_SYMBOL && child->value == '~') {
       si[z].type = STACK_ITEM_TYPE_OPERATOR;
-      si[z].value = SI_OP_XOR;
+      si[z].value = SI_OP_COMPLEMENT;
 #if defined(DEBUG_IL)
       fprintf(stderr, "GOT STACK ITEM ~\n");
 #endif
@@ -537,16 +537,6 @@ int il_stack_calculate(struct stack_item *si, int q, int rresult) {
     else if (si[k].type == STACK_ITEM_TYPE_OPERATOR && si[k].value == SI_OP_LEFT)
       b = 1;
   }
-
-  /* turn unary XORs into NOTs */
-  for (b = 1, k = 0; k < q; k++) {
-    if (si[k].type == STACK_ITEM_TYPE_OPERATOR && si[k].value == SI_OP_XOR && b == 1)
-      si[k].value = SI_OP_NOT;
-    else if (si[k].type == STACK_ITEM_TYPE_VALUE || si[k].type == STACK_ITEM_TYPE_STRING)
-      b = 0;
-    else if (si[k].type == STACK_ITEM_TYPE_OPERATOR && si[k].value == SI_OP_LEFT)
-      b = 1;
-  }
 
   /* convert infix stack into postfix stack */
   for (b = 0, k = 0, d = 0; k < q; k++) {
@@ -1342,15 +1332,16 @@ int il_compute_stack(struct stack *sta, int count, int rresult) {
         }
         break;
       case SI_OP_XOR:
-        fprintf(stderr, "IMPLEMENT ME!\n");
-        /*
         if (t <= 1) {
           fprintf(stderr, "%s:%d: IL_COMPUTE_STACK: XOR is missing an operand.\n", get_file_name(sta->filename_id), sta->linenumber);
           return FAILED;
         }
-        v[t - 2] = (int)v[t - 1] ^ (int)v[t - 2];
+
+        ta = _add_tac_calculation(TAC_OP_XOR, t-2, t-1, g_temp_r++, si, v, sta);
+        if (ta == NULL)
+          return FAILED;
+        _turn_stack_item_into_a_register(si, sit, t-2, (int)ta->result_d);
         t--;
-        */
         break;
       case SI_OP_OR:
         if (t <= 1) {
@@ -1434,6 +1425,33 @@ int il_compute_stack(struct stack *sta, int count, int rresult) {
           return FAILED;
         _turn_stack_item_into_a_register(si, sit, t-2, (int)ta->result_d);
         t--;
+        break;
+      case SI_OP_COMPLEMENT:
+        ta = add_tac();
+        if (ta == NULL)
+          return FAILED;
+
+        ta->op = TAC_OP_COMPLEMENT;
+        tac_set_result(ta, TAC_ARG_TYPE_TEMP, g_temp_r++, NULL);
+
+        if (si[t-1]->type == STACK_ITEM_TYPE_VALUE)
+          tac_set_arg1(ta, TAC_ARG_TYPE_CONSTANT, (int)si[t-1]->value, NULL);
+        else if (si[t-1]->type == STACK_ITEM_TYPE_STRING) {
+          tac_set_arg1(ta, TAC_ARG_TYPE_LABEL, 0, si[t-1]->string);
+
+          /* find the definition */
+          if (tac_try_find_definition(ta, si[t-1]->string, NULL, TAC_USE_ARG1) == FAILED)
+            return FAILED;
+        }
+        else if (si[t-1]->type == STACK_ITEM_TYPE_REGISTER)
+          tac_set_arg1(ta, TAC_ARG_TYPE_LABEL, (int)si[t-1]->value, NULL);
+        
+        /* promote to the maximum of this expression */
+        ta->result_var_type_promoted = g_max_var_type;
+        ta->arg1_var_type_promoted = g_max_var_type;
+        
+        _turn_stack_item_into_a_register(si, sit, t-1, g_temp_r-1);
+        
         break;
       default:
         fprintf(stderr, "%s:%d: IL_COMPUTE_STACK: Unhandled internal operation %d! Please submit a bug report!\n", get_file_name(sta->filename_id), sta->linenumber, (int)s->value);
