@@ -57,12 +57,12 @@ int pass_5(void) {
   /* make life easier for reuse_registers() */
   if (compress_register_names() == FAILED)
     return FAILED;
+  if (propagate_operand_types() == FAILED)
+    return FAILED;
   if (reuse_registers() == FAILED)
     return FAILED;
   /* reuse_registers() might have removed some registers, so let's compress again */
   if (compress_register_names() == FAILED)
-    return FAILED;
-  if (propagate_operand_types() == FAILED)
     return FAILED;
   if (collect_and_preprocess_local_variables_inside_functions() == FAILED)
     return FAILED;
@@ -2332,19 +2332,25 @@ int propagate_operand_types(void) {
         return FAILED;
       if (_find_operand_type(&t->arg2_var_type, t->arg2_type, (int)t->arg2_d, t->arg2_s, t->arg2_node, NO) == FAILED)
         return FAILED;
+      /*
       if (_find_operand_type(&t->result_var_type, t->result_type, (int)t->result_d, t->result_s, t->result_node, YES) == FAILED)
         return FAILED;
+      */
 
       if (t->arg1_var_type == VARIABLE_TYPE_NONE)
         fprintf(stderr, "propagate_operand_types(): Couldn't find type for ARG1!\n");
       if (t->arg2_var_type == VARIABLE_TYPE_NONE)
         fprintf(stderr, "propagate_operand_types(): Couldn't find type for ARG2!\n");
+      /* NOTE: this has been set already previously in pass_4()...
       if (t->result_var_type == VARIABLE_TYPE_NONE)
         fprintf(stderr, "propagate_operand_types(): Couldn't find type for RESULT!\n");
+      */
     }
     else if (op == TAC_OP_ARRAY_READ) {
+      /* NOTE: this has been set already previously in pass_4()...
       if (_find_operand_type(&t->arg1_var_type, t->arg1_type, (int)t->arg1_d, t->arg1_s, t->arg1_node, NO) == FAILED)
         return FAILED;
+      */
       if (_find_operand_type(&t->arg2_var_type, t->arg2_type, (int)t->arg2_d, t->arg2_s, t->arg2_node, NO) == FAILED)
         return FAILED;
       if (_find_operand_type(&t->result_var_type, t->result_type, (int)t->result_d, t->result_s, t->result_node, YES) == FAILED)
@@ -2354,7 +2360,7 @@ int propagate_operand_types(void) {
       if (t->result_type == TAC_ARG_TYPE_TEMP) {
         if (t->result_var_type == VARIABLE_TYPE_NONE) {
           /* get the type from the operands */
-          t->result_var_type = get_array_item_variable_type(t->arg1_node->children[0], t->arg1_node->children[0]->label);
+          t->result_var_type = t->arg1_var_type;
         }
 
         _set_temp_register_type((int)t->result_d, t->result_var_type);

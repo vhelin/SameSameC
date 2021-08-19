@@ -415,6 +415,7 @@ int il_stack_calculate_expression(struct tree_node *node, int calculate_max_var_
       t->op = TAC_OP_ARRAY_READ;
 
       tac_set_result(t, TAC_ARG_TYPE_TEMP, g_temp_r++, NULL);
+      t->arg1_var_type = g_max_var_type;
       tac_set_arg1(t, TAC_ARG_TYPE_LABEL, 0, child->label);
       tac_set_arg2(t, TAC_ARG_TYPE_TEMP, rindex, NULL);
 

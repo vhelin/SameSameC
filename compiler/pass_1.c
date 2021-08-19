@@ -725,6 +725,10 @@ int evaluate_token(int type) {
     if (strcaselesscmp(g_tmp, "default") == 0)
       return token_add(TOKEN_ID_DEFAULT, 0, 0.0, NULL);
 
+    /* NULL */
+    if (strcaselesscmp(g_tmp, "NULL") == 0)
+      return token_add(TOKEN_ID_VALUE_INT, 0, 0.0, NULL);
+    
     /* __pureasm */
     if (strcaselesscmp(g_tmp, "__pureasm") == 0)
       return token_add(TOKEN_ID_HINT, 0, 0.0, g_tmp);

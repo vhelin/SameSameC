@@ -2173,7 +2173,8 @@ static int _generate_asm_array_read_z80(struct tac *t, FILE *file_out, struct tr
     /* it's a variable in the frame! */
     fprintf(file_out, "      ; offset %d\n", arg1_offset);
 
-    if (t->arg1_node->children[0]->value_double > 0.0) {
+    if (t->arg1_node != NULL && t->arg1_node->children[0]->value_double > 0.0) {
+      /* we come here only if arg1 has been a variable, not a temp register */
       if (arg1_offset >= -128 && arg1_offset <= 126) {
         iy_offset = arg1_offset;
         arg1_offset = 0;
@@ -2188,7 +2189,7 @@ static int _generate_asm_array_read_z80(struct tac *t, FILE *file_out, struct tr
   /* is the source address actually an address of a pointer? */
   /******************************************************************************************************/
   
-  if (t->arg1_node->children[0]->value_double > 0.0) {
+  if (t->arg1_node != NULL && t->arg1_node->children[0]->value_double > 0.0) {
     /* yes -> get the real address */
 
     /******************************************************************************************************/
@@ -2214,7 +2215,12 @@ static int _generate_asm_array_read_z80(struct tac *t, FILE *file_out, struct tr
   /******************************************************************************************************/
 
   /* NOTE! var_type is actually the type of the item we have inside arg1 array */
-  var_type = get_array_item_variable_type(t->arg1_node->children[0], t->arg1_node->children[0]->label);
+  if (t->arg1_node != NULL) {
+    /* we come here only if arg1 has been a variable, not a temp register */
+    var_type = get_array_item_variable_type(t->arg1_node->children[0], t->arg1_node->children[0]->label);
+  }
+  else
+    var_type = t->arg1_var_type;
   
   if (!(t->arg2_type == TAC_ARG_TYPE_CONSTANT && ((int)t->arg2_d) == 0)) {
     _add_bc_to_iy(file_out);
@@ -2294,7 +2300,7 @@ static int _generate_asm_array_read_z80(struct tac *t, FILE *file_out, struct tr
   /* copy data hl -> (ix) */
   /******************************************************************************************************/
 
-  if (t->result_var_type == VARIABLE_TYPE_INT16 || t->result_var_type == VARIABLE_TYPE_UINT16) {
+  if (t->result_var_type_promoted == VARIABLE_TYPE_INT16 || t->result_var_type_promoted == VARIABLE_TYPE_UINT16) {
     /* 16-bit */
     _load_l_into_ix(ix_offset, file_out);
     _load_h_into_ix(ix_offset + 1, file_out);
@@ -2508,7 +2514,8 @@ static int _generate_asm_array_write_z80(struct tac *t, FILE *file_out, struct t
     /* it's a variable in the frame! */
     fprintf(file_out, "      ; offset %d\n", result_offset);
 
-    if (t->result_node->children[0]->value_double > 0.0) {
+    if (t->result_node != NULL && t->result_node->children[0]->value_double > 0.0) {
+      /* we come here only if arg1 has been a variable, not a temp register */
       if (result_offset >= -128 && result_offset <= 126) {
         iy_offset = result_offset;
         result_offset = 0;
@@ -2523,7 +2530,7 @@ static int _generate_asm_array_write_z80(struct tac *t, FILE *file_out, struct t
   /* is the result address actually an address of a pointer? */
   /******************************************************************************************************/
   
-  if (t->result_node->children[0]->value_double > 0.0) {
+  if (t->result_node != NULL && t->result_node->children[0]->value_double > 0.0) {
     /* yes -> get the real address */
 
     /******************************************************************************************************/
@@ -2549,7 +2556,7 @@ static int _generate_asm_array_write_z80(struct tac *t, FILE *file_out, struct t
   /******************************************************************************************************/
 
   /* NOTE! var_type is actually the type of the item we have inside result array */
-  var_type = get_array_item_variable_type(t->result_node->children[0], t->result_node->children[0]->label);
+  var_type = t->result_var_type;
 
   if (!(t->arg2_type == TAC_ARG_TYPE_CONSTANT && ((int)t->arg2_d) == 0)) {
     _add_bc_to_iy(file_out);

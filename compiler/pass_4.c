@@ -94,11 +94,27 @@ static int _generate_il_calculate_struct_access_address(struct tree_node *node, 
     t->op = TAC_OP_GET_ADDRESS;
     tac_set_result(t, TAC_ARG_TYPE_TEMP, cregister, NULL);
     tac_set_arg1(t, TAC_ARG_TYPE_LABEL, 0, node->children[0]->label);
+
+    /* set promotions */
+    tac_promote_argument(t, VARIABLE_TYPE_UINT16, TAC_USE_RESULT);
+    tac_promote_argument(t, VARIABLE_TYPE_UINT16, TAC_USE_ARG1);
+
+    /* find the definition */
+    if (tac_try_find_definition(t, node->children[0]->label, node, TAC_USE_ARG1) == FAILED)
+      return FAILED;
   }
   else if (node->children[1]->value == SYMBOL_POINTER) {
     t->op = TAC_OP_ASSIGNMENT;
     tac_set_result(t, TAC_ARG_TYPE_TEMP, cregister, NULL);
     tac_set_arg1(t, TAC_ARG_TYPE_LABEL, 0, node->children[0]->label);
+
+    /* set promotions */
+    tac_promote_argument(t, VARIABLE_TYPE_UINT16, TAC_USE_RESULT);
+    tac_promote_argument(t, VARIABLE_TYPE_UINT16, TAC_USE_ARG1);
+
+    /* find the definition */
+    if (tac_try_find_definition(t, node->children[0]->label, node, TAC_USE_ARG1) == FAILED)
+      return FAILED;
   }
   else {
     snprintf(g_error_message, sizeof(g_error_message), "_generate_il_calculate_struct_access_address(): Pointer node is corrupted (2)! Please submit a bug report!\n");
@@ -133,6 +149,13 @@ static int _generate_il_calculate_struct_access_address(struct tree_node *node, 
         cregister = g_temp_r++;
         
         i++;
+
+        *final_type = si->variable_type;
+
+        /* set promotions */
+        tac_promote_argument(t, VARIABLE_TYPE_UINT16, TAC_USE_RESULT);
+        tac_promote_argument(t, VARIABLE_TYPE_UINT16, TAC_USE_ARG1);
+        tac_promote_argument(t, VARIABLE_TYPE_UINT16, TAC_USE_ARG2);
       }
       else {
         snprintf(g_error_message, sizeof(g_error_message), "_generate_il_calculate_struct_access_address(): A node is corrupted (3)! Please submit a bug report!\n");
@@ -169,6 +192,12 @@ static int _generate_il_calculate_struct_access_address(struct tree_node *node, 
       cregister = g_temp_r++;
 
       i++;
+
+      /* set promotions */
+      tac_promote_argument(t, VARIABLE_TYPE_UINT16, TAC_USE_RESULT);
+      t->arg1_var_type = VARIABLE_TYPE_UINT16;
+      tac_promote_argument(t, VARIABLE_TYPE_UINT16, TAC_USE_ARG1);
+      tac_promote_argument(t, VARIABLE_TYPE_UINT16, TAC_USE_ARG2);
     }
     else if (node->children[i]->value == '[') {
       i++;
@@ -191,6 +220,10 @@ static int _generate_il_calculate_struct_access_address(struct tree_node *node, 
   t->op = TAC_OP_ASSIGNMENT;
   tac_set_result(t, TAC_ARG_TYPE_TEMP, fregister, NULL);
   tac_set_arg1(t, TAC_ARG_TYPE_TEMP, cregister, NULL);
+
+  /* set promotions */
+  tac_promote_argument(t, VARIABLE_TYPE_UINT16, TAC_USE_RESULT);
+  tac_promote_argument(t, VARIABLE_TYPE_UINT16, TAC_USE_ARG1);
   
   return SUCCEEDED;
 }
@@ -552,14 +585,18 @@ static int _generate_il_create_variable(struct tree_node *node) {
       /* i is the array index, r2 is the value */
 
       t->op = TAC_OP_ARRAY_WRITE;
-    
+
       tac_set_result(t, TAC_ARG_TYPE_LABEL, 0, node->children[1]->label);
       t->result_node = node;
       tac_set_arg1(t, TAC_ARG_TYPE_TEMP, r2, NULL);
       tac_set_arg2(t, TAC_ARG_TYPE_CONSTANT, i, NULL);
 
       /* set promotions */
+      /*
       type = tree_node_get_max_var_type(node->children[0]);
+      */
+      type = get_array_item_variable_type(node->children[0], node->children[1]->label); /* here we use the type defined by the variable */
+      t->result_var_type = type;
       tac_promote_argument(t, type, TAC_USE_RESULT);
       type = tree_node_get_max_var_type(node->children[2 + i]);
       tac_promote_argument(t, type, TAC_USE_ARG1);
@@ -617,7 +654,8 @@ static int _generate_il_create_assignment(struct tree_node *node) {
     tac_promote_argument(t, type, TAC_USE_ARG2);
     type = tree_node_get_max_var_type(node->children[2]);
     tac_promote_argument(t, type, TAC_USE_ARG1);
-    type = get_array_item_variable_type(t->result_node->children[0], node->children[0]->label);
+    type = get_array_item_variable_type(t->result_node->children[0], t->result_node->children[1]->label);
+    t->result_var_type = type;
     tac_promote_argument(t, type, TAC_USE_RESULT);
   }
   else {
@@ -1156,6 +1194,12 @@ static int _generate_il_create_increment_decrement(struct tree_node *node) {
     tac_set_arg2(t, TAC_ARG_TYPE_CONSTANT, 0, NULL);
     tac_set_result(t, TAC_ARG_TYPE_TEMP, rtemp, NULL);
 
+    /* set the promotions */
+    t->arg1_var_type = final_type;
+    tac_promote_argument(t, final_type, TAC_USE_ARG1);
+    tac_promote_argument(t, VARIABLE_TYPE_UINT8, TAC_USE_ARG2);
+    tac_promote_argument(t, final_type, TAC_USE_RESULT);
+    
     /* inc/dec */
     t = add_tac();
     if (t == NULL)
@@ -1170,6 +1214,11 @@ static int _generate_il_create_increment_decrement(struct tree_node *node) {
     tac_set_arg2(t, TAC_ARG_TYPE_CONSTANT, 1, NULL);
     tac_set_result(t, TAC_ARG_TYPE_TEMP, rtemp, NULL);
 
+    /* set the promotions */
+    tac_promote_argument(t, final_type, TAC_USE_ARG1);
+    tac_promote_argument(t, final_type, TAC_USE_ARG2);
+    tac_promote_argument(t, final_type, TAC_USE_RESULT);
+    
     /* write back */
     t = add_tac();
     if (t == NULL)
@@ -1179,6 +1228,12 @@ static int _generate_il_create_increment_decrement(struct tree_node *node) {
     tac_set_arg1(t, TAC_ARG_TYPE_TEMP, rtemp, NULL);
     tac_set_arg2(t, TAC_ARG_TYPE_CONSTANT, 0, NULL);
     tac_set_result(t, TAC_ARG_TYPE_TEMP, raddress, NULL);
+
+    /* set the promotions */
+    tac_promote_argument(t, final_type, TAC_USE_ARG1);
+    tac_promote_argument(t, VARIABLE_TYPE_UINT8, TAC_USE_ARG2);
+    t->result_var_type = final_type;
+    tac_promote_argument(t, final_type, TAC_USE_RESULT);
   }
   else {
     /* variable access */
