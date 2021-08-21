@@ -41,6 +41,7 @@ struct tree_node *g_current_statement = NULL;
 
 static int _generate_il_create_block(struct tree_node *node);
 static int _generate_il_create_increment_decrement(struct tree_node *node);
+static int _generate_il_create_expression(struct tree_node *node);
 
 
 static int _enter_breakable(int label_break, int label_continue) {
@@ -200,10 +201,108 @@ static int _generate_il_calculate_struct_access_address(struct tree_node *node, 
       tac_promote_argument(t, VARIABLE_TYPE_UINT16, TAC_USE_ARG2);
     }
     else if (node->children[i]->value == '[') {
+      int item_size = si->size / si->array_items;
+
       i++;
 
-      fprintf(stderr, "IMPLEMENT ME!\n");
-      exit(0);
+      if (i >= node->added_children)
+        break;
+
+      if (node->children[i]->type == TREE_NODE_TYPE_VALUE_INT) {
+        t = add_tac();
+        if (t == NULL)
+          return FAILED;
+        
+        t->op = TAC_OP_ADD;
+        tac_set_result(t, TAC_ARG_TYPE_TEMP, g_temp_r, NULL);
+        tac_set_arg1(t, TAC_ARG_TYPE_TEMP, cregister, NULL);
+        tac_set_arg2(t, TAC_ARG_TYPE_CONSTANT, item_size * node->children[i]->value, NULL);
+        
+        cregister = g_temp_r++;
+        
+        i++;
+
+        *final_type = si->variable_type;
+
+        /* set promotions */
+        tac_promote_argument(t, VARIABLE_TYPE_UINT16, TAC_USE_RESULT);
+        tac_promote_argument(t, VARIABLE_TYPE_UINT16, TAC_USE_ARG1);
+        tac_promote_argument(t, VARIABLE_TYPE_UINT16, TAC_USE_ARG2);
+      }
+      else {
+        int result = g_temp_r;
+
+        if (_generate_il_create_expression(node->children[i]) == FAILED)
+          return FAILED;
+
+        i++;
+
+        if (item_size == 1) {
+          /* no need for a mul by the item_size */
+          t = add_tac();
+          if (t == NULL)
+            return FAILED;
+        
+          t->op = TAC_OP_ADD;
+          tac_set_result(t, TAC_ARG_TYPE_TEMP, g_temp_r, NULL);
+          tac_set_arg1(t, TAC_ARG_TYPE_TEMP, cregister, NULL);
+          tac_set_arg2(t, TAC_ARG_TYPE_TEMP, result, NULL);
+        
+          /* set promotions */
+          tac_promote_argument(t, VARIABLE_TYPE_UINT16, TAC_USE_RESULT);
+          tac_promote_argument(t, VARIABLE_TYPE_UINT16, TAC_USE_ARG1);
+          tac_promote_argument(t, VARIABLE_TYPE_UINT16, TAC_USE_ARG2);
+
+          cregister = g_temp_r++;
+        
+          *final_type = si->variable_type;
+        }
+        else {
+          /* mul the index by the item_size */
+          t = add_tac();
+          if (t == NULL)
+            return FAILED;
+        
+          t->op = TAC_OP_MUL;
+          tac_set_result(t, TAC_ARG_TYPE_TEMP, g_temp_r, NULL);
+          tac_set_arg1(t, TAC_ARG_TYPE_TEMP, result, NULL);
+          tac_set_arg2(t, TAC_ARG_TYPE_CONSTANT, item_size, NULL);
+
+          /* set promotions */
+          tac_promote_argument(t, VARIABLE_TYPE_UINT16, TAC_USE_RESULT);
+          tac_promote_argument(t, VARIABLE_TYPE_UINT16, TAC_USE_ARG1);
+          tac_promote_argument(t, VARIABLE_TYPE_UINT16, TAC_USE_ARG2);
+
+          /* add the index */
+          t = add_tac();
+          if (t == NULL)
+            return FAILED;
+        
+          t->op = TAC_OP_ADD;
+          tac_set_result(t, TAC_ARG_TYPE_TEMP, g_temp_r, NULL);
+          tac_set_arg1(t, TAC_ARG_TYPE_TEMP, cregister, NULL);
+          tac_set_arg2(t, TAC_ARG_TYPE_TEMP, g_temp_r, NULL);
+        
+          /* set promotions */
+          tac_promote_argument(t, VARIABLE_TYPE_UINT16, TAC_USE_RESULT);
+          tac_promote_argument(t, VARIABLE_TYPE_UINT16, TAC_USE_ARG1);
+          tac_promote_argument(t, VARIABLE_TYPE_UINT16, TAC_USE_ARG2);
+
+          cregister = g_temp_r++;
+        
+          *final_type = si->variable_type;
+        }
+      }
+
+      if (i >= node->added_children)
+        break;
+
+      if (!(node->children[i]->type == TREE_NODE_TYPE_SYMBOL && node->children[i]->value == ']')) {
+        snprintf(g_error_message, sizeof(g_error_message), "_generate_il_calculate_struct_access_address(): Was expecting ']', got something else instead.\n");
+        return print_error_using_tree_node(g_error_message, ERROR_ERR, node->children[i]);
+      }
+
+      i++;
       
       skip = YES;
     }
@@ -395,7 +494,7 @@ static int _generate_il_create_expression(struct tree_node *node) {
         /* struct access */
 
         /* get the value before increment/decrement */
-        fprintf(stderr, "IMPLEMENT ME 1\n");
+        fprintf(stderr, "IMPLEMENT ME 2\n");
         exit(0);
       }
       else {
@@ -442,7 +541,7 @@ static int _generate_il_create_expression(struct tree_node *node) {
         /* struct access */
 
         /* increment/decrement */
-        fprintf(stderr, "IMPLEMENT ME 2\n");
+        fprintf(stderr, "IMPLEMENT ME 3\n");
         exit(0);
       }
       else {

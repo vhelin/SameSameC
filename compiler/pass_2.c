@@ -4164,6 +4164,29 @@ int _create_struct_union_definition(char *struct_name, int variable_type) {
 
           /* skip the name */
           _next_token();
+
+          if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == '[') {
+            int items;
+
+            /* an array of structs/unions */
+
+            /* skip '[' */
+            _next_token();
+
+            if (stack_calculate_tokens(&items) != SUCCEEDED)
+              return print_error("The array size must be solved here.\n", ERROR_ERR);
+
+            s->type = STRUCT_ITEM_TYPE_ARRAY;
+            s->array_items = items;
+          
+            if (!(g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == ']')) {
+              snprintf(g_error_message, sizeof(g_error_message), "Expected ']', but got %s.\n", get_token_simple(g_token_current));
+              return print_error(g_error_message, ERROR_ERR);
+            }
+
+            /* skip ']' */
+            _next_token();
+          }
           
           if (!(g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == ';'))
             return print_error("struct/union name must be followed by a ';'.\n", ERROR_ERR);
@@ -4220,6 +4243,8 @@ int _create_struct_union_definition(char *struct_name, int variable_type) {
 
       if ((variable_type == VARIABLE_TYPE_STRUCT || variable_type == VARIABLE_TYPE_UNION) && g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == '{' && pointer_depth == 0 && got_struct_name == NO && is_const_1 == NO && is_const_2 == NO) {
         /* local struct/union definition */
+        int variable_type_original = variable_type;
+        
         if (variable_type == VARIABLE_TYPE_STRUCT)
           variable_type = STRUCT_ITEM_TYPE_STRUCT;
         else if (variable_type == VARIABLE_TYPE_UNION)
@@ -4234,6 +4259,8 @@ int _create_struct_union_definition(char *struct_name, int variable_type) {
 
         s->file_id = g_token_current->file_id;
         s->line_number = g_token_current->line_number;
+        s->variable_type = variable_type_original;
+        s->pointer_depth = pointer_depth;
         
         struct_item_add_child(stack[depth], s);
         stack[++depth] = s;

@@ -146,59 +146,85 @@ int struct_item_add_child(struct struct_item *s, struct struct_item *child) {
 }
 
 
+static int _calculate_struct_item(struct struct_item *s);
+
+
+static int _calculate_struct_union_size(struct struct_item *s) {
+
+  int i;
+  
+  for (i = 0; i < s->added_children; i++) {
+    struct struct_item *child = s->children[i];
+
+    if (child->size == 0) {
+      if (_calculate_struct_item(child) == FAILED)
+        return FAILED;
+    }
+
+    if (s->type == STRUCT_ITEM_TYPE_STRUCT || s->variable_type == VARIABLE_TYPE_STRUCT) {
+      child->offset = s->size;
+      s->size += child->size;
+    }
+    else if (s->type == STRUCT_ITEM_TYPE_UNION || s->variable_type == VARIABLE_TYPE_UNION) {
+      child->offset = 0;
+      if (s->size < child->size)
+        s->size = child->size;
+    }
+  }
+
+  return SUCCEEDED;
+}
+
+
 static int _calculate_struct_item(struct struct_item *s) {
 
-  int i, size = 0;
+  int size = 0;
 
   if (s->type == STRUCT_ITEM_TYPE_STRUCT || s->type == STRUCT_ITEM_TYPE_UNION) {
-    for (i = 0; i < s->added_children; i++) {
-      struct struct_item *child = s->children[i];
-
-      if (child->size == 0) {
-        if (_calculate_struct_item(child) == FAILED)
-          return FAILED;
-      }
-
-      if (s->type == STRUCT_ITEM_TYPE_STRUCT) {
-        child->offset = s->size;
-        s->size += child->size;
-      }
-      else if (s->type == STRUCT_ITEM_TYPE_UNION) {
-        child->offset = 0;
-        if (s->size < child->size)
-          s->size = child->size;
-      }
-    }
+    if (_calculate_struct_union_size(s) == FAILED)
+      return FAILED;
   }
   else {
     /* calculate the unit size */
     if (s->variable_type == VARIABLE_TYPE_STRUCT || s->variable_type == VARIABLE_TYPE_UNION) {
-      struct struct_item *item;
+      if (strcmp(s->struct_name, "") == 0) {
+        /* s contains the struct definition! */
+        if (_calculate_struct_union_size(s) == FAILED)
+          return FAILED;
 
-      /* find the struct/union */
-      item = g_struct_items_first;
-      while (item != NULL) {
-        if (strcmp(item->name, s->struct_name) == 0)
-          break;
-        item = item->next;
+        if (s->pointer_depth > 0)
+          size = 2;
+        else
+          size = s->size;
       }
-
-      if (item == NULL) {
-        g_current_line_number = s->line_number;
-        g_current_filename_id = s->file_id;
-        snprintf(g_error_message, sizeof(g_error_message), "Cannot find struct/union \"%s\".\n", s->struct_name);
-        return print_error(g_error_message, ERROR_ERR);
-      }
-
-      if (s->pointer_depth > 0)
-        size = 2;
       else {
-        if (item->size == 0) {
-          if (_calculate_struct_item(item) == FAILED)
-            return FAILED;
+        struct struct_item *item;
+
+        /* find the struct/union */
+        item = g_struct_items_first;
+        while (item != NULL) {
+          if (strcmp(item->name, s->struct_name) == 0)
+            break;
+          item = item->next;
         }
 
-        size = item->size;
+        if (item == NULL) {
+          g_current_line_number = s->line_number;
+          g_current_filename_id = s->file_id;
+          snprintf(g_error_message, sizeof(g_error_message), "Cannot find struct/union \"%s\".\n", s->struct_name);
+          return print_error(g_error_message, ERROR_ERR);
+        }
+
+        if (s->pointer_depth > 0)
+          size = 2;
+        else {
+          if (item->size == 0) {
+            if (_calculate_struct_item(item) == FAILED)
+              return FAILED;
+          }
+
+          size = item->size;
+        }
       }
     }
     else {
@@ -237,52 +263,86 @@ int calculate_struct_items(void) {
 }
 
 
-static int _print_struct_item(struct struct_item *s, int indentation) {
+static int _print_struct_item(struct struct_item *s, int indentation);
+
+
+static int _print_struct_item_struct_union(struct struct_item *s, int indentation) {
 
   int i;
+  
+  if (indentation == 0) {
+    if (s->type == STRUCT_ITEM_TYPE_STRUCT || s->variable_type == VARIABLE_TYPE_STRUCT)
+      fprintf(stderr, "struct %s { // SIZE %d\n", s->name, s->size);
+    else
+      fprintf(stderr, "union %s { // SIZE %d\n", s->name, s->size);
+  }
+  else {
+    for (i = 0; i < indentation; i++)
+      fprintf(stderr, " ");
 
-  if (s->type == STRUCT_ITEM_TYPE_STRUCT || s->type == STRUCT_ITEM_TYPE_UNION) {
-    if (indentation == 0) {
-      if (s->type == STRUCT_ITEM_TYPE_STRUCT)
-        fprintf(stderr, "struct %s { // SIZE %d\n", s->name, s->size);
-      else
-        fprintf(stderr, "union %s { // SIZE %d\n", s->name, s->size);
-    }
+    if (s->type == STRUCT_ITEM_TYPE_STRUCT || s->variable_type == VARIABLE_TYPE_STRUCT)
+      fprintf(stderr, "struct { // SIZE %d OFFSET %d\n", s->size, s->offset);
+    else
+      fprintf(stderr, "union { // SIZE %d OFFSET %d\n", s->size, s->offset);
+  }
+
+  for (i = 0; i < s->added_children; i++)
+    _print_struct_item(s->children[i], indentation + 2);
+
+  if (s->type == STRUCT_ITEM_TYPE_ARRAY || s->type == STRUCT_ITEM_TYPE_ITEM) {
+    if (indentation == 0)
+      fprintf(stderr, "} ");
     else {
       for (i = 0; i < indentation; i++)
         fprintf(stderr, " ");
-      
-      if (s->type == STRUCT_ITEM_TYPE_STRUCT)
-        fprintf(stderr, "struct { // SIZE %d OFFSET %d\n", s->size, s->offset);
-      else
-        fprintf(stderr, "union { // SIZE %d OFFSET %d\n", s->size, s->offset);
+      fprintf(stderr, "} ");
     }
-
-    for (i = 0; i < s->added_children; i++)
-      _print_struct_item(s->children[i], indentation + 2);
-
+  }
+  else {  
     if (indentation == 0)
       fprintf(stderr, "};\n");
     else {
       for (i = 0; i < indentation; i++)
         fprintf(stderr, " ");
-
+      
       if (s->name[0] == 0)
         fprintf(stderr, "};\n");
       else
         fprintf(stderr, "} %s;\n", s->name);
     }
   }
+
+  return SUCCEEDED;
+}
+
+
+static int _print_struct_item(struct struct_item *s, int indentation) {
+
+  int i;
+
+  if (s->type == STRUCT_ITEM_TYPE_STRUCT || s->type == STRUCT_ITEM_TYPE_UNION) {
+    if (_print_struct_item_struct_union(s, indentation) == FAILED)
+      return FAILED;
+  }
   else {
-    for (i = 0; i < indentation; i++)
-      fprintf(stderr, " ");
-          
-    if (s->variable_type == VARIABLE_TYPE_STRUCT)
-      fprintf(stderr, "struct %s ", s->struct_name);
-    else if (s->variable_type == VARIABLE_TYPE_UNION)
-      fprintf(stderr, "union %s ", s->struct_name);
-    else
+    /* array or item */
+    if (s->variable_type == VARIABLE_TYPE_STRUCT && strcmp(s->struct_name, "") == 0) {
+      if (_print_struct_item_struct_union(s, indentation) == FAILED)
+        return FAILED;
+    }
+    else if (s->variable_type == VARIABLE_TYPE_UNION && strcmp(s->struct_name, "") == 0) {
+      if (_print_struct_item_struct_union(s, indentation) == FAILED)
+        return FAILED;
+    }
+    else {
+      for (i = 0; i < indentation; i++)
+        fprintf(stderr, " ");
+
       fprintf(stderr, "%s ", g_variable_types[s->variable_type]);
+
+      if (s->variable_type == VARIABLE_TYPE_STRUCT || s->variable_type == VARIABLE_TYPE_UNION)
+        fprintf(stderr, "%s ", s->struct_name);
+    }
 
     for (i = 0; i < s->pointer_depth; i++)
       fprintf(stderr, "*");
@@ -292,7 +352,7 @@ static int _print_struct_item(struct struct_item *s, int indentation) {
     if (s->type == STRUCT_ITEM_TYPE_ITEM)
       fprintf(stderr, "; // SIZE %d OFFSET %d\n", s->size, s->offset);
     else
-      fprintf(stderr, "[%d] // SIZE %d OFFSET %d;\n", s->array_items, s->size, s->offset);
+      fprintf(stderr, "[%d]; // SIZE %d OFFSET %d;\n", s->array_items, s->size, s->offset);
   }
   
   return SUCCEEDED;
