@@ -42,15 +42,15 @@ struct block {
       u8 hello2;
       u8 hello3;
       u8 hello4;
-    };
-  };
+    } strukt;
+  } junion[4];
   struct {
     u8  health;
     u16 armor;
   } melon[1+1+2];
   u16 array[8];
   struct block *next;
-} g_block;
+} *g_block[4];
 
 struct simple {
   u8 value1;
@@ -62,8 +62,8 @@ static void initialize_adder(s8 *adder) {
 
   const struct simple g_simple[] = { { 0, { 1+1, 3 }, 4 },
                                      { 1, { 2+2, 6 }, 8 } };
-  adder[0] = 1;
-
-  g_block.melon[2].armor++;
+  //adder[0] =  g_block[0+1+2].junion[1+1].strukt.hello3;
+  g_block[0+1]->next->next->next->next->melon[3].armor = 1;
+  //g_block[0+1+2].junion[1+1].strukt.hello3++;
   //g_block.array[0+1+2+adder[0]]++;
 }

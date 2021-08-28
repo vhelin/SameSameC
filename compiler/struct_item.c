@@ -84,10 +84,16 @@ struct struct_item *find_struct_item(char *name) {
 struct struct_item *find_struct_item_child(struct struct_item *s, char *name) {
 
   int i;
-  
-  if (s == NULL)
+
+  if (s == NULL) {
+    print_error("find_struct_item_child(): \"s\" is NULL! Please submit a bug report!\n", ERROR_DIR);
     return NULL;
-  
+  }
+  if (name == NULL) {
+    print_error("find_struct_item_child(): \"name\" is NULL! Please submit a bug report!\n", ERROR_DIR);
+    return NULL;
+  }
+
   for (i = 0; i < s->added_children; i++) {
     if (strcmp(s->children[i]->name, name) == 0)
       return s->children[i];

@@ -304,6 +304,28 @@ struct token {
 #define VARIABLE_TYPE_STRUCT 7
 #define VARIABLE_TYPE_UNION  8
 
+#define STRUCT_ITEM_TYPE_STRUCT 0
+#define STRUCT_ITEM_TYPE_UNION  1
+#define STRUCT_ITEM_TYPE_ITEM   2
+#define STRUCT_ITEM_TYPE_ARRAY  3
+
+struct struct_item {
+  int type;
+  int variable_type;
+  int pointer_depth;
+  int array_items;
+  int file_id;
+  int line_number;
+  char name[MAX_NAME_LENGTH + 1];
+  char struct_name[MAX_NAME_LENGTH + 1];
+  int offset;
+  int size;
+  struct struct_item **children;
+  int max_children;
+  int added_children;
+  struct struct_item *next;
+};
+
 struct local_variable {
   struct tree_node *node;
   int offset_to_fp;
@@ -333,6 +355,7 @@ struct tree_node {
   int file_id;
   int line_number;
   struct tree_node *definition;
+  struct struct_item *struct_item;
   int added_children;
   int children_max;
   struct tree_node **children;
@@ -508,28 +531,6 @@ struct inline_asm {
   struct asm_line *asm_line_first;
   struct asm_line *asm_line_last;
   struct inline_asm *next;
-};
-
-#define STRUCT_ITEM_TYPE_STRUCT 0
-#define STRUCT_ITEM_TYPE_UNION  1
-#define STRUCT_ITEM_TYPE_ITEM   2
-#define STRUCT_ITEM_TYPE_ARRAY  3
-
-struct struct_item {
-  int type;
-  int variable_type;
-  int pointer_depth;
-  int array_items;
-  int file_id;
-  int line_number;
-  char name[MAX_NAME_LENGTH + 1];
-  char struct_name[MAX_NAME_LENGTH + 1];
-  int offset;
-  int size;
-  struct struct_item **children;
-  int max_children;
-  int added_children;
-  struct struct_item *next;
 };
 
 #endif /* _DEFINES_H */

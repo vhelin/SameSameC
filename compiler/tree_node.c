@@ -176,6 +176,28 @@ int get_max_variable_type_4(int t1, int t2, int t3, int t4) {
 }
 
 
+static int _get_struct_access_variable_type(struct tree_node *node) {
+
+  struct struct_item *item = NULL;
+  int i;
+
+  for (i = 0; i < node->added_children; i++) {
+    if (node->children[i]->type == TREE_NODE_TYPE_VALUE_STRING)
+      item = node->children[i]->struct_item;
+  }
+
+  if (item == NULL) {
+    print_error_using_tree_node("Cannot resolve the type of the struct/union access! Please submit a bug report!\n", ERROR_ERR, node);
+    return VARIABLE_TYPE_NONE;
+  }
+
+  if (item->pointer_depth > 0)
+    return VARIABLE_TYPE_UINT16;
+  else
+    return item->variable_type;
+}
+
+
 static int _get_create_variable_variable_type(struct tree_node *node) {
 
   if (node->value_double > 0.0)
@@ -218,6 +240,8 @@ int tree_node_get_max_var_type(struct tree_node *node) {
     return get_array_item_variable_type(node->definition->children[0], node->definition->children[1]->label);
   else if (node->type == TREE_NODE_TYPE_FUNCTION_CALL)
     return _get_create_variable_variable_type(node->definition->children[0]);
+  else if (node->type == TREE_NODE_TYPE_STRUCT_ACCESS)
+    return _get_struct_access_variable_type(node);
   else if (node->type == TREE_NODE_TYPE_EXPRESSION) {
     int type_max = VARIABLE_TYPE_NONE, i;
 
@@ -242,6 +266,8 @@ int tree_node_get_max_var_type(struct tree_node *node) {
         type_max = get_max_variable_type_2(type_max, get_array_item_variable_type(n->definition->children[0], n->definition->children[1]->label));
       else if (n->type == TREE_NODE_TYPE_FUNCTION_CALL)
         type_max = get_max_variable_type_2(type_max, _get_create_variable_variable_type(n->definition->children[0]));
+      else if (n->type == TREE_NODE_TYPE_STRUCT_ACCESS)
+        type_max = get_max_variable_type_2(type_max, _get_struct_access_variable_type(n));
       else
         fprintf(stderr, "tree_node_get_max_var_type(): Unsupported tree_node type %d in an expression! Please submit a bug report!\n", n->type);
     }
@@ -359,6 +385,7 @@ struct tree_node *allocate_tree_node(int type) {
   node->file_id = g_current_filename_id;
   node->line_number = g_current_line_number;
   node->definition = NULL;
+  node->struct_item = NULL;
   node->local_variables = NULL;
   node->flags = 0;
   node->reads = 0;
@@ -396,6 +423,7 @@ struct tree_node *clone_tree_node(struct tree_node *node) {
   clone->file_id = node->file_id;
   clone->line_number = node->line_number;
   clone->definition = node->definition;
+  clone->struct_item = node->struct_item;
   clone->flags = node->flags;
   clone->reads = node->reads;
   clone->writes = node->writes;

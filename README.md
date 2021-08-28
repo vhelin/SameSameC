@@ -25,6 +25,7 @@ Optimize:
 - Z80: Keep stack frame in IX and possibly IY all the time
 - Local array variable initialization
 - Reduce code bloat (parser...)
+- Z80: Remove unnecessary stack writes/reads
 
 Fix:
 

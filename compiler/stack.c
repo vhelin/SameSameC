@@ -418,6 +418,10 @@ int stack_calculate_tree_node(struct tree_node *node, int *value) {
       /* raw bytes in a calculation - doesn't make any sense */
       failed = YES;
     }
+    else if (child->type == TREE_NODE_TYPE_STRUCT_ACCESS) {
+      /* struct access cannot be calculated here, only on the target machine... */
+      failed = YES;
+    }
     else {
       fprintf(stderr, "STACK_CALCULATE_TREE_NODE: Got an unhandled tree_node of type %d! Please submit a bug report!\n", child->type);
       return FAILED;

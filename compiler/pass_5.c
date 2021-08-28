@@ -27,7 +27,7 @@
 
 extern struct tree_node *g_global_nodes;
 extern int g_verbose_mode, g_input_float_mode, g_current_filename_id, g_current_line_number;
-extern char *g_variable_types[9], *g_two_char_symbols[10], g_label[MAX_NAME_LENGTH + 1];
+extern char *g_variable_types[9], *g_two_char_symbols[17], g_label[MAX_NAME_LENGTH + 1];
 extern double g_parsed_double;
 extern struct tac *g_tacs;
 extern int g_tacs_count, g_tacs_max, g_backend;
@@ -2255,8 +2255,14 @@ static int _find_operand_type(unsigned char *type, unsigned char arg_type, int v
     /* void and a pointer? */
     else if (variable_type == VARIABLE_TYPE_VOID && pointer_level >= 1.0)
       *type = VARIABLE_TYPE_UINT16;
+    /* struct? */
+    else if (variable_type == VARIABLE_TYPE_STRUCT)
+      *type = VARIABLE_TYPE_UINT16;
+    /* union? */
+    else if (variable_type == VARIABLE_TYPE_UNION)
+      *type = VARIABLE_TYPE_UINT16;
     else {
-      fprintf(stderr, "_find_operand_type(): Variable \"%s\" is of type %d -> Not handled here! Please submit a bug report\n", node->children[1]->label, variable_type);
+      fprintf(stderr, "_find_operand_type(): Variable \"%s\" is of type %d -> Not handled here! Please submit a bug report!\n", node->children[1]->label, variable_type);
       return FAILED;
     }
   }

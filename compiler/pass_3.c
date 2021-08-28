@@ -25,7 +25,7 @@
 
 extern struct tree_node *g_global_nodes, *g_label_definition;
 extern int g_verbose_mode, g_input_float_mode, g_current_filename_id, g_current_line_number;
-extern char *g_variable_types[9], *g_two_char_symbols[10], g_label[MAX_NAME_LENGTH + 1];
+extern char *g_variable_types[9], *g_two_char_symbols[17], g_label[MAX_NAME_LENGTH + 1];
 extern char g_tmp[4096], g_error_message[sizeof(g_tmp) + MAX_NAME_LENGTH + 1 + 1024];
 extern double g_parsed_double;
 
@@ -196,6 +196,14 @@ void print_simple_tree_node(struct tree_node *node) {
       fprintf(stderr, "\"%s\", 0", node->label);
     else
       fprintf(stderr, "[%d bytes]", node->value);
+  }
+  else if (node->type == TREE_NODE_TYPE_STRUCT_ACCESS) {
+    for (i = 0; i < node->added_children; i++) {
+      if (node->children[i]->type == TREE_NODE_TYPE_EXPRESSION)
+        print_expression(node->children[i]);
+      else
+        print_simple_tree_node(node->children[i]);
+    }
   }
   else
     fprintf(stderr, "?");
@@ -744,6 +752,15 @@ static int _simplify_expression(struct tree_node *node) {
         return SUCCEEDED;
       else
         subexpressions++;
+    }
+    else if (child->type == TREE_NODE_TYPE_STRUCT_ACCESS) {
+      for (j = 1; j < child->added_children; j++) {
+        if (child->children[j]->type == TREE_NODE_TYPE_EXPRESSION) {
+          if (_simplify_expression(child->children[j]) == SUCCEEDED)
+            return SUCCEEDED;
+          subexpressions++;
+        }
+      }
     }
     else if (child->type == TREE_NODE_TYPE_FUNCTION_CALL) {
       for (j = 1; j < child->added_children; j++) {

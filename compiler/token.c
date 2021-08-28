@@ -15,7 +15,7 @@ extern struct active_file_info *g_active_file_info_first, *g_active_file_info_la
 extern char g_tmp[4096], g_error_message[sizeof(g_tmp) + MAX_NAME_LENGTH + 1 + 1024];
 extern int g_inside_define;
 extern char *g_variable_types[9];
-extern char *g_two_char_symbols[];
+extern char *g_two_char_symbols[17];
 
 struct token *g_token_first = NULL, *g_token_last = NULL, *g_latest_token = NULL;
 
@@ -27,7 +27,7 @@ char *get_token_simple(struct token *t) {
   if (t->id == TOKEN_ID_VARIABLE_TYPE)
     snprintf(g_token_in_simple_form, sizeof(g_token_in_simple_form), "'%s'", g_variable_types[t->value]);
   else if (t->id == TOKEN_ID_SYMBOL) {
-    if (t->value <= SYMBOL_EQUAL_AND)
+    if (t->value <= SYMBOL_POINTER)
       snprintf(g_token_in_simple_form, sizeof(g_token_in_simple_form), "'%s'", g_two_char_symbols[t->value]);
     else
       snprintf(g_token_in_simple_form, sizeof(g_token_in_simple_form), "'%c'", t->value);

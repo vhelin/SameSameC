@@ -38,7 +38,7 @@ extern struct token *g_token_first, *g_token_last;
 
 int g_current_filename_id = -1, g_current_line_number = -1;
 char *g_variable_types[9] = { "none", "void", "s8", "s16", "u8", "u16", "const", "struct", "union" };
-char *g_two_char_symbols[16] = { "||", "&&", "<=", ">=", "==", "!=", "<<", ">>", "++", "--", "-=", "+=", "*=", "/=", "|=", "&=" };
+char *g_two_char_symbols[17] = { "||", "&&", "<=", ">=", "==", "!=", "<<", ">>", "++", "--", "-=", "+=", "*=", "/=", "|=", "&=", "->" };
 
 static struct tree_node *g_open_function_definition = NULL;
 struct token *g_token_current = NULL, *g_token_previous = NULL;
@@ -62,6 +62,7 @@ static int g_was_main_function_defined = NO;
 
 static void _check_ast_block(struct tree_node *node);
 static void _check_ast_function_call(struct tree_node *node);
+static void _check_ast_simple_tree_node(struct tree_node *node);
 static void _check_ast_expression(struct tree_node *node);
 static void _next_token(void);
 
@@ -73,7 +74,7 @@ static void _print_token(struct token *t) {
   if (t->id == TOKEN_ID_VARIABLE_TYPE)
     fprintf(stderr, "TOKEN: VARIABLE_TYPE: %s\n", g_variable_types[t->value]);
   else if (t->id == TOKEN_ID_SYMBOL) {
-    if (t->value <= SYMBOL_EQUAL_AND)
+    if (t->value <= SYMBOL_POINTER)
       fprintf(stderr, "TOKEN: SYMBOL       : %s\n", g_two_char_symbols[t->value]);
     else
       fprintf(stderr, "TOKEN: SYMBOL       : %c\n", t->value);
@@ -137,7 +138,7 @@ static void _print_token(struct token *t) {
 static int _print_loose_token_error(struct token *t) {
 
   if (t->id == TOKEN_ID_SYMBOL) {
-    if (t->value <= SYMBOL_DECREMENT)
+    if (t->value <= SYMBOL_POINTER)
       snprintf(g_error_message, sizeof(g_error_message), "The loose symbol '%s' doesn't make any sense.\n", g_two_char_symbols[t->value]);
     else
       snprintf(g_error_message, sizeof(g_error_message), "The loose symbol '%c' doesn't make any sense.\n", t->value);
@@ -516,21 +517,56 @@ static int _parse_struct_access(struct tree_node *node) {
   /* node is either a TREE_NODE_TYPE_VALUE_STRING or TREE_NODE_TYPE_ARRAY_ITEM,
      so let's convert that to TREE_NODE_TYPE_STRUCT_ACCESS */
 
-  node->type = TREE_NODE_TYPE_STRUCT_ACCESS;
-  
-  item = symbol_table_find_symbol(node->label);
-  if (item != NULL)
-    node->definition = item->node;
-
   child = allocate_tree_node_value_string(node->label);
   if (child == NULL)
     return FAILED;
 
-  if (tree_node_add_child(node, child) == FAILED) {
-    free_tree_node(child);
-    return FAILED;
+  item = symbol_table_find_symbol(child->label);
+  if (item != NULL)
+    child->definition = item->node;
+
+  if (node->type == TREE_NODE_TYPE_ARRAY_ITEM) {
+    /* we need to add '[' and ']' symbols to the node... */
+    struct tree_node *expression = node->children[0];
+
+    node->children[0] = child;
+
+    child = allocate_tree_node_symbol('[');
+    if (child == NULL) {
+      free_tree_node(node);
+      return FAILED;
+    }
+
+    if (tree_node_add_child(node, child) == FAILED) {
+      free_tree_node(node);
+      return FAILED;
+    }
+
+    if (tree_node_add_child(node, expression) == FAILED) {
+      free_tree_node(node);
+      return FAILED;
+    }
+
+    child = allocate_tree_node_symbol(']');
+    if (child == NULL) {
+      free_tree_node(node);
+      return FAILED;
+    }
+
+    if (tree_node_add_child(node, child) == FAILED) {
+      free_tree_node(node);
+      return FAILED;
+    }
+  }
+  else {
+    if (tree_node_add_child(node, child) == FAILED) {
+      free_tree_node(child);
+      return FAILED;
+    }
   }
   
+  node->type = TREE_NODE_TYPE_STRUCT_ACCESS;
+    
   while (1) {
     if ((g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == '.') ||
         (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == SYMBOL_POINTER)) {
@@ -1617,8 +1653,37 @@ int create_statement(void) {
 
           if (_parse_struct_access(target_node) == FAILED)
             return FAILED;
-        }
 
+          if (g_token_current->id == TOKEN_ID_SYMBOL && (g_token_current->value == SYMBOL_INCREMENT ||
+                                                         g_token_current->value == SYMBOL_DECREMENT)) {
+            /* struct_accress[]++ / struct_access[]-- */
+
+            /* change the TREE_NODE_TYPE_ARRAY_ITEM to TREE_NODE_TYPE_INCREMENT_DECREMENT */
+            target_node->type = TREE_NODE_TYPE_INCREMENT_DECREMENT;
+
+            /* ++ or -- */
+            target_node->value = g_token_current->value;
+
+            /* post */
+            target_node->value_double = 1.0;
+
+            tree_node_add_child(_get_current_open_block(), target_node);
+
+            /* next token */
+            _next_token();
+          
+            if (!(g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == ';')) {
+              snprintf(g_error_message, sizeof(g_error_message), "Expected ';', but got %s.\n", get_token_simple(g_token_current));
+              return print_error(g_error_message, ERROR_ERR);
+            }
+
+            /* next token */
+            _next_token();
+      
+            return SUCCEEDED;
+          }
+        }
+          
         if (g_token_current->id != TOKEN_ID_SYMBOL || (g_token_current->value != '=' &&
                                                        g_token_current->value != SYMBOL_EQUAL_SUB &&
                                                        g_token_current->value != SYMBOL_EQUAL_ADD &&
@@ -3601,6 +3666,9 @@ static void _check_ast_check_definition(struct tree_node *node) {
   else if (node->type == TREE_NODE_TYPE_VALUE_STRING) {
     /* this will be checked later when turning the AST into IL */
   }
+  else if (node->type == TREE_NODE_TYPE_GET_ADDRESS) {
+    /* getting an address of a variable will always succeed */
+  }
   else if (node->type == TREE_NODE_TYPE_ARRAY_ITEM || node->type == TREE_NODE_TYPE_GET_ADDRESS_ARRAY) {
     int is_ok = YES;
 
@@ -3630,13 +3698,19 @@ static void _check_ast_check_definition(struct tree_node *node) {
     if (node->definition->type != TREE_NODE_TYPE_CREATE_VARIABLE && node->definition->type != TREE_NODE_TYPE_CREATE_VARIABLE_FUNCTION_ARGUMENT)
       is_ok = NO;
     else {
-      if (node->definition->children[0]->value_double > 0)
+      if (node->added_children > 0) {
+        /* struct access */
         is_ok = YES;
+      }
       else {
-        if (node->definition->value > 0)
-          is_ok = NO;
-        else
+        if (node->definition->children[0]->value_double > 0)
           is_ok = YES;
+        else {
+          if (node->definition->value > 0)
+            is_ok = NO;
+          else
+            is_ok = YES;
+        }
       }
     }
     
@@ -3655,6 +3729,183 @@ static void _check_ast_check_definition(struct tree_node *node) {
 }
 
 
+static int _check_ast_struct_access(struct tree_node *node) {
+
+  struct struct_item *si;
+  struct tree_node *named_node;
+  int i, is_first = YES;
+
+  si = find_struct_item(node->children[0]->definition->children[0]->children[0]->label);
+  if (si == NULL) {
+    g_check_ast_failed = YES;
+    snprintf(g_error_message, sizeof(g_error_message), "_check_ast_struct_access(): Struct \"%s\"'s definition is missing! Please submit a bug report!\n", node->definition->children[0]->children[0]->label);
+    return print_error_using_tree_node(g_error_message, ERROR_ERR, node);
+  }
+
+  node->children[0]->struct_item = si;
+  named_node = node->children[0];
+
+  if (named_node->definition == NULL) {
+    struct symbol_table_item *item;
+    
+    item = symbol_table_find_symbol(named_node->label);
+    if (item == NULL) {
+      g_check_ast_failed = YES;
+      snprintf(g_error_message, sizeof(g_error_message), "_check_ast_struct_access(): Cannot find variable \"%s\"'!\n", named_node->label);
+      return print_error_using_tree_node(g_error_message, ERROR_ERR, named_node);
+    }
+    named_node->definition = item->node;
+  }
+  
+  i = 1;
+  while (i < node->added_children) {
+    int got_array_access = NO;
+    
+    /* array access? */
+    if (node->children[i]->type == TREE_NODE_TYPE_SYMBOL && node->children[i]->value == '[') {
+      if ((i == 1 && named_node->definition->value <= 0) ||
+          (i > 1 && named_node->struct_item->array_items <= 0)) {
+        g_check_ast_failed = YES;
+        snprintf(g_error_message, sizeof(g_error_message), "_check_ast_struct_access(): \"%s\" is not an array'!\n", named_node->label);
+        return print_error_using_tree_node(g_error_message, ERROR_ERR, named_node);
+      }
+      
+      i++;
+
+      if (i >= node->added_children) {
+        g_check_ast_failed = YES;
+        return print_error_using_tree_node("_check_ast_struct_access(): Syntax error!\n", ERROR_ERR, node->children[i-1]);
+      }
+
+      if (node->children[i]->type != TREE_NODE_TYPE_VALUE_INT) {
+      }
+      else if (node->children[i]->type != TREE_NODE_TYPE_VALUE_STRING) {
+        _check_ast_simple_tree_node(node->children[i]);
+      }
+      else if (node->children[i]->type != TREE_NODE_TYPE_EXPRESSION) {
+        _check_ast_expression(node->children[i]);
+      }
+      else {
+        g_check_ast_failed = YES;
+        return print_error_using_tree_node("_check_ast_struct_access(): Error in index!\n", ERROR_ERR, node->children[i]);
+      }
+      
+      i++;
+
+      if (i >= node->added_children) {
+        g_check_ast_failed = YES;
+        return print_error_using_tree_node("_check_ast_struct_access(): Syntax error!\n", ERROR_ERR, node->children[i-1]);
+      }
+
+      if (!(node->children[i]->type == TREE_NODE_TYPE_SYMBOL && node->children[i]->value == ']')) {
+        g_check_ast_failed = YES;
+        return print_error_using_tree_node("_check_ast_struct_access(): Expected ']', got something else instead!\n", ERROR_ERR, node->children[i]);
+      }
+
+      i++;
+
+      /* the end? */
+      if (i >= node->added_children)
+        break;
+
+      got_array_access = YES;
+    }
+
+    if (node->children[i]->type != TREE_NODE_TYPE_SYMBOL) {
+      g_check_ast_failed = YES;
+      return print_error_using_tree_node("_check_ast_struct_access(): Pointer node is corrupted (1)! Please submit a bug report!\n", ERROR_ERR, node->children[i]);
+    }
+
+    if (si->type == STRUCT_ITEM_TYPE_STRUCT || si->type == STRUCT_ITEM_TYPE_UNION) {
+    }
+    else if (si->type == STRUCT_ITEM_TYPE_ITEM && (si->variable_type == VARIABLE_TYPE_STRUCT || si->variable_type == VARIABLE_TYPE_UNION)) {
+      si = find_struct_item(si->struct_name);
+      if (si == NULL) {
+        g_check_ast_failed = YES;
+        snprintf(g_error_message, sizeof(g_error_message), "_check_ast_struct_access(): Cannot find struct/union \"%s\"!\n", si->struct_name);
+        return print_error_using_tree_node(g_error_message, ERROR_ERR, named_node);
+      }
+    }
+    else if (si->type == STRUCT_ITEM_TYPE_ARRAY && got_array_access == YES && (si->variable_type == VARIABLE_TYPE_STRUCT ||
+                                                                               si->variable_type == VARIABLE_TYPE_UNION)) {
+    }
+    else {
+      g_check_ast_failed = YES;
+      snprintf(g_error_message, sizeof(g_error_message), "_check_ast_struct_access(): \"%s\" is not a struct/union!\n", named_node->label);
+      return print_error_using_tree_node(g_error_message, ERROR_ERR, node->children[i]);
+    }
+    
+    if (node->children[i]->value == '.') {
+      int is_ok = YES;
+      
+      if (is_first == YES) {
+        if (named_node->definition->children[0]->value_double > 0.0)
+          is_ok = NO;
+      }
+      else {
+        if (named_node->struct_item->pointer_depth > 0)
+          is_ok = NO;
+      }
+      
+      if (is_ok == NO) {
+        g_check_ast_failed = YES;
+        return print_error_using_tree_node("_check_ast_struct_access(): Wrong addressing type, use '->' instead.\n", ERROR_ERR, node->children[i]);
+      }
+      
+      i++;
+    }
+    else if (node->children[i]->value == SYMBOL_POINTER) {
+      int is_ok = YES;
+
+      if (is_first == YES) {
+        if (named_node->definition->children[0]->value_double <= 0.0)
+          is_ok = NO;
+      }
+      else {
+        if (named_node->struct_item->pointer_depth <= 0)
+          is_ok = NO;
+      }
+
+      if (is_ok == NO) {
+        g_check_ast_failed = YES;
+        return print_error_using_tree_node("_check_ast_struct_access(): Wrong addressing type, use '.' instead.\n", ERROR_ERR, node->children[i]);
+      }
+      
+      i++;
+    }
+    else {
+      g_check_ast_failed = YES;
+      return print_error_using_tree_node("_check_ast_struct_access(): Pointer node is corrupted (2)! Please submit a bug report!\n", ERROR_ERR, node->children[i]);
+    }
+
+    if (i >= node->added_children) {
+      g_check_ast_failed = YES;
+      return print_error_using_tree_node("_check_ast_struct_access(): Syntax error!\n", ERROR_ERR, node->children[i-1]);
+    }
+
+    if (node->children[i]->type != TREE_NODE_TYPE_VALUE_STRING) {
+      g_check_ast_failed = YES;
+      return print_error_using_tree_node("_check_ast_struct_access(): Expected a struct/union member name, got something else instead!\n", ERROR_ERR, node->children[i]);
+    }
+
+    si = find_struct_item_child(si, node->children[i]->label);
+    if (si == NULL) {
+      g_check_ast_failed = YES;
+      snprintf(g_error_message, sizeof(g_error_message), "_check_ast_struct_access(): Cannot find the definition of \"%s\"!\n", node->children[i]->label);
+      return print_error_using_tree_node(g_error_message, ERROR_ERR, node->children[i]);
+    }
+
+    node->children[i]->struct_item = si;
+    named_node = node->children[i];
+    is_first = NO;
+
+    i++;
+  }
+  
+  return SUCCEEDED;
+}
+
+
 static void _check_ast_simple_tree_node(struct tree_node *node) {
 
   struct symbol_table_item *item;
@@ -3662,7 +3913,14 @@ static void _check_ast_simple_tree_node(struct tree_node *node) {
   if (node == NULL)
     return;
 
-  if (node->type == TREE_NODE_TYPE_VALUE_STRING) {
+  if (node->type == TREE_NODE_TYPE_VALUE_STRING || node->type == TREE_NODE_TYPE_GET_ADDRESS) {
+  }
+  else if (node->type == TREE_NODE_TYPE_VALUE_INT || node->type == TREE_NODE_TYPE_VALUE_DOUBLE || node->type == TREE_NODE_TYPE_SYMBOL) {
+    return;
+  }
+  else if (node->type == TREE_NODE_TYPE_STRUCT_ACCESS) {
+    _check_ast_struct_access(node);
+    return;
   }
   else if (node->type == TREE_NODE_TYPE_FUNCTION_CALL) {
     _check_ast_function_call(node);
@@ -3680,6 +3938,8 @@ static void _check_ast_simple_tree_node(struct tree_node *node) {
         if (node->children[i]->type == TREE_NODE_TYPE_EXPRESSION)
           _check_ast_expression(node->children[i]);
       }
+
+      _check_ast_struct_access(node);
     }
   }
   else if (node->type == TREE_NODE_TYPE_SIZEOF) {
@@ -3733,8 +3993,11 @@ static void _check_ast_simple_tree_node(struct tree_node *node) {
       return;
     }
   }
-  else
+  else {
+    fprintf(stderr, "XXX %d\n", node->type);
+    exit(0);
     return;
+  }
 
   if (node->definition == NULL) {
     g_current_filename_id = node->file_id;
@@ -3845,7 +4108,7 @@ static void _check_ast_assignment(struct tree_node *node) {
     }
 
     if (is_ok == NO) {
-      snprintf(g_error_message, sizeof(g_error_message), "This assignment to \"%s\" doesn't work!\n", node->children[0]->label);
+      snprintf(g_error_message, sizeof(g_error_message), "Assignment to \"%s\" doesn't work!\n", node->children[0]->label);
       print_error(g_error_message, ERROR_ERR);
       g_check_ast_failed = YES;
       return;
@@ -4041,8 +4304,12 @@ static void _check_ast_statement(struct tree_node *node) {
     _check_ast_for(node);
   else if (node->type == TREE_NODE_TYPE_SWITCH)
     _check_ast_switch(node);
-  else if (node->type == TREE_NODE_TYPE_INCREMENT_DECREMENT)
-    _check_ast_simple_tree_node(node);
+  else if (node->type == TREE_NODE_TYPE_INCREMENT_DECREMENT) {
+    if (node->added_children > 0)
+      _check_ast_struct_access(node);
+    else
+      _check_ast_simple_tree_node(node);
+  }
   else if (node->type == TREE_NODE_TYPE_BREAK || node->type == TREE_NODE_TYPE_CONTINUE)
     return;
   else if (node->type == TREE_NODE_TYPE_LABEL || node->type == TREE_NODE_TYPE_GOTO)
@@ -4119,7 +4386,7 @@ void check_ast(void) {
 int _create_struct_union_definition(char *struct_name, int variable_type) {
 
   struct struct_item *stack[256], *s;
-  int depth = 0;
+  int depth = 0, type;
 
   if (find_struct_item(struct_name) != NULL) {
     snprintf(g_error_message, sizeof(g_error_message), "struct/union \"%s\" is already defined.\n", struct_name);
@@ -4127,11 +4394,15 @@ int _create_struct_union_definition(char *struct_name, int variable_type) {
   }
 
   if (variable_type == VARIABLE_TYPE_STRUCT)
-    variable_type = STRUCT_ITEM_TYPE_STRUCT;
+    type = STRUCT_ITEM_TYPE_STRUCT;
   else if (variable_type == VARIABLE_TYPE_UNION)
-    variable_type = STRUCT_ITEM_TYPE_UNION;
+    type = STRUCT_ITEM_TYPE_UNION;
+  else {
+    snprintf(g_error_message, sizeof(g_error_message), "Unsupported variable type %d! Please submit a bug report!\n", variable_type);
+    return print_error(g_error_message, ERROR_ERR);
+  }
   
-  s = allocate_struct_item(struct_name, variable_type);
+  s = allocate_struct_item(struct_name, type);
   if (s == NULL)
     return FAILED;
 
@@ -4243,23 +4514,21 @@ int _create_struct_union_definition(char *struct_name, int variable_type) {
 
       if ((variable_type == VARIABLE_TYPE_STRUCT || variable_type == VARIABLE_TYPE_UNION) && g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == '{' && pointer_depth == 0 && got_struct_name == NO && is_const_1 == NO && is_const_2 == NO) {
         /* local struct/union definition */
-        int variable_type_original = variable_type;
-        
         if (variable_type == VARIABLE_TYPE_STRUCT)
-          variable_type = STRUCT_ITEM_TYPE_STRUCT;
+          type = STRUCT_ITEM_TYPE_STRUCT;
         else if (variable_type == VARIABLE_TYPE_UNION)
-          variable_type = STRUCT_ITEM_TYPE_UNION;
+          type = STRUCT_ITEM_TYPE_UNION;
 
         if (depth >= 255)
           return print_error("Out of struct/union stack depth! Please submit a bug report!\n", ERROR_ERR);
 
-        s = allocate_struct_item("", variable_type);
+        s = allocate_struct_item("", type);
         if (s == NULL)
           return FAILED;
 
         s->file_id = g_token_current->file_id;
         s->line_number = g_token_current->line_number;
-        s->variable_type = variable_type_original;
+        s->variable_type = variable_type;
         s->pointer_depth = pointer_depth;
         
         struct_item_add_child(stack[depth], s);
