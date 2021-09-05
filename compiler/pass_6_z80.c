@@ -1400,6 +1400,7 @@ static int _generate_asm_add_sub_or_xor_and_z80_16bit(struct tac *t, FILE *file_
       }
       else {
         fprintf(stderr, "_generate_asm_add_sub_or_xor_and_z80_16bit(): Unhandled 8-bit ARG1! Please submit a bug report!\n");
+        print_tac(t, NO, stderr);
         return FAILED;
       }
     }
@@ -1463,6 +1464,7 @@ static int _generate_asm_add_sub_or_xor_and_z80_16bit(struct tac *t, FILE *file_
       }
       else {
         fprintf(stderr, "_generate_asm_add_sub_or_xor_and_z80_16bit(): Unhandled 8-bit ARG2! Please submit a bug report!\n");
+        print_tac(t, NO, stderr);
         return FAILED;
       }
     }
@@ -1738,6 +1740,7 @@ static int _generate_asm_complement_z80_16bit(struct tac *t, FILE *file_out, str
       }
       else {
         fprintf(stderr, "_generate_asm_complement_z80_16bit(): Unhandled 8-bit ARG1! Please submit a bug report!\n");
+        print_tac(t, NO, stderr);
         return FAILED;
       }
     }
@@ -1904,6 +1907,7 @@ static int _generate_asm_get_address_z80(struct tac *t, FILE *file_out, struct t
         }
         else {
           fprintf(stderr, "_generate_asm_get_address_z80(): Unhandled 8-bit ARG2! Please submit a bug report!\n");
+          print_tac(t, NO, stderr);
           return FAILED;
         }
       }
@@ -2150,6 +2154,7 @@ static int _generate_asm_array_read_z80(struct tac *t, FILE *file_out, struct tr
       }
       else {
         fprintf(stderr, "_generate_asm_array_read_z80(): Unhandled 8-bit ARG2! Please submit a bug report!\n");
+        print_tac(t, NO, stderr);
         return FAILED;
       }
     }
@@ -2217,7 +2222,7 @@ static int _generate_asm_array_read_z80(struct tac *t, FILE *file_out, struct tr
   /* NOTE! var_type is actually the type of the item we have inside arg1 array */
   if (t->arg1_node != NULL) {
     /* we come here only if arg1 has been a variable, not a temp register */
-    var_type = get_array_item_variable_type(t->arg1_node->children[0], t->arg1_node->children[0]->label);
+    var_type = get_array_item_variable_type(t->arg1_node);
   }
   else
     var_type = t->arg1_var_type;
@@ -2264,7 +2269,8 @@ static int _generate_asm_array_read_z80(struct tac *t, FILE *file_out, struct tr
                (t->result_var_type_promoted == VARIABLE_TYPE_INT8 || t->result_var_type_promoted == VARIABLE_TYPE_UINT8)) {
       }
       else {
-        fprintf(stderr, "_generate_asm_array_read_z80: Unhandled 8-bit ARG1! Please submit a bug report!\n");
+        fprintf(stderr, "_generate_asm_array_read_z80(): Unhandled 8-bit ARG1! Please submit a bug report!\n");
+        print_tac(t, NO, stderr);
         return FAILED;
       }
     }
@@ -2493,6 +2499,7 @@ static int _generate_asm_array_write_z80(struct tac *t, FILE *file_out, struct t
       }
       else {
         fprintf(stderr, "_generate_asm_array_write_z80(): Unhandled 8-bit ARG2! Please submit a bug report!\n");
+        print_tac(t, NO, stderr);
         return FAILED;
       }
     }
@@ -2506,6 +2513,25 @@ static int _generate_asm_array_write_z80(struct tac *t, FILE *file_out, struct t
   
   if (t->result_type == TAC_ARG_TYPE_CONSTANT) {
   }
+  else if (t->result_type == TAC_ARG_TYPE_TEMP) {
+    fprintf(file_out, "      ; offset %d\n", result_offset);
+
+    _load_value_to_iy(result_offset, file_out);
+    _add_de_to_iy(file_out);
+
+    if (!(t->arg2_type == TAC_ARG_TYPE_CONSTANT && ((int)t->arg2_d) == 0))
+      _push_bc(file_out);
+
+    /* 16-bit */
+    _load_from_iy_to_c(0, file_out);
+    _load_from_iy_to_b(1, file_out);
+
+    _load_value_to_iy(0, file_out);
+    _add_bc_to_iy(file_out);
+
+    if (!(t->arg2_type == TAC_ARG_TYPE_CONSTANT && ((int)t->arg2_d) == 0))
+      _pop_bc(file_out);    
+  }
   else if (t->result_type == TAC_ARG_TYPE_LABEL && result_offset == 999999) {
     /* global var */
     _load_label_to_iy(t->result_node->children[1]->label, file_out);
@@ -2514,14 +2540,14 @@ static int _generate_asm_array_write_z80(struct tac *t, FILE *file_out, struct t
     /* it's a variable in the frame! */
     fprintf(file_out, "      ; offset %d\n", result_offset);
 
-    if (t->result_node != NULL && t->result_node->children[0]->value_double > 0.0) {
+    if (t->result_node != NULL && t->result_node->children[0]->value_double > 0.0 && t->result_node->value == 0) {
       /* we come here only if arg1 has been a variable, not a temp register */
       if (result_offset >= -128 && result_offset <= 126) {
         iy_offset = result_offset;
         result_offset = 0;
       }
     }
-
+    
     _load_value_to_iy(result_offset, file_out);
     _add_de_to_iy(file_out);
   }
@@ -2530,7 +2556,7 @@ static int _generate_asm_array_write_z80(struct tac *t, FILE *file_out, struct t
   /* is the result address actually an address of a pointer? */
   /******************************************************************************************************/
   
-  if (t->result_node != NULL && t->result_node->children[0]->value_double > 0.0) {
+  if (t->result_node != NULL && t->result_node->children[0]->value_double > 0.0 && t->result_node->value == 0) {
     /* yes -> get the real address */
 
     /******************************************************************************************************/
@@ -2636,6 +2662,7 @@ static int _generate_asm_array_write_z80(struct tac *t, FILE *file_out, struct t
       }
       else {
         fprintf(stderr, "_generate_asm_array_write_z80: Unhandled 8-bit ARG1! Please submit a bug report!\n");
+        print_tac(t, NO, stderr);
         return FAILED;
       }
     }
@@ -2733,6 +2760,7 @@ static int _generate_asm_shift_left_right_z80_16bit(struct tac *t, FILE *file_ou
       }
       else {
         fprintf(stderr, "_generate_asm_shift_left_right_z80_16bit(): Unhandled 8-bit ARG1! Please submit a bug report!\n");
+        print_tac(t, NO, stderr);
         return FAILED;
       }
     }
@@ -2793,6 +2821,7 @@ static int _generate_asm_shift_left_right_z80_16bit(struct tac *t, FILE *file_ou
       }
       else {
         fprintf(stderr, "_generate_asm_shift_left_right_z80_16bit(): Unhandled 8-bit ARG2! Please submit a bug report!\n");
+        print_tac(t, NO, stderr);
         return FAILED;
       }
     }
@@ -3150,6 +3179,7 @@ static int _generate_asm_mul_div_mod_z80_16bit(struct tac *t, FILE *file_out, st
       }
       else {
         fprintf(stderr, "_generate_asm_mul_div_mod_z80_16bit(): Unhandled 8-bit ARG1! Please submit a bug report!\n");
+        print_tac(t, NO, stderr);
         return FAILED;
       }
     }
@@ -3213,6 +3243,7 @@ static int _generate_asm_mul_div_mod_z80_16bit(struct tac *t, FILE *file_out, st
       }
       else {
         fprintf(stderr, "_generate_asm_mul_div_mod_z80_16bit(): Unhandled 8-bit ARG2! Please submit a bug report!\n");
+        print_tac(t, NO, stderr);
         return FAILED;
       }
     }
@@ -3710,6 +3741,7 @@ static int _generate_asm_jump_eq_lt_gt_neq_lte_gte_z80_16bit(struct tac *t, FILE
       }
       else {
         fprintf(stderr, "_generate_asm_jump_eq_lt_gt_neq_lte_gte_z80_16bit(): Unhandled 8-bit ARG1! Please submit a bug report!\n");
+        print_tac(t, NO, stderr);
         return FAILED;
       }
     }
@@ -3770,6 +3802,7 @@ static int _generate_asm_jump_eq_lt_gt_neq_lte_gte_z80_16bit(struct tac *t, FILE
       }
       else {
         fprintf(stderr, "_generate_asm_jump_eq_lt_gt_neq_lte_gte_z80_16bit(): Unhandled 8-bit ARG2! Please submit a bug report!\n");
+        print_tac(t, NO, stderr);
         return FAILED;
       }
     }
@@ -4037,6 +4070,7 @@ static int _generate_asm_return_value_z80(struct tac *t, FILE *file_out, struct 
         }
         else {
           fprintf(stderr, "_generate_asm_return_value_z80(): Unhandled 8-bit ARG1! Please submit a bug report!\n");
+          print_tac(t, NO, stderr);
           return FAILED;
         }
       }
@@ -4617,7 +4651,7 @@ static int _copy_non_const_array_constants(struct tac *t, struct tree_node *node
   if (find_stack_offset(TAC_ARG_TYPE_LABEL, node->children[1]->label, 0, node, &offset, function_node) == FAILED)
     return FAILED;
 
-  type = get_array_item_variable_type(node->children[0], node->children[1]->label);
+  type = get_array_item_variable_type(node);
   size = get_variable_type_size(type) / 8;
   
   _push_de(file_out);

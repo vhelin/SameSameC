@@ -25,11 +25,12 @@ Optimize:
 - Z80: Keep stack frame in IX and possibly IY all the time
 - Local array variable initialization
 - Reduce code bloat (parser...)
-- Z80: Remove unnecessary stack writes/reads
+- Z80: Remove unnecessary stack writes/reads (i.e., temp "register" access)
 
 Fix:
 
 - Currently "data[i++] += 1;" increments i twice...
+- Check that all pointer operations work properly
 
 Add:
 
@@ -41,6 +42,7 @@ Add:
 - Add more backends (GB-Z80, 6502, 65816...)
 - Add test projects
 - Document all TREE_NODE_TYPE_* use cases
+- Document all TAC_OP_* use cases
 - Create a list of supported ANSI C89 features (and the new features)
 
 

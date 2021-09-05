@@ -6,7 +6,7 @@ int get_variable_type_size(int type);
 int get_max_variable_type_2(int t1, int t2);
 int get_max_variable_type_4(int t1, int t2, int t3, int t4);
 int get_variable_type_constant(int value);
-int get_array_item_variable_type(struct tree_node *node, char *label);
+int get_array_item_variable_type(struct tree_node *node);
 int get_variable_node_size_in_bytes(struct tree_node *node);
 int tree_node_flatten(struct tree_node *node);
 int tree_node_does_contain_expressions(struct tree_node *node);

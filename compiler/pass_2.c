@@ -4071,6 +4071,9 @@ static void _check_ast_assignment(struct tree_node *node) {
 
   _check_ast_expression(node->children[1]);
 
+  if (node->children[0]->type == TREE_NODE_TYPE_STRUCT_ACCESS)
+    _check_ast_struct_access(node->children[0]);
+  
   /* array assignment? */
   if (node->added_children > 2)
     _check_ast_expression(node->children[2]);
@@ -4097,11 +4100,13 @@ static void _check_ast_assignment(struct tree_node *node) {
   if (node->added_children <= 2) {
     /* assignment to a variable */
     int is_ok = YES;
-    
+
     if (definition->type != TREE_NODE_TYPE_CREATE_VARIABLE && definition->type != TREE_NODE_TYPE_CREATE_VARIABLE_FUNCTION_ARGUMENT)
       is_ok = NO;
     else {
-      if (definition->value > 0)
+      if (node->children[0]->type == TREE_NODE_TYPE_STRUCT_ACCESS)
+        is_ok = YES;
+      else if (definition->value > 0)
         is_ok = NO;
       else
         is_ok = YES;

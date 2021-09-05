@@ -513,6 +513,25 @@ int tac_set_result(struct tac *t, int arg_type, double d, char *s) {
 }
 
 
+int tac_copy_arg(struct tac *t, int source, int destination) {
+
+  if (source == TAC_USE_ARG2 && destination == TAC_USE_ARG1) {
+    t->arg1_type = t->arg2_type;
+    t->arg1_d = t->arg2_d;
+    t->arg1_s = t->arg2_s;
+    t->arg1_var_type = t->arg2_var_type;
+    t->arg1_var_type_promoted = t->arg2_var_type_promoted;
+    t->arg1_node = t->arg2_node;
+  
+    return SUCCEEDED;
+  }
+
+  fprintf(stderr, "tac_copy_arg(): Unsupported mode (source = %d, destination = %d)\n", source, destination);
+  
+  return FAILED;
+}
+
+
 void free_tac_contents(struct tac *t) {
 
   int i;

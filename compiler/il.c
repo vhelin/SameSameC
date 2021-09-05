@@ -439,6 +439,42 @@ int il_stack_calculate_expression(struct tree_node *node, int calculate_max_var_
     }
     else if (child->type == TREE_NODE_TYPE_BYTES)
       return print_error("Having raw bytes inside an expression doesn't make any sense.\n", ERROR_STC);
+    else if (child->type == TREE_NODE_TYPE_STRUCT_ACCESS) {
+      int raddress = g_temp_r, final_type;
+      struct tac *t;
+      
+#if defined(DEBUG_IL)
+      fprintf(stderr, "GOT STACK ITEM %s->...\n", child->children[0]->label);
+#endif
+
+      if (generate_il_calculate_struct_access_address(child, &final_type) == FAILED)
+        return FAILED;
+
+      t = add_tac();
+      if (t == NULL)
+        return FAILED;
+
+      t->op = TAC_OP_ARRAY_READ;
+
+      tac_set_result(t, TAC_ARG_TYPE_TEMP, g_temp_r++, NULL);
+      t->arg1_var_type = g_max_var_type;
+      tac_set_arg1(t, TAC_ARG_TYPE_TEMP, raddress, NULL);
+      tac_set_arg2(t, TAC_ARG_TYPE_CONSTANT, 0, NULL);
+
+      /* promote to the maximum of this expression */
+      t->result_var_type_promoted = g_max_var_type;
+      t->arg1_var_type_promoted = final_type;
+      t->arg2_var_type_promoted = VARIABLE_TYPE_UINT8;
+
+      si[z].type = STACK_ITEM_TYPE_OPERATOR;
+      si[z].value = SI_OP_USE_REGISTER;
+
+      z++;
+
+      si[z].type = STACK_ITEM_TYPE_VALUE;
+      si[z].value = g_temp_r - 1;
+      si[z].sign = SI_SIGN_POSITIVE;
+    }
     else {
       fprintf(stderr, "_il_stack_calculate_expression(): Got an unhandled tree_node of type %d! Please submit a bug report!\n", child->type);
       return FAILED;

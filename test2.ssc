@@ -53,17 +53,30 @@ struct block {
 } *g_block[4];
 
 struct simple {
+  u8 value0;
+  u8 value00;
   u8 value1;
   u8 values[2];
   u8 value2;
 };
 
+
+  struct simple f_simple;
+
+
+
+
 static void initialize_adder(s8 *adder) {
 
+  /*
   const struct simple g_simple[] = { { 0, { 1+1, 3 }, 4 },
                                      { 1, { 2+2, 6 }, 8 } };
-  //adder[0] =  g_block[0+1+2].junion[1+1].strukt.hello3;
-  g_block[0+1]->next->next->next->next->melon[3].armor = 1;
-  //g_block[0+1+2].junion[1+1].strukt.hello3++;
-  //g_block.array[0+1+2+adder[0]]++;
+  */
+  const u8 values[] = { 1, 2, 3, 4, 5 };
+
+  u8 temp;
+
+
+  temp = values[f_simple.value1];
+  temp++;
 }

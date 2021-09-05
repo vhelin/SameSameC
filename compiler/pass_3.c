@@ -318,7 +318,9 @@ static void _print_assignment(struct tree_node *node) {
     fprintf(stderr, "%s%s", _get_current_end_of_statement(), _get_current_end_of_line());
   }
   else {
-    fprintf(stderr, "%s%s = ", _get_current_indentation(), node->children[0]->label);
+    fprintf(stderr, "%s", _get_current_indentation());
+    print_simple_tree_node(node->children[0]);
+    fprintf(stderr, " = ");
 
     print_expression(node->children[1]);
 
@@ -897,6 +899,16 @@ static void _simplify_expressions_assignment(struct tree_node *node) {
   if (node == NULL)
     return;
 
+  if (node->children[0]->type == TREE_NODE_TYPE_STRUCT_ACCESS) {
+    struct tree_node *child = node->children[0];
+    int j;
+    
+    for (j = 1; j < child->added_children; j++) {
+      if (child->children[j]->type == TREE_NODE_TYPE_EXPRESSION)
+        _simplify_expression(child->children[j]);
+    }
+  }
+  
   _simplify_expressions(node->children[1]);
 
   /* array assignment? */

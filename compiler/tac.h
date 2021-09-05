@@ -10,6 +10,7 @@ void free_tac_contents(struct tac *t);
 int tac_set_arg1(struct tac *t, int arg_type, double d, char *s);
 int tac_set_arg2(struct tac *t, int arg_type, double d, char *s);
 int tac_set_result(struct tac *t, int arg_type, double d, char *s);
+int tac_copy_arg(struct tac *t, int source, int destination);
 int is_last_tac(int op);
 int tac_try_find_definition(struct tac *t, char *label, struct tree_node *node, int tac_use);
 int tac_promote_argument(struct tac *t, int type, int tac_use);

@@ -18,6 +18,7 @@
 #include "symbol_table.h"
 #include "il.h"
 #include "tac.h"
+#include "struct_item.h"
 
 
 /* define this for DEBUG */
@@ -1744,6 +1745,216 @@ static int _optimize_il_25(int *optimizations_counter) {
 }
 
 
+static int _optimize_il_26(int *optimizations_counter) {
+
+  /*
+    rX = rA + 0 <--- REDUCE into assignment
+  */
+
+  int i = 0;
+
+  while (1) {
+    int is_last_function = NO;
+    int end = _find_end_of_il_function(i, &is_last_function);
+    if (end < 0)
+      return FAILED;
+    
+    if (_count_and_allocate_register_usage(i, end) == FAILED)
+      return FAILED;
+
+    while (i < end) {
+      int current;
+
+      current = _find_next_living_tac(i);
+
+      if (current < 0)
+        break;
+
+      if (g_tacs[current].op == TAC_OP_ADD &&
+          g_tacs[current].arg1_type == TAC_ARG_TYPE_CONSTANT && (int)g_tacs[current].arg1_d == 0) {
+        /* found match! REDUCE! */
+        g_tacs[current].op = TAC_OP_ASSIGNMENT;
+        if (tac_copy_arg(&g_tacs[current], TAC_USE_ARG2, TAC_USE_ARG1) == FAILED)
+          return FAILED;
+        (*optimizations_counter)++;
+      }
+      else if (g_tacs[current].op == TAC_OP_ADD &&
+          g_tacs[current].arg2_type == TAC_ARG_TYPE_CONSTANT && (int)g_tacs[current].arg2_d == 0) {
+        /* found match! REDUCE! */
+        g_tacs[current].op = TAC_OP_ASSIGNMENT;
+        (*optimizations_counter)++;
+      }
+
+      i = current + 1;
+    }
+
+    if (is_last_function == YES)
+      break;
+  }
+
+  return SUCCEEDED;
+}
+
+
+static int _optimize_il_27(int *optimizations_counter) {
+
+  /*
+    rX = rA - 0 <--- REDUCE into assignment
+  */
+
+  int i = 0;
+
+  while (1) {
+    int is_last_function = NO;
+    int end = _find_end_of_il_function(i, &is_last_function);
+    if (end < 0)
+      return FAILED;
+    
+    if (_count_and_allocate_register_usage(i, end) == FAILED)
+      return FAILED;
+
+    while (i < end) {
+      int current;
+
+      current = _find_next_living_tac(i);
+
+      if (current < 0)
+        break;
+
+      if (g_tacs[current].op == TAC_OP_SUB &&
+          g_tacs[current].arg2_type == TAC_ARG_TYPE_CONSTANT && (int)g_tacs[current].arg2_d == 0) {
+        /* found match! REDUCE! */
+        g_tacs[current].op = TAC_OP_ASSIGNMENT;
+        (*optimizations_counter)++;
+      }
+
+      i = current + 1;
+    }
+
+    if (is_last_function == YES)
+      break;
+  }
+
+  return SUCCEEDED;
+}
+
+
+static int _optimize_il_28(int *optimizations_counter) {
+
+  /*
+    rX = rA * 0 <--- REDUCE into assignment
+  */
+
+  int i = 0;
+
+  while (1) {
+    int is_last_function = NO;
+    int end = _find_end_of_il_function(i, &is_last_function);
+    if (end < 0)
+      return FAILED;
+    
+    if (_count_and_allocate_register_usage(i, end) == FAILED)
+      return FAILED;
+
+    while (i < end) {
+      int current;
+
+      current = _find_next_living_tac(i);
+
+      if (current < 0)
+        break;
+
+      if (g_tacs[current].op == TAC_OP_MUL &&
+          g_tacs[current].arg1_type == TAC_ARG_TYPE_CONSTANT && (int)g_tacs[current].arg1_d == 0) {
+        /* found match! REDUCE! */
+        g_tacs[current].op = TAC_OP_ASSIGNMENT;
+        (*optimizations_counter)++;
+      }
+      else if (g_tacs[current].op == TAC_OP_MUL &&
+          g_tacs[current].arg2_type == TAC_ARG_TYPE_CONSTANT && (int)g_tacs[current].arg2_d == 0) {
+        /* found match! REDUCE! */
+        g_tacs[current].op = TAC_OP_ASSIGNMENT;
+        if (tac_copy_arg(&g_tacs[current], TAC_USE_ARG2, TAC_USE_ARG1) == FAILED)
+          return FAILED;
+        (*optimizations_counter)++;
+      }
+
+      i = current + 1;
+    }
+
+    if (is_last_function == YES)
+      break;
+  }
+
+  return SUCCEEDED;
+}
+
+
+static int _optimize_il_29(int *optimizations_counter) {
+
+  /*
+    rX = rA + C <--- COMBINE C+D if rX doesn't appear elsewhere
+     ? = rX[D]  <--- COMBINE C+D if rX doesn't appear elsewhere
+  */
+
+  int i = 0;
+
+  while (1) {
+    int is_last_function = NO;
+    int end = _find_end_of_il_function(i, &is_last_function);
+    if (end < 0)
+      return FAILED;
+    
+    if (_count_and_allocate_register_usage(i, end) == FAILED)
+      return FAILED;
+
+    while (i < end) {
+      int current, next;
+
+      current = _find_next_living_tac(i);
+      next = _find_next_living_tac(current + 1);
+
+      if (current < 0 || next < 0)
+        break;
+
+      if (g_tacs[current].op == TAC_OP_ADD &&
+          g_tacs[next].op == TAC_OP_ARRAY_READ &&
+          g_tacs[current].result_type == TAC_ARG_TYPE_TEMP && g_tacs[current].arg1_type == TAC_ARG_TYPE_TEMP && g_tacs[current].arg2_type == TAC_ARG_TYPE_CONSTANT &&
+          g_tacs[next].arg1_type == TAC_ARG_TYPE_TEMP && g_tacs[next].arg2_type == TAC_ARG_TYPE_CONSTANT &&
+          (int)g_tacs[current].result_d == (int)g_tacs[next].arg1_d &&
+          g_register_reads[(int)g_tacs[current].result_d] == 1 && g_register_writes[(int)g_tacs[current].result_d] == 1) {
+        /* found match! COMBINE? */
+        int is_ok = NO;
+        int sum = (int)g_tacs[current].arg2_d + (int)g_tacs[next].arg2_d;
+
+        if (g_tacs[next].arg1_var_type == VARIABLE_TYPE_INT8 || g_tacs[next].arg1_var_type == VARIABLE_TYPE_UINT8)
+          is_ok = YES;
+        else if (g_tacs[next].arg1_var_type == VARIABLE_TYPE_INT16 || g_tacs[next].arg1_var_type == VARIABLE_TYPE_UINT16) {
+          if ((sum & 1) == 0) {
+            sum = sum >> 1;
+            is_ok = YES;
+          }
+        }
+
+        if (is_ok == YES) {
+          g_tacs[next].arg1_d = g_tacs[current].arg1_d;
+          g_tacs[next].arg2_d = sum;
+          g_tacs[current].op = TAC_OP_DEAD;
+          (*optimizations_counter)++;
+        }
+      }
+
+      i = next;
+    }
+
+    if (is_last_function == YES)
+      break;
+  }
+
+  return SUCCEEDED;
+}
+
+
 int optimize_il(void) {
 
   int optimizations_counter, loop = 1;
@@ -1804,6 +2015,14 @@ int optimize_il(void) {
     if (_optimize_il_24(&optimizations_counter) == FAILED)
       return FAILED;
     if (_optimize_il_25(&optimizations_counter) == FAILED)
+      return FAILED;
+    if (_optimize_il_26(&optimizations_counter) == FAILED)
+      return FAILED;
+    if (_optimize_il_27(&optimizations_counter) == FAILED)
+      return FAILED;
+    if (_optimize_il_28(&optimizations_counter) == FAILED)
+      return FAILED;
+    if (_optimize_il_29(&optimizations_counter) == FAILED)
       return FAILED;
     
     fprintf(stderr, "optimize_il(): Loop %d managed to do %d optimizations.\n", loop, optimizations_counter);
@@ -2522,6 +2741,19 @@ static int _get_variable_size(struct tree_node *node) {
       size = 16;
     else if (type == VARIABLE_TYPE_UINT16)
       size = 16;
+    else if (type == VARIABLE_TYPE_STRUCT || type == VARIABLE_TYPE_UNION) {
+      struct struct_item *si;
+
+      /* sizeof(struct x) */
+      si = find_struct_item(node->children[0]->children[0]->label);
+      if (si == NULL) {
+        snprintf(g_error_message, sizeof(g_error_message), "Cannot find struct/union \"%s\".\n", node->children[0]->children[0]->label);
+        print_error_using_tree_node(g_error_message, ERROR_ERR, node);
+        return -1;
+      }
+
+      size = si->size;
+    }
     else {
       fprintf(stderr, "_get_variable_size(): Cannot determine the variable size of variable \"%s\".\n", node->children[1]->label);
       return -1;
@@ -2687,7 +2919,7 @@ int collect_and_preprocess_local_variables_inside_functions(void) {
       function_node->local_variables->temp_registers_count = used_registers;
 
 #if defined(DEBUG_PASS_5)
-      fprintf(stderr, "*** FUNCTION \"%s\" STACK FRAME\n", function_node->children[1]->label);
+      fprintf(stderr, "*** STACK FRAME of FUNCTION \"%s\"\n", function_node->children[1]->label);
       fprintf(stderr, "OFFSET %.5d SIZE %.6d \"return address\"\n", -1, 2);
       fprintf(stderr, "OFFSET %.5d SIZE %.6d \"caller's stack frame address\"\n", -3, 2);
       if (return_value_size > 0)
