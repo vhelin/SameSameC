@@ -2191,10 +2191,10 @@ static int _generate_asm_array_read_z80(struct tac *t, FILE *file_out, struct tr
   }
 
   /******************************************************************************************************/
-  /* is the source address actually an address of a pointer? */
+  /* is the source address actually an address of a pointer or a temp register? */
   /******************************************************************************************************/
   
-  if (t->arg1_node != NULL && t->arg1_node->children[0]->value_double > 0.0) {
+  if (t->arg1_type == TAC_ARG_TYPE_TEMP || (t->arg1_node != NULL && t->arg1_node->children[0]->value_double > 0.0)) {
     /* yes -> get the real address */
 
     /******************************************************************************************************/
@@ -4584,55 +4584,118 @@ static int _add_const_variables(struct tree_node *const_variables[256], int cons
     _add_label(node->children[1]->label, file_out, NO);
 
     element_type = tree_node_get_max_var_type(node->children[0]);
-    element_size = get_variable_type_size(element_type);
 
-    if (element_size != 8 && element_size != 16) {
-      fprintf(stderr, "_add_const_variables(): Unsupported global variable \"%s\" size %d! Please submit a bug report!\n", node->children[1]->label, element_size);
-      return FAILED;
-    }
+    if (element_type == VARIABLE_TYPE_STRUCT || element_type == VARIABLE_TYPE_UNION) {
+      int current_element_size = 0, added_items = 0;
 
-    /* check element types */
-    if ((node->flags & TREE_NODE_FLAG_DATA_IS_CONST) == TREE_NODE_FLAG_DATA_IS_CONST) {
+      /* check element types */
+      if ((node->flags & TREE_NODE_FLAG_DATA_IS_CONST) == TREE_NODE_FLAG_DATA_IS_CONST) {
+        for (j = 2; j < node->added_children; j++) {
+          if (node->children[j]->type == TREE_NODE_TYPE_SYMBOL)
+            continue;
+          if (node->children[j]->type != TREE_NODE_TYPE_VALUE_INT &&
+              node->children[j]->type != TREE_NODE_TYPE_VALUE_DOUBLE &&
+              node->children[j]->type != TREE_NODE_TYPE_BYTES) {
+            snprintf(g_error_message, sizeof(g_error_message), "_add_const_variables(): Const variable (\"%s\") can only be initialized with an immediate number!\n", node->children[1]->label);
+            return print_error_using_tree_node(g_error_message, ERROR_ERR, node);
+          }
+        }
+      }
+
       for (j = 2; j < node->added_children; j++) {
-        if (node->children[j]->type != TREE_NODE_TYPE_VALUE_INT &&
-            node->children[j]->type != TREE_NODE_TYPE_VALUE_DOUBLE &&
-            node->children[j]->type != TREE_NODE_TYPE_BYTES) {
-          snprintf(g_error_message, sizeof(g_error_message), "_add_const_variables(): Const variable (\"%s\") can only be initialized with an immediate number!\n", node->children[1]->label);
-          return print_error_using_tree_node(g_error_message, ERROR_ERR, node);
+        /* skip ',', '{' and '}' */
+        if (node->children[j]->type == TREE_NODE_TYPE_SYMBOL)
+          continue;
+                          
+        element_size = get_variable_type_size(node->children[j]->struct_item->variable_type);
+
+        if (element_size != current_element_size) {
+          if (current_element_size != 0)
+            fprintf(file_out, "\n");
+              
+          current_element_size = element_size;
+          added_items = 0;
+              
+          if (element_size == 8)
+            fprintf(file_out, "      .DB ");
+          else if (element_size == 16)
+            fprintf(file_out, "      .DW ");
         }
-      }
-    }
-
-    if (element_size == 8)
-      fprintf(file_out, "      .DB ");
-    else if (element_size == 16)
-      fprintf(file_out, "      .DW ");
-
-    /* calculate how many constants there are in the array */
-    last = -1;
-    for (k = 0; k < node->added_children - 2; k++) {
-      if (tree_node_is_expression_just_a_constant(node->children[2 + k]) == YES)
-        last = k;
-    }
-
-    for (j = 2; j - 2 <= last && j < node->added_children; j++) {
-      if (j > 2)
-        fprintf(file_out, ", ");
+        else if (added_items > 0)
+          fprintf(file_out, ", ");
         
-      if (node->children[j]->type == TREE_NODE_TYPE_VALUE_INT)
-        fprintf(file_out, "%d", node->children[j]->value);
-      else if (node->children[j]->type == TREE_NODE_TYPE_VALUE_DOUBLE)
-        fprintf(file_out, "%d", (int)(node->children[j]->value));
-      else if (node->children[j]->type == TREE_NODE_TYPE_BYTES) {
-        for (k = 0; k < node->children[j]->value; k++) {
-          if (k > 0)
-            fprintf(file_out, ", ");
-          fprintf(file_out, "%d", node->children[j]->label[k]);
+        if (node->children[j]->type == TREE_NODE_TYPE_VALUE_INT)
+          fprintf(file_out, "%d", node->children[j]->value);
+        else if (node->children[j]->type == TREE_NODE_TYPE_VALUE_DOUBLE)
+          fprintf(file_out, "%d", (int)(node->children[j]->value));
+        else if (node->children[j]->type == TREE_NODE_TYPE_BYTES) {
+          int k;
+
+          for (k = 0; k < node->children[j]->value; k++) {
+            if (k > 0)
+              fprintf(file_out, ", ");
+            fprintf(file_out, "%d", node->children[j]->label[k]);
+          }
+        }
+        else {
+          /* non-constants are 0 here, but they are overwritten later */
+          fprintf(file_out, "%d", 0);
+        }
+            
+        added_items++;
+      }
+    }
+    else {
+      element_size = get_variable_type_size(element_type);
+
+      if (element_size != 8 && element_size != 16) {
+        fprintf(stderr, "_add_const_variables(): Unsupported global variable \"%s\" size %d! Please submit a bug report!\n", node->children[1]->label, element_size);
+        return FAILED;
+      }
+
+      /* check element types */
+      if ((node->flags & TREE_NODE_FLAG_DATA_IS_CONST) == TREE_NODE_FLAG_DATA_IS_CONST) {
+        for (j = 2; j < node->added_children; j++) {
+          if (node->children[j]->type != TREE_NODE_TYPE_VALUE_INT &&
+              node->children[j]->type != TREE_NODE_TYPE_VALUE_DOUBLE &&
+              node->children[j]->type != TREE_NODE_TYPE_BYTES) {
+            snprintf(g_error_message, sizeof(g_error_message), "_add_const_variables(): Const variable (\"%s\") can only be initialized with an immediate number!\n", node->children[1]->label);
+            return print_error_using_tree_node(g_error_message, ERROR_ERR, node);
+          }
         }
       }
-      else {
-        /* non-constants are 0 here, but they are overwritten later */
-        fprintf(file_out, "%d", 0);
+
+      if (element_size == 8)
+        fprintf(file_out, "      .DB ");
+      else if (element_size == 16)
+        fprintf(file_out, "      .DW ");
+
+      /* calculate how many constants there are in the array */
+      last = -1;
+      for (k = 0; k < node->added_children - 2; k++) {
+        if (tree_node_is_expression_just_a_constant(node->children[2 + k]) == YES)
+          last = k;
+      }
+
+      for (j = 2; j - 2 <= last && j < node->added_children; j++) {
+        if (j > 2)
+          fprintf(file_out, ", ");
+        
+        if (node->children[j]->type == TREE_NODE_TYPE_VALUE_INT)
+          fprintf(file_out, "%d", node->children[j]->value);
+        else if (node->children[j]->type == TREE_NODE_TYPE_VALUE_DOUBLE)
+          fprintf(file_out, "%d", (int)(node->children[j]->value));
+        else if (node->children[j]->type == TREE_NODE_TYPE_BYTES) {
+          for (k = 0; k < node->children[j]->value; k++) {
+            if (k > 0)
+              fprintf(file_out, ", ");
+            fprintf(file_out, "%d", node->children[j]->label[k]);
+          }
+        }
+        else {
+          /* non-constants are 0 here, but they are overwritten later */
+          fprintf(file_out, "%d", 0);
+        }
       }
     }
 
@@ -4722,6 +4785,23 @@ int generate_asm_z80(FILE *file_out) {
         fprintf(file_out, "      ; SP - stack pointer\n");
         fprintf(file_out, "      ; IX - tmp\n");
         fprintf(file_out, "      ; IY - tmp\n");
+
+        /* list temp register info */
+        if (function_node->local_variables != NULL) {
+          struct local_variables *local_variables = function_node->local_variables;
+          int k;
+
+          if (local_variables->temp_registers_count > 0) {
+            fprintf(file_out, "      ; =================================================================\n");
+            fprintf(file_out, "      ; temp registers\n");
+            fprintf(file_out, "      ; =================================================================\n");
+          }
+          
+          for (k = 0; k < local_variables->temp_registers_count; k++) {
+            fprintf(file_out, "      ; register %d size %d offset %d\n", local_variables->temp_registers[k].register_index,
+                    local_variables->temp_registers[k].size / 8, local_variables->temp_registers[k].offset_to_fp);
+          }
+        }
 
         if (strcmp(function_node->children[1]->label, "mainmain") != 0) {
           /* allocate stack space for the stack frame */
@@ -4987,6 +5067,7 @@ int generate_global_variables_z80(char *file_name, FILE *file_out) {
         if (elements == 0)
           elements = 1;
         element_type = tree_node_get_max_var_type(node->children[0]);
+
         if (element_type == VARIABLE_TYPE_STRUCT) {
           struct struct_item *si;
 
@@ -5017,9 +5098,8 @@ int generate_global_variables_z80(char *file_name, FILE *file_out) {
           }
         }
 
-        if (element_type == VARIABLE_TYPE_STRUCT) {
+        if (element_type == VARIABLE_TYPE_STRUCT)
           fprintf(file_out, "DSB %d*%d", element_size / 8, elements);
-        }
         else if (node->value == 1) {
           /* not an array */
           if (element_size == 8)
@@ -5065,33 +5145,82 @@ int generate_global_variables_z80(char *file_name, FILE *file_out) {
       elements = node->added_children - 2;
       if (elements > 0) {
         element_type = tree_node_get_max_var_type(node->children[0]);
-        element_size = get_variable_type_size(element_type);
 
-        if (element_size == 8)
-          fprintf(file_out, "      .DB ");
-        else if (element_size == 16)
-          fprintf(file_out, "      .DW ");
+        if (element_type == VARIABLE_TYPE_STRUCT || element_type == VARIABLE_TYPE_UNION) {
+          int current_element_size = 0, added_items = 0;
 
-        for (j = 2; j < node->added_children; j++) {
-          if (j > 2)
-            fprintf(file_out, ", ");
+          /* struct / union */
+          for (j = 2; j < node->added_children; j++) {
+            /* skip ',', '{' and '}' */
+            if (node->children[j]->type == TREE_NODE_TYPE_SYMBOL)
+              continue;
+                          
+            element_size = get_variable_type_size(node->children[j]->struct_item->variable_type);
+
+            if (element_size != current_element_size) {
+              if (current_element_size != 0)
+                fprintf(file_out, "\n");
+              
+              current_element_size = element_size;
+              added_items = 0;
+              
+              if (element_size == 8)
+                fprintf(file_out, "      .DB ");
+              else if (element_size == 16)
+                fprintf(file_out, "      .DW ");
+            }
+            else if (added_items > 0)
+              fprintf(file_out, ", ");
         
-          if (node->children[j]->type == TREE_NODE_TYPE_VALUE_INT)
-            fprintf(file_out, "%d", node->children[j]->value);
-          else if (node->children[j]->type == TREE_NODE_TYPE_VALUE_DOUBLE)
-            fprintf(file_out, "%d", (int)(node->children[j]->value));
-          else if (node->children[j]->type == TREE_NODE_TYPE_BYTES) {
-            int k;
+            if (node->children[j]->type == TREE_NODE_TYPE_VALUE_INT)
+              fprintf(file_out, "%d", node->children[j]->value);
+            else if (node->children[j]->type == TREE_NODE_TYPE_VALUE_DOUBLE)
+              fprintf(file_out, "%d", (int)(node->children[j]->value));
+            else if (node->children[j]->type == TREE_NODE_TYPE_BYTES) {
+              int k;
 
-            for (k = 0; k < node->children[j]->value; k++) {
-              if (k > 0)
-                fprintf(file_out, ", ");
-              fprintf(file_out, "%d", node->children[j]->label[k]);
+              for (k = 0; k < node->children[j]->value; k++) {
+                if (k > 0)
+                  fprintf(file_out, ", ");
+                fprintf(file_out, "%d", node->children[j]->label[k]);
+              }
+            }
+
+            added_items++;
+          }
+
+          fprintf(file_out, "\n");
+        }
+        else {
+          element_size = get_variable_type_size(element_type);
+
+          /* normal array */
+          if (element_size == 8)
+            fprintf(file_out, "      .DB ");
+          else if (element_size == 16)
+            fprintf(file_out, "      .DW ");
+
+          for (j = 2; j < node->added_children; j++) {
+            if (j > 2)
+              fprintf(file_out, ", ");
+        
+            if (node->children[j]->type == TREE_NODE_TYPE_VALUE_INT)
+              fprintf(file_out, "%d", node->children[j]->value);
+            else if (node->children[j]->type == TREE_NODE_TYPE_VALUE_DOUBLE)
+              fprintf(file_out, "%d", (int)(node->children[j]->value));
+            else if (node->children[j]->type == TREE_NODE_TYPE_BYTES) {
+              int k;
+
+              for (k = 0; k < node->children[j]->value; k++) {
+                if (k > 0)
+                  fprintf(file_out, ", ");
+                fprintf(file_out, "%d", node->children[j]->label[k]);
+              }
             }
           }
-        }
 
-        fprintf(file_out, "\n");
+          fprintf(file_out, "\n");
+        }
       }
     }
   }

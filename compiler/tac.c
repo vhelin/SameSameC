@@ -91,7 +91,7 @@ void print_tac(struct tac *t, int is_comment, FILE *file_out) {
       fprintf(file_out, "%s:", t->function_node->children[1]->label);
     else
       fprintf(file_out, "%s:", t->result_s);
-      
+
     if (t->is_function == YES && t->function_node != NULL && t->function_node->local_variables != NULL) {
       struct local_variables *local_variables = t->function_node->local_variables;
       int k;
