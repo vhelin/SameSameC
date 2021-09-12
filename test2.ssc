@@ -102,7 +102,7 @@ const struct simple f_simple[2] = { {
 } };
 */
 
-struct simple f_simple[2] =
+const struct simple f_simple[] =
 {
   {
       0,

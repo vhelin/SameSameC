@@ -3350,7 +3350,7 @@ int create_variable_or_function(int is_extern, int is_static) {
 }
 
 
-static int _process_create_variable_struct_union_process_struct_union(struct tree_node *node, int *node_index, struct struct_item *si) {
+static int _process_create_variable_struct_union_process_struct_union(struct tree_node *node, int *node_index, struct struct_item *si, int can_exit_if_nothing) {
 
   int index = 0, i = *node_index;
   struct tree_node *child;
@@ -3365,9 +3365,15 @@ static int _process_create_variable_struct_union_process_struct_union(struct tre
     }
   }
 
+  if (i >= node->added_children && can_exit_if_nothing == YES)
+    return SUCCEEDED;
+  
   child = node->children[i];
-    
+
   if (child->type != TREE_NODE_TYPE_SYMBOL || child->value != '{') {
+    if (can_exit_if_nothing == YES)
+      return SUCCEEDED;
+    
     g_check_ast_failed = YES;
     snprintf(g_error_message, sizeof(g_error_message), "Expected '{', but got something else.\n");
     return print_error_using_tree_node(g_error_message, ERROR_ERR, child);
@@ -3388,7 +3394,7 @@ static int _process_create_variable_struct_union_process_struct_union(struct tre
     child = node->children[i];
 
     if (s->type == STRUCT_ITEM_TYPE_STRUCT || s->type == STRUCT_ITEM_TYPE_UNION) {
-      if (_process_create_variable_struct_union_process_struct_union(node, &i, s) == FAILED)
+      if (_process_create_variable_struct_union_process_struct_union(node, &i, s, NO) == FAILED)
         return FAILED;
 
       i++;
@@ -3405,7 +3411,7 @@ static int _process_create_variable_struct_union_process_struct_union(struct tre
           return FAILED;
         }
 
-        if (_process_create_variable_struct_union_process_struct_union(node, &i, next) == FAILED)
+        if (_process_create_variable_struct_union_process_struct_union(node, &i, next, NO) == FAILED)
           return FAILED;
       }
       else if (child->type == TREE_NODE_TYPE_EXPRESSION) {
@@ -3467,7 +3473,7 @@ static int _process_create_variable_struct_union_process_struct_union(struct tre
             }
           }
           
-          if (_process_create_variable_struct_union_process_struct_union(node, &i, next) == FAILED)
+          if (_process_create_variable_struct_union_process_struct_union(node, &i, next, NO) == FAILED)
             return FAILED;
         }
         else {
@@ -3553,7 +3559,7 @@ static int _process_create_variable_struct_union_process_struct_union(struct tre
 static int _process_create_variable_struct_union(struct tree_node *node) {
 
   struct tree_node *child;
-  int i = 2, count = 1, j;
+  int i = 2, count = 1, j, calculate_array_size = NO, array_size = 0;
 
   /* check that the struct/union initializer is correct */
 
@@ -3572,19 +3578,50 @@ static int _process_create_variable_struct_union(struct tree_node *node) {
     }
 
     count = node->value;
+    if (count == 0) {
+      /* the size of the array of structs/unions wasn't given so we'll need to calculate it here */
+      calculate_array_size = YES;
+    }
 
     print_simple_tree_node(child);
 
     i++;
   }
 
-  for (j = 0; j < count; j++) {  
-    if (_process_create_variable_struct_union_process_struct_union(node, &i, NULL) == FAILED)
+  for (j = 0; j < count || calculate_array_size == YES; j++) {
+    int old_i = i;
+    
+    if (_process_create_variable_struct_union_process_struct_union(node, &i, NULL, calculate_array_size) == FAILED)
       return FAILED;
 
+    if (old_i == i && calculate_array_size == YES) {
+      /* we now know the size of the array! */
+      break;
+    }
+
+    array_size++;
+    
     i++;
 
-    if (j < count - 1) {      
+    if (calculate_array_size == YES) {
+      if (i >= node->added_children - 1)
+        break;
+
+      child = node->children[i];
+      
+      if (!(child->type == TREE_NODE_TYPE_SYMBOL && child->value == ',')) {
+        g_check_ast_failed = YES;
+        snprintf(g_error_message, sizeof(g_error_message), "Expected ',', but got something else.\n");
+        return print_error_using_tree_node(g_error_message, ERROR_ERR, child);
+      }
+
+      print_simple_tree_node(child);
+
+      i++;
+
+      fprintf(stderr, "\n");
+    }
+    else if (j < count - 1) {
       if (i >= node->added_children) {
         g_check_ast_failed = YES;
         return print_error_using_tree_node("Abrupt end of definition.\n", ERROR_ERR, node->children[node->added_children-1]);
@@ -3604,6 +3641,17 @@ static int _process_create_variable_struct_union(struct tree_node *node) {
 
       fprintf(stderr, "\n");
     }
+  }
+
+  if (calculate_array_size == YES) {
+    /* store the array size */
+    if (array_size == 0) {
+      g_check_ast_failed = YES;
+      snprintf(g_error_message, sizeof(g_error_message), "Array \"%s\" has no content!\n", node->children[1]->label);
+      return print_error_using_tree_node(g_error_message, ERROR_ERR, node);
+    }
+    
+    node->value = array_size;
   }
 
   if ((node->flags & TREE_NODE_FLAG_ARRAY) == TREE_NODE_FLAG_ARRAY) {
