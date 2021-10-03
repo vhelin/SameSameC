@@ -2806,7 +2806,7 @@ struct tree_node *create_array(double pointer_depth, int variable_type, char *na
   else if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == ',') {
   }
   else {
-    int skip = NO;
+    int skip = NO, items = 0;
     
     /* read the items */
     
@@ -2876,13 +2876,18 @@ struct tree_node *create_array(double pointer_depth, int variable_type, char *na
       tree_node_add_child(node, _get_current_open_expression());
       _open_expression_pop();
 
+      items++;
+
       if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == ',') {
         /* next token */
         _next_token();
       }      
     }
+
+    /* store the number of defined items in this array */
+    node->value_double = items;
   }
-  
+
   /* some items can be TREE_NODE_TYPE_EXPRESSION with single TREE_NODE_TYPE_BYTES child -> simplify! */
   _simplify_expressions_with_tree_node_type_bytes(node);
 
@@ -3591,8 +3596,14 @@ static int _process_create_variable_struct_union(struct tree_node *node) {
   for (j = 0; j < count || calculate_array_size == YES; j++) {
     int old_i = i;
     
-    if (_process_create_variable_struct_union_process_struct_union(node, &i, NULL, calculate_array_size) == FAILED)
+    if (_process_create_variable_struct_union_process_struct_union(node, &i, NULL, calculate_array_size) == FAILED) {
+      if ((node->flags & TREE_NODE_FLAG_ARRAY) == TREE_NODE_FLAG_ARRAY) {
+        /* store the number of defined items in this array */
+        node->value_double = array_size;
+      }
+      
       return FAILED;
+    }
 
     if (old_i == i && calculate_array_size == YES) {
       /* we now know the size of the array! */
@@ -3629,6 +3640,10 @@ static int _process_create_variable_struct_union(struct tree_node *node) {
 
       child = node->children[i];
 
+      /* not defining all structs/unions in this array? */
+      if (child->type == TREE_NODE_TYPE_SYMBOL && child->value == '}')
+        break;
+      
       if (!(child->type == TREE_NODE_TYPE_SYMBOL && child->value == ',')) {
         g_check_ast_failed = YES;
         snprintf(g_error_message, sizeof(g_error_message), "Expected ',', but got something else.\n");
@@ -3655,6 +3670,9 @@ static int _process_create_variable_struct_union(struct tree_node *node) {
   }
 
   if ((node->flags & TREE_NODE_FLAG_ARRAY) == TREE_NODE_FLAG_ARRAY) {
+    /* store the number of defined items in this array */
+    node->value_double = array_size;
+  
     if (i != node->added_children - 1) {
       g_check_ast_failed = YES;
       return print_error_using_tree_node("Abrupt end of definition.\n", ERROR_ERR, node->children[node->added_children-1]);
@@ -4113,7 +4131,7 @@ static void _check_ast_create_variable(struct tree_node *node) {
   for (i = 2; i < node->added_children; i++)
     _check_ast_expression(node->children[i]);
 
-  if (node->children[0]->value == VARIABLE_TYPE_STRUCT || node->children[0]->value == VARIABLE_TYPE_UNION)
+  if ((node->children[0]->value == VARIABLE_TYPE_STRUCT || node->children[0]->value == VARIABLE_TYPE_UNION) && node->children[0]->value_double == 0)
     _process_create_variable_struct_union(node);
 }
 
@@ -4889,6 +4907,7 @@ int create_struct_union(int is_extern, int is_static, int is_const_1, int variab
 
       node->flags |= TREE_NODE_FLAG_ARRAY;
 
+      /* TODO: make this accept expressions */
       if (g_token_current->id == TOKEN_ID_VALUE_INT) {
         array_size = g_token_current->value;
 
@@ -4938,8 +4957,56 @@ int create_struct_union(int is_extern, int is_static, int is_const_1, int variab
     if (is_extern == YES)
       return print_error_using_token("Extern variable definitions don't take initializers.\n", ERROR_ERR, g_token_previous);
 
-    if (_collect_struct_union_initializers(node) == FAILED)
-      return FAILED;
+    if (pointer_depth == 0) {
+      if (_collect_struct_union_initializers(node) == FAILED)
+        return FAILED;
+    }
+    else {
+      int items = 0;
+      
+      if (g_token_current->id != TOKEN_ID_SYMBOL || g_token_current->value != '{') {
+        snprintf(g_error_message, sizeof(g_error_message), "Expected '{', but got %s.\n", get_token_simple(g_token_current));
+        return print_error_using_token(g_error_message, ERROR_ERR, g_token_previous);
+      }
+
+      /* skip '{' */
+      _next_token();
+
+      while (1) {
+        if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == '}') {
+          /* skip '}' */
+          _next_token();
+          
+          /* store the number of defined items in this array */
+          node->value_double = items;
+
+          break;
+        }
+
+        /* create_expression() will put all tree_nodes it parses to g_open_expression */
+        if (_open_expression_push() == FAILED)
+          return FAILED;
+
+        /* possibly parse a calculation */
+        if (create_expression() == FAILED) {
+          free_tree_node(_get_current_open_expression());
+          _open_expression_pop();
+          return FAILED;
+        }
+
+        tree_node_add_child(node, _get_current_open_expression());
+        _open_expression_pop();
+
+        items++;
+        
+        if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == ',') {
+          /* next token */
+          _next_token();
+        }
+      }
+
+      /* TODO: what if the user gave too many items? */
+    }
 
     if (g_token_current->id != TOKEN_ID_SYMBOL || (g_token_current->value != ';' &&
                                                    g_token_current->value != ',')) {

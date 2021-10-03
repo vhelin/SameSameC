@@ -3105,7 +3105,17 @@ int reorder_global_variables(void) {
         }
         else {
           /* an array */
-          if (tree_node_get_create_variable_data_items(node) == node->value)
+          /* NOTE: when dealing with struct/unions, if one is initialized, it's fully initialized and
+             the node actually contains the data as children (and symbols used to write that
+             initialization) thus the number of data items will be at least as large as the
+             number of items in the array */
+          /*
+          fprintf(stderr, "GLOBAL ARRAY %s\n", node->children[1]->label);
+          fprintf(stderr, "  %d %d\n", tree_node_get_create_variable_data_items(node), node->value);
+          fprintf(stderr, "  items in array %d\n", (int)node->value_double);
+          */
+
+          if (tree_node_get_create_variable_data_items(node) >= node->value)
             nodes[index++] = node;
         }
       }

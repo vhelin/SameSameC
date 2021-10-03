@@ -31,6 +31,8 @@ Fix:
 
 - Currently "data[i++] += 1;" increments i twice...
 - Check that all pointer operations work properly
+- When defining an array sometimes [] takes only an integer and not an expression
+- When defining an array of pointers to structs/unions it's possible to give too many items
 
 Add:
 

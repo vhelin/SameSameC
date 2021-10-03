@@ -36,8 +36,8 @@ static int g_variable_type_sizes[9] = {
   8,  /* VARIABLE_TYPE_UINT8 */
   16, /* VARIABLE_TYPE_UINT16 */
   0,  /* VARIABLE_TYPE_CONST */
-  0,  /* VARIABLE_TYPE_STRUCT */
-  0   /* VARIABLE_TYPE_UNION */
+  8,  /* VARIABLE_TYPE_STRUCT */
+  8   /* VARIABLE_TYPE_UNION */
 };
 
 
@@ -601,17 +601,22 @@ struct tree_node *allocate_tree_node_bytes(struct token *t) {
 
 int tree_node_get_create_variable_data_items(struct tree_node *node) {
 
-  int items = 0, i;
+  int i, items = 0;
   
-  items = 0;
-  for (i = 2; i < node->added_children; i++) {
-    if (node->children[i]->type == TREE_NODE_TYPE_BYTES)
-      items += node->children[i]->value;
-    else
-      items++;
+  if (node->value == 0) {
+    for (i = 2; i < node->added_children; i++) {
+      if (node->children[i]->type == TREE_NODE_TYPE_BYTES)
+        items += node->children[i]->value;
+      else if (node->children[i]->type != TREE_NODE_TYPE_SYMBOL)
+        items++;
+    }
+  
+    return items;
   }
-  
-  return items;
+  else {
+    /* an array */
+    return (int)node->value_double;
+  }
 }
   
 

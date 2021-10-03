@@ -284,7 +284,7 @@ static void _print_create_variable(struct tree_node *node) {
     fprintf(stderr, "[%d]", node->value);
     if (node->added_children > 2) {
       fprintf(stderr, " = ");
-      if (node->children[0]->value == VARIABLE_TYPE_STRUCT || node->children[0]->value == VARIABLE_TYPE_UNION)
+      if ((node->children[0]->value == VARIABLE_TYPE_STRUCT || node->children[0]->value == VARIABLE_TYPE_UNION) && node->children[0]->value_double == 0)
         _print_struct_union(node);
       else {
         fprintf(stderr, " { ");

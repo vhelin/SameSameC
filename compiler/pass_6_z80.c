@@ -586,6 +586,20 @@ static void _load_value_to_bc(int value, FILE *file_out) {
 }
 
 
+static void _load_value_to_bc_array(int *sizes, int items, FILE *file_out) {
+
+  int i;
+
+  fprintf(file_out, "      LD  BC,");
+  for (i = 0; i < items; i++) {
+    fprintf(file_out, "%d", sizes[i]);
+    if (i < items-1)
+      fprintf(file_out, "+");
+  }
+  fprintf(file_out, "\n");
+}
+
+
 static void _load_value_to_de(int value, FILE *file_out) {
 
   fprintf(file_out, "      LD  DE,%d\n", value);
@@ -5007,18 +5021,32 @@ static void _get_variable_initialized_size(struct tree_node *node, int *bytes, i
   element_type = tree_node_get_max_var_type(node->children[0]);
   element_size = get_variable_type_size(element_type) / 8;
 
+  if ((node->children[0]->value == VARIABLE_TYPE_STRUCT || node->children[0]->value == VARIABLE_TYPE_UNION) && node->children[0]->value_double == 0) {
+    /* struct/union (can be an array as well) */
+    struct struct_item *si;
+    
+    si = find_struct_item(node->children[0]->children[0]->label);
+    if (si == NULL) {
+      snprintf(g_error_message, sizeof(g_error_message), "Cannot find struct/union \"%s\".\n", node->children[0]->children[0]->label);
+      print_error_using_tree_node(g_error_message, ERROR_ERR, node);
+      exit(1);
+    }
+
+    *bytes = si->size * elements;
+  }
+  else
+    *bytes = element_size * elements;
+
   if (elements == max_elements)
     *is_fully_initialized = YES;
   else
     *is_fully_initialized = NO;
-
-  *bytes = element_size * elements;
 }
 
 
 int generate_global_variables_z80(char *file_name, FILE *file_out) {
 
-  int i, j, global_variables_found = 0, length, max_length = 0, elements, element_size, element_type, bytes, total_bytes, is_fully_initialized;
+  int i, j, global_variables_found = 0, length, max_length = 0, elements, element_size, element_type, bytes, is_fully_initialized, accumulated_items, accumulated_sizes[1024];
   char label_tmp[MAX_NAME_LENGTH + 1];
   struct tree_node *node_1st = NULL;
   
@@ -5092,7 +5120,8 @@ int generate_global_variables_z80(char *file_name, FILE *file_out) {
         for (j = 2; j < node->added_children; j++) {
           if (node->children[j]->type != TREE_NODE_TYPE_VALUE_INT &&
               node->children[j]->type != TREE_NODE_TYPE_VALUE_DOUBLE &&
-              node->children[j]->type != TREE_NODE_TYPE_BYTES) {
+              node->children[j]->type != TREE_NODE_TYPE_BYTES &&
+              node->children[j]->type != TREE_NODE_TYPE_SYMBOL) {
             snprintf(g_error_message, sizeof(g_error_message), "generate_global_variables_z80(): Global variable (\"%s\") can only be initialized with an immediate number!\n", node->children[1]->label);
             return print_error_using_tree_node(g_error_message, ERROR_ERR, node);
           }
@@ -5234,7 +5263,7 @@ int generate_global_variables_z80(char *file_name, FILE *file_out) {
   _add_label(label_tmp, file_out, NO);  
 
   /* 1. copy the data of all fully initialized non-const global variables in one call */
-  total_bytes = 0;
+  accumulated_items = 0;
   for (i = 0; i < g_global_nodes->added_children; i++) {
     struct tree_node *node = g_global_nodes->children[i];
     if (node != NULL && node->type == TREE_NODE_TYPE_CREATE_VARIABLE) {
@@ -5249,12 +5278,14 @@ int generate_global_variables_z80(char *file_name, FILE *file_out) {
         if (is_fully_initialized == NO)
           break;
 
-        total_bytes += bytes;
+        accumulated_sizes[accumulated_items++] = bytes;
+        if (accumulated_items >= 1024)
+            return print_error_using_tree_node("generate_global_variables_z80(): accumulated_sizes array is full! Please resize and recompile!\n", ERROR_ERR, node);
       }
     }
   }
 
-  if (total_bytes > 0) {
+  if (accumulated_items > 0) {
     char copy_function_name[MAX_NAME_LENGTH+1];
     
     fprintf(file_out, "      ; copy all fully initialized global variables in a single call\n");
@@ -5267,7 +5298,7 @@ int generate_global_variables_z80(char *file_name, FILE *file_out) {
     _load_label_to_de(label_tmp, file_out);
 
     /* counter -> bc */
-    _load_value_to_bc(total_bytes, file_out);
+    _load_value_to_bc_array(accumulated_sizes, accumulated_items, file_out);
 
     /* call */
     snprintf(copy_function_name, sizeof(copy_function_name), "copy_bytes_bank_%.3d", g_bank);
