@@ -3422,7 +3422,7 @@ static int _process_create_variable_struct_union_process_struct_union(struct tre
       else if (child->type == TREE_NODE_TYPE_EXPRESSION) {
         print_expression(child);
 
-        /* store the struct_item pointer for later so we don't have to travere through the struct_item tree again... */
+        /* store the struct_item pointer for later so we don't have to traverse through the struct_item tree again... */
         child->struct_item = s;
       }
       else {

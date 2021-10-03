@@ -2751,8 +2751,8 @@ static int _get_variable_size(struct tree_node *node) {
         print_error_using_tree_node(g_error_message, ERROR_ERR, node);
         return -1;
       }
-
-      size = si->size;
+      
+      size = si->size * 8;
     }
     else {
       fprintf(stderr, "_get_variable_size(): Cannot determine the variable size of variable \"%s\".\n", node->children[1]->label);

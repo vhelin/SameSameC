@@ -739,7 +739,7 @@ static int _generate_il_create_variable(struct tree_node *node) {
       if (tree_node_is_expression_just_a_constant(node->children[2 + i]) == YES) {
         if (node->children[2 + i]->type == TREE_NODE_TYPE_BYTES)
           constants += node->value;
-        else
+        else if (node->children[2 + i]->type != TREE_NODE_TYPE_SYMBOL)
           constants++;
       }
     }
@@ -749,41 +749,131 @@ static int _generate_il_create_variable(struct tree_node *node) {
     if (constants > 3)
       skip_constants = YES;
 
-    for (i = 0; i < node->added_children - 2; i++) {
-      int r2 = g_temp_r, type;
+    if ((node->children[0]->value == VARIABLE_TYPE_STRUCT || node->children[0]->value == VARIABLE_TYPE_UNION) && node->children[0]->value_double == 0) {
+      /* array of structs/unions */
+      int offset = 0;
+      
+      for (i = 0; i < node->added_children - 2; i++) {
+        int r_address1, r_address2, r_result, type, size, pointer_depth;
 
-      if (skip_constants == YES && tree_node_is_expression_just_a_constant(node->children[2 + i]) == YES)
-        continue;
+        if (node->children[2 + i]->type == TREE_NODE_TYPE_SYMBOL)
+          continue;
 
-      if (_generate_il_create_expression(node->children[2 + i]) == FAILED)
-        return FAILED;
+        /* calculate item size */
+        pointer_depth = node->children[2+i]->struct_item->pointer_depth;
+        if (pointer_depth > 0)
+          type = VARIABLE_TYPE_UINT16;
+        else
+          type = node->children[2+i]->struct_item->variable_type;
+        size = get_variable_type_size(type) / 8;
 
-      t = add_tac();
-      if (t == NULL)
-        return FAILED;
+        /*
+        fprintf(stderr, "%d ---> %d (%d, %d)\n", node->children[2+i]->value, (int)node->children[2+i]->struct_item, offset, size);
+        */
 
-      /* i is the array index, r2 is the value */
+        if (skip_constants == YES && tree_node_is_expression_just_a_constant(node->children[2 + i]) == YES) {
+          offset += size;
+          continue;
+        }
 
-      t->op = TAC_OP_ARRAY_WRITE;
+        /* get the address of the struct item */
+        t = add_tac();
+        if (t == NULL)
+          return FAILED;
 
-      tac_set_result(t, TAC_ARG_TYPE_LABEL, 0, node->children[1]->label);
-      t->result_node = node;
-      tac_set_arg1(t, TAC_ARG_TYPE_TEMP, r2, NULL);
-      tac_set_arg2(t, TAC_ARG_TYPE_CONSTANT, i, NULL);
+        r_address1 = g_temp_r++;
+        
+        t->op = TAC_OP_GET_ADDRESS;
+        tac_set_result(t, TAC_ARG_TYPE_TEMP, r_address1, NULL);
+        tac_set_arg1(t, TAC_ARG_TYPE_LABEL, 0, node->children[1]->label);
 
-      /* set promotions */
-      /*
-      type = tree_node_get_max_var_type(node->children[0]);
-      */
-      type = get_array_item_variable_type(node); /* here we use the type defined by the variable */
-      t->result_var_type = type;
-      tac_promote_argument(t, type, TAC_USE_RESULT);
-      type = tree_node_get_max_var_type(node->children[2 + i]);
-      tac_promote_argument(t, type, TAC_USE_ARG1);
-      if (i < 256)
-        tac_promote_argument(t, VARIABLE_TYPE_UINT8, TAC_USE_ARG2);
-      else
+        /* set promotions */
+        tac_promote_argument(t, VARIABLE_TYPE_UINT16, TAC_USE_RESULT);
+        tac_promote_argument(t, VARIABLE_TYPE_UINT16, TAC_USE_ARG1);
+        t->arg1_node = node;
+
+        r_address2 = g_temp_r++;
+
+        t = add_tac();
+        if (t == NULL)
+          return FAILED;
+        
+        t->op = TAC_OP_ADD;
+        tac_set_result(t, TAC_ARG_TYPE_TEMP, r_address2, NULL);
+        tac_set_arg1(t, TAC_ARG_TYPE_TEMP, r_address1, NULL);
+        tac_set_arg2(t, TAC_ARG_TYPE_CONSTANT, offset, NULL);
+
+        /* set promotions */
+        tac_promote_argument(t, VARIABLE_TYPE_UINT16, TAC_USE_RESULT);
+        tac_promote_argument(t, VARIABLE_TYPE_UINT16, TAC_USE_ARG1);
         tac_promote_argument(t, VARIABLE_TYPE_UINT16, TAC_USE_ARG2);
+
+        /* store the expression into struct's item */
+        r_result = g_temp_r;
+        
+        if (_generate_il_create_expression(node->children[2 + i]) == FAILED)
+          return FAILED;
+
+        t = add_tac();
+        if (t == NULL)
+          return FAILED;
+        
+        /* arg2 is the array index, arg1 is the value */
+
+        t->op = TAC_OP_ARRAY_WRITE;
+
+        tac_set_result(t, TAC_ARG_TYPE_TEMP, r_address2, NULL);
+        tac_set_arg1(t, TAC_ARG_TYPE_TEMP, r_result, NULL);
+        tac_set_arg2(t, TAC_ARG_TYPE_CONSTANT, 0, NULL);
+
+        /* set promotions */
+        t->result_var_type = type;
+        tac_promote_argument(t, type, TAC_USE_RESULT);
+        type = tree_node_get_max_var_type(node->children[2 + i]);
+        tac_promote_argument(t, type, TAC_USE_ARG1);
+        tac_promote_argument(t, VARIABLE_TYPE_UINT8, TAC_USE_ARG2);
+
+        offset += size;
+      }
+    }
+    else {
+      /* array of single type values */
+      for (i = 0; i < node->added_children - 2; i++) {
+        int r2 = g_temp_r, type;
+
+        if (skip_constants == YES && tree_node_is_expression_just_a_constant(node->children[2 + i]) == YES)
+          continue;
+
+        if (_generate_il_create_expression(node->children[2 + i]) == FAILED)
+          return FAILED;
+
+        t = add_tac();
+        if (t == NULL)
+          return FAILED;
+
+        /* i is the array index, r2 is the value */
+
+        t->op = TAC_OP_ARRAY_WRITE;
+
+        tac_set_result(t, TAC_ARG_TYPE_LABEL, 0, node->children[1]->label);
+        t->result_node = node;
+        tac_set_arg1(t, TAC_ARG_TYPE_TEMP, r2, NULL);
+        tac_set_arg2(t, TAC_ARG_TYPE_CONSTANT, i, NULL);
+
+        /* set promotions */
+        /*
+          type = tree_node_get_max_var_type(node->children[0]);
+        */
+        type = get_array_item_variable_type(node); /* here we use the type defined by the variable */
+        t->result_var_type = type;
+        tac_promote_argument(t, type, TAC_USE_RESULT);
+        type = tree_node_get_max_var_type(node->children[2 + i]);
+        tac_promote_argument(t, type, TAC_USE_ARG1);
+        if (i < 256)
+          tac_promote_argument(t, VARIABLE_TYPE_UINT8, TAC_USE_ARG2);
+        else
+          tac_promote_argument(t, VARIABLE_TYPE_UINT16, TAC_USE_ARG2);
+      }
     }
   }
   

@@ -65,8 +65,8 @@ struct simple {
   } tiny;
   u8  value00;
   struct {
-    u8  byte1;
-    u16 word1;
+    u16 byte1;
+    u8 word1;
     struct ooh ooh1;
     struct ooh oohs[2];
     u8  byte2;
@@ -92,7 +92,7 @@ const struct simple f_simple[2] = { {
       0,
       { $11, $22 },
       1,
-      {
+fg      {
         { 9, 8, { $22, $33 }, { { 1, 2 }, { 3, 4 } }, 7 },
         { 6, 1, { $99, $88 }, { { 4, 5 }, { 6, 7 } }, 8 }
       },
@@ -155,7 +155,7 @@ struct simple g_simple[] =
       { 1, 2 },
       3,
       {
-        { 4, 5, { 6, 7 }, { { 8, 9 }, { 0, 1 } }, 1 },
+        { 4, 5+adder[0], { 6, 7 }, { { 8, 9 }, { 0, 1 } }, 1 },
         { 2, 3, { 4, 5 }, { { 6, 7 }, { 8, 9 } }, 0 }
       },
       1,

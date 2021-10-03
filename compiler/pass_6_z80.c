@@ -4730,6 +4730,10 @@ static int _copy_non_const_array_constants(struct tac *t, struct tree_node *node
 
   type = get_array_item_variable_type(node);
   size = get_variable_type_size(type) / 8;
+
+  /*
+  fprintf(stderr, "VAR %s SIZE %d\n", node->children[1]->label, size);
+  */
   
   _push_de(file_out);
   
