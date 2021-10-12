@@ -148,7 +148,7 @@ struct simple f_simple[] =
 
 static void initialize_adder(s8 *adder) {
 
-struct simple g_simple[] =
+struct simple g_simple[2] =
 {
   {
       0,

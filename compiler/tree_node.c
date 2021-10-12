@@ -207,6 +207,44 @@ static int _get_create_variable_variable_type(struct tree_node *node) {
 }
 
 
+int get_array_initialized_size_in_bytes(struct tree_node *node) {
+
+  if (node->value > 0) {
+    int size = 0, unit_size = 0;
+
+    if ((int)node->children[0]->value_double == 0) {
+      if (node->children[0]->value == VARIABLE_TYPE_STRUCT || node->children[0]->value == VARIABLE_TYPE_UNION) {
+        struct struct_item *si;
+
+        /* sizeof(struct x) */
+        si = find_struct_item(node->children[0]->children[0]->label);
+        if (si == NULL) {
+          snprintf(g_error_message, sizeof(g_error_message), "Cannot find struct/union \"%s\".\n", node->children[0]->children[0]->label);
+          print_error_using_tree_node(g_error_message, ERROR_ERR, node);
+          return -1;
+        }
+
+        unit_size = si->size;
+      }
+      else
+        unit_size = get_variable_type_size(node->children[0]->value) / 8;
+    }
+    else {
+      /* a pointer */
+      unit_size = 2;
+    }
+
+    size = ((int)node->value_double) * unit_size;
+    
+    return size;
+  }
+  else {
+    fprintf(stderr, "get_array_initialized_size_in_bytes(): %s is not an array!\n", node->children[1]->label);
+    exit(1);
+  }
+}
+
+
 int get_array_item_variable_type(struct tree_node *node) {
 
   int pointer_depth;

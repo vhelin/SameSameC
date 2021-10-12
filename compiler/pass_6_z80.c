@@ -4723,17 +4723,14 @@ static int _add_const_variables(struct tree_node *const_variables[256], int cons
 static int _copy_non_const_array_constants(struct tac *t, struct tree_node *node, int items, struct tree_node *function_node, FILE *file_out) {
 
   char copy_function_name[MAX_NAME_LENGTH+1];
-  int offset, size, type;
+  int offset, size;
 
   if (find_stack_offset(TAC_ARG_TYPE_LABEL, node->children[1]->label, 0, node, &offset, function_node) == FAILED)
     return FAILED;
 
-  type = get_array_item_variable_type(node);
-  size = get_variable_type_size(type) / 8;
+  size = get_array_initialized_size_in_bytes(node);
 
-  /*
-  fprintf(stderr, "VAR %s SIZE %d\n", node->children[1]->label, size);
-  */
+  fprintf(stderr, "VAR %s SIZE %d ITEMS %d\n", node->children[1]->label, size, items);
   
   _push_de(file_out);
   
@@ -4745,7 +4742,7 @@ static int _copy_non_const_array_constants(struct tac *t, struct tree_node *node
   _load_label_to_de(node->children[1]->label, file_out);
 
   /* counter -> bc */
-  _load_value_to_bc(size * items, file_out);
+  _load_value_to_bc(size, file_out);
 
   /* call */
   snprintf(copy_function_name, sizeof(copy_function_name), "copy_bytes_bank_%.3d", g_bank);
