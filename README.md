@@ -1,24 +1,22 @@
-SameSameC (ButDifferent)
-------------------------
+
+# SameSameC (ButDifferent)
 
 Yet Another ANSI C89 Like Language Cross Compiler Targetting 8-bit CPUs. Written by 2021 Ville Helin.
 
 This is currently under development, use it on your own risk. SameSameC is GPL v2 software. Read the LICENSE file for more information. Some pieces of code were taken from WLA DX (https://github.com/vhelin/wla-dx), but not so many.
 
-I will not approve pull requests as I want to do this myself, up to the point when I decide I've learned enough. :) Ideas, bug reports and feature requests are welcome, though.
+I will not approve pull requests as I want to do this myself, up to the point when I decide I've learned enough. :) Ideas, bug reports and feature requests are welcome, though. And build scripts for platforms currently not supported.
 
 
-Azure Pipelines CI
-------------------
+# Azure Pipelines CI
 
 Linux: [![Build Status](https://dev.azure.com/villehelin0486/villehelin/_apis/build/status/vhelin.SameSameC%20Linux?branchName=master)](https://dev.azure.com/villehelin0486/villehelin/_build/latest?definitionId=4&branchName=master)
 Windows: [![Build Status](https://dev.azure.com/villehelin0486/villehelin/_apis/build/status/vhelin.SameSameC%20Windows?branchName=master)](https://dev.azure.com/villehelin0486/villehelin/_build/latest?definitionId=5&branchName=master)
 
 
-TODO
-----
+# TODO
 
-Optimize:
+## Optimize
 
 - Optimize user written calculations like 2+a-1 -> 1+a
 - If a variable is only written to, remove the variable and all assignments
@@ -27,20 +25,22 @@ Optimize:
 - Reduce code bloat (parser...)
 - Z80: Remove unnecessary stack writes/reads (i.e., temp "register" access)
 
-Fix:
+## Fix
 
 - Currently "data[i++] += 1;" increments i twice...
 - Check that all pointer operations work properly
 - When defining an array sometimes [] takes only an integer and not an expression
 - When defining an array of pointers to structs/unions it's possible to give too many items
 
-Add:
+## Add
 
 - Add support for struct (Work-In-Progress...)
 - Improve struct/union support (ANSI C99?)
 - Add support for free const strings
 - Add support for explicit casting and type checks
 - Add support for arrays with more than one dimension
+- Add support for empty statements
+- Add support for function overloading
 - Add more backends (GB-Z80, 6502, 65816...)
 - Add test projects
 - Document all TREE_NODE_TYPE_* use cases
@@ -48,10 +48,9 @@ Add:
 - Create a list of supported ANSI C89 features (and the new features)
 
 
-NOTE
-----
+# NOTE
 
-Programmed using:
+Programmed using
 
 - "Basics of Compiler Design"
   - http://web.archive.org/web/20120915222417/http://www.diku.dk/hjemmesider/ansatte/torbenm/Basics/basics_lulu2.pdf

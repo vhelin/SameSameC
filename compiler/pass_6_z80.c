@@ -4730,8 +4730,6 @@ static int _copy_non_const_array_constants(struct tac *t, struct tree_node *node
 
   size = get_array_initialized_size_in_bytes(node);
 
-  fprintf(stderr, "VAR %s SIZE %d ITEMS %d\n", node->children[1]->label, size, items);
-  
   _push_de(file_out);
   
   /* target address -> hl */

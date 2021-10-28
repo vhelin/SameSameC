@@ -16,3 +16,11 @@ cd linker
 smake clean
 smake
 cd /
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+; copy the executables...
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+mkdir binaries
+copy compiler/samesamecc binaries/
+copy linker/samesamecl binaries/
