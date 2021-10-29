@@ -1,0 +1,3 @@
+[submodule "wla-dx"]
+	path = wla-dx
+	url = https://github.com/vhelin/wla-dx

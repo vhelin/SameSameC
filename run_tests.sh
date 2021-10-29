@@ -12,11 +12,21 @@ runTest() {
 }
 
 export PATH=$PATH:$PWD/binaries
+export PATH=$PATH:$PWD/wla-dx/binaries
 
 set +e
 
 TEST_COUNT=0
 
+SHOW_ALL_OUTPUT=false
+if [ $# -eq 1 ]; then
+    if [ "$1" = "-v" ]; then
+        SHOW_ALL_OUTPUT=true
+    fi
+fi
+
+echo
+echo Running tests...
 cd tests
 
 for CPU in */; do
