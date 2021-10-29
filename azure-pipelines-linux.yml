@@ -11,10 +11,6 @@ pool:
 
 steps:
 - script: |
-    cd compiler
-    make
-    cd ..
-    cd linker
-    make
-    cd ..
+    ./build.sh
+    ./run_tests.sh
   displayName: 'make'
