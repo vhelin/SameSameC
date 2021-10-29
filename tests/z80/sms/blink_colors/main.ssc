@@ -1,0 +1,31 @@
+
+static s8 g_adder = 0;
+
+void main(void) {
+
+  u8 color = 0;
+
+  initialize_adder(&g_adder);
+
+  do {
+    __z80_out[0xBF] = 0x00;
+    __z80_out[0xBF] = 0xC0;
+
+    u8 i;
+
+    for (i = 0; i < 32; i++)
+        __z80_out[0xBE] = color;
+
+    add_to_color(&color, g_adder);
+  } while (1);
+}
+
+static void initialize_adder(s8 *adder) {
+
+    adder[0] = 1;
+}
+
+static void add_to_color(u8 *color, s8 adder) {
+
+    color[0] = color[0] + adder;
+}
