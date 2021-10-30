@@ -1,6 +1,9 @@
 
 static s8 g_adder = 0;
 
+// ROM header
+__asm(".sdsctag 1.0, \"TEST\", \"Changing colors\", \"Ville Helin\"");
+
 void main(void) {
 
   u8 color = 0;

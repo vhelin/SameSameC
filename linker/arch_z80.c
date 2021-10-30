@@ -37,7 +37,7 @@ int arch_z80_write_system_init(int target, FILE *file_out) {
     fprintf(file_out, "    SLOT 1 START $4000 SIZE $4000 NAME \"ROMSlot2\"\n");
     fprintf(file_out, "    SLOT 2 START $8000 SIZE $4000 NAME \"ROMSlot3\"\n");
     fprintf(file_out, "    ; RAM\n");
-    fprintf(file_out, "    SLOT 3 START $C000 SIZE $4000 NAME \"RAMSlot1\"\n");
+    fprintf(file_out, "    SLOT 3 START $C000 SIZE $2000 NAME \"RAMSlot1\"\n");
     fprintf(file_out, "  .ENDME\n");
     fprintf(file_out, "\n");
     

@@ -5,7 +5,7 @@ Yet Another ANSI C89 Like Language Cross Compiler Targetting 8-bit CPUs. Written
 
 This is currently under development, use it on your own risk. SameSameC is GPL v2 software. Read the LICENSE file for more information. Some pieces of code were taken from WLA DX (https://github.com/vhelin/wla-dx), but not so many.
 
-I will not approve pull requests as I want to do this myself, up to the point when I decide I've learned enough. :) Ideas, bug reports and feature requests are welcome, though. And build scripts for platforms currently not supported.
+I will not in general approve pull requests as I want to do this myself, up to the point when I decide I've learned enough. :) Ideas, bug reports and feature requests are welcome, though. And build scripts for platforms currently not supported.
 
 
 # Azure Pipelines CI
@@ -34,15 +34,14 @@ Windows: [![Build Status](https://dev.azure.com/villehelin0486/villehelin/_apis/
 
 ## Add
 
-- Add support for struct (Work-In-Progress...)
-- Improve struct/union support (ANSI C99?)
+- Add support for empty statements
+- Add support for function overloading
 - Add support for free const strings
 - Add support for explicit casting and type checks
 - Add support for arrays with more than one dimension
-- Add support for empty statements
-- Add support for function overloading
 - Add more backends (GB-Z80, 6502, 65816...)
-- Add test projects
+- Add more test projects
+- Improve struct/union support (ANSI C99?)
 - Document all TREE_NODE_TYPE_* use cases
 - Document all TAC_OP_* use cases
 - Create a list of supported ANSI C89 features (and the new features)
@@ -59,5 +58,6 @@ Programmed using
 - gin long drinks
 - imagination
 - emacs
+- Cygwin under Windows 10
 
 Should compile anywhere ANSI C89 source code can be compiled.

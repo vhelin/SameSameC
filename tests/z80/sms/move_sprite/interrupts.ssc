@@ -1,0 +1,19 @@
+
+// assets/data/asm code taken from https://www.smspower.org/Articles/CreateARacingGame
+
+u8 g_vdp_status;
+
+void interrupt_frame(void) __pureasm __orga 0x38 {
+
+  __asm("ex af,af'",           // save accumulator in its shadow reg.
+        "in a,$bf",            // get vdp status / satisfy interrupt.
+        "ld (g_vdp_status),a", // save vdp status in ram.
+        "ex af,af'",           // restore accumulator.
+        "ei",                  // enable interrupts.
+        "ret");                // return from interrupt.
+}
+
+void interrupt_pause_button(void) __pureasm __orga 0x66 {
+
+  __asm("retn");               // disable pause button.
+}

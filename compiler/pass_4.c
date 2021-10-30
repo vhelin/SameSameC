@@ -1825,9 +1825,15 @@ int generate_il(void) {
 
   for (i = 0; i < g_global_nodes->added_children; i++) {
     struct tree_node *node = g_global_nodes->children[i];
-    if (node != NULL && (node->type == TREE_NODE_TYPE_FUNCTION_DEFINITION || node->type == TREE_NODE_TYPE_FUNCTION_PROTOTYPE)) {
-      if (_generate_il_create_function(node) == FAILED)
-        return FAILED;
+    if (node != NULL) {
+      if (node->type == TREE_NODE_TYPE_FUNCTION_DEFINITION || node->type == TREE_NODE_TYPE_FUNCTION_PROTOTYPE) {
+        if (_generate_il_create_function(node) == FAILED)
+          return FAILED;
+      }
+      else if (node->type == TREE_NODE_TYPE_ASM) {
+        if (_generate_il_asm(node) == FAILED)
+          return FAILED;
+      }
     }
   }
   

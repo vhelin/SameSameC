@@ -139,7 +139,7 @@ struct label {
 struct definition {
   char   name[MAX_NAME_LENGTH + 1];
   int    parenthesis;
-  int    had_parenthesis;
+  int    collect_arguments;
   int    has_arguments;
   int    arguments;
   struct token *tokens_first;
@@ -350,6 +350,7 @@ struct local_variables {
 struct tree_node {
   int type;
   int value;
+  int org;
   double value_double;
   char *label;
   int file_id;
@@ -360,7 +361,7 @@ struct tree_node {
   int children_max;
   struct tree_node **children;
   struct local_variables *local_variables;
-  unsigned char flags;
+  int flags;
   int reads;
   int writes;
 };
@@ -373,6 +374,8 @@ struct tree_node {
 #define TREE_NODE_FLAG_EXTERN        (1 << 5)
 #define TREE_NODE_FLAG_STATIC        (1 << 6)
 #define TREE_NODE_FLAG_ARRAY         (1 << 7)
+#define TREE_NODE_FLAG_ORG_DEFINED   (1 << 8)
+#define TREE_NODE_FLAG_ORGA_DEFINED  (1 << 9)
 
 #define TREE_NODE_TYPE_CREATE_VARIABLE      0
 #define TREE_NODE_TYPE_ASSIGNMENT           1

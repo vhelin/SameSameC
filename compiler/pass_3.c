@@ -654,6 +654,8 @@ static void _print_function_definition(struct tree_node *node) {
 
   if ((node->flags & TREE_NODE_FLAG_PUREASM) == TREE_NODE_FLAG_PUREASM)
     fprintf(stderr, " __pureasm");
+  if ((node->flags & TREE_NODE_FLAG_ORG_DEFINED) == TREE_NODE_FLAG_ORG_DEFINED)
+    fprintf(stderr, " __org 0x%x", (unsigned int)node->value_double);
   
   if (node->type == TREE_NODE_TYPE_FUNCTION_PROTOTYPE) {
     fprintf(stderr, ";\n");
@@ -679,8 +681,12 @@ static void _print_global_node(struct tree_node *node) {
     _print_function_definition(node);
   else if (node->type == TREE_NODE_TYPE_FUNCTION_PROTOTYPE)
     _print_function_definition(node);
-  else
+  else if (node->type == TREE_NODE_TYPE_ASM)
+    _print_asm(node);
+  else {
     fprintf(stderr, "_print_global_node(): Unknown global node type %d! Please submit a bug report!\n", node->type);
+    exit(1);
+  }
 }
 
 
@@ -1115,6 +1121,9 @@ static void _simplify_expressions_global_node(struct tree_node *node) {
   else if (node->type == TREE_NODE_TYPE_FUNCTION_DEFINITION)
     _simplify_expressions_function_definition(node);
   else if (node->type == TREE_NODE_TYPE_FUNCTION_PROTOTYPE) {
+    /* nothing to simplify here */
+  }
+  else if (node->type == TREE_NODE_TYPE_ASM) {
     /* nothing to simplify here */
   }
   else {

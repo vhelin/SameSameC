@@ -515,7 +515,7 @@ static int _add_a_new_definition(char *name, double d, char *s, int id) {
     strncpy(t->label, s, strlen(s) + 1);
   }
   
-  if (definition_add_token(definition, t) == FAILED)
+  if (definition_add_token(definition, t, 0) == FAILED)
     return FAILED;
   
   return SUCCEEDED;

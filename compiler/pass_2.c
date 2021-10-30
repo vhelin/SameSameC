@@ -135,33 +135,33 @@ static void _print_token(struct token *t) {
 #endif
 
 
-static int _print_loose_token_error(struct token *t) {
+static int _print_loose_token_error(struct token *t, const char *source) {
 
   if (t->id == TOKEN_ID_SYMBOL) {
     if (t->value <= SYMBOL_POINTER)
-      snprintf(g_error_message, sizeof(g_error_message), "The loose symbol '%s' doesn't make any sense.\n", g_two_char_symbols[t->value]);
+      snprintf(g_error_message, sizeof(g_error_message), "%s: The loose symbol '%s' doesn't make any sense.\n", source, g_two_char_symbols[t->value]);
     else
-      snprintf(g_error_message, sizeof(g_error_message), "The loose symbol '%c' doesn't make any sense.\n", t->value);
+      snprintf(g_error_message, sizeof(g_error_message), "%s: The loose symbol '%c' doesn't make any sense.\n", source, t->value);
     print_error(g_error_message, ERROR_ERR);
   }
   else if (t->id == TOKEN_ID_VALUE_INT) {
-    snprintf(g_error_message, sizeof(g_error_message), "The loose value %d doesn't make any sense.\n", t->value);
+    snprintf(g_error_message, sizeof(g_error_message), "%s: The loose value %d doesn't make any sense.\n", source, t->value);
     print_error(g_error_message, ERROR_ERR);
   }
   else if (t->id == TOKEN_ID_VALUE_DOUBLE) {
-    snprintf(g_error_message, sizeof(g_error_message), "The loose value %d doesn't make any sense.\n", t->value_double);
+    snprintf(g_error_message, sizeof(g_error_message), "%s: The loose value %d doesn't make any sense.\n", source, t->value_double);
     print_error(g_error_message, ERROR_ERR);
   }
   else if (t->id == TOKEN_ID_VALUE_STRING) {
-    snprintf(g_error_message, sizeof(g_error_message), "The loose string \"%s\" doesn't make any sense.\n", t->label);
+    snprintf(g_error_message, sizeof(g_error_message), "%s: The loose string \"%s\" doesn't make any sense.\n", source, t->label);
     print_error(g_error_message, ERROR_ERR);
   }
   else if (t->id == TOKEN_ID_RETURN) {
-    snprintf(g_error_message, sizeof(g_error_message), "The loose \"return\" doesn't make any sense.\n");
+    snprintf(g_error_message, sizeof(g_error_message), "%s: The loose \"return\" doesn't make any sense.\n", source);
     print_error(g_error_message, ERROR_ERR);
   }
   else {
-    snprintf(g_error_message, sizeof(g_error_message), "Unhandled loose TOKEN ID %d. Please send a bug report!\n", t->id);
+    snprintf(g_error_message, sizeof(g_error_message), "%s: Unhandled loose TOKEN ID %d. Please send a bug report!\n", source, t->id);
     print_error(g_error_message, ERROR_ERR);
   }
   
@@ -419,9 +419,45 @@ int pass_2(void) {
       /* next token */
       g_token_current = g_token_current->next;
     }
-    else {
-      return _print_loose_token_error(g_token_current);
+    else if (g_token_current->id == TOKEN_ID_ASM) {
+      /* inline ASM */
+      struct tree_node *node;
+      struct inline_asm *ia;
+      struct asm_line *al;
+    
+      node = allocate_tree_node(TREE_NODE_TYPE_ASM);
+      if (node == NULL)
+        return FAILED;
+
+      /* transfer the inline_asm id */
+      node->value = g_token_current->value;
+    
+      ia = inline_asm_find(node->value);
+      if (ia == NULL)
+        return FAILED;
+    
+      al = ia->asm_line_first;
+      while (al != NULL) {
+        /* update file id and line number for all TACs and error messages */
+        g_current_line_number = al->line_number;
+    
+        /* determine if the ASM line has i/o with variables, and find the associated tree_node where the variable is created */
+        if (g_backend == BACKEND_Z80) {
+          if (inline_asm_z80_parse_line(al) == FAILED)
+            return FAILED;
+        }
+
+        al = al->next;
+      }
+
+      if (tree_node_add_child(g_global_nodes, node) == FAILED)
+        return FAILED;
+      
+      /* next token */
+      g_token_current = g_token_current->next;
     }
+    else
+      return _print_loose_token_error(g_token_current, "pass_2()");
   }
 
   /* calculate struct sizes and member offsets */
@@ -1082,19 +1118,16 @@ int create_factor(void) {
     
     return FINISHED;
   }
-  else if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == ']') {
+  else if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == ']')
     return FINISHED;
-  }
-  else if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == ',') {
+  else if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == ',')
     return FINISHED;
-  }
-  else if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == ':') {
+  else if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == ':')
     return FINISHED;
-  }
   else if (g_token_current->id == TOKEN_ID_BYTES)
     node = allocate_tree_node_bytes(g_token_current);
   else {
-    _print_loose_token_error(g_token_current);
+    _print_loose_token_error(g_token_current, "create_factor()");
     return FAILED;
   }
 
@@ -3251,17 +3284,45 @@ int create_variable_or_function(int is_extern, int is_static) {
           /* this token is ')' */
           _next_token();
 
-          if (g_token_current->id == TOKEN_ID_HINT && strcmp(g_token_current->label, "__pureasm") == 0) {
-            if (g_open_function_definition->added_children > 2 ||
-                g_open_function_definition->children[0]->value != VARIABLE_TYPE_VOID ||
-                g_open_function_definition->children[0]->value_double > 0) {
-              return print_error("A __pureasm function must be of type \"void name(void)\".\n", ERROR_ERR);
-            }
+          while (1) {
+            if (g_token_current->id != TOKEN_ID_HINT)
+              break;
             
-            /* this token is '__pureasm' */
-            _next_token();
+            if (strcmp(g_token_current->label, "__pureasm") == 0) {
+              if (g_open_function_definition->added_children > 2 ||
+                  g_open_function_definition->children[0]->value != VARIABLE_TYPE_VOID ||
+                  g_open_function_definition->children[0]->value_double > 0) {
+                return print_error("A __pureasm function must be of type \"void name(void)\".\n", ERROR_ERR);
+              }
+            
+              /* this token is '__pureasm' */
+              _next_token();
 
-            g_open_function_definition->flags |= TREE_NODE_FLAG_PUREASM;
+              g_open_function_definition->flags |= TREE_NODE_FLAG_PUREASM;
+            }
+            else if (strcmp(g_token_current->label, "__org") == 0) {
+              /* this token is '__org' */
+              _next_token();
+
+              if (g_token_current->id != TOKEN_ID_VALUE_INT)
+                return print_error("__org needs the address.\n", ERROR_ERR);
+
+              g_open_function_definition->value_double = g_token_current->value;              
+              g_open_function_definition->flags |= TREE_NODE_FLAG_ORG_DEFINED;
+            }
+            else if (strcmp(g_token_current->label, "__orga") == 0) {
+              /* this token is '__orga' */
+              _next_token();
+
+              if (g_token_current->id != TOKEN_ID_VALUE_INT)
+                return print_error("__orga needs the address.\n", ERROR_ERR);
+
+              g_open_function_definition->value_double = g_token_current->value;              
+              g_open_function_definition->flags |= TREE_NODE_FLAG_ORGA_DEFINED;
+
+              /* skip the address */
+              _next_token();
+            }
           }
 
           /* is it actually a function prototype? */
@@ -4441,6 +4502,9 @@ static void _check_ast_global_node(struct tree_node *node) {
     _check_ast_function_definition(node);
   else if (node->type == TREE_NODE_TYPE_FUNCTION_PROTOTYPE) {
     /* function prototypes are assumed to be ok */
+  }
+  else if (node->type == TREE_NODE_TYPE_ASM) {
+    /* asm nodes are assumed to be ok */
   }
   else {
     fprintf(stderr, "_check_ast_global_node(): Unknown global node type %d! Please submit a bug report!\n", node->type);

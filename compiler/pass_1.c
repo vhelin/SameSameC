@@ -275,7 +275,7 @@ static int _parse_define(void) {
 
   /* for token_add() */
   g_inside_define = YES;
-      
+
   /* collect all tokens that make this definition */
   while (1) {
     q = get_next_token();
@@ -297,7 +297,7 @@ static int _parse_define(void) {
     q = evaluate_token(q);
 
     /* g_latest_token has the token evaluate_token() created */
-    if (definition_add_token(definition, g_latest_token) == FAILED)
+    if (definition_add_token(definition, g_latest_token, token_count) == FAILED)
       return FAILED;
   }
 
@@ -321,7 +321,7 @@ static int _parse_definition(void) {
 
   definition = definition_get(g_tmp);
 
-  if (definition->arguments_first == NULL) {  
+  if (definition->arguments_first == NULL) {
     /* no arguments */
     t = definition->tokens_first;
     while (t != NULL) {
@@ -731,6 +731,14 @@ int evaluate_token(int type) {
     
     /* __pureasm */
     if (strcaselesscmp(g_tmp, "__pureasm") == 0)
+      return token_add(TOKEN_ID_HINT, 0, 0.0, g_tmp);
+
+    /* __org */
+    if (strcaselesscmp(g_tmp, "__org") == 0)
+      return token_add(TOKEN_ID_HINT, 0, 0.0, g_tmp);
+
+    /* __orga */
+    if (strcaselesscmp(g_tmp, "__orga") == 0)
       return token_add(TOKEN_ID_HINT, 0, 0.0, g_tmp);
     
     /* __asm() */

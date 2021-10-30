@@ -33,7 +33,7 @@ struct definition *define(char *name) {
   }
 
   strcpy(d->name, name);
-  d->had_parenthesis = NO;
+  d->collect_arguments = NO;
   d->parenthesis = 0;
   d->has_arguments = NO;
   d->arguments = 0;
@@ -120,7 +120,8 @@ static int _collect_arguments_from_tokens(struct definition *d) {
   if (t->id != TOKEN_ID_SYMBOL || t->value != '(') {
     g_current_filename_id = t->file_id;
     g_current_line_number = t->line_number;
-    return print_error("_collect_arguments_from_tokens(): '(' should be the first token on the argument tokens list.\n", ERROR_DIR);
+    snprintf(g_error_message, sizeof(g_error_message), "_collect_arguments_from_tokens(): '(' should be the first token on the argument tokens list. Got %s instead.\n", get_token_simple(t));
+    return print_error(g_error_message, ERROR_DIR);
   }
 
   next = t->next;
@@ -131,7 +132,7 @@ static int _collect_arguments_from_tokens(struct definition *d) {
     if (t->id == TOKEN_ID_VALUE_STRING) {
       next = t->next;
       t->next = NULL;
-      
+
       if (d->arguments_first == NULL) {
         d->arguments_first = t;
         d->arguments_last = t;
@@ -190,23 +191,25 @@ static int _collect_arguments_from_tokens(struct definition *d) {
 }
 
 
-int definition_add_token(struct definition *d, struct token *t) {
+int definition_add_token(struct definition *d, struct token *t, int token_count) {
 
   t->next = NULL;
 
-  if (d->had_parenthesis == YES && d->parenthesis == 0) {
+  if (d->parenthesis == 0 && d->collect_arguments == YES) {
     /* #define was of form "define abc(...)" and we are still getting tokens ->
        the first tokens inside the parenthesis were arguments! let's convert them
        to arguments... */
     if (_collect_arguments_from_tokens(d) == FAILED)
       return FAILED;
+    d->collect_arguments = NO;
   }
-  
+
   /* are the previous tokens arguments? */
   if (g_latest_token != NULL) {
     if (g_latest_token->id == TOKEN_ID_SYMBOL && g_latest_token->value == '(') {
       d->parenthesis++;
-      d->had_parenthesis = YES;
+      if (token_count == 1)
+        d->collect_arguments = YES;
     }
     else if (g_latest_token->id == TOKEN_ID_SYMBOL && g_latest_token->value == ')')
       d->parenthesis--;

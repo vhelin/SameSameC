@@ -4542,7 +4542,7 @@ static int _generate_asm_inline_asm_write_z80(struct tac *t, FILE *file_out, str
 }
 
 
-static int _generate_asm_inline_asm_z80(struct tac *t, FILE *file_out, struct tree_node *function_node) {
+static int _generate_asm_inline_asm_z80(struct tac *t, FILE *file_out, struct tree_node *function_node, int indentation) {
 
   struct inline_asm *ia;
   struct asm_line *al;
@@ -4555,14 +4555,17 @@ static int _generate_asm_inline_asm_z80(struct tac *t, FILE *file_out, struct tr
   while (al != NULL) {
     if (al->flags == 0) {
       /* no outside access -> output as it is */
-      int i, length;
+      int i, length, j;
 
       /* skip white space */
       length = strlen(al->line);
       for (i = 0; i < length && (al->line[i] == ' ' || al->line[i] == '\t'); i++)
         ;
 
-      fprintf(file_out, "      %s\n", &al->line[i]);
+      for (j = 0; j < indentation; j++)
+        fprintf(file_out, " ");
+      
+      fprintf(file_out, "%s\n", &al->line[i]);
     }
     else if ((al->flags & ASM_LINE_FLAG_READ) == ASM_LINE_FLAG_READ) {
       /* read! */
@@ -4769,8 +4772,17 @@ int generate_asm_z80(FILE *file_out) {
       /* function start! */
       struct tree_node *function_node = t->function_node;
 
-      fprintf(file_out, "  .SECTION \"%s\" FREE\n", function_node->children[1]->label);
-
+      if ((function_node->flags & TREE_NODE_FLAG_ORG_DEFINED) == TREE_NODE_FLAG_ORG_DEFINED) {
+        fprintf(file_out, "  .ORG $%x\n", (unsigned int)function_node->value_double);
+        fprintf(file_out, "  .SECTION \"%s\" FORCE\n", function_node->children[1]->label);
+      }
+      else if ((function_node->flags & TREE_NODE_FLAG_ORGA_DEFINED) == TREE_NODE_FLAG_ORGA_DEFINED) {
+        fprintf(file_out, "  .ORGA $%x\n", (unsigned int)function_node->value_double);
+        fprintf(file_out, "  .SECTION \"%s\" FORCE\n", function_node->children[1]->label);
+      }
+      else
+        fprintf(file_out, "  .SECTION \"%s\" FREE\n", function_node->children[1]->label);
+      
       file_id = t->file_id;
       line_number = t->line_number;
 
@@ -4971,7 +4983,7 @@ int generate_asm_z80(FILE *file_out) {
           }
         }
         else if (op == TAC_OP_ASM) {
-          if (_generate_asm_inline_asm_z80(t, file_out, function_node) == FAILED)
+          if (_generate_asm_inline_asm_z80(t, file_out, function_node, 6) == FAILED)
             return FAILED;
         }
         else
@@ -4983,6 +4995,11 @@ int generate_asm_z80(FILE *file_out) {
         return FAILED;
       
       fprintf(file_out, "  .ENDS\n\n");
+    }
+    else if (op == TAC_OP_ASM) {
+      if (_generate_asm_inline_asm_z80(t, file_out, NULL, 2) == FAILED)
+        return FAILED;
+      fprintf(file_out, "\n");
     }
   }
   
