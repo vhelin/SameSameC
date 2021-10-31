@@ -1,7 +1,7 @@
 
 // assets/data/asm code taken from https://www.smspower.org/Articles/CreateARacingGame
 
-// in this app the user moves a big object consisting of 4x4 (8x8 pixel) sprites
+// in this app the user moves a big object consisting of 16 sprites in 4x4 formation (one sprite is 8x8 pixels)
 
 static const u8 g_sprite_tile_data[] = {
   // Tile index, 0x200
@@ -21,7 +21,7 @@ static const u8 g_sprite_tile_data[] = {
   // Tile index, 0x207
   0xE0, 0x00, 0x00, 0x00, 0xE0, 0x00, 0x00, 0x00, 0xE0, 0x00, 0x00, 0x00, 0xE0, 0x00, 0x00, 0x00, 0xE0, 0x00, 0x00, 0x00, 0xE0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
   // Tile index, 0x208
- , 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x3F, 0x00, 0x00, 0x00, 0x3F, 0x00, 0x00, 0x00, 0x3F, 0x00, 0x00, 0x00,
+  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x3F, 0x00, 0x00, 0x00, 0x3F, 0x00, 0x00, 0x00, 0x3F, 0x00, 0x00, 0x00,
   // Tile index, 0x209
   0x7F, 0x00, 0x00, 0x00, 0x7F, 0x00, 0x00, 0x00, 0x7F, 0x1F, 0x00, 0x00, 0x7F, 0x1F, 0x00, 0x00, 0x7F, 0x1F, 0x00, 0x00, 0xFF, 0x1F, 0x00, 0x00, 0xFF, 0x1F, 0x00, 0x00, 0xFF, 0x1F, 0x00, 0x00,
   // Tile index, 0x20A
@@ -39,7 +39,10 @@ static const u8 g_sprite_tile_data[] = {
 };
 
 // sprite character codes
-static const u8 g_sprite_character_codes[] = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15 };
+static const u8 g_sprite_character_codes[] = {  0,  1,  2,  3,
+                                                4,  5,  6,  7,
+                                                8,  9, 10, 11,
+                                               12, 13, 14, 15  };
 
 // sprite palette
 static const u8 g_sprite_palette[] = { 0x23, 0x17, 0x3F, 0x22, 0x35 };
@@ -157,23 +160,23 @@ void move_sprite(void) {
 
   // right?
   if ((input & 0b1000) == 0)
-    g_sprite_x = g_sprite_x + 3;
+    g_sprite_x += 3;
   // left?
   if ((input & 0b0100) == 0)
-    g_sprite_x = g_sprite_x - 3;
+    g_sprite_x -= 3;
   // down?
   if ((input & 0b0010) == 0)
-    g_sprite_y = g_sprite_y + 3;
+    g_sprite_y += 3;
   // up?
   if ((input & 0b0001) == 0)
-    g_sprite_y = g_sprite_y - 3;
+    g_sprite_y -= 3;
 }
 
 void update_sprite(void) {
 
   u8 i, j, k;
 
-  // NOTE: we have 4x4 (8x8 pixel) sprites
+  // NOTE: we have 16 sprites in 4x4 formation (one sprite is 8x8 pixels)
 
   // update X
   k = 0;
@@ -181,8 +184,8 @@ void update_sprite(void) {
     u8 pos_x = g_sprite_x;
     for (j = 0; j < 4; j++) {
       g_sat_buffer[0x90+k] = pos_x;
-      pos_x = pos_x + 8;
-      k = k + 2;
+      pos_x += 8;
+      k += 2;
     }
   }
 
@@ -194,7 +197,7 @@ void update_sprite(void) {
       g_sat_buffer[0x08+k] = pos_y;
       k++;
     }
-    pos_y = pos_y + 8;
+    pos_y += 8;
   }
 
   // load character codes

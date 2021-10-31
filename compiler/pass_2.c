@@ -1521,7 +1521,7 @@ int create_statement(void) {
     }
   }
   else if (g_token_current->id == TOKEN_ID_VALUE_STRING) {
-    /* assignment, a function call, increment or decrement */
+    /* assignment, a function call, increment or decrement, +=, -=, etc... */
     char name[MAX_NAME_LENGTH + 1];
     struct tree_node *target_node = NULL;
     
@@ -1576,10 +1576,16 @@ int create_statement(void) {
                                                    g_token_current->value != '(' &&
                                                    g_token_current->value != '[' &&
                                                    g_token_current->value != ':' &&
+                                                   g_token_current->value != SYMBOL_EQUAL_SUB &&
+                                                   g_token_current->value != SYMBOL_EQUAL_ADD &&
+                                                   g_token_current->value != SYMBOL_EQUAL_MUL &&
+                                                   g_token_current->value != SYMBOL_EQUAL_DIV &&
+                                                   g_token_current->value != SYMBOL_EQUAL_OR &&
+                                                   g_token_current->value != SYMBOL_EQUAL_AND &&
                                                    g_token_current->value != SYMBOL_INCREMENT &&
                                                    g_token_current->value != SYMBOL_DECREMENT)) {
       free_tree_node(target_node);
-      snprintf(g_error_message, sizeof(g_error_message), "\"%s\" must be followed by '=' / '[' / '(' / '++' / '--'.\n", name);
+      snprintf(g_error_message, sizeof(g_error_message), "\"%s\" must be followed by '=' / '[' / '(' / '++' / '--' / '-=' / '+=' / '*=' / '/=' / '|=' / '&='.\n", name);
       return print_error_using_token(g_error_message, ERROR_ERR, g_token_previous);
     }
 
@@ -1618,6 +1624,123 @@ int create_statement(void) {
 
       if (!(g_token_current->id == TOKEN_ID_SYMBOL && (g_token_current->value == ';' || g_token_current->value == ')')))  {
         snprintf(g_error_message, sizeof(g_error_message), "Expected ')' / ';', but got %s.\n", get_token_simple(g_token_current));
+        return print_error(g_error_message, ERROR_ERR);
+      }
+
+      /* next token */
+      _next_token();
+      
+      return SUCCEEDED;
+    }
+    else if (symbol == SYMBOL_EQUAL_SUB ||
+             symbol == SYMBOL_EQUAL_ADD ||
+             symbol == SYMBOL_EQUAL_MUL ||
+             symbol == SYMBOL_EQUAL_DIV ||
+             symbol == SYMBOL_EQUAL_OR ||
+             symbol == SYMBOL_EQUAL_AND) {
+      struct symbol_table_item *item;
+      int operator;
+
+      if (target_node != NULL) {
+        /* FIX! if the index expression contains increments or decrements then this
+           clone will also contain them -> the statement will do them twice! */
+        node = clone_tree_node(target_node);
+      }
+      else {
+        node = allocate_tree_node_value_string(name);
+        if (node == NULL)
+          return FAILED;
+
+        item = symbol_table_find_symbol(name);
+        if (item != NULL)
+          node->definition = item->node;
+      }
+
+      /* create_expression() will put all tree_nodes it parses to g_open_expression */
+      if (_open_expression_push() == FAILED)
+        return FAILED;    
+
+      if (tree_node_add_child(_get_current_open_expression(), node) == FAILED)
+        return FAILED;
+
+      /* -, +, *, /, | or & */
+      if (symbol == SYMBOL_EQUAL_SUB)
+        operator = '-';
+      else if (symbol == SYMBOL_EQUAL_ADD)
+        operator = '+';
+      else if (symbol == SYMBOL_EQUAL_MUL)
+        operator = '*';
+      else if (symbol == SYMBOL_EQUAL_DIV)
+        operator = '/';
+      else if (symbol == SYMBOL_EQUAL_OR)
+        operator = '|';
+      else if (symbol == SYMBOL_EQUAL_AND)
+        operator = '&';
+        
+      node = allocate_tree_node_symbol(operator);
+      if (node == NULL)
+        return FAILED;
+
+      if (tree_node_add_child(_get_current_open_expression(), node) == FAILED)
+        return FAILED;
+
+      /* '(' */
+      node = allocate_tree_node_symbol('(');
+      if (node == NULL)
+        return FAILED;
+
+      if (tree_node_add_child(_get_current_open_expression(), node) == FAILED)
+        return FAILED;
+
+      /* create_expression() will put all tree_nodes it parses to g_open_expression */
+      if (_open_expression_push() == FAILED)
+        return FAILED;
+
+      /* possibly parse a calculation */
+      if (create_expression() == FAILED)
+        return FAILED;
+      
+      node = _get_current_open_expression();
+        
+      _open_expression_pop();
+
+      if (tree_node_add_child(_get_current_open_expression(), node) == FAILED)
+        return FAILED;
+
+      /* ')' */
+      node = allocate_tree_node_symbol(')');
+      if (node == NULL)
+        return FAILED;
+
+      if (tree_node_add_child(_get_current_open_expression(), node) == FAILED)
+        return FAILED;
+
+      node = allocate_tree_node_with_children(TREE_NODE_TYPE_ASSIGNMENT, 2);
+      if (node == NULL)
+        return FAILED;
+
+      if (target_node != NULL)
+        tree_node_add_child(node, target_node);
+      else {
+        tree_node_add_child(node, allocate_tree_node_value_string(name));
+
+        item = symbol_table_find_symbol(name);
+        if (item != NULL)
+          node->children[0]->definition = item->node;
+      }
+
+      tree_node_add_child(node, _get_current_open_expression());
+      _open_expression_pop();
+      
+      if (node->children[0] == NULL || node->children[1] == NULL) {
+        free_tree_node(node);
+        return FAILED;
+      }
+
+      tree_node_add_child(_get_current_open_block(), node);
+
+      if (!(g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == ';')) {
+        snprintf(g_error_message, sizeof(g_error_message), "Expected ';', but got %s.\n", get_token_simple(g_token_current));
         return print_error(g_error_message, ERROR_ERR);
       }
 
