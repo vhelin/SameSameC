@@ -4,9 +4,9 @@ CFLAGS = -mz80 -rs 3 -o
 LD = samesamecl
 LDFLAGS = -lsms -v -o
 
-SFILES = main.ssc interrupts.ssc
+SFILES = interrupts.ssc main.ssc
 IFILES = 
-OFILES = main.asm interrupts.asm
+OFILES = interrupts.asm main.asm
 
 
 all: linked.sms

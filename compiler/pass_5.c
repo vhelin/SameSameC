@@ -2614,9 +2614,8 @@ static void _clear_temp_register_types(void) {
 
 static int _find_operand_type(unsigned char *type, unsigned char arg_type, int value, char *label, struct tree_node *node, int allow_register_errors) {
 
-  if (arg_type == TAC_ARG_TYPE_CONSTANT) {
+  if (arg_type == TAC_ARG_TYPE_CONSTANT)
     *type = get_variable_type_constant(value);
-  }
   else if (arg_type == TAC_ARG_TYPE_TEMP) {
     *type = _get_temp_register_type(value);
 
