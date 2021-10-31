@@ -2055,6 +2055,98 @@ static int _optimize_il_29(int *optimizations_counter) {
 }
 
 
+static int _optimize_il_30(int *optimizations_counter) {
+
+  /*
+    ? = cA * cB <--- calculate cA*cB
+  */
+
+  int i = 0;
+
+  while (1) {
+    int is_last_function = NO;
+    int end = _find_end_of_il_function(i, &is_last_function);
+    if (end < 0)
+      return FAILED;
+    
+    if (_count_and_allocate_register_usage(i, end) == FAILED)
+      return FAILED;
+
+    while (i < end) {
+      int current, next;
+
+      current = _find_next_living_tac(i);
+      next = _find_next_living_tac(current + 1);
+
+      if (current < 0 || next < 0)
+        break;
+
+      if (g_tacs[current].arg1_type == TAC_ARG_TYPE_CONSTANT && g_tacs[current].arg2_type == TAC_ARG_TYPE_CONSTANT) {
+        int optimized = NO;
+        
+        if (g_tacs[current].op == TAC_OP_SHIFT_RIGHT) {
+          g_tacs[current].arg1_d = ((int)g_tacs[current].arg1_d) >> ((int)g_tacs[current].arg2_d);
+          optimized = YES;
+        }
+        else if (g_tacs[current].op == TAC_OP_SHIFT_LEFT) {
+          g_tacs[current].arg1_d = ((int)g_tacs[current].arg1_d) << ((int)g_tacs[current].arg2_d);
+          optimized = YES;
+        }
+        else if (g_tacs[current].op == TAC_OP_OR) {
+          g_tacs[current].arg1_d = ((int)g_tacs[current].arg1_d) | ((int)g_tacs[current].arg2_d);
+          optimized = YES;
+        }
+        else if (g_tacs[current].op == TAC_OP_XOR) {
+          g_tacs[current].arg1_d = ((int)g_tacs[current].arg1_d) ^ ((int)g_tacs[current].arg2_d);
+          optimized = YES;
+        }
+        else if (g_tacs[current].op == TAC_OP_AND) {
+          g_tacs[current].arg1_d = ((int)g_tacs[current].arg1_d) & ((int)g_tacs[current].arg2_d);
+          optimized = YES;
+        }
+        else if (g_tacs[current].op == TAC_OP_MOD) {
+          g_tacs[current].arg1_d = ((int)g_tacs[current].arg1_d) % ((int)g_tacs[current].arg2_d);
+          optimized = YES;
+        }
+        else if (g_tacs[current].op == TAC_OP_MUL) {
+          g_tacs[current].arg1_d = ((int)g_tacs[current].arg1_d) * ((int)g_tacs[current].arg2_d);
+          optimized = YES;
+        }
+        else if (g_tacs[current].op == TAC_OP_DIV) {
+          g_tacs[current].arg1_d = ((int)g_tacs[current].arg1_d) / ((int)g_tacs[current].arg2_d);
+          optimized = YES;
+        }
+        else if (g_tacs[current].op == TAC_OP_SUB) {
+          g_tacs[current].arg1_d = ((int)g_tacs[current].arg1_d) - ((int)g_tacs[current].arg2_d);
+          optimized = YES;
+        }
+        else if (g_tacs[current].op == TAC_OP_ADD) {
+          g_tacs[current].arg1_d = ((int)g_tacs[current].arg1_d) + ((int)g_tacs[current].arg2_d);
+          optimized = YES;
+        }
+
+        if (optimized == YES) {
+          /* found match! cA * cB can be calculated! */
+          g_tacs[current].arg1_var_type_promoted = get_max_variable_type_2(g_tacs[current].arg1_var_type_promoted, g_tacs[current].arg2_var_type_promoted);
+          g_tacs[current].op = TAC_OP_ASSIGNMENT;
+          (*optimizations_counter)++;
+#if defined(DEBUG_PASS_5)
+          fprintf(stderr, "_optimize_il_30(): SUCCESS!\n");
+#endif
+        }
+      }
+
+      i = next;
+    }
+
+    if (is_last_function == YES)
+      break;
+  }
+
+  return SUCCEEDED;
+}
+
+
 int optimize_il(void) {
 
   int optimizations_counter, loop = 1;
@@ -2123,6 +2215,8 @@ int optimize_il(void) {
     if (_optimize_il_28(&optimizations_counter) == FAILED)
       return FAILED;
     if (_optimize_il_29(&optimizations_counter) == FAILED)
+      return FAILED;
+    if (_optimize_il_30(&optimizations_counter) == FAILED)
       return FAILED;
     
     fprintf(stderr, "optimize_il(): Loop %d managed to do %d optimizations.\n", loop, optimizations_counter);
