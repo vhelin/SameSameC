@@ -1,7 +1,9 @@
 
 // assets/data/asm code taken from https://www.smspower.org/Articles/CreateARacingGame
 
-static const u8 g_sprite[] = {
+// in this app the user moves a big object consisting of 4x4 (8x8 pixel) sprites
+
+static const u8 g_sprite_tile_data[] = {
   // Tile index, 0x200
   0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
   // Tile index, 0x201
@@ -36,11 +38,63 @@ static const u8 g_sprite[] = {
   0xFC, 0x00, 0x00, 0x00, 0xFC, 0x00, 0x00, 0x00, 0xFC, 0x00, 0x00, 0x00, 0xFC, 0x00, 0x00, 0x00, 0xFC, 0x00, 0x00, 0x00, 0xE0, 0x00, 0x00, 0x00, 0xE0, 0x00, 0x00, 0x00, 0xE0, 0x00, 0x00, 0x00
 };
 
-static const u8 g_palette[] = { 0x23, 0x17, 0x3F, 0x22, 0x35 };
+// sprite character codes
+static const u8 g_sprite_character_codes[] = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15 };
+
+// sprite palette
+static const u8 g_sprite_palette[] = { 0x23, 0x17, 0x3F, 0x22, 0x35 };
+
+// initial values for the 11 vdp registers
+static const u8 g_vdp_registers[] = {
+          0b00000110,      // reg. 0, display and interrupt mode.
+                           // bit 4 = line interrupt (disabled).
+                           // 5 = blank left column (disabled).
+                           // 6 = hori. scroll inhibit (disabled).
+                           // 7 = vert. scroll inhibit (disabled).
+
+          0b10100001,      // reg. 1, display and interrupt mode.
+                           // bit 0 = zoomed sprites (enabled).
+                           // 1 = 8 x 16 sprites (disabled).
+                           // 5 = frame interrupt (enabled).
+                           // 6 = display (blanked).
+
+          0xff,            // reg. 2, name table address.
+                           // $ff = name table at $3800.
+
+          0xff,            // reg. 3, n.a.
+                           // always set it to $ff.
+
+          0xff,            // reg. 4, n.a.
+                           // always set it to $ff.
+
+          0xff,            // reg. 5, sprite attribute table.
+                           // $ff = sprite attrib. table at $3F00.
+
+          0xff,            // reg. 6, sprite tile address.
+                           // $ff = sprite tiles in bank 2.
+
+          0b11110011,      // reg. 7, border color.
+                           // set to color 3 in bank 2.
+
+          0x00,            // reg. 8, horizontal scroll value = 0.
+
+          0x00,            // reg. 9, vertical scroll value = 0.
+
+          0xff             // reg. 10, raster line interrupt.
+                           // turn off line int. requests.
+};
 
 #define VRAM_PREPARE(address) \
   __z80_out[0xBF] = address & 0xFF; \
   __z80_out[0xBF] = (address >> 8) | 0x40;
+
+#define SET_VDP_REGISTER(data, register) \
+  __z80_out[0xBF] = data; \
+  __z80_out[0xBF] = 0x80 | register;
+
+static u8 g_sat_buffer[256];
+static u8 g_sprite_x = 128-8-8;
+static u8 g_sprite_y = 120;
 
 // ROM header
 __asm(".sdsctag 1.0, \"TEST\", \"Moving a sprite\", \"Ville Helin\"");
@@ -50,17 +104,17 @@ void main(void) {
 
   init();
 
+  __asm("ei",     // enable frame interrupt (vblank)
+        "halt");  // wait for it to happen...
+
+  SET_VDP_REGISTER(0b11100000, 1) // turn screen on - normal sprites
+
   // main loop
   while (1) {
-    __asm("di",
-          "im 1",
-          "halt");
+    __asm("halt");  // wait for vblank
 
-    u8 i;
-
-    for (i = 0; i < 32; i++)
-        __z80_out[0xBE] = 0x01;
-
+    move_sprite();
+    update_sprite();
   }
 }
 
@@ -75,13 +129,81 @@ void init(void) {
 
   // set sprite palette (color bank 2, color 0 (sprites))
   VRAM_PREPARE(0xC010)
-  for (i = 0; i < 5; i++)
-    __z80_out[0xBE] = g_palette[i];
+  for (i = 0; i < sizeof(g_sprite_palette); i++)
+    __z80_out[0xBE] = g_sprite_palette[i];
 
   // set the sprite tile data (first tile @ index 256)
   VRAM_PREPARE(0x2000)
-  for (i = 0; i < 16*32; i++)
-    __z80_out[0xBE] = g_sprite[i];
+  for (i = 0; i < sizeof(g_sprite_tile_data); i++)
+    __z80_out[0xBE] = g_sprite_tile_data[i];
 
+  // initialize VDP registers
+  for (i = 0; i < sizeof(g_vdp_registers); i++) {
+    __z80_out[0xBF] = g_vdp_registers[i];
+    __z80_out[0xBF] = 0x80 + i;
+  }
 
+  // init sprite attribute buffer
+  for (i = 0; i < sizeof(g_sat_buffer); i++)
+    g_sat_buffer[i] = 0;
+
+  // insert sprite terminator
+  g_sat_buffer[0x18] = 0xd0;
+}
+
+void move_sprite(void) {
+
+  u8 input = __z80_in[0xDC];
+
+  // right?
+  if ((input & 0b1000) == 0)
+    g_sprite_x = g_sprite_x + 3;
+  // left?
+  if ((input & 0b0100) == 0)
+    g_sprite_x = g_sprite_x - 3;
+  // down?
+  if ((input & 0b0010) == 0)
+    g_sprite_y = g_sprite_y + 3;
+  // up?
+  if ((input & 0b0001) == 0)
+    g_sprite_y = g_sprite_y - 3;
+}
+
+void update_sprite(void) {
+
+  u8 i, j, k;
+
+  // NOTE: we have 4x4 (8x8 pixel) sprites
+
+  // update X
+  k = 0;
+  for (i = 0; i < 4; i++) {
+    u8 pos_x = g_sprite_x;
+    for (j = 0; j < 4; j++) {
+      g_sat_buffer[0x90+k] = pos_x;
+      pos_x = pos_x + 8;
+      k = k + 2;
+    }
+  }
+
+  // update Y
+  k = 0;
+  u8 pos_y = g_sprite_y;
+  for (i = 0; i < 4; i++) {
+    for (j = 0; j < 4; j++) {
+      g_sat_buffer[0x08+k] = pos_y;
+      k++;
+    }
+    pos_y = pos_y + 8;
+  }
+
+  // load character codes
+  for (i = 0; i < sizeof(g_sprite_character_codes); i++)
+    g_sat_buffer[0x91+(i+i)] = g_sprite_character_codes[i];
+
+  // load sprite attribute table to VRAM
+  VRAM_PREPARE(0x3F00)
+  u16 i16;
+  for (i16 = 0; i16 < sizeof(g_sat_buffer); i16++)
+    __z80_out[0xBE] = g_sat_buffer[i16];
 }
