@@ -860,7 +860,7 @@ static int _simplify_expression(struct tree_node *node) {
       return SUCCEEDED;
     }
     else if (result == INPUT_NUMBER_STRING) {
-      /* turn the expression into a string - HACK_1 */
+      /* turn the expression into a string - HACK */
       free_tree_node_children(node);
 
       node->type = TREE_NODE_TYPE_VALUE_STRING;
@@ -879,12 +879,18 @@ static int _simplify_expression(struct tree_node *node) {
 
 static void _simplify_expressions(struct tree_node *node) {
 
+  int added_children;
+  
   if (node == NULL)
     return;
 
+  added_children = node->added_children;
+  
   /* try to simplify until it cannot be simplified any more */
-  while (_simplify_expression(node) == SUCCEEDED)
-    g_simplified_expressions++;
+  while (_simplify_expression(node) == SUCCEEDED) {
+    if (added_children > 1)
+      g_simplified_expressions++;
+  }
 }
 
 

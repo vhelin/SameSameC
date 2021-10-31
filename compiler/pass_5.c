@@ -350,6 +350,9 @@ static int _optimize_il_1(int *optimizations_counter) {
         strcmp(g_tacs[current].result_s, g_tacs[next].result_s) == 0) {
       g_tacs[current].op = TAC_OP_DEAD;
       (*optimizations_counter)++;
+#if defined(DEBUG_PASS_5)
+      fprintf(stderr, "_optimize_il_1(): SUCCESS!\n");
+#endif
     }
 
     i = next;
@@ -384,7 +387,10 @@ static int _optimize_il_2(int *optimizations_counter) {
         strcmp(g_tacs[current].result_s, g_tacs[last].result_s) == 0) {
       g_tacs[current].op = TAC_OP_DEAD;
       (*optimizations_counter)++;
-
+#if defined(DEBUG_PASS_5)
+      fprintf(stderr, "_optimize_il_2(): SUCCESS!\n");
+#endif
+      
       /* remember the jump target label - perhaps it can be optimized away if there are no other jumps to it? */
       if (_remember_a_removed_jump_destination(g_tacs[current].result_s) == FAILED)
         return FAILED;
@@ -435,6 +441,9 @@ static int _optimize_il_3(int *optimizations_counter) {
         g_tacs[next].arg1_var_type_promoted = g_tacs[current].arg1_var_type_promoted;
         g_tacs[current].op = TAC_OP_DEAD;
         (*optimizations_counter)++;
+#if defined(DEBUG_PASS_5)
+        fprintf(stderr, "_optimize_il_3(): SUCCESS!\n");
+#endif
       }
 
       i = next;
@@ -486,6 +495,9 @@ static int _optimize_il_4(int *optimizations_counter) {
         g_tacs[current].result_var_type_promoted = g_tacs[next].result_var_type_promoted;
         g_tacs[next].op = TAC_OP_DEAD;
         (*optimizations_counter)++;
+#if defined(DEBUG_PASS_5)
+        fprintf(stderr, "_optimize_il_4(): SUCCESS!\n");
+#endif
       }
 
       i = next;
@@ -537,6 +549,9 @@ static int _optimize_il_5(int *optimizations_counter) {
         g_tacs[current].result_var_type_promoted = g_tacs[next].result_var_type_promoted;
         g_tacs[next].op = TAC_OP_DEAD;
         (*optimizations_counter)++;
+#if defined(DEBUG_PASS_5)
+        fprintf(stderr, "_optimize_il_5(): SUCCESS!\n");
+#endif
       }
 
       i = next;
@@ -588,6 +603,9 @@ static int _optimize_il_6(int *optimizations_counter) {
         g_tacs[current].result_var_type_promoted = g_tacs[next].result_var_type_promoted;
         g_tacs[next].op = TAC_OP_DEAD;
         (*optimizations_counter)++;
+#if defined(DEBUG_PASS_5)
+        fprintf(stderr, "_optimize_il_6(): SUCCESS!\n");
+#endif
       }
 
       i = next;
@@ -639,6 +657,9 @@ static int _optimize_il_7(int *optimizations_counter) {
         g_tacs[next].arg2_var_type_promoted = g_tacs[current].arg1_var_type_promoted;
         g_tacs[current].op = TAC_OP_DEAD;
         (*optimizations_counter)++;
+#if defined(DEBUG_PASS_5)
+        fprintf(stderr, "_optimize_il_7(): SUCCESS!\n");
+#endif
       }
 
       i = next;
@@ -690,6 +711,9 @@ static int _optimize_il_8(int *optimizations_counter) {
         g_tacs[next].arg2_var_type_promoted = g_tacs[current].arg1_var_type_promoted;
         g_tacs[current].op = TAC_OP_DEAD;
         (*optimizations_counter)++;
+#if defined(DEBUG_PASS_5)
+        fprintf(stderr, "_optimize_il_8(): SUCCESS!\n");
+#endif
       }
 
       i = next;
@@ -741,6 +765,9 @@ static int _optimize_il_9(int *optimizations_counter) {
         g_tacs[next].arg1_var_type_promoted = g_tacs[current].arg1_var_type_promoted;
         g_tacs[current].op = TAC_OP_DEAD;
         (*optimizations_counter)++;
+#if defined(DEBUG_PASS_5)
+        fprintf(stderr, "_optimize_il_9(): SUCCESS!\n");
+#endif
       }
 
       i = next;
@@ -792,6 +819,9 @@ static int _optimize_il_10(int *optimizations_counter) {
         g_tacs[next].arg2_var_type_promoted = g_tacs[current].arg1_var_type_promoted;
         g_tacs[current].op = TAC_OP_DEAD;
         (*optimizations_counter)++;
+#if defined(DEBUG_PASS_5)
+        fprintf(stderr, "_optimize_il_10(): SUCCESS!\n");
+#endif
       }
 
       i = next;
@@ -840,6 +870,9 @@ static int _optimize_il_11(int *optimizations_counter) {
         /* found match! the first assigment can be ignored! */
         g_tacs[current].op = TAC_OP_DEAD;
         (*optimizations_counter)++;
+#if defined(DEBUG_PASS_5)
+        fprintf(stderr, "_optimize_il_11(): SUCCESS!\n");
+#endif
       }
 
       i = next;
@@ -891,6 +924,9 @@ static int _optimize_il_12(int *optimizations_counter) {
         g_tacs[next].arg1_var_type_promoted = g_tacs[current].arg1_var_type_promoted;
         g_tacs[current].op = TAC_OP_DEAD;
         (*optimizations_counter)++;
+#if defined(DEBUG_PASS_5)
+        fprintf(stderr, "_optimize_il_12(): SUCCESS!\n");
+#endif
       }
 
       i = next;
@@ -952,6 +988,9 @@ static int _optimize_il_13(int *optimizations_counter) {
         g_tacs[current].result_var_type_promoted = g_tacs[next].result_var_type_promoted;
         g_tacs[next].op = TAC_OP_DEAD;
         (*optimizations_counter)++;
+#if defined(DEBUG_PASS_5)
+        fprintf(stderr, "_optimize_il_13(): SUCCESS!\n");
+#endif
       }
 
       i = next;
@@ -1003,6 +1042,9 @@ static int _optimize_il_14(int *optimizations_counter) {
         g_tacs[current].result_var_type_promoted = g_tacs[next].result_var_type_promoted;
         g_tacs[next].op = TAC_OP_DEAD;
         (*optimizations_counter)++;
+#if defined(DEBUG_PASS_5)
+        fprintf(stderr, "_optimize_il_14(): SUCCESS!\n");
+#endif
       }
 
       i = next;
@@ -1059,6 +1101,9 @@ static int _optimize_il_15(int *optimizations_counter) {
         g_tacs[next].arg1_var_type_promoted = g_tacs[current].arg1_var_type_promoted;
         g_tacs[current].op = TAC_OP_DEAD;
         (*optimizations_counter)++;
+#if defined(DEBUG_PASS_5)
+        fprintf(stderr, "_optimize_il_15(): SUCCESS!\n");
+#endif
       }
 
       i = next;
@@ -1115,6 +1160,10 @@ static int _optimize_il_16(int *optimizations_counter) {
         g_tacs[next].arg2_var_type_promoted = g_tacs[current].arg1_var_type_promoted;
         g_tacs[current].op = TAC_OP_DEAD;
         (*optimizations_counter)++;
+#if defined(DEBUG_PASS_5)
+        fprintf(stderr, "_optimize_il_16(): SUCCESS!\n");
+#endif
+
       }
 
       i = next;
@@ -1173,6 +1222,9 @@ static int _optimize_il_17(int *optimizations_counter) {
             (op == TAC_OP_JUMP_GTE && !(arg1 >= arg2))) {            
           g_tacs[current].op = TAC_OP_DEAD;
           (*optimizations_counter)++;
+#if defined(DEBUG_PASS_5)
+          fprintf(stderr, "_optimize_il_17(): SUCCESS!\n");
+#endif
 
           /* remember the jump target label - perhaps it can be optimized away if there are no other jumps to it? */
           if (_remember_a_removed_jump_destination(g_tacs[current].result_s) == FAILED)
@@ -1236,6 +1288,9 @@ static int _optimize_il_18(int *optimizations_counter) {
             (op == TAC_OP_JUMP_GTE && arg1 >= arg2)) {            
           g_tacs[current].op = TAC_OP_JUMP;
           (*optimizations_counter)++;
+#if defined(DEBUG_PASS_5)
+          fprintf(stderr, "_optimize_il_18(): SUCCESS!\n");
+#endif
         }
       }
 
@@ -1334,6 +1389,9 @@ static int _optimize_il_19(int *optimizations_counter) {
             /* no references to this label -> can be removed! */
             g_tacs[current].op = TAC_OP_DEAD;
             (*optimizations_counter)++;
+#if defined(DEBUG_PASS_5)
+            fprintf(stderr, "_optimize_il_19(): SUCCESS!\n");
+#endif
             break;
           }
           l = l->next;
@@ -1388,6 +1446,9 @@ static int _optimize_il_20(int *optimizations_counter) {
         (last < 0 || (g_tacs[last].op == TAC_OP_LABEL && g_tacs[last].is_function == YES))) {
       g_tacs[next].op = TAC_OP_DEAD;
       (*optimizations_counter)++;
+#if defined(DEBUG_PASS_5)
+      fprintf(stderr, "_optimize_il_20(): SUCCESS!\n");
+#endif
     }
 
     i = next;
@@ -1445,6 +1506,9 @@ static int _optimize_il_21(int *optimizations_counter) {
         g_tacs[next].arg1_var_type_promoted = g_tacs[current].arg1_var_type_promoted;
         g_tacs[current].op = TAC_OP_DEAD;
         (*optimizations_counter)++;
+#if defined(DEBUG_PASS_5)
+        fprintf(stderr, "_optimize_il_21(): SUCCESS!\n");
+#endif
       }
 
       i = next;
@@ -1507,6 +1571,9 @@ static int _optimize_il_22(int *optimizations_counter) {
         g_tacs[next].arg2_var_type_promoted = g_tacs[current].arg1_var_type_promoted;
         g_tacs[current].op = TAC_OP_DEAD;
         (*optimizations_counter)++;
+#if defined(DEBUG_PASS_5)
+        fprintf(stderr, "_optimize_il_22(): SUCCESS!\n");
+#endif
       }
 
       i = next;
@@ -1595,6 +1662,9 @@ static int _optimize_il_23(int *optimizations_counter) {
               g_tacs[current].arg1_node = NULL;
               g_tacs[current].op = TAC_OP_DEAD;
               (*optimizations_counter)++;
+#if defined(DEBUG_PASS_5)
+              fprintf(stderr, "_optimize_il_23(): SUCCESS!\n");
+#endif
             }
             
             /* let's not serach past a function call */
@@ -1612,6 +1682,9 @@ static int _optimize_il_23(int *optimizations_counter) {
               g_tacs[next].arg1_var_type_promoted = g_tacs[current].arg1_var_type_promoted;
               g_tacs[current].op = TAC_OP_DEAD;
               (*optimizations_counter)++;
+#if defined(DEBUG_PASS_5)
+              fprintf(stderr, "_optimize_il_23(): SUCCESS!\n");
+#endif
               next = -1;
               break;
             }
@@ -1623,6 +1696,9 @@ static int _optimize_il_23(int *optimizations_counter) {
               g_tacs[next].arg2_var_type_promoted = g_tacs[current].arg1_var_type_promoted;
               g_tacs[current].op = TAC_OP_DEAD;
               (*optimizations_counter)++;
+#if defined(DEBUG_PASS_5)
+              fprintf(stderr, "_optimize_il_23(): SUCCESS!\n");
+#endif
               next = -1;
               break;
             }
@@ -1682,6 +1758,9 @@ static int _optimize_il_24(int *optimizations_counter) {
         g_tacs[current].result_var_type_promoted = g_tacs[next].result_var_type_promoted;
         g_tacs[next].op = TAC_OP_DEAD;
         (*optimizations_counter)++;
+#if defined(DEBUG_PASS_5)
+        fprintf(stderr, "_optimize_il_24(): SUCCESS!\n");
+#endif
       }
 
       i = next;
@@ -1732,6 +1811,9 @@ static int _optimize_il_25(int *optimizations_counter) {
         g_tacs[next].arg2_d = (int)g_tacs[current].arg2_d + (int)g_tacs[next].arg2_d;
         g_tacs[current].op = TAC_OP_DEAD;
         (*optimizations_counter)++;
+#if defined(DEBUG_PASS_5)
+        fprintf(stderr, "_optimize_il_25(): SUCCESS!\n");
+#endif
       }
 
       i = next;
@@ -1777,12 +1859,18 @@ static int _optimize_il_26(int *optimizations_counter) {
         if (tac_copy_arg(&g_tacs[current], TAC_USE_ARG2, TAC_USE_ARG1) == FAILED)
           return FAILED;
         (*optimizations_counter)++;
+#if defined(DEBUG_PASS_5)
+        fprintf(stderr, "_optimize_il_26(): SUCCESS!\n");
+#endif
       }
       else if (g_tacs[current].op == TAC_OP_ADD &&
           g_tacs[current].arg2_type == TAC_ARG_TYPE_CONSTANT && (int)g_tacs[current].arg2_d == 0) {
         /* found match! REDUCE! */
         g_tacs[current].op = TAC_OP_ASSIGNMENT;
         (*optimizations_counter)++;
+#if defined(DEBUG_PASS_5)
+        fprintf(stderr, "_optimize_il_26(): SUCCESS!\n");
+#endif
       }
 
       i = current + 1;
@@ -1826,6 +1914,9 @@ static int _optimize_il_27(int *optimizations_counter) {
         /* found match! REDUCE! */
         g_tacs[current].op = TAC_OP_ASSIGNMENT;
         (*optimizations_counter)++;
+#if defined(DEBUG_PASS_5)
+        fprintf(stderr, "_optimize_il_27(): SUCCESS!\n");
+#endif
       }
 
       i = current + 1;
@@ -1869,6 +1960,9 @@ static int _optimize_il_28(int *optimizations_counter) {
         /* found match! REDUCE! */
         g_tacs[current].op = TAC_OP_ASSIGNMENT;
         (*optimizations_counter)++;
+#if defined(DEBUG_PASS_5)
+        fprintf(stderr, "_optimize_il_28(): SUCCESS!\n");
+#endif
       }
       else if (g_tacs[current].op == TAC_OP_MUL &&
           g_tacs[current].arg2_type == TAC_ARG_TYPE_CONSTANT && (int)g_tacs[current].arg2_d == 0) {
@@ -1877,6 +1971,9 @@ static int _optimize_il_28(int *optimizations_counter) {
         if (tac_copy_arg(&g_tacs[current], TAC_USE_ARG2, TAC_USE_ARG1) == FAILED)
           return FAILED;
         (*optimizations_counter)++;
+#if defined(DEBUG_PASS_5)
+        fprintf(stderr, "_optimize_il_28(): SUCCESS!\n");
+#endif
       }
 
       i = current + 1;
@@ -1941,6 +2038,9 @@ static int _optimize_il_29(int *optimizations_counter) {
           g_tacs[next].arg2_d = sum;
           g_tacs[current].op = TAC_OP_DEAD;
           (*optimizations_counter)++;
+#if defined(DEBUG_PASS_5)
+          fprintf(stderr, "_optimize_il_29(): SUCCESS!\n");
+#endif
         }
       }
 
@@ -2782,7 +2882,7 @@ int collect_and_preprocess_local_variables_inside_functions(void) {
     struct tac *t = &g_tacs[i];
     int op = t->op;
 
-    if (op == TAC_OP_LABEL && t->is_function == YES) {
+    if (op == TAC_OP_LABEL && t->is_function == YES && ((t->function_node->flags & TREE_NODE_FLAG_PUREASM) == 0) && strcmp("mainmain", t->function_node->children[1]->label) != 0) {
       /* function start! */
       struct tree_node *function_node = t->function_node;
       struct tree_node *local_variables[LOCAL_VAR_COUNT];
