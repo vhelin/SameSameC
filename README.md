@@ -20,9 +20,9 @@ Windows: [![Build Status](https://dev.azure.com/villehelin0486/villehelin/_apis/
 
 - Optimize user written calculations like 2+a-1 -> 1+a
 - If a variable is only written to, remove the variable and all assignments
-- Z80: Keep stack frame in IX and possibly IY all the time
 - Local array variable initialization
 - Reduce code bloat (parser...)
+- Z80: Keep stack frame in IX and possibly IY all the time
 - Z80: Remove unnecessary stack writes/reads (i.e., temp "register" access)
 
 ## Fix

@@ -503,6 +503,10 @@ static int _generate_il_create_expression(struct tree_node *node) {
     tac_set_result(t, TAC_ARG_TYPE_TEMP, g_temp_r++, NULL);
     tac_set_arg1(t, TAC_ARG_TYPE_LABEL, 0, node->label);
 
+    /* an array? */
+    if (node->definition->value > 0)
+      t->op = TAC_OP_GET_ADDRESS;
+
     /* set promotions */
     type = tree_node_get_max_var_type(node->definition->children[0]);
     tac_promote_argument(t, type, TAC_USE_RESULT);

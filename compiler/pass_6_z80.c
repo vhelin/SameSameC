@@ -4381,6 +4381,9 @@ static int _generate_asm_function_call_z80(struct tac *t, FILE *file_out, struct
   _load_from_ix_to_e(-3, file_out);
   _load_from_ix_to_d(-2, file_out);
 
+  /* we just reloaded DE so IX is out of sync */
+  g_is_ix_de = NO;
+  
   if (op == TAC_OP_FUNCTION_CALL_USE_RETURN_VALUE) {
     int result_offset = -1;
 
@@ -4421,7 +4424,7 @@ static int _generate_asm_function_call_z80(struct tac *t, FILE *file_out, struct
       _load_l_into_iy(0, file_out);
     }    
   }
-  
+
   return SUCCEEDED;
 }
 

@@ -81,6 +81,12 @@ void print_tac(struct tac *t, int is_comment, FILE *file_out) {
   if (t->op == TAC_OP_DEAD)
     return;
 
+  if (t->op == TAC_OP_CREATE_VARIABLE && is_comment == NO) {
+    /* skip consts as they are not in stack */
+    if ((t->result_node->flags & TREE_NODE_FLAG_CONST_1) == TREE_NODE_FLAG_CONST_1)
+      return;
+  }
+  
   if (is_comment == YES)
     fprintf(file_out, "      ; TAC: ");
   else
@@ -351,6 +357,10 @@ void print_tac(struct tac *t, int is_comment, FILE *file_out) {
   else if (t->op == TAC_OP_CREATE_VARIABLE) {
     if (is_comment == NO)
       fprintf(file_out, "  ");
+    if ((t->result_node->flags & TREE_NODE_FLAG_CONST_1) == TREE_NODE_FLAG_CONST_1) {
+      fprintf(file_out, "variable \"%s\" const\n", t->result_node->children[1]->label);
+      return;
+    }
     if (t->function_node != NULL) {
       struct local_variables *local_variables = t->function_node->local_variables;
       int size = 0, offset = 0, k;

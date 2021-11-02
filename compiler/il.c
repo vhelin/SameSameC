@@ -262,11 +262,29 @@ int il_stack_calculate_expression(struct tree_node *node, int calculate_max_var_
 #endif
     }
     else if (child->type == TREE_NODE_TYPE_VALUE_STRING) {
-      si[z].sign = SI_SIGN_POSITIVE;
-      strncpy(si[z].string, child->label, MAX_NAME_LENGTH);
-      si[z].type = STACK_ITEM_TYPE_STRING;
+      /* an array? */
+      if (child->definition->value > 0) {
+        si[z].type = STACK_ITEM_TYPE_OPERATOR;
+        si[z].value = SI_OP_GET_ADDRESS;
+      
+        z++;
+
+        si[z].sign = SI_SIGN_POSITIVE;
+        strncpy(si[z].string, child->label, MAX_NAME_LENGTH);
+        si[z].type = STACK_ITEM_TYPE_STRING;
+        si[z].value = 0;
+
+        /* OVERRIDE! */
+        if (calculate_max_var_type == YES)
+          g_max_var_type = VARIABLE_TYPE_UINT16;
+      }
+      else {
+        si[z].sign = SI_SIGN_POSITIVE;
+        strncpy(si[z].string, child->label, MAX_NAME_LENGTH);
+        si[z].type = STACK_ITEM_TYPE_STRING;
+      }
 #if defined(DEBUG_IL)
-      fprintf(stderr, "GOT STACK ITEM %s\n", si[z].string);
+      fprintf(stderr, "GOT STACK ITEM %s\n", child->label);
 #endif
     }
     else if (child->type == TREE_NODE_TYPE_INCREMENT_DECREMENT) {

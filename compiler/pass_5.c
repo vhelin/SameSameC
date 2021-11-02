@@ -836,7 +836,13 @@ static int _optimize_il_10(int *optimizations_counter) {
 
 
 static int _optimize_il_11(int *optimizations_counter) {
-  
+
+  int i = 0;
+
+  return SUCCEEDED;
+
+  /* TODO: FIX THIS, DOESN'T WORK ALWAYS */
+
   /*
     X = ?  <--- REMOVE the first assignment
     X = ?  <--- REMOVE the first assignment
@@ -845,8 +851,6 @@ static int _optimize_il_11(int *optimizations_counter) {
   /* PS. this is not a very good optimization, doesn't work that often */
   /* PPS. make this find two assigments with n TACs between them */
   
-  int i = 0;
-
   while (1) {
     int is_last_function = NO;
     int end = _find_end_of_il_function(i, &is_last_function);
