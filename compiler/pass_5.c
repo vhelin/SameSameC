@@ -1624,7 +1624,7 @@ static int _optimize_il_23(int *optimizations_counter) {
       return FAILED;
 
     while (i < end) {
-      int current, next;
+      int current, next, look_for_source = NO;
 
       current = _find_next_living_tac(i);
 
@@ -1636,12 +1636,21 @@ static int _optimize_il_23(int *optimizations_counter) {
           g_register_reads[(int)g_tacs[current].result_d] == 1 && g_register_writes[(int)g_tacs[current].result_d] == 1) {
         next = current;
 
+        if (g_tacs[current].arg1_type == TAC_ARG_TYPE_LABEL)
+          look_for_source = YES;
+        
         while (1) {
           next = _find_next_living_tac(next + 1);
 
           if (next < 0)
             break;
 
+          if (look_for_source == YES && g_tacs[next].result_type == TAC_ARG_TYPE_LABEL && g_tacs[current].arg1_node == g_tacs[next].result_node) {
+            /* cannot jump over writes to the same variable */
+            next = -1;
+            break;
+          }
+          
           if (g_tacs[next].op == TAC_OP_LABEL) {
             /* we cannot search past a label */
             next = -1;
@@ -2202,6 +2211,11 @@ int optimize_il(void) {
       return FAILED;
     if (_optimize_il_20(&optimizations_counter) == FAILED)
       return FAILED;
+    /* DEBUG
+    fprintf(stderr, "NNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNN\n");
+    print_tacs();
+    fprintf(stderr, "NNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNN\n");
+    */
     if (_optimize_il_21(&optimizations_counter) == FAILED)
       return FAILED;
     if (_optimize_il_22(&optimizations_counter) == FAILED)
@@ -2225,7 +2239,7 @@ int optimize_il(void) {
     
     fprintf(stderr, "optimize_il(): Loop %d managed to do %d optimizations.\n", loop, optimizations_counter);
     loop++;
-    
+
     if (optimizations_counter == 0)
       break;
   }

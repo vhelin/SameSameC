@@ -53,10 +53,6 @@ Programmed using
 
 - "Basics of Compiler Design"
   - http://web.archive.org/web/20120915222417/http://www.diku.dk/hjemmesider/ansatte/torbenm/Basics/basics_lulu2.pdf
-- beer
-- sugar wine
-- gin long drinks
-- imagination
 - emacs
 - Cygwin under Windows 10
 

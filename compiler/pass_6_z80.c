@@ -256,6 +256,8 @@ static void _load_from_ix_to_d(int offset, FILE *file_out) {
     fprintf(file_out, "      LD  D,(IX+%d)\n", offset);
   else
     fprintf(file_out, "      LD  D,(IX%d)\n", offset);
+
+  g_is_ix_de = NO;
 }
 
 
@@ -265,6 +267,8 @@ static void _load_from_ix_to_e(int offset, FILE *file_out) {
     fprintf(file_out, "      LD  E,(IX+%d)\n", offset);
   else
     fprintf(file_out, "      LD  E,(IX%d)\n", offset);
+
+  g_is_ix_de = NO;
 }
 
 
@@ -627,12 +631,16 @@ static void _load_value_to_b(int value, FILE *file_out) {
 static void _load_value_to_d(int value, FILE *file_out) {
 
   fprintf(file_out, "      LD  D,%d\n", value);
+
+  g_is_ix_de = NO;
 }
 
 
 static void _load_value_to_e(int value, FILE *file_out) {
 
   fprintf(file_out, "      LD  E,%d\n", value);
+
+  g_is_ix_de = NO;
 }
 
 
@@ -3121,7 +3129,7 @@ static int _generate_asm_shift_left_right_z80(struct tac *t, FILE *file_out, str
 
 static int _generate_asm_mul_div_mod_z80_16bit(struct tac *t, FILE *file_out, struct tree_node *function_node, int op) {
 
-  int result_offset = -1, arg1_offset = -1, arg2_offset = -1, ix_offset = 0;
+  int result_offset = -1, arg1_offset = -1, arg2_offset = -1, ix_offset = 0, was_ix_de;
   
   /* result */
 
@@ -3229,7 +3237,9 @@ static int _generate_asm_mul_div_mod_z80_16bit(struct tac *t, FILE *file_out, st
   
   /* NOTE!!! */
   _push_de(file_out);
-
+  
+  was_ix_de = g_is_ix_de;
+  
   if (t->arg2_type == TAC_ARG_TYPE_CONSTANT) {
     /* 16-bit */
     _load_value_to_de((int)t->arg2_d, file_out);
@@ -3349,6 +3359,8 @@ static int _generate_asm_mul_div_mod_z80_16bit(struct tac *t, FILE *file_out, st
   /* NOTE!!! */
   _pop_de(file_out);
 
+  g_is_ix_de = was_ix_de;
+  
   /******************************************************************************************************/
   /* target address -> ix */
   /******************************************************************************************************/
@@ -3413,7 +3425,7 @@ static int _generate_asm_mul_div_mod_z80_16bit(struct tac *t, FILE *file_out, st
 
 static int _generate_asm_mul_div_mod_z80_8bit(struct tac *t, FILE *file_out, struct tree_node *function_node, int op) {
 
-  int result_offset = -1, arg1_offset = -1, arg2_offset = -1, ix_offset = 0;
+  int result_offset = -1, arg1_offset = -1, arg2_offset = -1, ix_offset = 0, was_ix_de;
   
   /* result */
 
@@ -3499,6 +3511,8 @@ static int _generate_asm_mul_div_mod_z80_8bit(struct tac *t, FILE *file_out, str
   /* NOTE!!! */
   _push_de(file_out);
   
+  was_ix_de = g_is_ix_de;
+
   if (t->arg2_type == TAC_ARG_TYPE_CONSTANT) {
     /* 8-bit */
     _load_value_to_e(((int)t->arg2_d) & 0xff, file_out);
@@ -3568,6 +3582,8 @@ static int _generate_asm_mul_div_mod_z80_8bit(struct tac *t, FILE *file_out, str
   /* NOTE!!! */
   _pop_de(file_out);
 
+  g_is_ix_de = was_ix_de;
+  
   /******************************************************************************************************/
   /* target address -> ix */
   /******************************************************************************************************/
@@ -4381,9 +4397,6 @@ static int _generate_asm_function_call_z80(struct tac *t, FILE *file_out, struct
   _load_from_ix_to_e(-3, file_out);
   _load_from_ix_to_d(-2, file_out);
 
-  /* we just reloaded DE so IX is out of sync */
-  g_is_ix_de = NO;
-  
   if (op == TAC_OP_FUNCTION_CALL_USE_RETURN_VALUE) {
     int result_offset = -1;
 
