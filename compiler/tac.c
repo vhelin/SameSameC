@@ -581,25 +581,31 @@ struct tac *add_tac(void) {
 
   /* reset the TAC */
   t->op = TAC_OP_DEAD;
+
   t->arg1_type = TAC_ARG_TYPE_NONE;
   t->arg1_d = 0;
   t->arg1_s = NULL;
   t->arg1_var_type = VARIABLE_TYPE_NONE;
   t->arg1_var_type_promoted = VARIABLE_TYPE_NONE;
+  t->arg1_node = NULL;
+
   t->arg2_type = TAC_ARG_TYPE_NONE;
   t->arg2_d = 0;
   t->arg2_s = NULL;
   t->arg2_var_type = VARIABLE_TYPE_NONE;
   t->arg2_var_type_promoted = VARIABLE_TYPE_NONE;
+  t->arg2_node = NULL;
+
   t->result_type = TAC_ARG_TYPE_NONE;
   t->result_d = 0;
   t->result_s = NULL;
   t->result_var_type = VARIABLE_TYPE_NONE;
   t->result_var_type_promoted = VARIABLE_TYPE_NONE;
-  t->arg1_node = NULL;
-  t->arg2_node = NULL;
   t->result_node = NULL;
+
   t->arguments = NULL;
+  t->arguments_count = 0;
+  
   t->function_node = NULL;
   t->is_function = NO;
 
