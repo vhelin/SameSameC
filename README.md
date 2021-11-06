@@ -1,7 +1,7 @@
 
 # SameSameC (ButDifferent)
 
-Yet Another ANSI C89 Like Language Cross Compiler Targetting 8-bit CPUs. Written by 2021 Ville Helin.
+Yet Another ANSI C89 Like Language Cross Compiler Targeting 8-bit CPUs. Written by 2021 Ville Helin.
 
 This is currently under development, use it on your own risk. SameSameC is GPL v2 software. Read the LICENSE file for more information. Some pieces of code were taken from WLA DX (https://github.com/vhelin/wla-dx), but not so many.
 
@@ -18,10 +18,10 @@ Windows: [![Build Status](https://dev.azure.com/villehelin0486/villehelin/_apis/
 
 ## Optimize
 
-- Optimize user written calculations like 2+a-1 -> 1+a
+- Optimize user written calculations like 2+a-1 -> a+2-1 -> a+1
 - If a variable is only written to, remove the variable and all assignments
 - Local array variable initialization
-- Reduce code bloat (parser...)
+- Reduce code bloat (pass_2.c)
 - Z80: Keep stack frame in IX and possibly IY all the time
 - Z80: Remove unnecessary stack writes/reads (i.e., temp "register" access)
 
@@ -53,7 +53,7 @@ Programmed using
 
 - "Basics of Compiler Design"
   - http://web.archive.org/web/20120915222417/http://www.diku.dk/hjemmesider/ansatte/torbenm/Basics/basics_lulu2.pdf
-- emacs
+- Emacs
 - Cygwin under Windows 10
 
 Should compile anywhere ANSI C89 source code can be compiled.

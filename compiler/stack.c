@@ -821,7 +821,7 @@ int stack_calculate(int *value, struct stack_item *si, int q, int save_if_cannot
 
   /* fix the sign in every operand */
   for (b = 1, k = 0; k < q; k++) {
-    /* NOT VERY USEFUL IN BILIBALI
+    /* NOT VERY USEFUL IN SameSameC
     if ((q - k) != 1 && si[k].type == STACK_ITEM_TYPE_OPERATOR && si[k + 1].type == STACK_ITEM_TYPE_OPERATOR && si[k + 1].value != SI_OP_BANK
         && si[k + 1].value != SI_OP_HIGH_BYTE && si[k + 1].value != SI_OP_LOW_BYTE) {
       if (si[k].value != SI_OP_LEFT && si[k].value != SI_OP_RIGHT && si[k + 1].value != SI_OP_LEFT && si[k + 1].value != SI_OP_RIGHT) {
@@ -830,6 +830,7 @@ int stack_calculate(int *value, struct stack_item *si, int q, int save_if_cannot
       }
     }
     */
+    
     if (si[k].type == STACK_ITEM_TYPE_OPERATOR && si[k].value == SI_OP_SUB && b == 1) {
       if (si[k + 1].type == STACK_ITEM_TYPE_VALUE || si[k + 1].type == STACK_ITEM_TYPE_STRING) {
         if (si[k + 1].sign == SI_SIGN_POSITIVE)
@@ -866,6 +867,7 @@ int stack_calculate(int *value, struct stack_item *si, int q, int save_if_cannot
         si[k].type = STACK_ITEM_TYPE_DELETED;
       }
     }
+    
     /* remove unnecessary + */
     if (si[k].type == STACK_ITEM_TYPE_OPERATOR && si[k].value == SI_OP_ADD && b == 1) {
       if (si[k + 1].type == STACK_ITEM_TYPE_VALUE || si[k + 1].type == STACK_ITEM_TYPE_STRING)
@@ -965,8 +967,10 @@ int stack_calculate(int *value, struct stack_item *si, int q, int save_if_cannot
   }
 
   /* only one string? */
-  if (d == 1 && ta[0].type == STACK_ITEM_TYPE_STRING) {
+  if (d == 1 && ta[0].type == STACK_ITEM_TYPE_STRING && ta[0].sign == SI_SIGN_POSITIVE) {
+    /*
     fprintf(stderr, "stack_calculate(): The label \"%s\" cannot be turned into a value.\n", ta[0].string);
+    */
     strcpy(g_label, ta[0].string);
     g_label_definition = NULL;
     return INPUT_NUMBER_STRING;

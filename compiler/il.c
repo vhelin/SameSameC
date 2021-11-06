@@ -511,7 +511,7 @@ int il_stack_calculate_expression(struct tree_node *node, int calculate_max_var_
 
 int il_stack_calculate(struct stack_item *si, int q, int rresult) {
 
-  int b, d, k, op[256], o, l;
+  int b, d, k, op[256];
   struct stack_item ta[256];
   struct stack s;
 
@@ -537,9 +537,10 @@ int il_stack_calculate(struct stack_item *si, int q, int rresult) {
     si[0].type = STACK_ITEM_TYPE_DELETED;
   }
 
+#ifdef DOESNT_WORK_THAT_WELL
   /* fix the sign in every operand */
   for (b = 1, k = 0; k < q; k++) {
-    /* NOT VERY USEFUL IN BILIBALI
+    /* NOT VERY USEFUL IN SameSameC
     if ((q - k) != 1 && si[k].type == STACK_ITEM_TYPE_OPERATOR && si[k + 1].type == STACK_ITEM_TYPE_OPERATOR && si[k + 1].value != SI_OP_BANK
         && si[k + 1].value != SI_OP_HIGH_BYTE && si[k + 1].value != SI_OP_LOW_BYTE) {
       if (si[k].value != SI_OP_LEFT && si[k].value != SI_OP_RIGHT && si[k + 1].value != SI_OP_LEFT && si[k + 1].value != SI_OP_RIGHT)
@@ -580,8 +581,9 @@ int il_stack_calculate(struct stack_item *si, int q, int rresult) {
         si[k].type = STACK_ITEM_TYPE_DELETED;
       }
     }
+    
     /* remove unnecessary + */
-    if (si[k].type == STACK_ITEM_TYPE_OPERATOR && si[k].value == SI_OP_ADD && b == 1) {
+    if (si[k].type == STACK_ITEM_TYPE_OPERATOR && si[k].value == SI_OP_ADD && b == 1) {
       if (si[k + 1].type == STACK_ITEM_TYPE_VALUE || si[k + 1].type == STACK_ITEM_TYPE_STRING)
         si[k].type = STACK_ITEM_TYPE_DELETED;
       else if (si[k + 1].type == STACK_ITEM_TYPE_OPERATOR && si[k + 1].value == SI_OP_LEFT)
@@ -592,6 +594,7 @@ int il_stack_calculate(struct stack_item *si, int q, int rresult) {
     else if (si[k].type == STACK_ITEM_TYPE_OPERATOR && si[k].value == SI_OP_LEFT)
       b = 1;
   }
+#endif
 
   /* convert infix stack into postfix stack */
   for (b = 0, k = 0, d = 0; k < q; k++) {
@@ -894,7 +897,6 @@ int il_compute_stack(struct stack *sta, int count, int rresult) {
   double v[256];
   int r, t, r1, r2, tresult;
 
-
   v[0] = 0.0;
 
   s = sta->stack;
@@ -908,6 +910,8 @@ int il_compute_stack(struct stack *sta, int count, int rresult) {
       t++;
     }
     else if (s->type == STACK_ITEM_TYPE_STRING) {
+      if (s->sign == SI_SIGN_NEGATIVE)
+        fprintf(stderr, "CRAP COCK\n");
       v[t] = 0.0;
       si[t] = s;
       t++;

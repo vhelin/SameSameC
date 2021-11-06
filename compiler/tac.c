@@ -43,26 +43,26 @@ static void _print_tac_arg(struct tree_node *node, int type, double d, char *s, 
   if (var_type == VARIABLE_TYPE_VOID)
     fprintf(file_out, ".void");
   else if (var_type == VARIABLE_TYPE_INT8)
-    fprintf(file_out, ".int8");
+    fprintf(file_out, ".s8");
   else if (var_type == VARIABLE_TYPE_INT16)
-    fprintf(file_out, ".int16");
+    fprintf(file_out, ".s16");
   else if (var_type == VARIABLE_TYPE_UINT8)
-    fprintf(file_out, ".uint8");
+    fprintf(file_out, ".u8");
   else if (var_type == VARIABLE_TYPE_UINT16)
-    fprintf(file_out, ".uint16");
+    fprintf(file_out, ".u16");
 
   /* print promoted var type information if that's available */
 
   if (var_type_promoted == VARIABLE_TYPE_VOID)
     fprintf(file_out, " (void)");
   else if (var_type_promoted == VARIABLE_TYPE_INT8)
-    fprintf(file_out, " (int8)");
+    fprintf(file_out, " (s8)");
   else if (var_type_promoted == VARIABLE_TYPE_INT16)
-    fprintf(file_out, " (int16)");
+    fprintf(file_out, " (s16)");
   else if (var_type_promoted == VARIABLE_TYPE_UINT8)
-    fprintf(file_out, " (uint8)");
+    fprintf(file_out, " (u8)");
   else if (var_type_promoted == VARIABLE_TYPE_UINT16)
-    fprintf(file_out, " (uint16)");
+    fprintf(file_out, " (u16)");
 }
 
 

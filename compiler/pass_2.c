@@ -4295,7 +4295,7 @@ static void _check_ast_expression(struct tree_node *node) {
     _check_ast_simple_tree_node(node);
     return;
   }
-  
+
   for (i = 0; i < node->added_children; i++) {
     if (node->children[i]->type == TREE_NODE_TYPE_EXPRESSION)
       _check_ast_expression(node->children[i]);

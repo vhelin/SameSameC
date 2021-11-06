@@ -56,7 +56,7 @@
 #endif
 
 #ifndef NDEBUG
-  #define BILIBALI_DEBUG 1
+  #define SAMESAMEC_DEBUG 1
 #endif
 
 #ifdef _CRT_SECURE_NO_WARNINGS

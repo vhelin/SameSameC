@@ -376,6 +376,7 @@ static void calculateAndPrint(void) {
     __z80_out[0xBE] = chars[i];
 
   calculateAndPrint3(chars);
+  calculateAndPrint4(chars);
 }
 
 static void calculateAndPrint3(u8 *chars) {
@@ -430,18 +431,94 @@ static void calculateAndPrint3(u8 *chars) {
     __z80_out[0xBE] = chars[i];
 }
 
+static void calculateAndPrint4(u8 *chars) {
+
+  u16 index = 0;
+
+  //////////////////////////////////////////////////////////////////////////////////////////
+  // $1C9E = $1C9E = $1C9E
+  //////////////////////////////////////////////////////////////////////////////////////////
+
+  chars[index++] = 0x04; // '$'
+  chars[index++] = 0x00;
+
+  convertNumbersToChars16(0x1C9E, chars, &index); // "1C9E"
+
+  chars[index++] = 0x00; // ' '
+  chars[index++] = 0x00;
+  chars[index++] = 0x1D; // '='
+  chars[index++] = 0x00;
+  chars[index++] = 0x00; // ' '
+  chars[index++] = 0x00;
+
+  chars[index++] = 0x04; // '$'
+  chars[index++] = 0x00;
+  
+  s16 result = -(-666 * 11);
+  convertNumbersToChars16(result, chars, &index); // "1C9E"
+
+  chars[index++] = 0x00; // ' '
+  chars[index++] = 0x00;
+  chars[index++] = 0x1D; // '='
+  chars[index++] = 0x00;
+  chars[index++] = 0x00; // ' '
+  chars[index++] = 0x00;
+
+  chars[index++] = 0x04; // '$'
+  chars[index++] = 0x00;
+
+  s16 var1 = -666;
+  u8  var2 = 11;
+
+  result = -(var1 * var2);
+  convertNumbersToChars16(result, chars, &index); // "1C9E"
+
+  // output line
+  u8 i;
+
+  __z80_out[0xBF] = 0x00;
+  __z80_out[0xBF] = 0x44 | 0x38;
+  for (i = 0; i < index; i++)
+    __z80_out[0xBE] = chars[i];
+}
+
 static void convertNumbersToChars16(u16 value, u8 *chars, u8 *index) {
 
   u8 j = index[0];
+  u8 v;
 
-  chars[j++] = ((value >> 12) & 0xF) + 0x10;
+  v = (value >> 12) & 0xF;
+  if (v < 10)
+    v += 0x10;
+  else
+    v += 0x17;
+  chars[j++] = v;
   chars[j++] = 0x00;
-  chars[j++] = ((value >> 8) & 0xF) + 0x10;
+
+  v = (value >> 8) & 0xF;
+  if (v < 10)
+    v += 0x10;
+  else
+    v += 0x17;
+  chars[j++] = v;
   chars[j++] = 0x00;
-  chars[j++] = ((value >> 4) & 0xF) + 0x10;
+
+  v = (value >> 4) & 0xF;
+  if (v < 10)
+    v += 0x10;
+  else
+    v += 0x17;
+  chars[j++] = v;
   chars[j++] = 0x00;
-  chars[j++] = (value & 0xF) + 0x10;
+
+  v = value & 0xF;
+  if (v < 10)
+    v += 0x10;
+  else
+    v += 0x17;
+  chars[j++] = v;
   chars[j++] = 0x00;
 
   index[0] = j;
 }
+
