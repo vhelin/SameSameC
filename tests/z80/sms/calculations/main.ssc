@@ -454,7 +454,7 @@ static void calculateAndPrint4(u8 *chars) {
   chars[index++] = 0x04; // '$'
   chars[index++] = 0x00;
   
-  s16 result = -(-666 * 11);
+  s16 result = -(-666 * (-(-11)));
   convertNumbersToChars16(result, chars, &index); // "1C9E"
 
   chars[index++] = 0x00; // ' '
@@ -470,7 +470,9 @@ static void calculateAndPrint4(u8 *chars) {
   s16 var1 = -666;
   u8  var2 = 11;
 
-  result = -(var1 * var2);
+  result = -(var1 * (-(-var2)));
+  result = -result;
+  result = -result;
   convertNumbersToChars16(result, chars, &index); // "1C9E"
 
   // output line

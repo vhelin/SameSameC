@@ -521,6 +521,14 @@ int il_stack_calculate(struct stack_item *si, int q, int rresult) {
     return STACK_CALCULATE_DELAY;
   */
 
+  /* clear stack items, just in case... */
+  for (k = 0; k < 256; k++) {
+    ta[k].type = STACK_ITEM_TYPE_DELETED;
+    ta[k].sign = SI_SIGN_POSITIVE;
+    ta[k].value = 0;
+    ta[k].string[0] = 0;
+  }
+  
   /* check if there was data before the computation */
   if (q > 1 && (si[0].type == STACK_ITEM_TYPE_STRING || si[0].type == STACK_ITEM_TYPE_VALUE)) {
     if (si[1].type == STACK_ITEM_TYPE_STRING || si[1].type == STACK_ITEM_TYPE_VALUE)
@@ -537,65 +545,22 @@ int il_stack_calculate(struct stack_item *si, int q, int rresult) {
     si[0].type = STACK_ITEM_TYPE_DELETED;
   }
 
-#ifdef DOESNT_WORK_THAT_WELL
-  /* fix the sign in every operand */
-  for (b = 1, k = 0; k < q; k++) {
-    /* NOT VERY USEFUL IN SameSameC
-    if ((q - k) != 1 && si[k].type == STACK_ITEM_TYPE_OPERATOR && si[k + 1].type == STACK_ITEM_TYPE_OPERATOR && si[k + 1].value != SI_OP_BANK
-        && si[k + 1].value != SI_OP_HIGH_BYTE && si[k + 1].value != SI_OP_LOW_BYTE) {
-      if (si[k].value != SI_OP_LEFT && si[k].value != SI_OP_RIGHT && si[k + 1].value != SI_OP_LEFT && si[k + 1].value != SI_OP_RIGHT)
-        return print_error("Error in computation syntax.\n", ERROR_STC);
-    }
-    */
-    if (si[k].type == STACK_ITEM_TYPE_OPERATOR && si[k].value == SI_OP_SUB && b == 1) {
-      if (si[k + 1].type == STACK_ITEM_TYPE_VALUE || si[k + 1].type == STACK_ITEM_TYPE_STRING) {
-        if (si[k + 1].sign == SI_SIGN_POSITIVE)
-          si[k + 1].sign = SI_SIGN_NEGATIVE;
-        else
-          si[k + 1].sign = SI_SIGN_POSITIVE;
-        /* it wasn't a minus operator, it was a sign */
-        si[k].type = STACK_ITEM_TYPE_DELETED;
-      }
-      else if (si[k + 1].type == STACK_ITEM_TYPE_OPERATOR && si[k + 1].value == SI_OP_LEFT) {
-        o = 1;
-        l = k + 2;
-        while (o > 0 && l < q) {
-          if (si[l].type == STACK_ITEM_TYPE_VALUE || si[l].type == STACK_ITEM_TYPE_STRING) {
-            if (si[l].sign == SI_SIGN_POSITIVE)
-              si[l].sign = SI_SIGN_NEGATIVE;
-            else
-              si[l].sign = SI_SIGN_POSITIVE;
-          }
-          else if (si[l].type == STACK_ITEM_TYPE_OPERATOR) {
-            if (si[l].value == SI_OP_LEFT)
-              o++;
-            else if (si[l].value == SI_OP_RIGHT)
-              o--;
-          }
-          l++;
-        }
-
-        if (o != 0)
-          return print_error("Unbalanced parentheses.\n", ERROR_STC);
-
-        si[k].type = STACK_ITEM_TYPE_DELETED;
-      }
-    }
-    
-    /* remove unnecessary + */
-    if (si[k].type == STACK_ITEM_TYPE_OPERATOR && si[k].value == SI_OP_ADD && b == 1) {
-      if (si[k + 1].type == STACK_ITEM_TYPE_VALUE || si[k + 1].type == STACK_ITEM_TYPE_STRING)
-        si[k].type = STACK_ITEM_TYPE_DELETED;
-      else if (si[k + 1].type == STACK_ITEM_TYPE_OPERATOR && si[k + 1].value == SI_OP_LEFT)
-        si[k].type = STACK_ITEM_TYPE_DELETED;
-    }
-    else if (si[k].type == STACK_ITEM_TYPE_VALUE || si[k].type == STACK_ITEM_TYPE_STRING)
-      b = 0;
-    else if (si[k].type == STACK_ITEM_TYPE_OPERATOR && si[k].value == SI_OP_LEFT)
-      b = 1;
+  /* turn some minuses into SI_OP_NEGs */
+  if (q > 1) {
+    if (si[0].type == STACK_ITEM_TYPE_OPERATOR && si[0].value == SI_OP_SUB)
+      si[0].value = SI_OP_NEG;
   }
-#endif
-
+  for (k = 0; k < q-2; k++) {
+    fprintf(stderr, "HAS %d %s\n", (int)si[k+1].value, si[k+1].string);
+    if (si[k].type == STACK_ITEM_TYPE_OPERATOR && si[k].value == SI_OP_LEFT) {
+      if (si[k+1].type == STACK_ITEM_TYPE_OPERATOR && si[k+1].value == SI_OP_SUB && ((si[k+2].type == STACK_ITEM_TYPE_OPERATOR && si[k+2].value == SI_OP_LEFT) ||
+                                                                                     (si[k+2].type == STACK_ITEM_TYPE_STRING) ||
+                                                                                     (si[k+2].type == STACK_ITEM_TYPE_VALUE))) {
+        si[k+1].value = SI_OP_NEG;
+      }
+    }
+  }
+  
   /* convert infix stack into postfix stack */
   for (b = 0, k = 0, d = 0; k < q; k++) {
     /* operands pass through */
@@ -718,8 +683,12 @@ static struct tac *_add_tac_calculation(int op, int r1, int r2, int rresult, str
   t->op = op;
 
   tac_set_result(t, TAC_ARG_TYPE_TEMP, rresult, NULL);
-      
-  if (si[r1] != NULL) {
+
+  if (r1 < 0) {
+    /* SI_OP_NEG (-> SUB (0 - value)) */
+    tac_set_arg1(t, TAC_ARG_TYPE_CONSTANT, 0, NULL);
+  }
+  else if (si[r1] != NULL) {
     if (si[r1]->type == STACK_ITEM_TYPE_REGISTER)
       tac_set_arg1(t, TAC_ARG_TYPE_TEMP, (int)si[r1]->value, NULL);
     else {
@@ -917,6 +886,10 @@ int il_compute_stack(struct stack *sta, int count, int rresult) {
     else {
       switch ((int)s->value) {
       case SI_OP_ADD:
+        if (t - 2 < 0) {
+          fprintf(stderr, "%s:%d: COMPUTE_STACK: Addition is missing an operand!\n", get_file_name(sta->filename_id), sta->linenumber);
+          return FAILED;
+        }
         ta = _add_tac_calculation(TAC_OP_ADD, t-2, t-1, g_temp_r++, si, v, sta);
         if (ta == NULL)
           return FAILED;
@@ -924,11 +897,26 @@ int il_compute_stack(struct stack *sta, int count, int rresult) {
         t--;
         break;
       case SI_OP_SUB:
+        if (t - 2 < 0) {
+          fprintf(stderr, "%s:%d: COMPUTE_STACK: Subtraction is missing an operand!\n", get_file_name(sta->filename_id), sta->linenumber);
+          return FAILED;
+        }
         ta = _add_tac_calculation(TAC_OP_SUB, t-2, t-1, g_temp_r++, si, v, sta);
         if (ta == NULL)
           return FAILED;
         _turn_stack_item_into_a_register(si, sit, t-2, (int)ta->result_d);
         t--;
+        break;
+      case SI_OP_NEG:
+        if (t - 1 < 0) {
+          fprintf(stderr, "%s:%d: COMPUTE_STACK: Negation is missing an operand!\n", get_file_name(sta->filename_id), sta->linenumber);
+          return FAILED;
+        }
+        /* NOTE: NEG -> SUB (0 - value) */
+        ta = _add_tac_calculation(TAC_OP_SUB, -1, t-1, g_temp_r++, si, v, sta);
+        if (ta == NULL)
+          return FAILED;
+        _turn_stack_item_into_a_register(si, sit, t-1, (int)ta->result_d);
         break;
       case SI_OP_GET_ADDRESS:
         /* get address */

@@ -88,7 +88,7 @@ static void _debug_print_stack(int line_number, int stack_id, struct stack_item 
   printf("LINE %5d: ID = %d (STACK) CALCULATION ID = %d (c%d): ", line_number, id, stack_id, stack_id);
 
   for (k = 0; k < count; k++) {
-    char ar[] = "+-*()|&/^01%~<>!:";
+    char ar[] = "+-*()|&/^01%~<>!:<>23456789ABCDEF";
 
     if (ta[k].type == STACK_ITEM_TYPE_OPERATOR) {
       int value = (int)ta[k].value;
@@ -99,6 +99,34 @@ static void _debug_print_stack(int line_number, int stack_id, struct stack_item 
         printf("<<");
       else if (arr == '1')
         printf(">>");
+      else if (arr == '2')
+        printf("==");
+      else if (arr == '3')
+        printf("!=");
+      else if (arr == '4')
+        printf("<=");
+      else if (arr == '5')
+        printf(">=");
+      else if (arr == '6')
+        printf("++ (pre)");
+      else if (arr == '7')
+        printf("-- (pre)");
+      else if (arr == '8')
+        printf("++ (post)");
+      else if (arr == '9')
+        printf("-- (post)");
+      else if (arr == 'A')
+        printf("[USE REGISTER]");
+      else if (arr == 'B')
+        printf("||");
+      else if (arr == 'C')
+        printf("&&");
+      else if (arr == 'D')
+        printf("[GET ADDRESS]");
+      else if (arr == 'E')
+        printf("[COMPLEMENT]");
+      else if (arr == 'F')
+        printf("[NEGATE]");
       else
         printf("%c", arr);
     }
@@ -758,6 +786,7 @@ static struct stack_item_priority_item g_stack_item_priority_items[] = {
   { SI_OP_NOT, 110 },
   { SI_OP_GET_ADDRESS, 110 },
   { SI_OP_COMPLEMENT, 110 },
+  { SI_OP_NEG, 110 },
   { SI_OP_USE_REGISTER, 200 },
   { 999, 999 }
 };
@@ -781,7 +810,7 @@ int get_op_priority(int op) {
 
 int stack_calculate(int *value, struct stack_item *si, int q, int save_if_cannot_resolve) {
 
-  int b, d, k, op[256], o, l;
+  int b, d, k, op[256];
   struct stack_item ta[256];
   struct stack s;
   double dou = 0.0;
@@ -792,6 +821,14 @@ int stack_calculate(int *value, struct stack_item *si, int q, int save_if_cannot
     return STACK_CALCULATE_DELAY;
   */
 
+  /* clear stack items, just in case... */
+  for (k = 0; k < 256; k++) {
+    ta[k].type = STACK_ITEM_TYPE_DELETED;
+    ta[k].sign = SI_SIGN_POSITIVE;
+    ta[k].value = 0;
+    ta[k].string[0] = 0;
+  }
+  
   /* check if there was data before the computation */
   if (q > 1 && (si[0].type == STACK_ITEM_TYPE_STRING || si[0].type == STACK_ITEM_TYPE_VALUE)) {
     if (si[1].type == STACK_ITEM_TYPE_STRING || si[1].type == STACK_ITEM_TYPE_VALUE)
@@ -819,68 +856,22 @@ int stack_calculate(int *value, struct stack_item *si, int q, int save_if_cannot
     }
   }
 
-  /* fix the sign in every operand */
-  for (b = 1, k = 0; k < q; k++) {
-    /* NOT VERY USEFUL IN SameSameC
-    if ((q - k) != 1 && si[k].type == STACK_ITEM_TYPE_OPERATOR && si[k + 1].type == STACK_ITEM_TYPE_OPERATOR && si[k + 1].value != SI_OP_BANK
-        && si[k + 1].value != SI_OP_HIGH_BYTE && si[k + 1].value != SI_OP_LOW_BYTE) {
-      if (si[k].value != SI_OP_LEFT && si[k].value != SI_OP_RIGHT && si[k + 1].value != SI_OP_LEFT && si[k + 1].value != SI_OP_RIGHT) {
-        print_error("Error in computation syntax.\n", ERROR_STC);
-        return FAILED;
-      }
-    }
-    */
-    
-    if (si[k].type == STACK_ITEM_TYPE_OPERATOR && si[k].value == SI_OP_SUB && b == 1) {
-      if (si[k + 1].type == STACK_ITEM_TYPE_VALUE || si[k + 1].type == STACK_ITEM_TYPE_STRING) {
-        if (si[k + 1].sign == SI_SIGN_POSITIVE)
-          si[k + 1].sign = SI_SIGN_NEGATIVE;
-        else
-          si[k + 1].sign = SI_SIGN_POSITIVE;
-        /* it wasn't a minus operator, it was a sign */
-        si[k].type = STACK_ITEM_TYPE_DELETED;
-      }
-      else if (si[k + 1].type == STACK_ITEM_TYPE_OPERATOR && si[k + 1].value == SI_OP_LEFT) {
-        o = 1;
-        l = k + 2;
-        while (o > 0 && l < q) {
-          if (si[l].type == STACK_ITEM_TYPE_VALUE || si[l].type == STACK_ITEM_TYPE_STRING) {
-            if (si[l].sign == SI_SIGN_POSITIVE)
-              si[l].sign = SI_SIGN_NEGATIVE;
-            else
-              si[l].sign = SI_SIGN_POSITIVE;
-          }
-          else if (si[l].type == STACK_ITEM_TYPE_OPERATOR) {
-            if (si[l].value == SI_OP_LEFT)
-              o++;
-            else if (si[l].value == SI_OP_RIGHT)
-              o--;
-          }
-          l++;
-        }
-
-        if (o != 0) {
-          print_error("Unbalanced parentheses.\n", ERROR_STC);
-          return FAILED;
-        }
-
-        si[k].type = STACK_ITEM_TYPE_DELETED;
-      }
-    }
-    
-    /* remove unnecessary + */
-    if (si[k].type == STACK_ITEM_TYPE_OPERATOR && si[k].value == SI_OP_ADD && b == 1) {
-      if (si[k + 1].type == STACK_ITEM_TYPE_VALUE || si[k + 1].type == STACK_ITEM_TYPE_STRING)
-        si[k].type = STACK_ITEM_TYPE_DELETED;
-      else if (si[k + 1].type == STACK_ITEM_TYPE_OPERATOR && si[k + 1].value == SI_OP_LEFT)
-        si[k].type = STACK_ITEM_TYPE_DELETED;
-    }
-    else if (si[k].type == STACK_ITEM_TYPE_VALUE || si[k].type == STACK_ITEM_TYPE_STRING)
-      b = 0;
-    else if (si[k].type == STACK_ITEM_TYPE_OPERATOR && si[k].value == SI_OP_LEFT)
-      b = 1;
+  /* turn some minuses into SI_OP_NEGs */
+  if (q > 1) {
+    if (si[0].type == STACK_ITEM_TYPE_OPERATOR && si[0].value == SI_OP_SUB)
+      si[0].value = SI_OP_NEG;
   }
-
+  for (k = 0; k < q-2; k++) {
+    fprintf(stderr, "HAS %d %s\n", (int)si[k+1].value, si[k+1].string);
+    if (si[k].type == STACK_ITEM_TYPE_OPERATOR && si[k].value == SI_OP_LEFT) {
+      if (si[k+1].type == STACK_ITEM_TYPE_OPERATOR && si[k+1].value == SI_OP_SUB && ((si[k+2].type == STACK_ITEM_TYPE_OPERATOR && si[k+2].value == SI_OP_LEFT) ||
+                                                                                     (si[k+2].type == STACK_ITEM_TYPE_STRING) ||
+                                                                                     (si[k+2].type == STACK_ITEM_TYPE_VALUE))) {
+        si[k+1].value = SI_OP_NEG;
+      }
+    }
+  }
+  
   /* convert infix stack into postfix stack */
   for (b = 0, k = 0, d = 0; k < q; k++) {
     /* operands pass through */
@@ -1107,10 +1098,18 @@ int compute_stack(struct stack *sta, int x, double *result) {
     else {
       switch ((int)s->value) {
       case SI_OP_ADD:
+        if (t - 2 < 0) {
+          fprintf(stderr, "%s:%d: COMPUTE_STACK: Addition is missing an operand!\n", get_file_name(sta->filename_id), sta->linenumber);
+          return FAILED;
+        }
         v[t - 2] += v[t - 1];
         t--;
         break;
       case SI_OP_SUB:
+        if (t - 2 < 0) {
+          fprintf(stderr, "%s:%d: COMPUTE_STACK: Subtraction is missing an operand!\n", get_file_name(sta->filename_id), sta->linenumber);
+          return FAILED;
+        }
         v[t - 2] -= v[t - 1];
         t--;
         break;
@@ -1185,6 +1184,10 @@ int compute_stack(struct stack *sta, int x, double *result) {
         else
           v[t-2] = 0;
         t--;
+        break;
+      case SI_OP_NEG:
+        z = (int)v[t - 1];
+        v[t - 1] = -z;
         break;
       case SI_OP_NOT:
         /*

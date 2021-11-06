@@ -117,6 +117,7 @@
 #define SI_OP_LOGICAL_AND  29
 #define SI_OP_GET_ADDRESS  30
 #define SI_OP_COMPLEMENT   31
+#define SI_OP_NEG          32
 
 #define SI_SIGN_POSITIVE 0
 #define SI_SIGN_NEGATIVE 1
