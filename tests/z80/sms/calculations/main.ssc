@@ -23,8 +23,8 @@ void main(void) {
   __z80_out[0xBF] = 0x81;
 
   // main loop
-  while (1) {
-  }
+  while (1)
+    ;
 }
 
 void init(void) {
@@ -377,6 +377,7 @@ static void calculateAndPrint(void) {
 
   calculateAndPrint3(chars);
   calculateAndPrint4(chars);
+  calculateAndPrint5(chars);
 }
 
 static void calculateAndPrint3(u8 *chars) {
@@ -484,6 +485,77 @@ static void calculateAndPrint4(u8 *chars) {
     __z80_out[0xBE] = chars[i];
 }
 
+static void calculateAndPrint5(u8 *chars) {
+
+  u8 *start = chars;
+
+  //////////////////////////////////////////////////////////////////////////////////////////
+  // $1C9E = $1C9E = $1C9E
+  //////////////////////////////////////////////////////////////////////////////////////////
+
+  chars[0] = 0x04; // '$'
+  chars++;
+  chars[0] = 0x00;
+  chars++;
+
+  convertNumbersToChars16QUICK(0x1C9E, &chars); // "1C9E"
+
+  chars[0] = 0x00; // ' '
+  chars++;
+  chars[0] = 0x00;
+  chars++;
+  chars[0] = 0x1D; // '='
+  chars++;
+  chars[0] = 0x00;
+  chars++;
+  chars[0] = 0x00; // ' '
+  chars++;
+  chars[0] = 0x00;
+  chars++;
+  
+  chars[0] = 0x04; // '$'
+  chars++;
+  chars[0] = 0x00;
+  chars++;
+
+  s16 result = -(-666 * (-(-11)));
+  convertNumbersToChars16QUICK(result, &chars); // "1C9E"
+
+  chars[0] = 0x00; // ' '
+  chars++;
+  chars[0] = 0x00;
+  chars++;
+  chars[0] = 0x1D; // '='
+  chars++;
+  chars[0] = 0x00;
+  chars++;
+  chars[0] = 0x00; // ' '
+  chars++;
+  chars[0] = 0x00;
+  chars++;
+  
+  chars[0] = 0x04; // '$'
+  chars++;
+  chars[0] = 0x00;
+  chars++;
+  
+  s16 var1 = -666;
+  u8  var2 = 11;
+
+  result = -(var1 * (-(-var2)));
+  result = -result;
+  result = -result;
+  convertNumbersToChars16QUICK(result, &chars); // "1C9E"
+
+  // output line
+  __z80_out[0xBF] = 0x00;
+  __z80_out[0xBF] = 0x45 | 0x38;
+  while (start < chars) {
+    __z80_out[0xBE] = start[0];
+    start++;
+  }
+}
+
 static void convertNumbersToChars16(u16 value, u8 *chars, u8 *index) {
 
   u8 j = index[0];
@@ -523,4 +595,37 @@ static void convertNumbersToChars16(u16 value, u8 *chars, u8 *index) {
 
   index[0] = j;
 }
+
+static const u8 g_numberToCharacterLUT[] = {
+  0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, // 0-9
+  0x21, 0x22, 0x23, 0x24, 0x25, 0x26                          // A-F
+};
+
+static void convertNumbersToChars16QUICK(u16 value, u8 **chars) {
+
+  u8 *ptr = chars[0];
+  u8 v;
+
+  v = g_numberToCharacterLUT[value & 0xF];
+  ptr[6] = v;
+  ptr[7] = 0x00;
+
+  value = value >> 4;
+  v = g_numberToCharacterLUT[value & 0xF];
+  ptr[4] = v;
+  ptr[5] = 0x00;
+
+  value = value >> 4;
+  v = g_numberToCharacterLUT[value & 0xF];
+  ptr[2] = v;
+  ptr[3] = 0x00;
+
+  value = value >> 4;
+  v = g_numberToCharacterLUT[value & 0xF];
+  ptr[0] = v;
+  ptr[1] = 0x00;
+
+  chars[0] = ptr + 8;
+}
+
 

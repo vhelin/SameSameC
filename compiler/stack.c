@@ -862,7 +862,6 @@ int stack_calculate(int *value, struct stack_item *si, int q, int save_if_cannot
       si[0].value = SI_OP_NEG;
   }
   for (k = 0; k < q-2; k++) {
-    fprintf(stderr, "HAS %d %s\n", (int)si[k+1].value, si[k+1].string);
     if (si[k].type == STACK_ITEM_TYPE_OPERATOR && si[k].value == SI_OP_LEFT) {
       if (si[k+1].type == STACK_ITEM_TYPE_OPERATOR && si[k+1].value == SI_OP_SUB && ((si[k+2].type == STACK_ITEM_TYPE_OPERATOR && si[k+2].value == SI_OP_LEFT) ||
                                                                                      (si[k+2].type == STACK_ITEM_TYPE_STRING) ||

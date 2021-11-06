@@ -5,6 +5,7 @@
 *.bin
 *~
 *.asm
+tests/z80/sms/bughunt
 
 # Compiled files
 *.o

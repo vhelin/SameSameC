@@ -14,6 +14,31 @@ Linux: [![Build Status](https://dev.azure.com/villehelin0486/villehelin/_apis/bu
 Windows: [![Build Status](https://dev.azure.com/villehelin0486/villehelin/_apis/build/status/vhelin.SameSameC%20Windows?branchName=master)](https://dev.azure.com/villehelin0486/villehelin/_build/latest?definitionId=5&branchName=master)
 
 
+# Features
+
+## Features missing when compared with ANSI C89
+
+- No const strings. Will be implemented later.
+- No pointer arithmetics like
+    *ptr = 1;
+  Instead do
+    ptr[0] = 1;
+- No syntactic sugar for multidimensional arrays. Perhaps implemented later. Meanwhile create your own using a one dimensional array.
+- No floats or doubles or typedefs. All you have are u8 (8-bit unsigned int), s8 (8-bit signed int), u16 (16-bit unsigned int), s16 (signed int) and structs/unions.
+- No casting. Perhaps implemented later. In calculations all involved will be automatically casted to the highest type in the calculation.
+- No free blocks inside blocks
+
+## Features not in ANSI C89
+
+- No need to define a function or a global variable before referencing it unless the function or variable is in another source file.
+- Binary values can be defined with the prefix 0b (e.g., 0b10001101)
+- One line comments with //
+- Local variables can be defined anywhere, not just at the begining of a block
+- Write WLA DX ASM using __asm()
+- Include binary files using __incbin()
+- The "object file" is actually plain WLA DX ASM
+
+
 # TODO
 
 ## Optimize
@@ -34,16 +59,15 @@ Windows: [![Build Status](https://dev.azure.com/villehelin0486/villehelin/_apis/
 
 ## Add
 
-- Add support for empty statements
 - Add support for function overloading
 - Add support for free const strings
-- Add support for explicit casting and type checks
-- Add support for arrays with more than one dimension
 - Add more backends (GB-Z80, 6502, 65816...)
 - Add more test projects
 - Improve struct/union support (ANSI C99?)
 - Document all TREE_NODE_TYPE_* use cases
 - Document all TAC_OP_* use cases
+- Add support for explicit casting and type checks
+- Add support for arrays with more than one dimension
 - Create a list of supported ANSI C89 features (and the new features)
 
 

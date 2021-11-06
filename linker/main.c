@@ -23,7 +23,7 @@
 
 extern struct file *g_files_first;
 
-char g_version_string[] = "$VER: SameSameC linker 0.9a (30.7.2021)";
+char g_version_string[] = "$VER: SameSameC linker 0.9a (7.11.2021)";
 char g_samesamec_version[] = "0.9";
 
 int g_verbose = NO, g_quiet = NO, g_target = TARGET_NONE, g_final_name_index = -1;

@@ -2735,6 +2735,14 @@ int create_statement(void) {
 
     return SUCCEEDED;
   }
+  else if (g_token_current->id == TOKEN_ID_SYMBOL && g_token_current->value == ';') {
+    /* an empty statement */
+
+    /* next token */
+    _next_token();
+
+    return SUCCEEDED;
+  }
   else if (g_token_current->id == TOKEN_ID_ASM) {
     /* inline ASM */
     struct inline_asm *ia;
