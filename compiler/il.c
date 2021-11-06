@@ -910,8 +910,6 @@ int il_compute_stack(struct stack *sta, int count, int rresult) {
       t++;
     }
     else if (s->type == STACK_ITEM_TYPE_STRING) {
-      if (s->sign == SI_SIGN_NEGATIVE)
-        fprintf(stderr, "CRAP COCK\n");
       v[t] = 0.0;
       si[t] = s;
       t++;
