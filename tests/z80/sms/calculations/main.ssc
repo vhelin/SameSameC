@@ -610,17 +610,17 @@ static void convertNumbersToChars16QUICK(u16 value, u8 **chars) {
   ptr[6] = v;
   ptr[7] = 0x00;
 
-  value = value >> 4;
+  value >>= 4;
   v = g_numberToCharacterLUT[value & 0xF];
   ptr[4] = v;
   ptr[5] = 0x00;
 
-  value = value >> 4;
+  value >>= 4;
   v = g_numberToCharacterLUT[value & 0xF];
   ptr[2] = v;
   ptr[3] = 0x00;
 
-  value = value >> 4;
+  value >>= 4;
   v = g_numberToCharacterLUT[value & 0xF];
   ptr[0] = v;
   ptr[1] = 0x00;

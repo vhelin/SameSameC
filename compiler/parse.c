@@ -174,9 +174,26 @@ int get_next_token(void) {
   /* a symbol? */
   if (is_char_a_symbol(c) == YES) {
     char c2 = g_buffer[g_source_pointer + 1];
+    char c3 = g_buffer[g_source_pointer + 2];
 
     g_source_pointer++;
 
+    /* a three char symbol? */
+    if (is_char_a_symbol(c2) && is_char_a_symbol(c3)) {
+      /* possibly -> check all combinations */
+      if ((c == '<' && c2 == '<' && c3 == '=') ||
+          (c == '>' && c2 == '>' && c3 == '=')) {
+        g_ss = 3;
+        g_tmp[0] = c;
+        g_tmp[1] = c2;
+        g_tmp[2] = c3;
+        g_tmp[3] = 0;
+
+        g_source_pointer += 2;
+        
+        return GET_NEXT_TOKEN_SYMBOL;
+      }
+    }
     /* a two char symbol? */
     if (is_char_a_symbol(c2)) {
       /* possibly -> check all combinations */

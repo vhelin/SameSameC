@@ -606,6 +606,17 @@ int evaluate_token(int type) {
         return print_error(g_error_message, ERROR_ERR);
       }
     }
+    else if (g_ss == 3) {
+      /* turn a three char symbol into a definition value */
+      if (g_tmp[0] == '>' && g_tmp[1] == '>' && g_tmp[2] == '=')
+        value = SYMBOL_EQUAL_SHIFT_RIGHT;
+      else if (g_tmp[0] == '<' && g_tmp[1] == '<' && g_tmp[2] == '=')
+        value = SYMBOL_EQUAL_SHIFT_LEFT;
+      else {
+        snprintf(g_error_message, sizeof(g_error_message), "Unhandled three character symbol \"%c%c%c\"! Please submit a bug report!\n", g_tmp[0], g_tmp[1], g_tmp[2]);
+        return print_error(g_error_message, ERROR_ERR);
+      }
+    }
 
     return token_add(TOKEN_ID_SYMBOL, value, 0.0, NULL);
   }

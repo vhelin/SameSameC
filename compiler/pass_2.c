@@ -1582,10 +1582,12 @@ int create_statement(void) {
                                                    g_token_current->value != SYMBOL_EQUAL_DIV &&
                                                    g_token_current->value != SYMBOL_EQUAL_OR &&
                                                    g_token_current->value != SYMBOL_EQUAL_AND &&
+                                                   g_token_current->value != SYMBOL_EQUAL_SHIFT_LEFT &&
+                                                   g_token_current->value != SYMBOL_EQUAL_SHIFT_RIGHT &&
                                                    g_token_current->value != SYMBOL_INCREMENT &&
                                                    g_token_current->value != SYMBOL_DECREMENT)) {
       free_tree_node(target_node);
-      snprintf(g_error_message, sizeof(g_error_message), "\"%s\" must be followed by '=' / '[' / '(' / '++' / '--' / '-=' / '+=' / '*=' / '/=' / '|=' / '&='.\n", name);
+      snprintf(g_error_message, sizeof(g_error_message), "\"%s\" must be followed by '=' / '[' / '(' / '++' / '--' / '-=' / '+=' / '*=' / '/=' / '|=' / '&=' / '<<=' / '>>='.\n", name);
       return print_error_using_token(g_error_message, ERROR_ERR, g_token_previous);
     }
 
@@ -1637,7 +1639,9 @@ int create_statement(void) {
              symbol == SYMBOL_EQUAL_MUL ||
              symbol == SYMBOL_EQUAL_DIV ||
              symbol == SYMBOL_EQUAL_OR ||
-             symbol == SYMBOL_EQUAL_AND) {
+             symbol == SYMBOL_EQUAL_AND ||
+             symbol == SYMBOL_EQUAL_SHIFT_LEFT ||
+             symbol == SYMBOL_EQUAL_SHIFT_RIGHT) {
       struct symbol_table_item *item;
       int operator;
 
@@ -1676,6 +1680,14 @@ int create_statement(void) {
         operator = '|';
       else if (symbol == SYMBOL_EQUAL_AND)
         operator = '&';
+      else if (symbol == SYMBOL_EQUAL_SHIFT_LEFT)
+        operator = SYMBOL_SHIFT_LEFT;
+      else if (symbol == SYMBOL_EQUAL_SHIFT_RIGHT)
+        operator = SYMBOL_SHIFT_RIGHT;
+      else {
+        snprintf(g_error_message, sizeof(g_error_message), "Unhandled symbol %d.\n", symbol);
+        return print_error(g_error_message, ERROR_ERR);
+      }
         
       node = allocate_tree_node_symbol(operator);
       if (node == NULL)
@@ -1846,7 +1858,9 @@ int create_statement(void) {
                                                        g_token_current->value != SYMBOL_EQUAL_MUL &&
                                                        g_token_current->value != SYMBOL_EQUAL_DIV &&
                                                        g_token_current->value != SYMBOL_EQUAL_OR &&
-                                                       g_token_current->value != SYMBOL_EQUAL_AND)) {
+                                                       g_token_current->value != SYMBOL_EQUAL_AND &&
+                                                       g_token_current->value != SYMBOL_EQUAL_SHIFT_LEFT &&
+                                                       g_token_current->value != SYMBOL_EQUAL_SHIFT_RIGHT)) {
           if (target_node != NULL)
             free_tree_node(target_node);
           else
@@ -1871,7 +1885,9 @@ int create_statement(void) {
           symbol == SYMBOL_EQUAL_MUL ||
           symbol == SYMBOL_EQUAL_DIV ||
           symbol == SYMBOL_EQUAL_OR ||
-          symbol == SYMBOL_EQUAL_AND) {
+          symbol == SYMBOL_EQUAL_AND ||
+          symbol == SYMBOL_EQUAL_SHIFT_LEFT ||
+          symbol == SYMBOL_EQUAL_SHIFT_RIGHT) {
         int operator;
 
         if (target_node != NULL) {
@@ -1924,6 +1940,14 @@ int create_statement(void) {
           operator = '|';
         else if (symbol == SYMBOL_EQUAL_AND)
           operator = '&';
+        else if (symbol == SYMBOL_EQUAL_SHIFT_LEFT)
+          operator = SYMBOL_SHIFT_LEFT;
+        else if (symbol == SYMBOL_EQUAL_SHIFT_RIGHT)
+          operator = SYMBOL_SHIFT_RIGHT;
+        else {
+          snprintf(g_error_message, sizeof(g_error_message), "Unhandled symbol %d.\n", symbol);
+          return print_error(g_error_message, ERROR_ERR);
+        }
         
         node = allocate_tree_node_symbol(operator);
         if (node == NULL)
@@ -1954,7 +1978,9 @@ int create_statement(void) {
           symbol == SYMBOL_EQUAL_MUL ||
           symbol == SYMBOL_EQUAL_DIV ||
           symbol == SYMBOL_EQUAL_OR ||
-          symbol == SYMBOL_EQUAL_AND) {
+          symbol == SYMBOL_EQUAL_AND ||
+          symbol == SYMBOL_EQUAL_SHIFT_LEFT ||
+          symbol == SYMBOL_EQUAL_SHIFT_RIGHT) {
         node = _get_current_open_expression();
         
         _open_expression_pop();
