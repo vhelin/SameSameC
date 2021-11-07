@@ -490,7 +490,7 @@ static void calculateAndPrint5(u8 *chars) {
   u8 *start = chars;
 
   //////////////////////////////////////////////////////////////////////////////////////////
-  // $1C9E = $1C9E = $1C9E
+  // $7521 = $7521 = $7521
   //////////////////////////////////////////////////////////////////////////////////////////
 
   chars[0] = 0x04; // '$'
@@ -498,7 +498,7 @@ static void calculateAndPrint5(u8 *chars) {
   chars[0] = 0x00;
   chars++;
 
-  convertNumbersToChars16QUICK(0x1C9E, &chars); // "1C9E"
+  convertNumbersToChars16QUICK(0x7521, &chars); // "7521"
 
   chars[0] = 0x00; // ' '
   chars++;
@@ -518,8 +518,8 @@ static void calculateAndPrint5(u8 *chars) {
   chars[0] = 0x00;
   chars++;
 
-  s16 result = -(-666 * (-(-11)));
-  convertNumbersToChars16QUICK(result, &chars); // "1C9E"
+  s16 result = ((((0x6543 | 0x0095) % 0x1001) << 4) - 10000) ^ 0x4321;
+  convertNumbersToChars16QUICK(result, &chars); // "7521"
 
   chars[0] = 0x00; // ' '
   chars++;
@@ -539,13 +539,14 @@ static void calculateAndPrint5(u8 *chars) {
   chars[0] = 0x00;
   chars++;
   
-  s16 var1 = -666;
-  u8  var2 = 11;
+  u16 var1 = 0x6543;
+  u8  var2 = 0x95;
+  u16 var3 = 10000;
+  u16 var4 = 0x4321;
 
-  result = -(var1 * (-(-var2)));
-  result = -result;
-  result = -result;
-  convertNumbersToChars16QUICK(result, &chars); // "1C9E"
+  result = (((var1 | var2) % 0x1001) << 4) - var3;
+  result ^= var4;
+  convertNumbersToChars16QUICK(result, &chars); // "7521"
 
   // output line
   __z80_out[0xBF] = 0x00;

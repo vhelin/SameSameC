@@ -599,6 +599,10 @@ int evaluate_token(int type) {
         value = SYMBOL_EQUAL_OR;
       else if (g_tmp[0] == '&' && g_tmp[1] == '=')
         value = SYMBOL_EQUAL_AND;
+      else if (g_tmp[0] == '%' && g_tmp[1] == '=')
+        value = SYMBOL_EQUAL_MOD;
+      else if (g_tmp[0] == '^' && g_tmp[1] == '=')
+        value = SYMBOL_EQUAL_XOR;
       else if (g_tmp[0] == '-' && g_tmp[1] == '>')
         value = SYMBOL_POINTER;
       else {
