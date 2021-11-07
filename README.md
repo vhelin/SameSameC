@@ -3,9 +3,9 @@
 
 Yet Another ANSI C89 Like Language Cross Compiler Targeting 8-bit CPUs. Written by 2021 Ville Helin.
 
-This is currently under development, use it on your own risk. SameSameC is GPL v2 software. Read the LICENSE file for more information. Some pieces of code were taken from WLA DX (https://github.com/vhelin/wla-dx), but not so many.
+**This is currently under early development, use it on your own risk.** SameSameC is GPL v2 software. Read the LICENSE file for more information. Some pieces of code were taken from WLA DX (https://github.com/vhelin/wla-dx), but not so many. The compiler produces WLA DX ASM files which the linker links together and assembles with WLA DX (included as Git submodule).
 
-I will not in general approve pull requests as I want to do this myself, up to the point when I decide I've learned enough. :) Ideas, bug reports and feature requests are welcome, though. And build scripts for platforms currently not supported.
+**I will not in general approve pull requests as I want to do this myself, up to the point when I decide I've learned enough. :) Ideas, bug reports and feature requests are welcome, though. And build scripts for platforms currently not supported.**
 
 
 # Azure Pipelines CI
@@ -24,9 +24,9 @@ Windows: [![Build Status](https://dev.azure.com/villehelin0486/villehelin/_apis/
   Instead do
     ptr[0] = 1;
 - No syntactic sugar for multidimensional arrays. Perhaps implemented later. Meanwhile create your own using a one dimensional array.
-- No floats or doubles or typedefs. All you have are u8 (8-bit unsigned int), s8 (8-bit signed int), u16 (16-bit unsigned int), s16 (signed int) and structs/unions.
+- No floats or doubles or typedefs. All you have are u8 (8-bit unsigned int), s8 (8-bit signed int), u16 (16-bit unsigned int), s16 (16-bit signed int) and structs/unions.
 - No casting. Perhaps implemented later. In calculations all involved will be automatically casted to the highest type in the calculation.
-- No free blocks inside blocks
+- No free floating blocks inside blocks
 
 ## Features not in ANSI C89
 
@@ -34,6 +34,9 @@ Windows: [![Build Status](https://dev.azure.com/villehelin0486/villehelin/_apis/
 - Binary values can be defined with the prefix 0b (e.g., 0b10001101)
 - One line comments with //
 - Local variables can be defined anywhere, not just at the begining of a block
+
+## Bonuses
+
 - Write WLA DX ASM using __asm()
 - Include binary files using __incbin()
 - The "object file" is actually plain WLA DX ASM
@@ -63,12 +66,16 @@ Windows: [![Build Status](https://dev.azure.com/villehelin0486/villehelin/_apis/
 - Add support for free const strings
 - Add more backends (GB-Z80, 6502, 65816...)
 - Add more test projects
-- Improve struct/union support (ANSI C99?)
 - Document all TREE_NODE_TYPE_* use cases
 - Document all TAC_OP_* use cases
 - Add support for explicit casting and type checks
 - Add support for arrays with more than one dimension
 - Create a list of supported ANSI C89 features (and the new features)
+
+
+# Releases
+
+No releases yet
 
 
 # NOTE

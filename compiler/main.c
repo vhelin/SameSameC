@@ -35,8 +35,8 @@
 __near long __stack = 200000;
 #endif
 
-char g_version_string[] = "$VER: SameSameC compiler 0.9a (7.11.2021)";
-char g_samesamec_version[] = "0.9";
+char g_version_string[] = "$VER: SameSameC compiler 0.8a (7.11.2021)";
+char g_samesamec_version[] = "0.8";
 
 char *g_tmp_name = NULL;
 
