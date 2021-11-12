@@ -2466,7 +2466,7 @@ static int _generate_asm_array_write_z80(struct tac *t, FILE *file_out, struct t
 
   if (find_stack_offset(t->arg2_type, t->arg2_s, (int)t->arg2_d, t->arg2_node, &arg2_offset, function_node) == FAILED)
     return FAILED;
-  
+
   /* generate asm */
 
   /******************************************************************************************************/
@@ -2534,6 +2534,7 @@ static int _generate_asm_array_write_z80(struct tac *t, FILE *file_out, struct t
   iy_offset = 0;
   
   if (t->result_type == TAC_ARG_TYPE_CONSTANT) {
+    _load_value_to_iy((int)t->result_d, file_out);
   }
   else if (t->result_type == TAC_ARG_TYPE_TEMP) {
     fprintf(file_out, "      ; offset %d\n", result_offset);

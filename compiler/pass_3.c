@@ -541,7 +541,7 @@ static void _print_asm(struct tree_node *node) {
 }
 
 
-static void _print_statement(struct tree_node *node, int line) {
+void print_statement(struct tree_node *node, int line) {
 
   if (node == NULL)
     return;
@@ -608,7 +608,7 @@ static void _print_block(struct tree_node *node) {
   g_current_indentation_depth += 2;
 
   for (i = 0; i < node->added_children; i++)
-    _print_statement(node->children[i], i);
+    print_statement(node->children[i], i);
 
   g_current_indentation_depth -= 2;
 }
