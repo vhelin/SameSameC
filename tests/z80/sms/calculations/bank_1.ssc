@@ -1,0 +1,96 @@
+
+void convertNumbersToChars16QUICK(u16 value, u8 **chars);
+
+void calculateAndPrint5(u8 *chars, u8 one, u8 zero) {
+
+  u8 *start = chars;
+
+  //////////////////////////////////////////////////////////////////////////////////////////
+  // $7521 = $7521 = $7521 = $7521
+  //////////////////////////////////////////////////////////////////////////////////////////
+
+  chars[0] = 0x04; // '$'
+  chars++;
+  chars[0] = 0x00;
+  chars++;
+
+  convertNumbersToChars16QUICK(0x7521, &chars); // "7521"
+
+  chars[0] = 0x00; // ' '
+  chars++;
+  chars[0] = 0x00;
+  chars++;
+  chars[0] = 0x1D; // '='
+  chars++;
+  chars[0] = 0x00;
+  chars++;
+  chars[0] = 0x00; // ' '
+  chars++;
+  chars[0] = 0x00;
+  chars++;
+  
+  chars[0] = 0x04; // '$'
+  chars++;
+  chars[0] = 0x00;
+  chars++;
+
+  s16 result = ((((0x6543 | 0x0095) % 0x1001) << 4) - 10000) ^ 0x4321;
+  convertNumbersToChars16QUICK(result, &chars); // "7521"
+
+  chars[0] = 0x00; // ' '
+  chars++;
+  chars[0] = 0x00;
+  chars++;
+  chars[0] = 0x1D; // '='
+  chars++;
+  chars[0] = 0x00;
+  chars++;
+  chars[0] = 0x00; // ' '
+  chars++;
+  chars[0] = 0x00;
+  chars++;
+  
+  chars[0] = 0x04; // '$'
+  chars++;
+  chars[0] = 0x00;
+  chars++;
+  
+  u16 var1 = 0x6543;
+  u8  var2 = 0x95;
+  u16 var3 = 10000;
+  u16 var4 = 0x4321;
+
+  result = (((var1 | var2) % 0x1001) << 4) - var3;
+  result ^= var4;
+  convertNumbersToChars16QUICK(result, &chars); // "7521"
+
+  chars[0] = 0x00; // ' '
+  chars++;
+  chars[0] = 0x00;
+  chars++;
+  chars[0] = 0x1D; // '='
+  chars++;
+  chars[0] = 0x00;
+  chars++;
+  chars[0] = 0x00; // ' '
+  chars++;
+  chars[0] = 0x00;
+  chars++;
+  
+  chars[0] = 0x04; // '$'
+  chars++;
+  chars[0] = 0x00;
+  chars++;
+  
+  result = ((((var1 | zero) | (zero | var2)) % (0x1001 | one)) << (4 - one + one)) - (zero | var3);
+  result ^= (var4 | zero);
+  convertNumbersToChars16QUICK(result, &chars); // "7521"
+
+  // output line
+  __z80_out[0xBF] = 0x00;
+  __z80_out[0xBF] = 0x45 | 0x38;
+  while (start < chars) {
+    __z80_out[0xBE] = start[0];
+    start++;
+  }
+}

@@ -27,6 +27,7 @@ char g_version_string[] = "$VER: SameSameC linker 0.8a (7.11.2021)";
 char g_samesamec_version[] = "0.8";
 
 int g_verbose = NO, g_quiet = NO, g_target = TARGET_NONE, g_final_name_index = -1;
+int g_rom_banks = 1;
 char g_asm_file_name[MAX_NAME_LENGTH+1], g_object_file_name[MAX_NAME_LENGTH+1], g_link_file_name[MAX_NAME_LENGTH+1];
 
 
@@ -61,8 +62,9 @@ int main(int argc, char *argv[]) {
     printf("%s\n\n", g_version_string);
     printf("USAGE: %s <ARCHITECTURE> [OPTIONS] -o <ROM/PRG FILE> <ASM FILES>\n\n", argv[0]);
     printf("Options:\n");
-    printf("-q       Quiet\n");
-    printf("-v       Verbose messages\n\n");
+    printf("-q          Quiet\n");
+    printf("-v          Verbose messages\n");
+    printf("-ro <BANKS> ROM banks\n\n");
     printf("Achitectures:\n");
     printf("-lsms    Link a SMS ROM\n\n");
     printf("EXAMPLE: %s -lsms -v -o game.rom main.asm menu.asm music.asm\n\n", argv[0]);
@@ -209,6 +211,17 @@ int parse_flags(char **flags, int flagc) {
       g_target = TARGET_SMS;
       continue;
     }    
+    else if (!strcmp(flags[count], "-ro")) {
+      if (count + 1 < flagc) {
+        /* get arg */
+        g_rom_banks = atoi(flags[count+1]);
+      }
+      else
+        return FAILED;
+
+      count++;
+      continue;
+    }
     else
       return FAILED;
   }

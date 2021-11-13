@@ -12,6 +12,7 @@
 
 extern struct file *g_files_first, *g_files_last;
 extern unsigned char g_copy_bytes_bank[256];
+extern int g_rom_banks;
 
 
 int arch_z80_write_system_init(int target, FILE *file_out) {
@@ -42,9 +43,9 @@ int arch_z80_write_system_init(int target, FILE *file_out) {
     fprintf(file_out, "\n");
     
     fprintf(file_out, "  .ROMBANKMAP\n");
-    fprintf(file_out, "    BANKSTOTAL 1\n");
+    fprintf(file_out, "    BANKSTOTAL %d\n", g_rom_banks);
     fprintf(file_out, "    BANKSIZE $4000\n");
-    fprintf(file_out, "    BANKS 1\n");
+    fprintf(file_out, "    BANKS %d\n", g_rom_banks);
     fprintf(file_out, "  .ENDRO\n");
     fprintf(file_out, "\n");
     

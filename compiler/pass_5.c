@@ -345,20 +345,7 @@ static int _remember_a_removed_jump_destination(char *label) {
 }
 
 
-static int _get_registers_index_in_function_call_arguments(struct tac *t, int reg) {
-
-  int i;
-
-  for (i = 0; i < t->arguments_count; i++) {
-    if (t->arguments[i].type == TAC_ARG_TYPE_TEMP && ((int)t->arguments[i].value) == reg)
-      return i;
-  }
-
-  return -1;
-}
-
-
-static int _get_variable_index_in_function_call_arguments(struct tac *t, int type, char *label, int r) {
+static int _get_variable_index_in_function_call_arguments(struct tac *t, int type, struct tree_node *label_node, int r) {
 
   int i;
 
@@ -366,7 +353,7 @@ static int _get_variable_index_in_function_call_arguments(struct tac *t, int typ
     if (t->arguments[i].type == type) {
       if (type == TAC_ARG_TYPE_TEMP && r == (int)t->arguments[i].value)
         return i;
-      if (type == TAC_ARG_TYPE_LABEL && strcmp(label, t->arguments[i].label) == 0)
+      if (type == TAC_ARG_TYPE_LABEL && label_node == t->arguments[i].node)
         return i;
     }
   }
@@ -1598,9 +1585,9 @@ static int _optimize_il_22(int *optimizations_counter) {
 static int _optimize_il_23(int *optimizations_counter) {
   
   /*
-    rX = ?       <--- REMOVE rX if rX doesn't appear elsewhere
+    var = A
     ...
-    ?  = rX * rB <--- REMOVE rX if rX doesn't appear elsewhere
+    function(var) <--- embed var if possible
   */
 
   int i = 0;
@@ -1615,42 +1602,54 @@ static int _optimize_il_23(int *optimizations_counter) {
       return FAILED;
 
     while (i < end) {
-      int current, next, look_for_source = NO;
+      int current, next;
 
       current = _find_next_living_tac(i);
 
       if (current < 0)
         break;
 
-      if (g_tacs[current].op == TAC_OP_ASSIGNMENT &&
-          g_tacs[current].result_type == TAC_ARG_TYPE_TEMP &&
-          g_register_reads[(int)g_tacs[current].result_d] == 1 && g_register_writes[(int)g_tacs[current].result_d] == 1) {
+      if (g_tacs[current].op == TAC_OP_ASSIGNMENT) {
         next = current;
 
-        if (g_tacs[current].arg1_type == TAC_ARG_TYPE_LABEL)
-          look_for_source = YES;
-        
         while (1) {
           next = _find_next_living_tac(next + 1);
 
           if (next < 0)
             break;
 
-          if (look_for_source == YES && g_tacs[next].result_type == TAC_ARG_TYPE_LABEL && g_tacs[current].arg1_node == g_tacs[next].result_node) {
-            /* cannot jump over writes to the same variable */
-            next = -1;
-            break;
-          }
-          
           if (g_tacs[next].op == TAC_OP_LABEL) {
             /* we cannot search past a label */
             next = -1;
             break;
           }
-          else if (g_tacs[next].op == TAC_OP_FUNCTION_CALL || g_tacs[next].op == TAC_OP_FUNCTION_CALL_USE_RETURN_VALUE) {
+            
+          if (g_tacs[next].result_type == TAC_ARG_TYPE_TEMP && g_tacs[current].result_type == TAC_ARG_TYPE_TEMP && (int)g_tacs[current].result_d == (int)g_tacs[next].result_d) {
+            /* cannot jump over writes to the same register */
+            next = -1;
+            break;
+          }
+          if (g_tacs[next].result_type == TAC_ARG_TYPE_LABEL && g_tacs[current].result_type == TAC_ARG_TYPE_LABEL && g_tacs[current].result_node == g_tacs[next].result_node) {
+            /* cannot jump over writes to the same variable */
+            next = -1;
+            break;
+          }
+
+          if (g_tacs[next].result_type == TAC_ARG_TYPE_TEMP && g_tacs[current].arg1_type == TAC_ARG_TYPE_TEMP && (int)g_tacs[current].arg1_d == (int)g_tacs[next].result_d) {
+            /* cannot jump over writes to A */
+            next = -1;
+            break;
+          }
+          if (g_tacs[next].result_type == TAC_ARG_TYPE_LABEL && g_tacs[current].arg1_type == TAC_ARG_TYPE_LABEL && g_tacs[current].arg1_node == g_tacs[next].result_node) {
+            /* cannot jump over writes to A */
+            next = -1;
+            break;
+          }
+
+          if (g_tacs[next].op == TAC_OP_FUNCTION_CALL || g_tacs[next].op == TAC_OP_FUNCTION_CALL_USE_RETURN_VALUE) {
             int index;
 
-            index = _get_registers_index_in_function_call_arguments(&g_tacs[next], (int)g_tacs[current].result_d);
+            index = _get_variable_index_in_function_call_arguments(&g_tacs[next], g_tacs[current].result_type, g_tacs[current].result_node, (int)g_tacs[current].result_d);
             if (index >= 0) {
               /* found match! rX can be removed, variable/constant embedded! */
               struct function_argument *arg = &(g_tacs[next].arguments[index]);
@@ -1660,7 +1659,9 @@ static int _optimize_il_23(int *optimizations_counter) {
               arg->label = g_tacs[current].arg1_s; /* NOTE! we move the label (if there's one) */
               arg->node = g_tacs[current].arg1_node;
               arg->var_type = g_tacs[current].arg1_var_type;
+              /* NOTE: use the target's promotion
               arg->var_type_promoted = g_tacs[current].arg1_var_type_promoted;
+              */
 
               g_tacs[current].arg1_s = NULL;
               g_tacs[current].arg1_node = NULL;
@@ -1678,33 +1679,51 @@ static int _optimize_il_23(int *optimizations_counter) {
           else if (g_tacs[next].op == TAC_OP_CREATE_VARIABLE) {
           }
           else if (g_tacs[next].op != TAC_OP_DEAD) {
-            if (g_tacs[next].arg1_type == TAC_ARG_TYPE_TEMP && (int)g_tacs[current].result_d == (int)g_tacs[next].arg1_d) {
-              /* found match! rX can be removed, variable/constant embedded! */
-              if (tac_set_arg1(&g_tacs[next], g_tacs[current].arg1_type, g_tacs[current].arg1_d, g_tacs[current].arg1_s) == FAILED)
-                return FAILED;
-              g_tacs[next].arg1_node = g_tacs[current].arg1_node;
-              g_tacs[next].arg1_var_type_promoted = g_tacs[current].arg1_var_type_promoted;
-              g_tacs[current].op = TAC_OP_DEAD;
-              (*optimizations_counter)++;
+            if ((g_tacs[next].arg1_type == TAC_ARG_TYPE_TEMP && g_tacs[current].result_type == TAC_ARG_TYPE_TEMP && (int)g_tacs[current].result_d == (int)g_tacs[next].arg1_d) ||
+                (g_tacs[next].arg1_type == TAC_ARG_TYPE_LABEL && g_tacs[current].result_type == TAC_ARG_TYPE_LABEL && g_tacs[current].result_node == g_tacs[next].arg1_node)) {
+              if (g_tacs[next].op == TAC_OP_GET_ADDRESS) {
+                /* cannot optimize past TAC_OP_GET_ADDRESS */
+                next = -1;
+                break;
+              }
+              else {
+                /* found match! variable/constant can be embedded! */
+                if (tac_set_arg1(&g_tacs[next], g_tacs[current].arg1_type, g_tacs[current].arg1_d, g_tacs[current].arg1_s) == FAILED)
+                  return FAILED;
+                g_tacs[next].arg1_node = g_tacs[current].arg1_node;
+                /* NOTE: use the target's promotion
+                g_tacs[next].arg1_var_type_promoted = g_tacs[current].arg1_var_type_promoted;
+                */
+                (*optimizations_counter)++;
 #if defined(DEBUG_PASS_5)
-              fprintf(stderr, "_optimize_il_23(): SUCCESS!\n");
+                fprintf(stderr, "_optimize_il_23(): SUCCESS!\n");
 #endif
-              next = -1;
-              break;
+                next = -1;
+                break;
+              }
             }
-            if (g_tacs[next].arg2_type == TAC_ARG_TYPE_TEMP && (int)g_tacs[current].result_d == (int)g_tacs[next].arg2_d) {
-              /* found match! rX can be removed, constant embedded! */
-              if (tac_set_arg2(&g_tacs[next], g_tacs[current].arg1_type, g_tacs[current].arg1_d, g_tacs[current].arg1_s) == FAILED)
-                return FAILED;
-              g_tacs[next].arg2_node = g_tacs[current].arg1_node;
-              g_tacs[next].arg2_var_type_promoted = g_tacs[current].arg1_var_type_promoted;
-              g_tacs[current].op = TAC_OP_DEAD;
-              (*optimizations_counter)++;
+            if ((g_tacs[next].arg2_type == TAC_ARG_TYPE_TEMP && g_tacs[current].result_type == TAC_ARG_TYPE_TEMP && (int)g_tacs[current].result_d == (int)g_tacs[next].arg2_d) ||
+                (g_tacs[next].arg2_type == TAC_ARG_TYPE_LABEL && g_tacs[current].result_type == TAC_ARG_TYPE_LABEL && g_tacs[current].result_node == g_tacs[next].arg2_node)) {
+              if (g_tacs[next].op == TAC_OP_GET_ADDRESS) {
+                /* cannot optimize past TAC_OP_GET_ADDRESS */
+                next = -1;
+                break;
+              }
+              else {
+                /* found match! variable/constant can be embedded! */
+                if (tac_set_arg2(&g_tacs[next], g_tacs[current].arg1_type, g_tacs[current].arg1_d, g_tacs[current].arg1_s) == FAILED)
+                  return FAILED;
+                g_tacs[next].arg2_node = g_tacs[current].arg1_node;
+                /* NOTE: use the target's promotion
+                g_tacs[next].arg2_var_type_promoted = g_tacs[current].arg1_var_type_promoted;
+                */
+                (*optimizations_counter)++;
 #if defined(DEBUG_PASS_5)
-              fprintf(stderr, "_optimize_il_23(): SUCCESS!\n");
+                fprintf(stderr, "_optimize_il_23(): SUCCESS!\n");
 #endif
-              next = -1;
-              break;
+                next = -1;
+                break;
+              }
             }
           }
 
@@ -2193,7 +2212,7 @@ static int _optimize_il_31(int *optimizations_counter) {
               next = -1;
               break;
             }
-            else if (g_tacs[current].result_type == TAC_ARG_TYPE_LABEL && strcmp(g_tacs[current].result_s, g_tacs[next].result_s) == 0) {
+            else if (g_tacs[current].result_type == TAC_ARG_TYPE_LABEL && g_tacs[current].result_node == g_tacs[next].result_node) {
               /* cannot jump over writes to the same variable */
               next = -1;
               break;
@@ -2205,7 +2224,7 @@ static int _optimize_il_31(int *optimizations_counter) {
               next = -1;
               break;
             }
-            else if (g_tacs[current].result_type == TAC_ARG_TYPE_LABEL && strcmp(g_tacs[current].result_s, g_tacs[next].arg1_s) == 0) {
+            else if (g_tacs[current].result_type == TAC_ARG_TYPE_LABEL && g_tacs[current].result_node == g_tacs[next].arg1_node) {
               /* cannot jump over reads from the same variable */
               next = -1;
               break;
@@ -2217,7 +2236,7 @@ static int _optimize_il_31(int *optimizations_counter) {
               next = -1;
               break;
             }
-            else if (g_tacs[current].result_type == TAC_ARG_TYPE_LABEL && strcmp(g_tacs[current].result_s, g_tacs[next].arg2_s) == 0) {
+            else if (g_tacs[current].result_type == TAC_ARG_TYPE_LABEL && g_tacs[current].result_node == g_tacs[next].arg2_node) {
               /* cannot jump over reads from the same variable */
               next = -1;
               break;
@@ -2225,7 +2244,7 @@ static int _optimize_il_31(int *optimizations_counter) {
           }
 
           if (g_tacs[next].op == TAC_OP_FUNCTION_CALL || g_tacs[next].op == TAC_OP_FUNCTION_CALL_USE_RETURN_VALUE) {
-            if (_get_variable_index_in_function_call_arguments(&g_tacs[next], g_tacs[current].result_type, g_tacs[current].result_s, (int)g_tacs[current].result_d) >= 0) {
+            if (_get_variable_index_in_function_call_arguments(&g_tacs[next], g_tacs[current].result_type, g_tacs[current].result_node, (int)g_tacs[current].result_d) >= 0) {
               /* cannot jump over reads from the same variable */
               next = -1;
               break;
@@ -2239,13 +2258,17 @@ static int _optimize_il_31(int *optimizations_counter) {
           }
           else if (g_tacs[next].op == TAC_OP_ARRAY_WRITE) {
             if (g_tacs[next].result_type == g_tacs[current].result_type && ((g_tacs[current].result_type == TAC_ARG_TYPE_TEMP && (int)g_tacs[current].result_d == (int)g_tacs[next].result_d) ||
-                                                                            (g_tacs[current].result_type == TAC_ARG_TYPE_LABEL && strcmp(g_tacs[current].result_s, g_tacs[next].result_s) == 0))) {
+                                                                            (g_tacs[current].result_type == TAC_ARG_TYPE_LABEL && g_tacs[current].result_node == g_tacs[next].result_node))) {
               /* found match! operations can be merged, variable/constant/register embedded! */
               if (tac_set_result(&g_tacs[next], g_tacs[current].arg1_type, g_tacs[current].arg1_d, g_tacs[current].arg1_s) == FAILED)
                 return FAILED;
               g_tacs[next].result_node = g_tacs[current].arg1_node;
+              /* use the target's promotion
               g_tacs[next].result_var_type_promoted = g_tacs[current].arg1_var_type_promoted;
+              */
+              /*
               g_tacs[current].op = TAC_OP_DEAD;
+              */
               (*optimizations_counter)++;
 #if defined(DEBUG_PASS_5)
               fprintf(stderr, "_optimize_il_31(): SUCCESS!\n");
@@ -2376,7 +2399,7 @@ static int _optimize_il_33(int *optimizations_counter) {
             break;
           }
           else if (g_tacs[next].arg1_type == g_tacs[current].result_type && ((g_tacs[current].result_type == TAC_ARG_TYPE_TEMP && (int)g_tacs[current].result_d == (int)g_tacs[next].arg1_d) ||
-                                                                             (g_tacs[current].result_type == TAC_ARG_TYPE_LABEL && strcmp(g_tacs[current].result_s, g_tacs[next].arg1_s) == 0))) {
+                                                                             (g_tacs[current].result_type == TAC_ARG_TYPE_LABEL && g_tacs[current].result_node == g_tacs[next].arg1_node))) {
             if (g_tacs[next].op == TAC_OP_GET_ADDRESS) {
               /* cannot search past TAC_OP_GET_ADDRESSes */
               next = -1;
@@ -2387,7 +2410,9 @@ static int _optimize_il_33(int *optimizations_counter) {
               if (tac_set_arg1(&g_tacs[next], g_tacs[current].arg1_type, g_tacs[current].arg1_d, g_tacs[current].arg1_s) == FAILED)
                 return FAILED;
               g_tacs[next].arg1_node = g_tacs[current].arg1_node;
+              /* use the target's promotion
               g_tacs[next].arg1_var_type_promoted = g_tacs[current].arg1_var_type_promoted;
+              */
               (*optimizations_counter)++;
 #if defined(DEBUG_PASS_5)
               fprintf(stderr, "_optimize_il_33(): SUCCESS!\n");
@@ -2397,7 +2422,7 @@ static int _optimize_il_33(int *optimizations_counter) {
             }
           }
           else if (g_tacs[next].arg2_type == g_tacs[current].result_type && ((g_tacs[current].result_type == TAC_ARG_TYPE_TEMP && (int)g_tacs[current].result_d == (int)g_tacs[next].arg2_d) ||
-                                                                             (g_tacs[current].result_type == TAC_ARG_TYPE_LABEL && strcmp(g_tacs[current].result_s, g_tacs[next].arg2_s) == 0))) {
+                                                                             (g_tacs[current].result_type == TAC_ARG_TYPE_LABEL && g_tacs[current].result_node == g_tacs[next].arg2_node))) {
             if (g_tacs[next].op == TAC_OP_GET_ADDRESS) {
               /* cannot search past TAC_OP_GET_ADDRESSes */
               next = -1;
@@ -2408,7 +2433,9 @@ static int _optimize_il_33(int *optimizations_counter) {
               if (tac_set_arg2(&g_tacs[next], g_tacs[current].arg1_type, g_tacs[current].arg1_d, g_tacs[current].arg1_s) == FAILED)
                 return FAILED;
               g_tacs[next].arg2_node = g_tacs[current].arg1_node;
+              /* use the target's promotion
               g_tacs[next].arg2_var_type_promoted = g_tacs[current].arg1_var_type_promoted;
+              */
               (*optimizations_counter)++;
 #if defined(DEBUG_PASS_5)
               fprintf(stderr, "_optimize_il_33(): SUCCESS!\n");
@@ -2422,7 +2449,7 @@ static int _optimize_il_33(int *optimizations_counter) {
             break;
 
           if (g_tacs[next].result_type == g_tacs[current].result_type && ((g_tacs[current].result_type == TAC_ARG_TYPE_TEMP && (int)g_tacs[current].result_d == (int)g_tacs[next].result_d) ||
-                                                                          (g_tacs[current].result_type == TAC_ARG_TYPE_LABEL && strcmp(g_tacs[current].result_s, g_tacs[next].result_s) == 0))) {
+                                                                          (g_tacs[current].result_type == TAC_ARG_TYPE_LABEL && g_tacs[current].result_node == g_tacs[next].result_node))) {
             /* cannot jump over writes to the same variable */
             next = -1;
             break;
@@ -2483,19 +2510,19 @@ static int _optimize_il_34(int *optimizations_counter) {
             break;
           }
           else if (g_tacs[next].arg1_type == g_tacs[current].result_type && ((g_tacs[current].result_type == TAC_ARG_TYPE_TEMP && (int)g_tacs[current].result_d == (int)g_tacs[next].arg1_d) ||
-                                                                             (g_tacs[current].result_type == TAC_ARG_TYPE_LABEL && strcmp(g_tacs[current].result_s, g_tacs[next].arg1_s) == 0))) {
+                                                                             (g_tacs[current].result_type == TAC_ARG_TYPE_LABEL && g_tacs[current].result_node == g_tacs[next].arg1_node))) {
             /* we cannot search past reads from A */
             next = -1;
             break;
           }
           else if (g_tacs[next].arg2_type == g_tacs[current].result_type && ((g_tacs[current].result_type == TAC_ARG_TYPE_TEMP && (int)g_tacs[current].result_d == (int)g_tacs[next].arg2_d) ||
-                                                                             (g_tacs[current].result_type == TAC_ARG_TYPE_LABEL && strcmp(g_tacs[current].result_s, g_tacs[next].arg2_s) == 0))) {
+                                                                             (g_tacs[current].result_type == TAC_ARG_TYPE_LABEL && g_tacs[current].result_node == g_tacs[next].arg2_node))) {
             /* we cannot search past reads from A */
             next = -1;
             break;
           }
           else if (g_tacs[next].op == TAC_OP_FUNCTION_CALL || g_tacs[next].op == TAC_OP_FUNCTION_CALL_USE_RETURN_VALUE) {
-            if (_get_variable_index_in_function_call_arguments(&g_tacs[next], g_tacs[current].result_type, g_tacs[current].result_s, (int)g_tacs[current].result_d) >= 0) {
+            if (_get_variable_index_in_function_call_arguments(&g_tacs[next], g_tacs[current].result_type, g_tacs[current].result_node, (int)g_tacs[current].result_d) >= 0) {
               /* cannot jump over reads from the same variable */
               next = -1;
               break;
@@ -2503,7 +2530,7 @@ static int _optimize_il_34(int *optimizations_counter) {
           }
           
           if (g_tacs[next].result_type == g_tacs[current].result_type && ((g_tacs[current].result_type == TAC_ARG_TYPE_TEMP && (int)g_tacs[current].result_d == (int)g_tacs[next].result_d) ||
-                                                                          (g_tacs[current].result_type == TAC_ARG_TYPE_LABEL && strcmp(g_tacs[current].result_s, g_tacs[next].result_s) == 0))) {
+                                                                          (g_tacs[current].result_type == TAC_ARG_TYPE_LABEL && g_tacs[current].result_node == g_tacs[next].result_node))) {
             if (g_backend == BACKEND_Z80) {
               if (g_tacs[current].result_type == TAC_ARG_TYPE_LABEL && strcmp(g_tacs[current].result_s, "__z80_out") == 0) {
                 /* we cannot optimize writes to __z80_out away */
@@ -2598,19 +2625,19 @@ static int _optimize_il_1000(int *optimizations_counter) {
           }
          
           if (g_tacs[next].arg1_type == g_tacs[current].result_type && ((g_tacs[current].result_type == TAC_ARG_TYPE_TEMP && (int)g_tacs[current].result_d == (int)g_tacs[next].arg1_d) ||
-                                                                        (g_tacs[current].result_type == TAC_ARG_TYPE_LABEL && strcmp(g_tacs[current].result_s, g_tacs[next].arg1_s) == 0))) {
+                                                                        (g_tacs[current].result_type == TAC_ARG_TYPE_LABEL && g_tacs[current].result_node == g_tacs[next].arg1_node))) {
             /* we cannot search past reads from A */
             next = -1;
             break;
           }
           else if (g_tacs[next].arg2_type == g_tacs[current].result_type && ((g_tacs[current].result_type == TAC_ARG_TYPE_TEMP && (int)g_tacs[current].result_d == (int)g_tacs[next].arg2_d) ||
-                                                                             (g_tacs[current].result_type == TAC_ARG_TYPE_LABEL && strcmp(g_tacs[current].result_s, g_tacs[next].arg2_s) == 0))) {
+                                                                             (g_tacs[current].result_type == TAC_ARG_TYPE_LABEL && g_tacs[current].result_node == g_tacs[next].arg2_node))) {
             /* we cannot search past reads from A */
             next = -1;
             break;
           }
           else if (g_tacs[next].op == TAC_OP_FUNCTION_CALL || g_tacs[next].op == TAC_OP_FUNCTION_CALL_USE_RETURN_VALUE) {
-            if (_get_variable_index_in_function_call_arguments(&g_tacs[next], g_tacs[current].result_type, g_tacs[current].result_s, (int)g_tacs[current].result_d) >= 0) {
+            if (_get_variable_index_in_function_call_arguments(&g_tacs[next], g_tacs[current].result_type, g_tacs[current].result_node, (int)g_tacs[current].result_d) >= 0) {
               /* cannot jump over reads from the same variable */
               next = -1;
               break;
@@ -2684,13 +2711,13 @@ static int _optimize_il_1001(int *optimizations_counter) {
             }
           }
           else if (g_tacs[next].arg1_type == g_tacs[current].result_type && ((g_tacs[current].result_type == TAC_ARG_TYPE_TEMP && (int)g_tacs[current].result_d == (int)g_tacs[next].arg1_d) ||
-                                                                        (g_tacs[current].result_type == TAC_ARG_TYPE_LABEL && strcmp(g_tacs[current].result_s, g_tacs[next].arg1_s) == 0))) {
+                                                                             (g_tacs[current].result_type == TAC_ARG_TYPE_LABEL && g_tacs[current].result_node == g_tacs[next].arg1_node))) {
             /* we cannot search past reads from the variable */
             next = -1;
             break;
           }
           else if (g_tacs[next].arg2_type == g_tacs[current].result_type && ((g_tacs[current].result_type == TAC_ARG_TYPE_TEMP && (int)g_tacs[current].result_d == (int)g_tacs[next].arg2_d) ||
-                                                                             (g_tacs[current].result_type == TAC_ARG_TYPE_LABEL && strcmp(g_tacs[current].result_s, g_tacs[next].arg2_s) == 0))) {
+                                                                             (g_tacs[current].result_type == TAC_ARG_TYPE_LABEL && g_tacs[current].result_node == g_tacs[next].arg2_node))) {
             /* we cannot search past reads from the variable */
             next = -1;
             break;
