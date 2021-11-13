@@ -103,6 +103,23 @@ static int _find_next_living_tac(int i) {
 }
 
 
+static int _find_next_living_tac_all(int i) {
+
+  if (i < 0)
+    return -1;
+  
+  while (i < g_tacs_count) {
+    if (g_tacs[i].op == TAC_OP_CREATE_VARIABLE && g_tacs[i].result_node->type == TREE_NODE_TYPE_CREATE_VARIABLE_FUNCTION_ARGUMENT) {
+    }
+    else if (g_tacs[i].op != TAC_OP_DEAD)
+      return i;
+    i++;
+  }
+
+  return -1;
+}
+
+
 /*
 static int _is_il_block_end(struct tac *t) {
 
@@ -325,6 +342,49 @@ static int _remember_a_removed_jump_destination(char *label) {
   }
   
   return SUCCEEDED;
+}
+
+
+static int _get_registers_index_in_function_call_arguments(struct tac *t, int reg) {
+
+  int i;
+
+  for (i = 0; i < t->arguments_count; i++) {
+    if (t->arguments[i].type == TAC_ARG_TYPE_TEMP && ((int)t->arguments[i].value) == reg)
+      return i;
+  }
+
+  return -1;
+}
+
+
+static int _get_variable_index_in_function_call_arguments(struct tac *t, int type, char *label, int r) {
+
+  int i;
+
+  for (i = 0; i < t->arguments_count; i++) {
+    if (t->arguments[i].type == type) {
+      if (type == TAC_ARG_TYPE_TEMP && r == (int)t->arguments[i].value)
+        return i;
+      if (type == TAC_ARG_TYPE_LABEL && strcmp(label, t->arguments[i].label) == 0)
+        return i;
+    }
+  }
+
+  return -1;
+}
+
+
+static int _get_variable_index_in_function_call_arguments_with_tree_node(struct tac *t, struct tree_node *node) {
+
+  int i;
+
+  for (i = 0; i < t->arguments_count; i++) {
+    if (t->arguments[i].node == node)
+        return i;
+  }
+
+  return -1;
 }
 
 
@@ -821,61 +881,6 @@ static int _optimize_il_10(int *optimizations_counter) {
         (*optimizations_counter)++;
 #if defined(DEBUG_PASS_5)
         fprintf(stderr, "_optimize_il_10(): SUCCESS!\n");
-#endif
-      }
-
-      i = next;
-    }
-
-    if (is_last_function == YES)
-      break;
-  }
-
-  return SUCCEEDED;
-}
-
-
-static int _optimize_il_11(int *optimizations_counter) {
-
-  int i = 0;
-
-  return SUCCEEDED;
-
-  /* TODO: FIX THIS, DOESN'T WORK ALWAYS */
-
-  /*
-    X = ?  <--- REMOVE the first assignment
-    X = ?  <--- REMOVE the first assignment
-  */
-
-  /* PS. this is not a very good optimization, doesn't work that often */
-  /* PPS. make this find two assigments with n TACs between them */
-  
-  while (1) {
-    int is_last_function = NO;
-    int end = _find_end_of_il_function(i, &is_last_function);
-    if (end < 0)
-      return FAILED;
-
-    while (i < end) {
-      int current, next;
-
-      current = _find_next_living_tac(i);
-      next = _find_next_living_tac(current + 1);
-
-      if (current < 0 || next < 0)
-        break;
-
-      if (g_tacs[current].op == TAC_OP_ASSIGNMENT && g_tacs[next].op == TAC_OP_ASSIGNMENT &&
-          g_tacs[current].result_type == g_tacs[next].result_type &&
-          (int)g_tacs[current].result_d == (int)g_tacs[next].result_d &&
-          ((g_tacs[current].result_s == NULL && g_tacs[next].result_s == NULL) ||
-           (strcmp(g_tacs[current].result_s, g_tacs[next].result_s) == 0))) {
-        /* found match! the first assigment can be ignored! */
-        g_tacs[current].op = TAC_OP_DEAD;
-        (*optimizations_counter)++;
-#if defined(DEBUG_PASS_5)
-        fprintf(stderr, "_optimize_il_11(): SUCCESS!\n");
 #endif
       }
 
@@ -1590,19 +1595,6 @@ static int _optimize_il_22(int *optimizations_counter) {
 }
 
 
-static int _get_registers_index_in_function_call_arguments(struct tac *t, int reg) {
-
-  int i;
-
-  for (i = 0; i < t->arguments_count; i++) {
-    if (t->arguments[i].type == TAC_ARG_TYPE_TEMP && ((int)t->arguments[i].value) == reg)
-      return i;
-  }
-
-  return -1;
-}
-
-
 static int _optimize_il_23(int *optimizations_counter) {
   
   /*
@@ -2231,6 +2223,14 @@ static int _optimize_il_31(int *optimizations_counter) {
               break;
             }
           }
+
+          if (g_tacs[next].op == TAC_OP_FUNCTION_CALL || g_tacs[next].op == TAC_OP_FUNCTION_CALL_USE_RETURN_VALUE) {
+            if (_get_variable_index_in_function_call_arguments(&g_tacs[next], g_tacs[current].result_type, g_tacs[current].result_s, (int)g_tacs[current].result_d) >= 0) {
+              /* cannot jump over reads from the same variable */
+              next = -1;
+              break;
+            }
+          }
           
           if (g_tacs[next].op == TAC_OP_LABEL) {
             /* we cannot search past a label */
@@ -2370,13 +2370,6 @@ static int _optimize_il_33(int *optimizations_counter) {
           if (next < 0)
             break;
 
-          if (g_tacs[next].result_type == g_tacs[current].result_type && ((g_tacs[current].result_type == TAC_ARG_TYPE_TEMP && (int)g_tacs[current].result_d == (int)g_tacs[next].result_d) ||
-                                                                          (g_tacs[current].result_type == TAC_ARG_TYPE_LABEL && strcmp(g_tacs[current].result_s, g_tacs[next].result_s) == 0))) {
-            /* cannot jump over writes to the same variable */
-            next = -1;
-            break;
-          }
-          
           if (g_tacs[next].op == TAC_OP_LABEL) {
             /* we cannot search past a label */
             next = -1;
@@ -2384,29 +2377,321 @@ static int _optimize_il_33(int *optimizations_counter) {
           }
           else if (g_tacs[next].arg1_type == g_tacs[current].result_type && ((g_tacs[current].result_type == TAC_ARG_TYPE_TEMP && (int)g_tacs[current].result_d == (int)g_tacs[next].arg1_d) ||
                                                                              (g_tacs[current].result_type == TAC_ARG_TYPE_LABEL && strcmp(g_tacs[current].result_s, g_tacs[next].arg1_s) == 0))) {
-            /* found match! X can be replaced with cA */
-            if (tac_set_arg1(&g_tacs[next], g_tacs[current].arg1_type, g_tacs[current].arg1_d, g_tacs[current].arg1_s) == FAILED)
-              return FAILED;
-            g_tacs[next].arg1_node = g_tacs[current].arg1_node;
-            g_tacs[next].arg1_var_type_promoted = g_tacs[current].arg1_var_type_promoted;
-            (*optimizations_counter)++;
+            if (g_tacs[next].op == TAC_OP_GET_ADDRESS) {
+              /* cannot search past TAC_OP_GET_ADDRESSes */
+              next = -1;
+              break;
+            }
+            else {            
+              /* found match! X can be replaced with cA */
+              if (tac_set_arg1(&g_tacs[next], g_tacs[current].arg1_type, g_tacs[current].arg1_d, g_tacs[current].arg1_s) == FAILED)
+                return FAILED;
+              g_tacs[next].arg1_node = g_tacs[current].arg1_node;
+              g_tacs[next].arg1_var_type_promoted = g_tacs[current].arg1_var_type_promoted;
+              (*optimizations_counter)++;
 #if defined(DEBUG_PASS_5)
-            fprintf(stderr, "_optimize_il_33(): SUCCESS!\n");
+              fprintf(stderr, "_optimize_il_33(): SUCCESS!\n");
 #endif
+              next = -1;
+              break;
+            }
+          }
+          else if (g_tacs[next].arg2_type == g_tacs[current].result_type && ((g_tacs[current].result_type == TAC_ARG_TYPE_TEMP && (int)g_tacs[current].result_d == (int)g_tacs[next].arg2_d) ||
+                                                                             (g_tacs[current].result_type == TAC_ARG_TYPE_LABEL && strcmp(g_tacs[current].result_s, g_tacs[next].arg2_s) == 0))) {
+            if (g_tacs[next].op == TAC_OP_GET_ADDRESS) {
+              /* cannot search past TAC_OP_GET_ADDRESSes */
+              next = -1;
+              break;
+            }
+            else {
+              /* found match! X can be replaced with cA */
+              if (tac_set_arg2(&g_tacs[next], g_tacs[current].arg1_type, g_tacs[current].arg1_d, g_tacs[current].arg1_s) == FAILED)
+                return FAILED;
+              g_tacs[next].arg2_node = g_tacs[current].arg1_node;
+              g_tacs[next].arg2_var_type_promoted = g_tacs[current].arg1_var_type_promoted;
+              (*optimizations_counter)++;
+#if defined(DEBUG_PASS_5)
+              fprintf(stderr, "_optimize_il_33(): SUCCESS!\n");
+#endif
+              next = -1;
+              break;
+            }
+          }
+
+          if (next < 0)
+            break;
+
+          if (g_tacs[next].result_type == g_tacs[current].result_type && ((g_tacs[current].result_type == TAC_ARG_TYPE_TEMP && (int)g_tacs[current].result_d == (int)g_tacs[next].result_d) ||
+                                                                          (g_tacs[current].result_type == TAC_ARG_TYPE_LABEL && strcmp(g_tacs[current].result_s, g_tacs[next].result_s) == 0))) {
+            /* cannot jump over writes to the same variable */
+            next = -1;
+            break;
+          }
+        }
+      }
+
+      i = current + 1;
+    }
+
+    if (is_last_function == YES)
+      break;
+  }
+
+  return SUCCEEDED;
+}
+
+
+static int _optimize_il_34(int *optimizations_counter) {
+  
+  /*
+    A = ?  <--- remove this assignment if A isn't read between the two TACs
+    ...
+    A = ?
+  */
+
+  int i = 0;
+
+  while (1) {
+    int is_last_function = NO;
+    int end = _find_end_of_il_function(i, &is_last_function);
+    if (end < 0)
+      return FAILED;
+
+    if (_count_and_allocate_register_usage(i, end) == FAILED)
+      return FAILED;
+
+    while (i < end) {
+      int current, next;
+
+      current = _find_next_living_tac(i);
+
+      if (current < 0)
+        break;
+
+      if (g_tacs[current].op == TAC_OP_ASSIGNMENT) {
+        next = current;
+
+        while (1) {
+          next = _find_next_living_tac(next + 1);
+
+          if (next < 0)
+            break;
+
+          if (g_tacs[next].op == TAC_OP_LABEL) {
+            /* we cannot search past a label */
+            next = -1;
+            break;
+          }
+          else if (g_tacs[next].arg1_type == g_tacs[current].result_type && ((g_tacs[current].result_type == TAC_ARG_TYPE_TEMP && (int)g_tacs[current].result_d == (int)g_tacs[next].arg1_d) ||
+                                                                             (g_tacs[current].result_type == TAC_ARG_TYPE_LABEL && strcmp(g_tacs[current].result_s, g_tacs[next].arg1_s) == 0))) {
+            /* we cannot search past reads from A */
             next = -1;
             break;
           }
           else if (g_tacs[next].arg2_type == g_tacs[current].result_type && ((g_tacs[current].result_type == TAC_ARG_TYPE_TEMP && (int)g_tacs[current].result_d == (int)g_tacs[next].arg2_d) ||
                                                                              (g_tacs[current].result_type == TAC_ARG_TYPE_LABEL && strcmp(g_tacs[current].result_s, g_tacs[next].arg2_s) == 0))) {
-            /* found match! X can be replaced with cA */
-            if (tac_set_arg2(&g_tacs[next], g_tacs[current].arg1_type, g_tacs[current].arg1_d, g_tacs[current].arg1_s) == FAILED)
-              return FAILED;
-            g_tacs[next].arg2_node = g_tacs[current].arg1_node;
-            g_tacs[next].arg2_var_type_promoted = g_tacs[current].arg1_var_type_promoted;
+            /* we cannot search past reads from A */
+            next = -1;
+            break;
+          }
+          else if (g_tacs[next].op == TAC_OP_FUNCTION_CALL || g_tacs[next].op == TAC_OP_FUNCTION_CALL_USE_RETURN_VALUE) {
+            if (_get_variable_index_in_function_call_arguments(&g_tacs[next], g_tacs[current].result_type, g_tacs[current].result_s, (int)g_tacs[current].result_d) >= 0) {
+              /* cannot jump over reads from the same variable */
+              next = -1;
+              break;
+            }
+          }
+          
+          if (g_tacs[next].result_type == g_tacs[current].result_type && ((g_tacs[current].result_type == TAC_ARG_TYPE_TEMP && (int)g_tacs[current].result_d == (int)g_tacs[next].result_d) ||
+                                                                          (g_tacs[current].result_type == TAC_ARG_TYPE_LABEL && strcmp(g_tacs[current].result_s, g_tacs[next].result_s) == 0))) {
+            if (g_backend == BACKEND_Z80) {
+              if (g_tacs[current].result_type == TAC_ARG_TYPE_LABEL && strcmp(g_tacs[current].result_s, "__z80_out") == 0) {
+                /* we cannot optimize writes to __z80_out away */
+                next = -1;
+                break;
+              }
+            }
+            if (g_tacs[current].result_type == TAC_ARG_TYPE_LABEL && (g_tacs[current].result_node->flags & TREE_NODE_FLAG_GLOBAL) == TREE_NODE_FLAG_GLOBAL) {
+              /* we cannot optimize writes to global variables away */
+              next = -1;
+              break;
+            }
+            if (g_tacs[next].op == TAC_OP_ARRAY_WRITE) {
+              /* cannot go past an array write to A */
+              next = -1;
+              break;
+            }
+
+            /* found match! the first assignment can be removed! */
+            g_tacs[current].op = TAC_OP_DEAD;
             (*optimizations_counter)++;
 #if defined(DEBUG_PASS_5)
-            fprintf(stderr, "_optimize_il_33(): SUCCESS!\n");
+            fprintf(stderr, "_optimize_il_34(): SUCCESS!\n");
 #endif
+            next = -1;
+            break;
+          }
+
+          if (next < 0)
+            break;
+        }
+      }
+
+      i = current + 1;
+    }
+
+    if (is_last_function == YES)
+      break;
+  }
+
+  return SUCCEEDED;
+}
+
+
+static int _optimize_il_1000(int *optimizations_counter) {
+
+  /*
+    A = ?  <--- remove this assignment if A isn't anywhere else
+  */
+
+  int i = 0;
+
+  while (1) {
+    int is_last_function = NO;
+    int end = _find_end_of_il_function(i, &is_last_function);
+    if (end < 0)
+      return FAILED;
+
+    if (_count_and_allocate_register_usage(i, end) == FAILED)
+      return FAILED;
+
+    while (i < end) {
+      int current, next;
+
+      current = _find_next_living_tac(i);
+
+      if (current < 0)
+        break;
+
+      if (g_tacs[current].op == TAC_OP_ASSIGNMENT) {
+        next = current;
+
+        while (1) {
+          next = _find_next_living_tac(next + 1);
+
+          if (next < 0 || g_tacs[next].function_node != g_tacs[current].function_node) {
+            /* found the end of the function! */
+            if (g_tacs[current].result_type == TAC_ARG_TYPE_LABEL && (g_tacs[current].result_node->flags & TREE_NODE_FLAG_GLOBAL) == TREE_NODE_FLAG_GLOBAL) {
+              /* we cannot optimize writes to global variables away */
+              next = -1;
+              break;
+            }
+
+            /* the assignment can be removed! */
+            g_tacs[current].op = TAC_OP_DEAD;
+            (*optimizations_counter)++;
+#if defined(DEBUG_PASS_5)
+            fprintf(stderr, "_optimize_il_1000(): SUCCESS!\n");
+#endif
+            next = -1;
+            break;
+          }
+         
+          if (g_tacs[next].arg1_type == g_tacs[current].result_type && ((g_tacs[current].result_type == TAC_ARG_TYPE_TEMP && (int)g_tacs[current].result_d == (int)g_tacs[next].arg1_d) ||
+                                                                        (g_tacs[current].result_type == TAC_ARG_TYPE_LABEL && strcmp(g_tacs[current].result_s, g_tacs[next].arg1_s) == 0))) {
+            /* we cannot search past reads from A */
+            next = -1;
+            break;
+          }
+          else if (g_tacs[next].arg2_type == g_tacs[current].result_type && ((g_tacs[current].result_type == TAC_ARG_TYPE_TEMP && (int)g_tacs[current].result_d == (int)g_tacs[next].arg2_d) ||
+                                                                             (g_tacs[current].result_type == TAC_ARG_TYPE_LABEL && strcmp(g_tacs[current].result_s, g_tacs[next].arg2_s) == 0))) {
+            /* we cannot search past reads from A */
+            next = -1;
+            break;
+          }
+          else if (g_tacs[next].op == TAC_OP_FUNCTION_CALL || g_tacs[next].op == TAC_OP_FUNCTION_CALL_USE_RETURN_VALUE) {
+            if (_get_variable_index_in_function_call_arguments(&g_tacs[next], g_tacs[current].result_type, g_tacs[current].result_s, (int)g_tacs[current].result_d) >= 0) {
+              /* cannot jump over reads from the same variable */
+              next = -1;
+              break;
+            }
+          }
+
+          if (next < 0)
+            break;
+        }
+      }
+
+      i = current + 1;
+    }
+
+    if (is_last_function == YES)
+      break;
+  }
+
+  return SUCCEEDED;
+}
+
+
+static int _optimize_il_1001(int *optimizations_counter) {
+
+  /* remove the creation of a local variable if no-one references it */
+
+  int i = 0;
+
+  while (1) {
+    int is_last_function = NO;
+    int end = _find_end_of_il_function(i, &is_last_function);
+    if (end < 0)
+      return FAILED;
+
+    if (_count_and_allocate_register_usage(i, end) == FAILED)
+      return FAILED;
+
+    while (i < end) {
+      int current, next;
+
+      current = _find_next_living_tac_all(i);
+
+      if (current < 0)
+        break;
+
+      if (g_tacs[current].op == TAC_OP_CREATE_VARIABLE) {
+        next = current;
+
+        while (1) {
+          next = _find_next_living_tac_all(next + 1);
+
+          if (next < 0 || g_tacs[next].function_node != g_tacs[current].function_node) {
+            /* found the end of the function! */
+
+            /* the variable creation can be removed! */
+            g_tacs[current].op = TAC_OP_DEAD;
+            (*optimizations_counter)++;
+#if defined(DEBUG_PASS_5)
+            fprintf(stderr, "_optimize_il_1001(): Removed unused local variable \"%s\"\n", g_tacs[current].result_s);
+            fprintf(stderr, "_optimize_il_1001(): SUCCESS!\n");
+#endif
+            next = -1;
+            break;
+          }
+          
+          if (g_tacs[next].op == TAC_OP_FUNCTION_CALL || g_tacs[next].op == TAC_OP_FUNCTION_CALL_USE_RETURN_VALUE) {
+            if (_get_variable_index_in_function_call_arguments_with_tree_node(&g_tacs[next], g_tacs[current].result_node) >= 0) {
+              /* we cannot search past reads from the variable */
+              next = -1;
+              break;
+            }
+          }
+          else if (g_tacs[next].arg1_type == g_tacs[current].result_type && ((g_tacs[current].result_type == TAC_ARG_TYPE_TEMP && (int)g_tacs[current].result_d == (int)g_tacs[next].arg1_d) ||
+                                                                        (g_tacs[current].result_type == TAC_ARG_TYPE_LABEL && strcmp(g_tacs[current].result_s, g_tacs[next].arg1_s) == 0))) {
+            /* we cannot search past reads from the variable */
+            next = -1;
+            break;
+          }
+          else if (g_tacs[next].arg2_type == g_tacs[current].result_type && ((g_tacs[current].result_type == TAC_ARG_TYPE_TEMP && (int)g_tacs[current].result_d == (int)g_tacs[next].arg2_d) ||
+                                                                             (g_tacs[current].result_type == TAC_ARG_TYPE_LABEL && strcmp(g_tacs[current].result_s, g_tacs[next].arg2_s) == 0))) {
+            /* we cannot search past reads from the variable */
             next = -1;
             break;
           }
@@ -2458,8 +2743,10 @@ int optimize_il(void) {
       return FAILED;
     if (_optimize_il_10(&optimizations_counter) == FAILED)
       return FAILED;
+    /*
     if (_optimize_il_11(&optimizations_counter) == FAILED)
       return FAILED;
+    */
     if (_optimize_il_12(&optimizations_counter) == FAILED)
       return FAILED;
     if (_optimize_il_13(&optimizations_counter) == FAILED)
@@ -2509,7 +2796,9 @@ int optimize_il(void) {
       return FAILED;
     if (_optimize_il_33(&optimizations_counter) == FAILED)
       return FAILED;
-    
+    if (_optimize_il_34(&optimizations_counter) == FAILED)
+      return FAILED;
+
     fprintf(stderr, "optimize_il(): Loop %d managed to do %d optimizations.\n", loop, optimizations_counter);
     loop++;
 
@@ -2517,6 +2806,16 @@ int optimize_il(void) {
       break;
   }
 
+  /* the very last optimizations */
+  optimizations_counter = 0;
+  
+  if (_optimize_il_1000(&optimizations_counter) == FAILED)
+      return FAILED;
+  if (_optimize_il_1001(&optimizations_counter) == FAILED)
+    return FAILED;
+
+  fprintf(stderr, "optimize_il(): Final pass managed to do %d optimizations.\n", optimizations_counter);
+  
   return SUCCEEDED;
 }
 

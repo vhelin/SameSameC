@@ -364,7 +364,7 @@ void print_tac(struct tac *t, int is_comment, FILE *file_out) {
     if (t->function_node != NULL) {
       struct local_variables *local_variables = t->function_node->local_variables;
       int size = 0, offset = 0, k;
-      char type = '?';
+      char *type = "?";
 
       for (k = 0; k < local_variables->local_variables_count; k++) {
         if (local_variables->local_variables[k].node == t->result_node) {
@@ -375,11 +375,11 @@ void print_tac(struct tac *t, int is_comment, FILE *file_out) {
       }
 
       if (t->result_node->type == TREE_NODE_TYPE_CREATE_VARIABLE_FUNCTION_ARGUMENT)
-        type = 'a';
+        type = "argument";
       else
-        type = 'n';
+        type = "local";
       
-      fprintf(file_out, "variable \"%s\" size %d offset %d type %c", t->result_node->children[1]->label, size / 8, offset, type);
+      fprintf(file_out, "variable \"%s\" size %d offset %d type %s", t->result_node->children[1]->label, size / 8, offset, type);
     }
     else
       fprintf(file_out, "variable \"%s\" size ? offset ? type ?", t->result_node->children[1]->label);
