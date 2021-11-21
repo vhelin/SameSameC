@@ -400,6 +400,7 @@ void free_tree_node(struct tree_node *node) {
 
   if (node->local_variables != NULL) {
     free(node->local_variables->local_variables);
+    free(node->local_variables->temp_registers);
     free(node->local_variables);
   }
 
@@ -488,7 +489,7 @@ struct tree_node *allocate_tree_node_with_children(int type, int children_max) {
     return NULL;
 
   if (children_max <= 0)
-    return allocate_tree_node(type);
+    return node;
   
   node->children = calloc(sizeof(struct tree_node *) * children_max, 1);
   if (node->children == NULL) {

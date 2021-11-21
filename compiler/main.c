@@ -35,7 +35,7 @@
 __near long __stack = 256*1024;
 #endif
 
-char g_version_string[] = "$VER: SameSameC compiler 0.8a (7.11.2021)";
+char g_version_string[] = "$VER: SameSameC compiler 0.8a (21.11.2021)";
 char g_samesamec_version[] = "0.8";
 
 char *g_tmp_name = NULL;
@@ -57,11 +57,13 @@ extern struct definition *g_definitions_first;
 extern struct inline_asm *g_inline_asm_first, *g_inline_asm_last;
 extern char *g_include_in_tmp, *g_tmp_a;
 extern char *g_include_dir, *g_buffer, *g_full_name;
+extern char *g_temp_register_types;
 extern int g_include_in_tmp_size, g_tmp_a_size, g_newline_beginning;
 extern int g_current_filename_id, g_current_line_number;
 extern int *g_register_reads, *g_register_writes;
 
 extern struct tree_node *g_open_expression[256];
+extern struct tree_node *g_global_nodes;
 
 extern struct tac *g_tacs;
 extern int g_tacs_count;
@@ -390,6 +392,10 @@ void procedures_at_exit(void) {
   free(g_include_dir);
   free(g_full_name);
 
+  free_tree_node(g_global_nodes);
+
+  free(g_temp_register_types);
+  
   g_label_tmp = g_labels;
   while (g_label_tmp != NULL) {
     g_labels = g_label_tmp->next;
