@@ -34,6 +34,8 @@ extern struct tac *g_tacs;
 extern int g_tacs_count, g_tacs_max, g_backend;
 extern char g_tmp[4096], g_error_message[sizeof(g_tmp) + MAX_NAME_LENGTH + 1 + 1024];
 
+char *g_temp_register_types = NULL;
+int g_temp_register_types_count = 0;
 int *g_register_reads = NULL, *g_register_writes = NULL;
 
 static struct label *g_removed_jump_destinations_first = NULL, *g_removed_jump_destinations_last = NULL;
@@ -3184,10 +3186,6 @@ int reuse_registers(void) {
 }
 
 
-static char *g_temp_register_types = NULL;
-static int g_temp_register_types_count = 0;
-
-
 static int _set_temp_register_type(int r, int type) {
 
   while (r >= g_temp_register_types_count) {
@@ -3583,6 +3581,9 @@ static int _get_variable_size(struct tree_node *node) {
 #define LOCAL_VAR_COUNT 1024
 #define REG_COUNT (1024*8)
 
+static struct tree_node *g_local_variables[LOCAL_VAR_COUNT];
+static int g_register_usage[REG_COUNT], g_register_sizes[REG_COUNT];
+
 
 int collect_and_preprocess_local_variables_inside_functions(void) {
 
@@ -3595,8 +3596,7 @@ int collect_and_preprocess_local_variables_inside_functions(void) {
     if (op == TAC_OP_LABEL && t->is_function == YES && ((t->function_node->flags & TREE_NODE_FLAG_PUREASM) == 0) && strcmp("mainmain", t->function_node->children[1]->label) != 0) {
       /* function start! */
       struct tree_node *function_node = t->function_node;
-      struct tree_node *local_variables[LOCAL_VAR_COUNT];
-      int local_variables_count = 0, register_usage[REG_COUNT], used_registers = 0, register_sizes[REG_COUNT], arguments_count = 0;
+      int local_variables_count = 0, used_registers = 0, arguments_count = 0;
       int offset = -4; /* the first 2 bytes in the stack frame are for return address, next 2 bytes are old stack frame address */
       int return_value_type, return_value_size;
 
@@ -3606,8 +3606,8 @@ int collect_and_preprocess_local_variables_inside_functions(void) {
       offset -= return_value_size;
 
       for (j = 0; j < REG_COUNT; j++) {
-        register_usage[j] = 0;
-        register_sizes[j] = 0;
+        g_register_usage[j] = 0;
+        g_register_sizes[j] = 0;
       }
       
       /* collect all (except consts) local variables inside this function */
@@ -3645,7 +3645,7 @@ int collect_and_preprocess_local_variables_inside_functions(void) {
             if (t->result_node->type == TREE_NODE_TYPE_CREATE_VARIABLE_FUNCTION_ARGUMENT)
               arguments_count++;
 
-            local_variables[local_variables_count++] = t->result_node;
+            g_local_variables[local_variables_count++] = t->result_node;
           }
         }
         else if (op == TAC_OP_DEAD) {
@@ -3661,9 +3661,9 @@ int collect_and_preprocess_local_variables_inside_functions(void) {
             if (size == 0)
               fprintf(stderr, "collect_local_variables_inside_functions(): Register r%d size is 0!\n", index);
             
-            register_usage[index] = 1;
-            if (size > register_sizes[index])
-              register_sizes[index] = size;
+            g_register_usage[index] = 1;
+            if (size > g_register_sizes[index])
+              g_register_sizes[index] = size;
           }
           if (t->arg2_type == TAC_ARG_TYPE_TEMP) {
             int index = (int)t->arg2_d;
@@ -3672,9 +3672,9 @@ int collect_and_preprocess_local_variables_inside_functions(void) {
             if (size == 0)
               fprintf(stderr, "collect_local_variables_inside_functions(): Register r%d size is 0!\n", index);
 
-            register_usage[index] = 1;
-            if (size > register_sizes[index])
-              register_sizes[index] = size;
+            g_register_usage[index] = 1;
+            if (size > g_register_sizes[index])
+              g_register_sizes[index] = size;
           }
           if (t->result_type == TAC_ARG_TYPE_TEMP) {
             int index = (int)t->result_d;
@@ -3683,9 +3683,9 @@ int collect_and_preprocess_local_variables_inside_functions(void) {
             if (size == 0)
               fprintf(stderr, "collect_local_variables_inside_functions(): Register r%d size is 0!\n", index);
 
-            register_usage[index] = 1;
-            if (size > register_sizes[index])
-              register_sizes[index] = size;
+            g_register_usage[index] = 1;
+            if (size > g_register_sizes[index])
+              g_register_sizes[index] = size;
           }
         }
 
@@ -3695,7 +3695,7 @@ int collect_and_preprocess_local_variables_inside_functions(void) {
 
       /* count the used registers */
       for (j = 0; j < REG_COUNT; j++) {
-        if (register_usage[j] > 0)
+        if (g_register_usage[j] > 0)
           used_registers++;
       }
 
@@ -3710,7 +3710,7 @@ int collect_and_preprocess_local_variables_inside_functions(void) {
       function_node->local_variables->local_variables_count = 0;
       function_node->local_variables->local_variables = NULL;
       function_node->local_variables->temp_registers_count = 0;
-      function_node->local_variables->temp_registers = NULL;      
+      function_node->local_variables->temp_registers = NULL;
       function_node->local_variables->offset_to_fp_total = 0;
       
       function_node->local_variables->local_variables = (struct local_variable *)calloc(sizeof(struct local_variable) * local_variables_count, 1);
@@ -3738,18 +3738,18 @@ int collect_and_preprocess_local_variables_inside_functions(void) {
 
       /* calculate the offsets */
       for (j = 0; j < local_variables_count; j++) {
-        int size = _get_variable_size(local_variables[j]);
+        int size = _get_variable_size(g_local_variables[j]);
 
         if (size < 0)
           return FAILED;
 
         /* note that the offset points to the very first byte of the variable, and we count _up_ from there */
-        function_node->local_variables->local_variables[j].node = local_variables[j];
+        function_node->local_variables->local_variables[j].node = g_local_variables[j];
         function_node->local_variables->local_variables[j].offset_to_fp = offset - ((size / 8) - 1);
         function_node->local_variables->local_variables[j].size = size;
 
 #if defined(DEBUG_PASS_5)
-        fprintf(stderr, "OFFSET %.5d SIZE %.6d VARIABLE %s\n", function_node->local_variables->local_variables[j].offset_to_fp, size/8, local_variables[j]->children[1]->label);
+        fprintf(stderr, "OFFSET %.5d SIZE %.6d VARIABLE %s\n", function_node->local_variables->local_variables[j].offset_to_fp, size/8, g_local_variables[j]->children[1]->label);
 #endif
         
         offset -= size / 8;
@@ -3758,20 +3758,20 @@ int collect_and_preprocess_local_variables_inside_functions(void) {
       k = 0;
       for (j = 0; j < used_registers; j++) {
         while (k < REG_COUNT) {
-          if (register_usage[k] > 0)
+          if (g_register_usage[k] > 0)
             break;
           k++;
         }
 
-        function_node->local_variables->temp_registers[j].offset_to_fp = offset - ((register_sizes[k] / 8) - 1);
-        function_node->local_variables->temp_registers[j].size = register_sizes[k];
+        function_node->local_variables->temp_registers[j].offset_to_fp = offset - ((g_register_sizes[k] / 8) - 1);
+        function_node->local_variables->temp_registers[j].size = g_register_sizes[k];
         function_node->local_variables->temp_registers[j].register_index = k;
 
 #if defined(DEBUG_PASS_5)
-        fprintf(stderr, "OFFSET %.5d SIZE %.6d REGISTER r%d\n", function_node->local_variables->temp_registers[j].offset_to_fp, register_sizes[k]/8, k);
+        fprintf(stderr, "OFFSET %.5d SIZE %.6d REGISTER r%d\n", function_node->local_variables->temp_registers[j].offset_to_fp, g_register_sizes[k]/8, k);
 #endif
         
-        offset -= register_sizes[k] / 8;
+        offset -= g_register_sizes[k] / 8;
         
         k++;
       }
