@@ -162,6 +162,12 @@ static void _load_label_to_iy(char *label, FILE *file_out) {
 
 static void _load_value_into_ix(int value, int offset, FILE *file_out) {
 
+  value &= 0xff;
+  if (offset < -128 || offset > 127) {
+    fprintf(stderr, "_load_value_into_ix(): Offset %d is out of range [-128, 127]. Cannot continue! Please submit a bug report!\n", offset);
+    exit(1);
+  }
+  
   if (offset >= 0)
     fprintf(file_out, "      LD  (IX+%d),%d\n", offset, value);
   else
@@ -171,6 +177,12 @@ static void _load_value_into_ix(int value, int offset, FILE *file_out) {
 
 static void _load_value_into_iy(int value, int offset, FILE *file_out) {
 
+  value &= 0xff;
+  if (offset < -128 || offset > 127) {
+    fprintf(stderr, "_load_value_into_iy(): Offset %d is out of range [-128, 127]. Cannot continue! Please submit a bug report!\n", offset);
+    exit(1);
+  }
+    
   if (offset >= 0)
     fprintf(file_out, "      LD  (IY+%d),%d\n", offset, value);
   else
@@ -179,6 +191,11 @@ static void _load_value_into_iy(int value, int offset, FILE *file_out) {
 
 
 static void _load_from_iy_to_a(int offset, FILE *file_out) {
+
+  if (offset < -128 || offset > 127) {
+    fprintf(stderr, "_load_from_iy_to_a(): Offset %d is out of range [-128, 127]. Cannot continue! Please submit a bug report!\n", offset);
+    exit(1);
+  }
 
   if (offset >= 0)
     fprintf(file_out, "      LD  A,(IY+%d)\n", offset);
@@ -189,6 +206,11 @@ static void _load_from_iy_to_a(int offset, FILE *file_out) {
 
 static void _load_from_iy_to_b(int offset, FILE *file_out) {
 
+  if (offset < -128 || offset > 127) {
+    fprintf(stderr, "_load_from_iy_to_b(): Offset %d is out of range [-128, 127]. Cannot continue! Please submit a bug report!\n", offset);
+    exit(1);
+  }
+
   if (offset >= 0)
     fprintf(file_out, "      LD  B,(IY+%d)\n", offset);
   else
@@ -197,6 +219,11 @@ static void _load_from_iy_to_b(int offset, FILE *file_out) {
 
 
 static void _load_from_iy_to_c(int offset, FILE *file_out) {
+
+  if (offset < -128 || offset > 127) {
+    fprintf(stderr, "_load_from_iy_to_c(): Offset %d is out of range [-128, 127]. Cannot continue! Please submit a bug report!\n", offset);
+    exit(1);
+  }
 
   if (offset >= 0)
     fprintf(file_out, "      LD  C,(IY+%d)\n", offset);
@@ -207,6 +234,11 @@ static void _load_from_iy_to_c(int offset, FILE *file_out) {
 
 static void _load_from_iy_to_h(int offset, FILE *file_out) {
 
+  if (offset < -128 || offset > 127) {
+    fprintf(stderr, "_load_from_iy_to_h(): Offset %d is out of range [-128, 127]. Cannot continue! Please submit a bug report!\n", offset);
+    exit(1);
+  }
+
   if (offset >= 0)
     fprintf(file_out, "      LD  H,(IY+%d)\n", offset);
   else
@@ -215,6 +247,11 @@ static void _load_from_iy_to_h(int offset, FILE *file_out) {
 
 
 static void _load_from_iy_to_l(int offset, FILE *file_out) {
+
+  if (offset < -128 || offset > 127) {
+    fprintf(stderr, "_load_from_iy_to_l(): Offset %d is out of range [-128, 127]. Cannot continue! Please submit a bug report!\n", offset);
+    exit(1);
+  }
 
   if (offset >= 0)
     fprintf(file_out, "      LD  L,(IY+%d)\n", offset);
@@ -225,6 +262,11 @@ static void _load_from_iy_to_l(int offset, FILE *file_out) {
 
 static void _load_from_ix_to_a(int offset, FILE *file_out) {
 
+  if (offset < -128 || offset > 127) {
+    fprintf(stderr, "_load_from_ix_to_a(): Offset %d is out of range [-128, 127]. Cannot continue! Please submit a bug report!\n", offset);
+    exit(1);
+  }
+
   if (offset >= 0)
     fprintf(file_out, "      LD  A,(IX+%d)\n", offset);
   else
@@ -233,6 +275,11 @@ static void _load_from_ix_to_a(int offset, FILE *file_out) {
 
 
 static void _load_from_ix_to_b(int offset, FILE *file_out) {
+
+  if (offset < -128 || offset > 127) {
+    fprintf(stderr, "_load_from_ix_to_b(): Offset %d is out of range [-128, 127]. Cannot continue! Please submit a bug report!\n", offset);
+    exit(1);
+  }
 
   if (offset >= 0)
     fprintf(file_out, "      LD  B,(IX+%d)\n", offset);
@@ -243,6 +290,11 @@ static void _load_from_ix_to_b(int offset, FILE *file_out) {
 
 static void _load_from_ix_to_c(int offset, FILE *file_out) {
 
+  if (offset < -128 || offset > 127) {
+    fprintf(stderr, "_load_from_ix_to_c(): Offset %d is out of range [-128, 127]. Cannot continue! Please submit a bug report!\n", offset);
+    exit(1);
+  }
+
   if (offset >= 0)
     fprintf(file_out, "      LD  C,(IX+%d)\n", offset);
   else
@@ -251,6 +303,11 @@ static void _load_from_ix_to_c(int offset, FILE *file_out) {
 
 
 static void _load_from_ix_to_d(int offset, FILE *file_out) {
+
+  if (offset < -128 || offset > 127) {
+    fprintf(stderr, "_load_from_ix_to_d(): Offset %d is out of range [-128, 127]. Cannot continue! Please submit a bug report!\n", offset);
+    exit(1);
+  }
 
   if (offset >= 0)
     fprintf(file_out, "      LD  D,(IX+%d)\n", offset);
@@ -263,6 +320,11 @@ static void _load_from_ix_to_d(int offset, FILE *file_out) {
 
 static void _load_from_ix_to_e(int offset, FILE *file_out) {
 
+  if (offset < -128 || offset > 127) {
+    fprintf(stderr, "_load_from_ix_to_e(): Offset %d is out of range [-128, 127]. Cannot continue! Please submit a bug report!\n", offset);
+    exit(1);
+  }
+
   if (offset >= 0)
     fprintf(file_out, "      LD  E,(IX+%d)\n", offset);
   else
@@ -274,6 +336,11 @@ static void _load_from_ix_to_e(int offset, FILE *file_out) {
 
 static void _load_from_ix_to_h(int offset, FILE *file_out) {
 
+  if (offset < -128 || offset > 127) {
+    fprintf(stderr, "_load_from_ix_to_h(): Offset %d is out of range [-128, 127]. Cannot continue! Please submit a bug report!\n", offset);
+    exit(1);
+  }
+
   if (offset >= 0)
     fprintf(file_out, "      LD  H,(IX+%d)\n", offset);
   else
@@ -282,6 +349,11 @@ static void _load_from_ix_to_h(int offset, FILE *file_out) {
 
 
 static void _load_from_ix_to_l(int offset, FILE *file_out) {
+
+  if (offset < -128 || offset > 127) {
+    fprintf(stderr, "_load_from_ix_to_l(): Offset %d is out of range [-128, 127]. Cannot continue! Please submit a bug report!\n", offset);
+    exit(1);
+  }
 
   if (offset >= 0)
     fprintf(file_out, "      LD  L,(IX+%d)\n", offset);
@@ -293,6 +365,11 @@ static void _load_from_ix_to_l(int offset, FILE *file_out) {
 static void _load_from_ix_to_register(int offset, char reg, FILE *file_out) {
 
   char name[2];
+
+  if (offset < -128 || offset > 127) {
+    fprintf(stderr, "_load_from_ix_to_register(): Offset %d is out of range [-128, 127]. Cannot continue! Please submit a bug report!\n", offset);
+    exit(1);
+  }
 
   name[0] = toupper(reg);
   name[1] = 0;
@@ -306,6 +383,11 @@ static void _load_from_ix_to_register(int offset, char reg, FILE *file_out) {
 
 static void _load_a_into_ix(int offset, FILE *file_out) {
 
+  if (offset < -128 || offset > 127) {
+    fprintf(stderr, "_load_a_into_ix(): Offset %d is out of range [-128, 127]. Cannot continue! Please submit a bug report!\n", offset);
+    exit(1);
+  }
+
   if (offset >= 0)
     fprintf(file_out, "      LD  (IX+%d),A\n", offset);
   else
@@ -314,6 +396,11 @@ static void _load_a_into_ix(int offset, FILE *file_out) {
 
 
 static void _load_b_into_ix(int offset, FILE *file_out) {
+
+  if (offset < -128 || offset > 127) {
+    fprintf(stderr, "_load_b_into_ix(): Offset %d is out of range [-128, 127]. Cannot continue! Please submit a bug report!\n", offset);
+    exit(1);
+  }
 
   if (offset >= 0)
     fprintf(file_out, "      LD  (IX+%d),B\n", offset);
@@ -324,6 +411,11 @@ static void _load_b_into_ix(int offset, FILE *file_out) {
 
 static void _load_c_into_ix(int offset, FILE *file_out) {
 
+  if (offset < -128 || offset > 127) {
+    fprintf(stderr, "_load_c_into_ix(): Offset %d is out of range [-128, 127]. Cannot continue! Please submit a bug report!\n", offset);
+    exit(1);
+  }
+
   if (offset >= 0)
     fprintf(file_out, "      LD  (IX+%d),C\n", offset);
   else
@@ -332,6 +424,11 @@ static void _load_c_into_ix(int offset, FILE *file_out) {
 
 
 static void _load_h_into_ix(int offset, FILE *file_out) {
+
+  if (offset < -128 || offset > 127) {
+    fprintf(stderr, "_load_h_into_ix(): Offset %d is out of range [-128, 127]. Cannot continue! Please submit a bug report!\n", offset);
+    exit(1);
+  }
 
   if (offset >= 0)
     fprintf(file_out, "      LD  (IX+%d),H\n", offset);
@@ -342,6 +439,11 @@ static void _load_h_into_ix(int offset, FILE *file_out) {
 
 static void _load_h_into_iy(int offset, FILE *file_out) {
 
+  if (offset < -128 || offset > 127) {
+    fprintf(stderr, "_load_h_into_iy(): Offset %d is out of range [-128, 127]. Cannot continue! Please submit a bug report!\n", offset);
+    exit(1);
+  }
+
   if (offset >= 0)
     fprintf(file_out, "      LD  (IY+%d),H\n", offset);
   else
@@ -350,6 +452,11 @@ static void _load_h_into_iy(int offset, FILE *file_out) {
 
 
 static void _load_l_into_ix(int offset, FILE *file_out) {
+
+  if (offset < -128 || offset > 127) {
+    fprintf(stderr, "_load_l_into_ix(): Offset %d is out of range [-128, 127]. Cannot continue! Please submit a bug report!\n", offset);
+    exit(1);
+  }
 
   if (offset >= 0)
     fprintf(file_out, "      LD  (IX+%d),L\n", offset);
@@ -362,6 +469,11 @@ static void _load_register_into_ix(int offset, char reg, FILE *file_out) {
 
   char name[2];
 
+  if (offset < -128 || offset > 127) {
+    fprintf(stderr, "_load_register_into_ix(): Offset %d is out of range [-128, 127]. Cannot continue! Please submit a bug report!\n", offset);
+    exit(1);
+  }
+
   name[0] = toupper(reg);
   name[1] = 0;
 
@@ -373,6 +485,11 @@ static void _load_register_into_ix(int offset, char reg, FILE *file_out) {
 
 
 static void _load_l_into_iy(int offset, FILE *file_out) {
+
+  if (offset < -128 || offset > 127) {
+    fprintf(stderr, "_load_l_into_iy(): Offset %d is out of range [-128, 127]. Cannot continue! Please submit a bug report!\n", offset);
+    exit(1);
+  }
 
   if (offset >= 0)
     fprintf(file_out, "      LD  (IY+%d),L\n", offset);
@@ -433,6 +550,11 @@ static void _add_value_to_a(int value, FILE *file_out) {
 
 static void _add_from_ix_to_a(int offset, FILE *file_out) {
 
+  if (offset < -128 || offset > 127) {
+    fprintf(stderr, "_add_from_ix_to_a(): Offset %d is out of range [-128, 127]. Cannot continue! Please submit a bug report!\n", offset);
+    exit(1);
+  }
+
   if (offset >= 0)
     fprintf(file_out, "      ADD A,(IX+%d)\n", offset);
   else
@@ -461,6 +583,11 @@ static void _sub_value_from_a(int value, FILE *file_out) {
 
 static void _sub_from_ix_from_a(int offset, FILE *file_out) {
 
+  if (offset < -128 || offset > 127) {
+    fprintf(stderr, "_add_from_ix_from_a(): Offset %d is out of range [-128, 127]. Cannot continue! Please submit a bug report!\n", offset);
+    exit(1);
+  }
+
   if (offset >= 0)
     fprintf(file_out, "      SUB A,(IX+%d)\n", offset);
   else
@@ -482,6 +609,11 @@ static void _xor_value_to_a(int value, FILE *file_out) {
 
 static void _or_from_ix_to_a(int offset, FILE *file_out) {
 
+  if (offset < -128 || offset > 127) {
+    fprintf(stderr, "_or_from_ix_to_a(): Offset %d is out of range [-128, 127]. Cannot continue! Please submit a bug report!\n", offset);
+    exit(1);
+  }
+
   if (offset >= 0)
     fprintf(file_out, "      OR  A,(IX+%d)\n", offset);
   else
@@ -490,6 +622,11 @@ static void _or_from_ix_to_a(int offset, FILE *file_out) {
 
 
 static void _xor_from_ix_to_a(int offset, FILE *file_out) {
+
+  if (offset < -128 || offset > 127) {
+    fprintf(stderr, "_xor_from_ix_to_a(): Offset %d is out of range [-128, 127]. Cannot continue! Please submit a bug report!\n", offset);
+    exit(1);
+  }
 
   if (offset >= 0)
     fprintf(file_out, "      XOR A,(IX+%d)\n", offset);
@@ -538,6 +675,11 @@ static void _and_value_from_a(int value, FILE *file_out) {
 
 
 static void _and_from_ix_from_a(int offset, FILE *file_out) {
+
+  if (offset < -128 || offset > 127) {
+    fprintf(stderr, "_and_from_ix_from_a(): Offset %d is out of range [-128, 127]. Cannot continue! Please submit a bug report!\n", offset);
+    exit(1);
+  }
 
   if (offset >= 0)
     fprintf(file_out, "      AND A,(IX+%d)\n", offset);
@@ -783,6 +925,11 @@ static void _sign_extend_a_to_bc(FILE *file_out) {
 
 static void _sign_extend_a_into_ix(int offset, FILE *file_out) {
 
+  if (offset < -128 || offset > 127) {
+    fprintf(stderr, "_sign_extend_a_into_ix(): Offset %d is out of range [-128, 127]. Cannot continue! Please submit a bug report!\n", offset);
+    exit(1);
+  }
+  
   /* from https://stackoverflow.com/questions/49070981/z80-assembly-how-to-add-signed-8-bit-value-to-16-bit-register */
   fprintf(file_out, "      ; sign extend 8-bit A -> (IX)\n");
   fprintf(file_out, "      ADD A,A  ; sign bit of A into carry\n");
@@ -795,6 +942,11 @@ static void _sign_extend_a_into_ix(int offset, FILE *file_out) {
 
 
 static void _sign_extend_b_into_ix(int offset, FILE *file_out) {
+
+  if (offset < -128 || offset > 127) {
+    fprintf(stderr, "_sign_extend_b_into_ix(): Offset %d is out of range [-128, 127]. Cannot continue! Please submit a bug report!\n", offset);
+    exit(1);
+  }
 
   /* from https://stackoverflow.com/questions/49070981/z80-assembly-how-to-add-signed-8-bit-value-to-16-bit-register */
   fprintf(file_out, "      ; sign extend 8-bit B -> (IX)\n");
@@ -2190,8 +2342,6 @@ static int _generate_asm_array_read_z80(struct tac *t, FILE *file_out, struct tr
   /* source address (arg1) -> iy */
   /******************************************************************************************************/
 
-  iy_offset = 0;
-  
   if (t->arg1_type == TAC_ARG_TYPE_CONSTANT) {
     fprintf(stderr, "_generate_asm_array_read_z80(): Source cannot be a value!\n");
     return FAILED;
@@ -2535,8 +2685,6 @@ static int _generate_asm_array_write_z80(struct tac *t, FILE *file_out, struct t
   /* result address (result) -> iy */
   /******************************************************************************************************/
 
-  iy_offset = 0;
-  
   if (t->result_type == TAC_ARG_TYPE_CONSTANT) {
     _load_value_to_iy((int)t->result_d, file_out);
   }

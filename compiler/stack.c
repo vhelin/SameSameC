@@ -161,7 +161,7 @@ int get_label_length(char *l) {
 
 int stack_calculate_tree_node(struct tree_node *node, int *value) {
 
-  struct stack_item si[256];
+  struct stack_item si[64];
   struct tree_node *child;
   int q, b = 0, failed = NO;
 
@@ -172,14 +172,16 @@ int stack_calculate_tree_node(struct tree_node *node, int *value) {
     return INPUT_NUMBER_STRING;
   }
 
+  /* clear stack items, just in case... */
+  for (q = 0; q < 64; q++) {
+    si[q].type = STACK_ITEM_TYPE_DELETED;
+    si[q].sign = SI_SIGN_POSITIVE;
+    si[q].value = 0;
+    si[q].string[0] = 0;
+  }
+
   /* slice the data into infix format */
   for (q = 0; q < node->added_children; q++) {
-    /* init the stack item */
-    si[q].type = 0x123456;
-    si[q].sign = 0x123456;
-    si[q].value = 0x123456;
-    si[q].string[0] = 0;
-
     child = node->children[q];
     
     if (child->type == TREE_NODE_TYPE_SYMBOL && child->value == '-') {
@@ -415,7 +417,7 @@ int stack_calculate_tree_node(struct tree_node *node, int *value) {
         break;
 
       si[q].sign = SI_SIGN_POSITIVE;
-      strncpy(si[q].string, child->label, MAX_NAME_LENGTH);
+      strcpy(si[q].string, child->label);
       si[q].type = STACK_ITEM_TYPE_STRING;
 #if DEBUG_STACK
       fprintf(stderr, "GOT STACK ITEM %s\n", si[q].string);
@@ -475,17 +477,19 @@ int stack_calculate_tree_node(struct tree_node *node, int *value) {
 
 int stack_calculate_tokens(int *value) {
 
-  struct stack_item si[256];
+  struct stack_item si[64];
   int q = 0, b = 0;
   
+  /* clear stack items, just in case... */
+  for (q = 0; q < 64; q++) {
+    si[q].type = STACK_ITEM_TYPE_DELETED;
+    si[q].sign = SI_SIGN_POSITIVE;
+    si[q].value = 0;
+    si[q].string[0] = 0;
+  }
+
   /* slice the data into infix format */
   while (1) {
-    /* init the stack item */
-    si[q].type = 0x123456;
-    si[q].sign = 0x123456;
-    si[q].value = 0x123456;
-    si[q].string[0] = 0;
-
     if (g_token_current == NULL)
       break;
 
@@ -727,7 +731,7 @@ int stack_calculate_tokens(int *value) {
         break;
 
       si[q].sign = SI_SIGN_POSITIVE;
-      strncpy(si[q].string, g_token_current->label, MAX_NAME_LENGTH);
+      strcpy(si[q].string, g_token_current->label);
       si[q].type = STACK_ITEM_TYPE_STRING;
 #if DEBUG_STACK
       fprintf(stderr, "GOT STACK ITEM %s\n", si[q].string);
@@ -810,8 +814,8 @@ int get_op_priority(int op) {
 
 int stack_calculate(int *value, struct stack_item *si, int q, int save_if_cannot_resolve) {
 
-  int b, d, k, op[256];
-  struct stack_item ta[256];
+  int b, d, k, op[64];
+  struct stack_item ta[64];
   struct stack s;
   double dou = 0.0;
 
@@ -822,7 +826,7 @@ int stack_calculate(int *value, struct stack_item *si, int q, int save_if_cannot
   */
 
   /* clear stack items, just in case... */
-  for (k = 0; k < 256; k++) {
+  for (k = 0; k < 64; k++) {
     ta[k].type = STACK_ITEM_TYPE_DELETED;
     ta[k].sign = SI_SIGN_POSITIVE;
     ta[k].value = 0;
@@ -1079,7 +1083,7 @@ int resolve_stack(struct stack_item s[], int x) {
 int compute_stack(struct stack *sta, int x, double *result) {
 
   struct stack_item *s;
-  double v[256];
+  double v[64];
   int r, t, z;
 
 

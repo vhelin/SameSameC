@@ -4274,7 +4274,7 @@ static void _check_ast_simple_tree_node(struct tree_node *node) {
     }
     else {
       /* sizeof(g_x) */
-      int i, size;
+      int i, size = -1;
 
       for (i = 0; i < g_global_nodes->added_children; i++) {
         struct tree_node *n;

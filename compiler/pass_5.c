@@ -3533,7 +3533,7 @@ int propagate_operand_types(void) {
 
 static int _get_variable_size(struct tree_node *node) {
 
-  int size = 0;
+  int size;
 
   /* value_double - pointer_depth (0 - not a pointer, 1+ is a pointer)
      value - is_array (0 - not an array, 1+ array size) */
@@ -3641,7 +3641,7 @@ int collect_and_preprocess_local_variables_inside_functions(void) {
           }
           else {          
             if (local_variables_count >= LOCAL_VAR_COUNT) {
-              fprintf(stderr, "collect_local_variables_inside_functions(): Out of space! Make variables array bigger and recompile!\n");
+              fprintf(stderr, "collect_and_preprocess_local_variables_inside_functions(): Out of space! Make variables array bigger and recompile!\n");
               return FAILED;
             }
 
@@ -3663,7 +3663,7 @@ int collect_and_preprocess_local_variables_inside_functions(void) {
             int size = get_variable_type_size(t->arg1_var_type);
 
             if (size == 0)
-              fprintf(stderr, "collect_local_variables_inside_functions(): Register r%d size is 0!\n", index);
+              fprintf(stderr, "collect_and_preprocess_local_variables_inside_functions(): Register r%d size is 0!\n", index);
             
             g_register_usage[index] = 1;
             if (size > g_register_sizes[index])
@@ -3674,7 +3674,7 @@ int collect_and_preprocess_local_variables_inside_functions(void) {
             int size = get_variable_type_size(t->arg2_var_type);
             
             if (size == 0)
-              fprintf(stderr, "collect_local_variables_inside_functions(): Register r%d size is 0!\n", index);
+              fprintf(stderr, "collect_and_preprocess_local_variables_inside_functions(): Register r%d size is 0!\n", index);
 
             g_register_usage[index] = 1;
             if (size > g_register_sizes[index])
@@ -3685,7 +3685,7 @@ int collect_and_preprocess_local_variables_inside_functions(void) {
             int size = get_variable_type_size(t->result_var_type);
             
             if (size == 0)
-              fprintf(stderr, "collect_local_variables_inside_functions(): Register r%d size is 0!\n", index);
+              fprintf(stderr, "collect_and_preprocess_local_variables_inside_functions(): Register r%d size is 0!\n", index);
 
             g_register_usage[index] = 1;
             if (size > g_register_sizes[index])
@@ -3706,7 +3706,7 @@ int collect_and_preprocess_local_variables_inside_functions(void) {
       /* store local variables for ASM generation */
       function_node->local_variables = (struct local_variables *)calloc(sizeof(struct local_variables), 1);
       if (function_node->local_variables == NULL) {
-        fprintf(stderr, "collect_local_variables_inside_functions(): Out of memory error.\n");
+        fprintf(stderr, "collect_and_preprocess_local_variables_inside_functions(): Out of memory error.\n");
         return FAILED;
       }
 
@@ -3716,19 +3716,23 @@ int collect_and_preprocess_local_variables_inside_functions(void) {
       function_node->local_variables->temp_registers_count = 0;
       function_node->local_variables->temp_registers = NULL;
       function_node->local_variables->offset_to_fp_total = 0;
-      
-      function_node->local_variables->local_variables = (struct local_variable *)calloc(sizeof(struct local_variable) * local_variables_count, 1);
-      if (function_node->local_variables->local_variables == NULL) {
-        fprintf(stderr, "collect_local_variables_inside_functions(): Out of memory error.\n");
-        return FAILED;
+
+      if (local_variables_count > 0) {
+        function_node->local_variables->local_variables = (struct local_variable *)calloc(sizeof(struct local_variable) * local_variables_count, 1);
+        if (function_node->local_variables->local_variables == NULL) {
+          fprintf(stderr, "collect_and_preprocess_local_variables_inside_functions(): Out of memory error.\n");
+          return FAILED;
+        }
       }
       function_node->local_variables->local_variables_count = local_variables_count;
       function_node->local_variables->arguments_count = arguments_count;
 
-      function_node->local_variables->temp_registers = (struct temp_register *)calloc(sizeof(struct temp_register) * used_registers, 1);
-      if (function_node->local_variables->temp_registers == NULL) {
-        fprintf(stderr, "collect_local_variables_inside_functions(): Out of memory error.\n");
-        return FAILED;
+      if (used_registers > 0) {
+        function_node->local_variables->temp_registers = (struct temp_register *)calloc(sizeof(struct temp_register) * used_registers, 1);
+        if (function_node->local_variables->temp_registers == NULL) {
+          fprintf(stderr, "collect_and_preprocess_local_variables_inside_functions(): Out of memory error.\n");
+          return FAILED;
+        }
       }
       function_node->local_variables->temp_registers_count = used_registers;
 

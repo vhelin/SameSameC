@@ -205,6 +205,10 @@ void print_simple_tree_node(struct tree_node *node) {
         print_simple_tree_node(node->children[i]);
     }
   }
+  else if (node->type == TREE_NODE_TYPE_EXPRESSION) {
+    /* we shouldn't be here, but in case we come here do the right thing */
+    print_expression(node);
+  }
   else
     fprintf(stderr, "?");
 }

@@ -360,7 +360,7 @@ static size_t _ftoa(out_fct_type out, char* buffer, size_t idx, size_t maxlen, d
 {
   char buf[PRINTF_FTOA_BUFFER_SIZE];
   size_t len  = 0U;
-  double diff = 0.0;
+  double diff;
   int negative;
   int whole;
   double tmp;

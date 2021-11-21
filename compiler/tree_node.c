@@ -95,7 +95,7 @@ int tree_node_flatten(struct tree_node *node) {
 
 int get_variable_node_size_in_bytes(struct tree_node *node) {
   
-  int elements, element_size, element_type, size = 0;
+  int elements, element_size, element_type, size;
 
   if (node->type != TREE_NODE_TYPE_CREATE_VARIABLE)
     return print_error_using_tree_node("Expected a TREE_NODE_TYPE_CREATE_VARIABLE node, but got something else! Please submit a bug report!\n", ERROR_ERR, node);
@@ -210,7 +210,7 @@ static int _get_create_variable_variable_type(struct tree_node *node) {
 int get_array_initialized_size_in_bytes(struct tree_node *node) {
 
   if (node->value > 0) {
-    int size = 0, unit_size = 0;
+    int size, unit_size;
 
     if ((int)node->children[0]->value_double == 0) {
       if (node->children[0]->value == VARIABLE_TYPE_STRUCT || node->children[0]->value == VARIABLE_TYPE_UNION) {

@@ -675,10 +675,10 @@ struct tac *add_tac_calculation(int op, int r1, int r2, int rresult) {
     return NULL;
 
   t->op = op;
-
-  tac_set_result(t, TAC_ARG_TYPE_TEMP, rresult, NULL);
-  tac_set_arg1(t, TAC_ARG_TYPE_TEMP, r1, NULL);
-  tac_set_arg2(t, TAC_ARG_TYPE_TEMP, r2, NULL);
+  
+  tac_set_result(t, TAC_ARG_TYPE_TEMP, (double)rresult, NULL);
+  tac_set_arg1(t, TAC_ARG_TYPE_TEMP, (double)r1, NULL);
+  tac_set_arg2(t, TAC_ARG_TYPE_TEMP, (double)r2, NULL);
 
   return t;
 }

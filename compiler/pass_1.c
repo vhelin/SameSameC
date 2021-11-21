@@ -295,6 +295,8 @@ static int _parse_define(void) {
     token_count++;
 
     q = evaluate_token(q);
+    if (q == FAILED)
+      return FAILED;
 
     /* g_latest_token has the token evaluate_token() created */
     if (definition_add_token(definition, g_latest_token, token_count) == FAILED)
@@ -376,6 +378,8 @@ static int _parse_definition(void) {
       }
 
       q = evaluate_token(q);
+      if (q == FAILED)
+        return FAILED;
 
       g_latest_token->next = NULL;
       if (definition->arguments_data_first[argument] == NULL) {
@@ -442,7 +446,7 @@ static int _parse_definition(void) {
 
 static int _parse_if_elif(int *result) {
 
-  struct token *token_1st, *token_last, *token_current, *t;
+  struct token *token_1st = NULL, *token_last, *token_current, *t;
   int tokens = 0, q, file_id, line_number;
   
   /* make get_next_token() return linefeeds */

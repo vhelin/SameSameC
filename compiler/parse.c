@@ -285,7 +285,6 @@ int get_next_token(void) {
         g_parsed_int = (g_parsed_int << 4) + c - 'a' + 10;
       else if (c == 'h' || c == 'H') {
         g_source_pointer++;
-        c = g_buffer[g_source_pointer];
         break;
       }
       else
