@@ -16,6 +16,11 @@
 #include "arch_z80.h"
 
 
+/* amiga specific definitions */
+#ifdef AMIGA
+__near long __stack = 32*1024;
+#endif
+
 /* define this if you want to keep all temp files */
 
 #define KEEP_TMP_FILES 1

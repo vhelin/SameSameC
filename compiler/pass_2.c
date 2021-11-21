@@ -1427,7 +1427,7 @@ int create_statement(void) {
       }
       else if (symbol == '[') {
         /* array */
-        node = create_array(pointer_depth, variable_type, name, line_number, file_id);
+        node = create_array((double)pointer_depth, variable_type, name, line_number, file_id);
         if (node == NULL)
           return FAILED;
 
@@ -3244,7 +3244,7 @@ int create_variable_or_function(int is_extern, int is_static) {
       }
       else if (symbol == '[') {
         /* array */
-        node = create_array(pointer_depth, variable_type, name, line_number, file_id);
+        node = create_array((double)pointer_depth, variable_type, name, line_number, file_id);
         if (node == NULL)
           return FAILED;
         
@@ -3797,7 +3797,7 @@ static int _process_create_variable_struct_union_process_struct_union(struct tre
 }
 
 
-static int _process_create_variable_struct_union(struct tree_node *node) {
+static int _process_creation_of_variable_struct_union(struct tree_node *node) {
 
   struct tree_node *child;
   int i = 2, count = 1, j, calculate_array_size = NO, array_size = 0;
@@ -4368,7 +4368,7 @@ static void _check_ast_create_variable(struct tree_node *node) {
     _check_ast_expression(node->children[i]);
 
   if ((node->children[0]->value == VARIABLE_TYPE_STRUCT || node->children[0]->value == VARIABLE_TYPE_UNION) && node->children[0]->value_double == 0)
-    _process_create_variable_struct_union(node);
+    _process_creation_of_variable_struct_union(node);
 }
 
 

@@ -32,7 +32,7 @@
 
 /* amiga specific definitions */
 #ifdef AMIGA
-__near long __stack = 200000;
+__near long __stack = 256*1024;
 #endif
 
 char g_version_string[] = "$VER: SameSameC compiler 0.8a (7.11.2021)";
@@ -619,7 +619,7 @@ int parse_and_add_definition(char *c, int contains_flag) {
       s[t] = 0;
       
       if (*c == 0)
-        result = _add_a_new_definition(n, strlen(s) + 1, s, TOKEN_ID_BYTES);
+        result = _add_a_new_definition(n, (double)(strlen(s) + 1), s, TOKEN_ID_BYTES);
       else {
         fprintf(stderr, "parse_and_add_definition(): Incorrectly terminated quoted string (%s).\n", value);
         result = FAILED;
@@ -630,7 +630,7 @@ int parse_and_add_definition(char *c, int contains_flag) {
     }
 
     /* unquoted string */
-    return _add_a_new_definition(n, strlen(c) + 1, c, TOKEN_ID_VALUE_STRING);
+    return _add_a_new_definition(n, (double)(strlen(c) + 1), c, TOKEN_ID_VALUE_STRING);
   }
 
   return FAILED;

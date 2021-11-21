@@ -21,6 +21,11 @@ cd /
 ; copy the executables...
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-mkdir binaries
+if exists binaries
+   echo "Folder binaries exists already"
+else
+   makedir binaries
+endif
+
 copy compiler/samesamecc binaries/
 copy linker/samesamecl binaries/

@@ -1147,7 +1147,11 @@ static int _generate_asm_assignment_z80(struct tac *t, FILE *file_out, struct tr
 }
 
 
-static int _generate_asm_add_sub_or_xor_and_z80_8bit(struct tac *t, FILE *file_out, struct tree_node *function_node, int op) {
+/* NOTE! because SAS/C on Amiga thinks that this and the next function were called the same
+   prefixes "aaa" and "bbb" were added to separate them */
+
+
+static int _bbb_generate_asm_add_sub_or_xor_and_z80_8bit(struct tac *t, FILE *file_out, struct tree_node *function_node, int op) {
   
   int result_offset = -1, arg1_offset = -1, arg2_offset = -1, ix_offset = 0;
   
@@ -1288,7 +1292,7 @@ static int _generate_asm_add_sub_or_xor_and_z80_8bit(struct tac *t, FILE *file_o
     }
   }
   else {
-    fprintf(stderr, "_generate_asm_add_sub_or_xor_and_z80_8bit(): Unsupported TAC op %d! Please submit a bug report!\n", op);
+    fprintf(stderr, "_bbb_generate_asm_add_sub_or_xor_and_z80_8bit(): Unsupported TAC op %d! Please submit a bug report!\n", op);
     return FAILED;
   }
 
@@ -1299,7 +1303,7 @@ static int _generate_asm_add_sub_or_xor_and_z80_8bit(struct tac *t, FILE *file_o
   ix_offset = 0;
   
   if (t->result_type == TAC_ARG_TYPE_CONSTANT) {
-    fprintf(stderr, "_generate_asm_add_sub_or_xor_and_z80_8bit(): Target cannot be a value!\n");
+    fprintf(stderr, "_bbb_generate_asm_add_sub_or_xor_and_z80_8bit(): Target cannot be a value!\n");
     return FAILED;
   }
   else if (t->result_type == TAC_ARG_TYPE_LABEL && result_offset == 999999) {
@@ -1348,7 +1352,7 @@ static int _generate_asm_add_sub_or_xor_and_z80_8bit(struct tac *t, FILE *file_o
 }
 
 
-static int _generate_asm_add_sub_or_xor_and_z80_16bit(struct tac *t, FILE *file_out, struct tree_node *function_node, int op) {
+static int _aaa_generate_asm_add_sub_or_xor_and_z80_16bit(struct tac *t, FILE *file_out, struct tree_node *function_node, int op) {
   
   int result_offset = -1, arg1_offset = -1, arg2_offset = -1, ix_offset = 0;
   
@@ -1421,7 +1425,7 @@ static int _generate_asm_add_sub_or_xor_and_z80_16bit(struct tac *t, FILE *file_
         _load_value_to_h(0, file_out);
       }
       else {
-        fprintf(stderr, "_generate_asm_add_sub_or_xor_and_z80_16bit(): Unhandled 8-bit ARG1! Please submit a bug report!\n");
+        fprintf(stderr, "_aaa_generate_asm_add_sub_or_xor_and_z80_16bit(): Unhandled 8-bit ARG1! Please submit a bug report!\n");
         print_tac(t, NO, stderr);
         return FAILED;
       }
@@ -1485,7 +1489,7 @@ static int _generate_asm_add_sub_or_xor_and_z80_16bit(struct tac *t, FILE *file_
         _load_value_to_b(0, file_out);
       }
       else {
-        fprintf(stderr, "_generate_asm_add_sub_or_xor_and_z80_16bit(): Unhandled 8-bit ARG2! Please submit a bug report!\n");
+        fprintf(stderr, "_aaa_generate_asm_add_sub_or_xor_and_z80_16bit(): Unhandled 8-bit ARG2! Please submit a bug report!\n");
         print_tac(t, NO, stderr);
         return FAILED;
       }
@@ -1515,7 +1519,7 @@ static int _generate_asm_add_sub_or_xor_and_z80_16bit(struct tac *t, FILE *file_
   else if (op == TAC_OP_AND)
     _and_bc_to_hl(file_out);
   else {
-    fprintf(stderr, "_generate_asm_add_sub_or_xor_and_z80_16bit(): Unsupported TAC op %d! Please submit a bug report!\n", op);
+    fprintf(stderr, "_aaa_generate_asm_add_sub_or_xor_and_z80_16bit(): Unsupported TAC op %d! Please submit a bug report!\n", op);
     return FAILED;
   }
   
@@ -1526,7 +1530,7 @@ static int _generate_asm_add_sub_or_xor_and_z80_16bit(struct tac *t, FILE *file_
   ix_offset = 0;
   
   if (t->result_type == TAC_ARG_TYPE_CONSTANT) {
-    fprintf(stderr, "_generate_asm_add_sub_or_xor_and_z80_16bit(): Target cannot be a value!\n");
+    fprintf(stderr, "_aaa_generate_asm_add_sub_or_xor_and_z80_16bit(): Target cannot be a value!\n");
     return FAILED;
   }
   else if (t->result_type == TAC_ARG_TYPE_LABEL && result_offset == 999999) {
@@ -1568,10 +1572,10 @@ static int _generate_asm_add_sub_or_xor_and_z80(struct tac *t, FILE *file_out, s
   /* 8-bit or 16-bit? */
   if ((t->arg1_var_type_promoted == VARIABLE_TYPE_INT8 || t->arg1_var_type_promoted == VARIABLE_TYPE_UINT8) &&
       (t->arg2_var_type_promoted == VARIABLE_TYPE_INT8 || t->arg2_var_type_promoted == VARIABLE_TYPE_UINT8))
-    return _generate_asm_add_sub_or_xor_and_z80_8bit(t, file_out, function_node, op);
+    return _bbb_generate_asm_add_sub_or_xor_and_z80_8bit(t, file_out, function_node, op);
   else if ((t->arg1_var_type_promoted == VARIABLE_TYPE_INT16 || t->arg1_var_type_promoted == VARIABLE_TYPE_UINT16) &&
            (t->arg2_var_type_promoted == VARIABLE_TYPE_INT16 || t->arg2_var_type_promoted == VARIABLE_TYPE_UINT16))
-      return _generate_asm_add_sub_or_xor_and_z80_16bit(t, file_out, function_node, op);
+      return _aaa_generate_asm_add_sub_or_xor_and_z80_16bit(t, file_out, function_node, op);
 
   fprintf(stderr, "_generate_asm_add_sub_or_xor_and_z80(): 8-bit + 16-bit, this shouldn't happen. Please submit a bug report!\n");
 
@@ -2709,7 +2713,11 @@ static int _generate_asm_array_write_z80(struct tac *t, FILE *file_out, struct t
 }
 
 
-static int _generate_asm_shift_left_right_z80_16bit(struct tac *t, FILE *file_out, struct tree_node *function_node, int op) {
+/* NOTE! because SAS/C on Amiga thinks that this and the next function were called the same
+   prefixes "aaa" and "bbb" were added to separate them */
+
+
+static int _aaa_generate_asm_shift_left_right_z80_16bit(struct tac *t, FILE *file_out, struct tree_node *function_node, int op) {
 
   int result_offset = -1, arg1_offset = -1, arg2_offset = -1, ix_offset = 0;
   
@@ -2782,7 +2790,7 @@ static int _generate_asm_shift_left_right_z80_16bit(struct tac *t, FILE *file_ou
         _load_value_to_h(0, file_out);
       }
       else {
-        fprintf(stderr, "_generate_asm_shift_left_right_z80_16bit(): Unhandled 8-bit ARG1! Please submit a bug report!\n");
+        fprintf(stderr, "_aaa_generate_asm_shift_left_right_z80_16bit(): Unhandled 8-bit ARG1! Please submit a bug report!\n");
         print_tac(t, NO, stderr);
         return FAILED;
       }
@@ -2843,7 +2851,7 @@ static int _generate_asm_shift_left_right_z80_16bit(struct tac *t, FILE *file_ou
         _load_value_to_b(0, file_out);
       }
       else {
-        fprintf(stderr, "_generate_asm_shift_left_right_z80_16bit(): Unhandled 8-bit ARG2! Please submit a bug report!\n");
+        fprintf(stderr, "_aaa_generate_asm_shift_left_right_z80_16bit(): Unhandled 8-bit ARG2! Please submit a bug report!\n");
         print_tac(t, NO, stderr);
         return FAILED;
       }
@@ -2893,7 +2901,7 @@ static int _generate_asm_shift_left_right_z80_16bit(struct tac *t, FILE *file_ou
   ix_offset = 0;
   
   if (t->result_type == TAC_ARG_TYPE_CONSTANT) {
-    fprintf(stderr, "_generate_asm_shift_left_right_z80_16bit(): Target cannot be a value!\n");
+    fprintf(stderr, "_aaa_generate_asm_shift_left_right_z80_16bit(): Target cannot be a value!\n");
     return FAILED;
   }
   else if (t->result_type == TAC_ARG_TYPE_LABEL && result_offset == 999999) {
@@ -2930,7 +2938,7 @@ static int _generate_asm_shift_left_right_z80_16bit(struct tac *t, FILE *file_ou
 }
 
 
-static int _generate_asm_shift_left_right_z80_8bit(struct tac *t, FILE *file_out, struct tree_node *function_node, int op) {
+static int _bbb_generate_asm_shift_left_right_z80_8bit(struct tac *t, FILE *file_out, struct tree_node *function_node, int op) {
 
   int result_offset = -1, arg1_offset = -1, arg2_offset = -1, ix_offset = 0;
   
@@ -3117,10 +3125,10 @@ static int _generate_asm_shift_left_right_z80(struct tac *t, FILE *file_out, str
   /* 8-bit or 16-bit? */
   if ((t->arg1_var_type_promoted == VARIABLE_TYPE_INT8 || t->arg1_var_type_promoted == VARIABLE_TYPE_UINT8) &&
       (t->arg2_var_type_promoted == VARIABLE_TYPE_INT8 || t->arg2_var_type_promoted == VARIABLE_TYPE_UINT8))
-    return _generate_asm_shift_left_right_z80_8bit(t, file_out, function_node, op);
+    return _bbb_generate_asm_shift_left_right_z80_8bit(t, file_out, function_node, op);
   else if ((t->arg1_var_type_promoted == VARIABLE_TYPE_INT16 || t->arg1_var_type_promoted == VARIABLE_TYPE_UINT16) &&
            (t->arg2_var_type_promoted == VARIABLE_TYPE_INT16 || t->arg2_var_type_promoted == VARIABLE_TYPE_UINT16))
-    return _generate_asm_shift_left_right_z80_16bit(t, file_out, function_node, op);
+    return _aaa_generate_asm_shift_left_right_z80_16bit(t, file_out, function_node, op);
 
   fprintf(stderr, "_generate_asm_shift_left_right_z80(): 8-bit + 16-bit, this shouldn't happen. Please submit a bug report!\n");
 
@@ -3592,7 +3600,7 @@ static int _generate_asm_mul_div_mod_z80_8bit(struct tac *t, FILE *file_out, str
   ix_offset = 0;
   
   if (t->result_type == TAC_ARG_TYPE_CONSTANT) {
-    fprintf(stderr, "_generate_asm_add_sub_or_and_z80_8bit(): Target cannot be a value!\n");
+    fprintf(stderr, "_bbb_generate_asm_add_sub_or_and_z80_8bit(): Target cannot be a value!\n");
     return FAILED;
   }
   else if (t->result_type == TAC_ARG_TYPE_LABEL && result_offset == 999999) {
@@ -3703,7 +3711,11 @@ static int _generate_asm_mul_div_mod_z80(struct tac *t, FILE *file_out, struct t
 }
 
 
-static int _generate_asm_jump_eq_lt_gt_neq_lte_gte_z80_16bit(struct tac *t, FILE *file_out, struct tree_node *function_node, int op) {
+/* NOTE! because SAS/C on Amiga thinks that this and the next function were called the same
+   prefixes "aaa" and "bbb" were added to separate them */
+
+
+static int _aaa_generate_asm_jump_eq_lt_gt_neq_lte_gte_z80_16bit(struct tac *t, FILE *file_out, struct tree_node *function_node, int op) {
 
   int arg1_offset = -1, arg2_offset = -1, ix_offset = 0;
 
@@ -3771,7 +3783,7 @@ static int _generate_asm_jump_eq_lt_gt_neq_lte_gte_z80_16bit(struct tac *t, FILE
         _load_value_to_h(0, file_out);
       }
       else {
-        fprintf(stderr, "_generate_asm_jump_eq_lt_gt_neq_lte_gte_z80_16bit(): Unhandled 8-bit ARG1! Please submit a bug report!\n");
+        fprintf(stderr, "_aaa_generate_asm_jump_eq_lt_gt_neq_lte_gte_z80_16bit(): Unhandled 8-bit ARG1! Please submit a bug report!\n");
         print_tac(t, NO, stderr);
         return FAILED;
       }
@@ -3832,7 +3844,7 @@ static int _generate_asm_jump_eq_lt_gt_neq_lte_gte_z80_16bit(struct tac *t, FILE
         _load_value_to_b(0, file_out);
       }
       else {
-        fprintf(stderr, "_generate_asm_jump_eq_lt_gt_neq_lte_gte_z80_16bit(): Unhandled 8-bit ARG2! Please submit a bug report!\n");
+        fprintf(stderr, "_aaa_generate_asm_jump_eq_lt_gt_neq_lte_gte_z80_16bit(): Unhandled 8-bit ARG2! Please submit a bug report!\n");
         print_tac(t, NO, stderr);
         return FAILED;
       }
@@ -3870,7 +3882,7 @@ static int _generate_asm_jump_eq_lt_gt_neq_lte_gte_z80_16bit(struct tac *t, FILE
 }
 
 
-static int _generate_asm_jump_eq_lt_gt_neq_lte_gte_z80_8bit(struct tac *t, FILE *file_out, struct tree_node *function_node, int op) {
+static int _bbb_generate_asm_jump_eq_lt_gt_neq_lte_gte_z80_8bit(struct tac *t, FILE *file_out, struct tree_node *function_node, int op) {
 
   int arg1_offset = -1, arg2_offset = -1, ix_offset = 0;
   
@@ -3994,10 +4006,10 @@ static int _generate_asm_jump_eq_lt_gt_neq_lte_gte_z80(struct tac *t, FILE *file
   /* 8-bit or 16-bit? */
   if ((t->arg1_var_type_promoted == VARIABLE_TYPE_INT8 || t->arg1_var_type_promoted == VARIABLE_TYPE_UINT8) &&
       (t->arg2_var_type_promoted == VARIABLE_TYPE_INT8 || t->arg2_var_type_promoted == VARIABLE_TYPE_UINT8))
-    return _generate_asm_jump_eq_lt_gt_neq_lte_gte_z80_8bit(t, file_out, function_node, op);
+    return _bbb_generate_asm_jump_eq_lt_gt_neq_lte_gte_z80_8bit(t, file_out, function_node, op);
   else if ((t->arg1_var_type_promoted == VARIABLE_TYPE_INT16 || t->arg1_var_type_promoted == VARIABLE_TYPE_UINT16) &&
            (t->arg2_var_type_promoted == VARIABLE_TYPE_INT16 || t->arg2_var_type_promoted == VARIABLE_TYPE_UINT16))
-    return _generate_asm_jump_eq_lt_gt_neq_lte_gte_z80_16bit(t, file_out, function_node, op);
+    return _aaa_generate_asm_jump_eq_lt_gt_neq_lte_gte_z80_16bit(t, file_out, function_node, op);
 
   fprintf(stderr, "_generate_asm_jump_eq_lt_gt_neq_lte_gte_z80(): 8-bit + 16-bit, this shouldn't happen. Please submit a bug report!\n");
 

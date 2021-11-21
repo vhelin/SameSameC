@@ -345,7 +345,11 @@ static int _remember_a_removed_jump_destination(char *label) {
 }
 
 
-static int _get_variable_index_in_function_call_arguments(struct tac *t, int type, struct tree_node *label_node, int r) {
+/* NOTE! because SAS/C on Amiga thinks that this and the next function were called the same
+   prefixes "aaa" and "bbb" were added to separate them */
+
+
+static int _aaa_get_argument_index_in_function_call_arguments(struct tac *t, int type, struct tree_node *label_node, int r) {
 
   int i;
 
@@ -362,7 +366,7 @@ static int _get_variable_index_in_function_call_arguments(struct tac *t, int typ
 }
 
 
-static int _get_variable_index_in_function_call_arguments_with_tree_node(struct tac *t, struct tree_node *node) {
+static int _bbb_get_argument_index_in_function_call_arguments_with_tree_node(struct tac *t, struct tree_node *node) {
 
   int i;
 
@@ -1649,7 +1653,7 @@ static int _optimize_il_23(int *optimizations_counter) {
           if (g_tacs[next].op == TAC_OP_FUNCTION_CALL || g_tacs[next].op == TAC_OP_FUNCTION_CALL_USE_RETURN_VALUE) {
             int index;
 
-            index = _get_variable_index_in_function_call_arguments(&g_tacs[next], g_tacs[current].result_type, g_tacs[current].result_node, (int)g_tacs[current].result_d);
+            index = _aaa_get_argument_index_in_function_call_arguments(&g_tacs[next], g_tacs[current].result_type, g_tacs[current].result_node, (int)g_tacs[current].result_d);
             if (index >= 0) {
               /* found match! rX can be removed, variable/constant embedded! */
               struct function_argument *arg = &(g_tacs[next].arguments[index]);
@@ -2244,7 +2248,7 @@ static int _optimize_il_31(int *optimizations_counter) {
           }
 
           if (g_tacs[next].op == TAC_OP_FUNCTION_CALL || g_tacs[next].op == TAC_OP_FUNCTION_CALL_USE_RETURN_VALUE) {
-            if (_get_variable_index_in_function_call_arguments(&g_tacs[next], g_tacs[current].result_type, g_tacs[current].result_node, (int)g_tacs[current].result_d) >= 0) {
+            if (_aaa_get_argument_index_in_function_call_arguments(&g_tacs[next], g_tacs[current].result_type, g_tacs[current].result_node, (int)g_tacs[current].result_d) >= 0) {
               /* cannot jump over reads from the same variable */
               next = -1;
               break;
@@ -2522,7 +2526,7 @@ static int _optimize_il_34(int *optimizations_counter) {
             break;
           }
           else if (g_tacs[next].op == TAC_OP_FUNCTION_CALL || g_tacs[next].op == TAC_OP_FUNCTION_CALL_USE_RETURN_VALUE) {
-            if (_get_variable_index_in_function_call_arguments(&g_tacs[next], g_tacs[current].result_type, g_tacs[current].result_node, (int)g_tacs[current].result_d) >= 0) {
+            if (_aaa_get_argument_index_in_function_call_arguments(&g_tacs[next], g_tacs[current].result_type, g_tacs[current].result_node, (int)g_tacs[current].result_d) >= 0) {
               /* cannot jump over reads from the same variable */
               next = -1;
               break;
@@ -2637,7 +2641,7 @@ static int _optimize_il_1000(int *optimizations_counter) {
             break;
           }
           else if (g_tacs[next].op == TAC_OP_FUNCTION_CALL || g_tacs[next].op == TAC_OP_FUNCTION_CALL_USE_RETURN_VALUE) {
-            if (_get_variable_index_in_function_call_arguments(&g_tacs[next], g_tacs[current].result_type, g_tacs[current].result_node, (int)g_tacs[current].result_d) >= 0) {
+            if (_aaa_get_argument_index_in_function_call_arguments(&g_tacs[next], g_tacs[current].result_type, g_tacs[current].result_node, (int)g_tacs[current].result_d) >= 0) {
               /* cannot jump over reads from the same variable */
               next = -1;
               break;
@@ -2704,7 +2708,7 @@ static int _optimize_il_1001(int *optimizations_counter) {
           }
           
           if (g_tacs[next].op == TAC_OP_FUNCTION_CALL || g_tacs[next].op == TAC_OP_FUNCTION_CALL_USE_RETURN_VALUE) {
-            if (_get_variable_index_in_function_call_arguments_with_tree_node(&g_tacs[next], g_tacs[current].result_node) >= 0) {
+            if (_bbb_get_argument_index_in_function_call_arguments_with_tree_node(&g_tacs[next], g_tacs[current].result_node) >= 0) {
               /* we cannot search past reads from the variable */
               next = -1;
               break;
