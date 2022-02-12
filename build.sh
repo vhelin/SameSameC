@@ -35,6 +35,8 @@ git submodule init
 git submodule update
 git fetch
 git merge
+git checkout master
+git pull
 cmake -G "Unix Makefiles"
 make
 cd ..
