@@ -25,6 +25,19 @@ if [ $# -eq 1 ]; then
     fi
 fi
 
+# Valgrind test...
+# Makefiles in the tests folder use SAMESAMECVALGRIND to run Valgrind at the same time
+# with samesamecc and samesamecl
+if ! [ -x "$(command -v valgrind)" ]; then
+  echo
+  echo '########################################################################'
+  echo 'WARNING: Valgrind is not installed so we cannot perform memory checks...'
+  echo '########################################################################'
+  export SAMESAMECVALGRIND=
+else
+  export SAMESAMECVALGRIND='valgrind -s --error-exitcode=1 --tool=memcheck --leak-check=full --errors-for-leak-kinds=all'
+fi
+
 echo
 echo Running tests...
 cd tests

@@ -576,7 +576,7 @@ int tree_node_set_string(struct tree_node *node, char *string) {
   if (node->label != NULL)
     free(node->label);
   
-  node->label = calloc(strlen(string) + 1, 1);
+  node->label = calloc(MAX_NAME_LENGTH + 1, 1);
   if (node->label == NULL)
     return print_error("Out of memory while allocating a string for a tree node.\n", ERROR_ERR);
 

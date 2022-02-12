@@ -1,7 +1,7 @@
 
-CC = samesamecc
+CC = $(SAMESAMECVALGRIND) samesamecc
 CFLAGS = -mz80 -rs 3 -o
-LD = samesamecl
+LD = $(SAMESAMECVALGRIND) samesamecl
 LDFLAGS = -lsms -v -o
 
 SFILES = main.ssc

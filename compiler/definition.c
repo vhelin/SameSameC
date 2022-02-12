@@ -161,8 +161,6 @@ static int _collect_arguments_from_tokens(struct definition *d) {
       snprintf(g_error_message, sizeof(g_error_message), "_collect_arguments_from_tokens(): Unexpected token %s in the argument token list.\n", get_token_simple(t));
       return print_error(g_error_message, ERROR_ERR);
     }
-    
-    t = t->next;
   }
 
   d->tokens_first = NULL;
@@ -199,8 +197,10 @@ int definition_add_token(struct definition *d, struct token *t, int token_count)
     /* #define was of form "define abc(...)" and we are still getting tokens ->
        the first tokens inside the parenthesis were arguments! let's convert them
        to arguments... */
-    if (_collect_arguments_from_tokens(d) == FAILED)
+    if (_collect_arguments_from_tokens(d) == FAILED) {
+      token_free(t);
       return FAILED;
+    }
     d->collect_arguments = NO;
   }
 

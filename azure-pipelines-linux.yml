@@ -11,6 +11,16 @@ pool:
 
 steps:
 - script: |
+    set -ex
+    sudo apt -y update
+    sudo apt install -y valgrind
+  displayName: 'Install Valgrind'
+  timeoutInMinutes: 20
+- script: |
     ./build.sh
+  displayName: 'Build'
+  timeoutInMinutes: 20
+- script: |
     ./run_tests.sh
-  displayName: 'make'
+  displayName: 'Run Tests'
+  timeoutInMinutes: 20

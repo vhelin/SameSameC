@@ -1,7 +1,7 @@
 
-CC = samesamecc
+CC = $(SAMESAMECVALGRIND) samesamecc
 CFLAGS = -mz80 -rs 3 -o
-LD = samesamecl
+LD = $(SAMESAMECVALGRIND) samesamecl
 LDFLAGS = -lsms -ro 4 -v -o
 
 SFILES = interrupts.ssc main.ssc bank_1.ssc bank_3.ssc

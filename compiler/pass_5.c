@@ -1660,6 +1660,9 @@ static int _optimize_il_23(int *optimizations_counter) {
               /* found match! rX can be removed, variable/constant embedded! */
               struct function_argument *arg = &(g_tacs[next].arguments[index]);
 
+	      /* NOTE! we don't want to leak memory... */
+	      free(arg->label);
+
               arg->type = g_tacs[current].arg1_type;
               arg->value = g_tacs[current].arg1_d;
               arg->label = g_tacs[current].arg1_s; /* NOTE! we move the label (if there's one) */

@@ -453,12 +453,13 @@ int tac_set_arg1(struct tac *t, int arg_type, double d, char *s) {
     t->arg1_d = d;
   else {
     free(t->arg1_s);
+    t->arg1_s = NULL;
 
     if (s == NULL) {
       fprintf(stderr, "tac_set_arg1(): The label for TAC is NULL! Please submit a bug report!\n");
       return FAILED;
     }
-    
+
     t->arg1_s = calloc(strlen(s) + 1, 1);
     if (t->arg1_s == NULL) {
       fprintf(stderr, "tac_set_arg1(): Out of memory while allocating a label for TACs.\n");
@@ -480,7 +481,8 @@ int tac_set_arg2(struct tac *t, int arg_type, double d, char *s) {
     t->arg2_d = d;
   else {
     free(t->arg2_s);
-
+    t->arg2_s = NULL;
+    
     if (s == NULL) {
       fprintf(stderr, "tac_set_arg2(): The label for TAC is NULL! Please submit a bug report!\n");
       return FAILED;
@@ -507,7 +509,8 @@ int tac_set_result(struct tac *t, int arg_type, double d, char *s) {
     t->result_d = d;
   else {
     free(t->result_s);
-
+    t->result_s = NULL;
+    
     if (s == NULL) {
       fprintf(stderr, "tac_set_result(): The label for TAC is NULL! Please submit a bug report!\n");
       return FAILED;
@@ -531,11 +534,24 @@ int tac_copy_arg(struct tac *t, int source, int destination) {
   if (source == TAC_USE_ARG2 && destination == TAC_USE_ARG1) {
     t->arg1_type = t->arg2_type;
     t->arg1_d = t->arg2_d;
-    t->arg1_s = t->arg2_s;
     t->arg1_var_type = t->arg2_var_type;
     t->arg1_var_type_promoted = t->arg2_var_type_promoted;
     t->arg1_node = t->arg2_node;
-  
+
+    free(t->arg1_s);
+    t->arg1_s = NULL;
+
+    if (t->arg2_s == NULL)
+      return SUCCEEDED;
+    
+    t->arg1_s = calloc(strlen(t->arg2_s) + 1, 1);
+    if (t->arg1_s == NULL) {
+      fprintf(stderr, "tac_copy_arg(): Out of memory while allocating a label for TACs.\n");
+      return FAILED;
+    }
+
+    strcpy(t->arg1_s, t->arg2_s);
+    
     return SUCCEEDED;
   }
 
@@ -570,6 +586,7 @@ void free_tac_contents(struct tac *t) {
 struct tac *add_tac(void) {
 
   struct tac *t;
+  int i;
   
   if (g_tacs_count == g_tacs_max) {
     g_tacs = realloc(g_tacs, sizeof(struct tac) * (g_tacs_max + 1024));
@@ -578,6 +595,10 @@ struct tac *add_tac(void) {
       return FAILED;
     }
     g_tacs_max += 1024;
+
+    /* mark all new TACs as dead */
+    for (i = g_tacs_count; i < g_tacs_max; i++)
+      g_tacs[i].op = TAC_OP_DEAD;
   }
 
   t = &g_tacs[g_tacs_count++];
