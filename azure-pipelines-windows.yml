@@ -15,6 +15,10 @@ variables:
   buildConfiguration: 'Release'
 
 steps:
+- bash: ./update_wla_dx.sh
+  workingDirectory: '$(Build.SourcesDirectory)'
+  displayName: 'Update WLA DX'
+
 - task: NuGetToolInstaller@1
 
 - task: NuGetCommand@2
