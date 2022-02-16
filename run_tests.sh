@@ -14,14 +14,15 @@ runTest() {
 if [ $# -eq 1 ]; then
     if [ "$1" = "-windows" ]; then
         export PATH=$PATH:$PWD/windows/Release
+        export PATH=$PATH:$PWD/wla-dx/windows/Release
     else
         export PATH=$PATH:$PWD/binaries
+        export PATH=$PATH:$PWD/wla-dx/binaries
     fi
 else
     export PATH=$PATH:$PWD/binaries
+    export PATH=$PATH:$PWD/wla-dx/binaries
 fi
-
-export PATH=$PATH:$PWD/wla-dx/binaries
 
 set +e
 
