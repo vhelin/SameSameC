@@ -11,7 +11,16 @@ runTest() {
     cd ..
 }
 
-export PATH=$PATH:$PWD/binaries
+if [ $# -eq 1 ]; then
+    if [ "$1" = "-windows" ]; then
+        export PATH=$PATH:$PWD/windows/Release
+    else
+        export PATH=$PATH:$PWD/binaries
+    fi
+else
+    export PATH=$PATH:$PWD/binaries
+fi
+
 export PATH=$PATH:$PWD/wla-dx/binaries
 
 set +e
