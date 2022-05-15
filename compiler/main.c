@@ -88,7 +88,7 @@ static int _get_plain_filename(char *output, int output_size, char *input) {
 
   int length, i, start, j;
 
-  length = strlen(input);
+  length = (int)strlen(input);
 
   /* find the starting point */
   start = 0;

@@ -1857,7 +1857,7 @@ int rename_static_variables_and_functions(void) {
 
       /* get the source file name without special characters */
       s = get_file_name(node->file_id);
-      length = strlen(s);
+      length = (int)strlen(s);
 
       for (j = 0; j < length; j++) {
         if (s[j] >= 'a' && s[j] <= 'z')

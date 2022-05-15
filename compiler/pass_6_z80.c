@@ -4735,7 +4735,7 @@ static int _generate_asm_inline_asm_z80(struct tac *t, FILE *file_out, struct tr
       int i, length, j;
 
       /* skip white space */
-      length = strlen(al->line);
+      length = (int)strlen(al->line);
       for (i = 0; i < length && (al->line[i] == ' ' || al->line[i] == '\t'); i++)
         ;
 
@@ -5255,7 +5255,7 @@ int generate_global_variables_z80(char *file_name, FILE *file_out) {
         continue;
 
       if ((node->flags & TREE_NODE_FLAG_DATA_IS_CONST) == 0) {
-        length = strlen(node->children[1]->label);
+        length = (int)strlen(node->children[1]->label);
         if (length > max_length)
           max_length = length;
         global_variables_ram++;
@@ -5276,7 +5276,7 @@ int generate_global_variables_z80(char *file_name, FILE *file_out) {
           continue;
 
         if ((node->flags & TREE_NODE_FLAG_DATA_IS_CONST) == 0) {
-          length = strlen(node->children[1]->label);
+          length = (int)strlen(node->children[1]->label);
 
           fprintf(file_out, "    %s", node->children[1]->label);
 

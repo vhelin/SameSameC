@@ -93,12 +93,12 @@ int create_mainmain_tokens(void) {
 
   /* generate "void mainmain(void)" */
   sum += token_add(TOKEN_ID_VARIABLE_TYPE, VARIABLE_TYPE_VOID, 0.0, NULL);  
-  sum += token_add(TOKEN_ID_VALUE_STRING, strlen("mainmain") + 1, 0.0, "mainmain");
+  sum += token_add(TOKEN_ID_VALUE_STRING, (int)(strlen("mainmain") + 1), 0.0, "mainmain");
   sum += token_add(TOKEN_ID_SYMBOL, '(', 0.0, NULL);
   sum += token_add(TOKEN_ID_VARIABLE_TYPE, VARIABLE_TYPE_VOID, 0.0, NULL);
   sum += token_add(TOKEN_ID_SYMBOL, ')', 0.0, NULL);
   sum += token_add(TOKEN_ID_SYMBOL, '{', 0.0, NULL);
-  sum += token_add(TOKEN_ID_VALUE_STRING, strlen("main") + 1, 0.0, "main");
+  sum += token_add(TOKEN_ID_VALUE_STRING, (int)(strlen("main") + 1), 0.0, "main");
   sum += token_add(TOKEN_ID_SYMBOL, '(', 0.0, NULL);
   sum += token_add(TOKEN_ID_SYMBOL, ')', 0.0, NULL);
   sum += token_add(TOKEN_ID_SYMBOL, ';', 0.0, NULL);
@@ -970,7 +970,7 @@ int evaluate_token(int type) {
       return _parse_definition();
     
     /* not a known string -> add it as a string token */
-    return token_add(TOKEN_ID_VALUE_STRING, strlen(g_tmp) + 1, 0.0, g_tmp);
+    return token_add(TOKEN_ID_VALUE_STRING, (int)(strlen(g_tmp) + 1), 0.0, g_tmp);
   }
 
   return FAILED;

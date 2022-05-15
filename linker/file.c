@@ -18,7 +18,7 @@ static int _get_plain_filename(char *output, int output_size, char *input) {
 
   int length, i, start, j;
 
-  length = strlen(input);
+  length = (int)strlen(input);
 
   /* find the starting point */
   start = 0;
@@ -75,7 +75,7 @@ int file_load(char *name) {
   f->position_sections = 0;
   f->position_ramsections = 0;
   
-  if (strlen(name) >= MAX_NAME_LENGTH) {
+  if ((int)strlen(name) >= MAX_NAME_LENGTH) {
     fprintf(stderr, "FILE_LOAD: The file name \"%s\" is too long. Please make defines.h/MAX_NAME_LENGTH larger, recompile and relink.\n", name);
     free(f);
     fclose(fp);
@@ -127,7 +127,7 @@ static int _find_function(const char *name, struct file *f) {
   char *d;
 
   d = f->data;
-  length = strlen(name);
+  length = (int)strlen(name);
 
   while (i < f->size) {
     for (j = 0; i+j < f->size && j < length; j++) {
@@ -236,7 +236,7 @@ static int _find_next_section(struct file *f, const char *directive, int *positi
   int i = *position, j, k, l;
   char *data = f->data;
 
-  l = strlen(directive);
+  l = (int)strlen(directive);
   
   while (i < f->size) {
     if (data[i] == directive[0]) {

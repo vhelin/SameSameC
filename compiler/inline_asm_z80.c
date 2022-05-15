@@ -23,7 +23,7 @@ int inline_asm_z80_parse_line(struct asm_line *al) {
   int i, j, length, got_parenthesis;
 
   line = al->line;
-  length = strlen(line);
+  length = (int)strlen(line);
 
   /* skip whitespace */
   for (i = 0; i < length && (line[i] == ' ' || line[i] == '\t'); i++)

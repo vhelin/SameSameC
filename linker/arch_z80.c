@@ -130,7 +130,7 @@ int arch_z80_create_copy_bytes_functions(void) {
                "      RET\n" \
                "  .ENDS\n", f->bank, f->bank, f->bank);
 
-      f->data_copy_bytes_size = strlen(f->data_copy_bytes);
+      f->data_copy_bytes_size = (int)strlen(f->data_copy_bytes);
     }
     
     f = f->next;
