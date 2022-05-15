@@ -10,70 +10,70 @@ HFILES = main.h parse.h include_file.h stack.h printf.h definition.h pass_1.h pa
 OFILES = main.o parse.o include_file.o stack.o printf.o definition.o pass_1.o pass_2.o pass_3.o pass_4.o pass_5.o pass_6_z80.o tree_node.o symbol_table.o il.o tac.o source_line_manager.o inline_asm.o inline_asm_z80.o token.o struct_item.o
 
 
-all: $(OFILES) makefile
+all: $(OFILES) makefile.gcc
 	$(LD) $(OFILES) $(LDFLAGS) -o samesamecc
 
-main.o: main.c defines.h main.h makefile
+main.o: main.c defines.h main.h makefile.gcc
 	$(CC) $(CFLAGS) main.c
 
-parse.o: parse.c defines.h parse.h makefile
+parse.o: parse.c defines.h parse.h makefile.gcc
 	$(CC) $(CFLAGS) parse.c
 
-include_file.o: include_file.c defines.h include_file.h makefile
+include_file.o: include_file.c defines.h include_file.h makefile.gcc
 	$(CC) $(CFLAGS) include_file.c
 
-printf.o: printf.c defines.h printf.h makefile
+printf.o: printf.c defines.h printf.h makefile.gcc
 	$(CC) $(CFLAGS) printf.c
 
-definition.o: definition.c defines.h definition.h makefile
+definition.o: definition.c defines.h definition.h makefile.gcc
 	$(CC) $(CFLAGS) definition.c
 
-stack.o: stack.c defines.h stack.h makefile
+stack.o: stack.c defines.h stack.h makefile.gcc
 	$(CC) $(CFLAGS) stack.c
 
-tree_node.o: tree_node.c defines.h tree_node.h makefile
+tree_node.o: tree_node.c defines.h tree_node.h makefile.gcc
 	$(CC) $(CFLAGS) tree_node.c
 
-pass_1.o: pass_1.c defines.h pass_1.h makefile
+pass_1.o: pass_1.c defines.h pass_1.h makefile.gcc
 	$(CC) $(CFLAGS) pass_1.c
 
-pass_2.o: pass_2.c defines.h pass_2.h makefile
+pass_2.o: pass_2.c defines.h pass_2.h makefile.gcc
 	$(CC) $(CFLAGS) pass_2.c
 
-pass_3.o: pass_3.c defines.h pass_3.h makefile
+pass_3.o: pass_3.c defines.h pass_3.h makefile.gcc
 	$(CC) $(CFLAGS) pass_3.c
 
-pass_4.o: pass_4.c defines.h pass_4.h makefile
+pass_4.o: pass_4.c defines.h pass_4.h makefile.gcc
 	$(CC) $(CFLAGS) pass_4.c
 
-pass_5.o: pass_5.c defines.h pass_5.h makefile
+pass_5.o: pass_5.c defines.h pass_5.h makefile.gcc
 	$(CC) $(CFLAGS) pass_5.c
 
-pass_6_z80.o: pass_6_z80.c defines.h pass_6_z80.h makefile
+pass_6_z80.o: pass_6_z80.c defines.h pass_6_z80.h makefile.gcc
 	$(CC) $(CFLAGS) pass_6_z80.c
 
-il.o: il.c defines.h il.h makefile
+il.o: il.c defines.h il.h makefile.gcc
 	$(CC) $(CFLAGS) il.c
 
-tac.o: tac.c defines.h tac.h makefile
+tac.o: tac.c defines.h tac.h makefile.gcc
 	$(CC) $(CFLAGS) tac.c
 
-token.o: token.c defines.h token.h makefile
+token.o: token.c defines.h token.h makefile.gcc
 	$(CC) $(CFLAGS) token.c
 
-symbol_table.o: symbol_table.c defines.h symbol_table.h makefile
+symbol_table.o: symbol_table.c defines.h symbol_table.h makefile.gcc
 	$(CC) $(CFLAGS) symbol_table.c
 
-source_line_manager.o: source_line_manager.c defines.h source_line_manager.h makefile
+source_line_manager.o: source_line_manager.c defines.h source_line_manager.h makefile.gcc
 	$(CC) $(CFLAGS) source_line_manager.c
 
-inline_asm.o: inline_asm.c defines.h inline_asm.h makefile
+inline_asm.o: inline_asm.c defines.h inline_asm.h makefile.gcc
 	$(CC) $(CFLAGS) inline_asm.c
 
-inline_asm_z80.o: inline_asm_z80.c defines.h inline_asm_z80.h makefile
+inline_asm_z80.o: inline_asm_z80.c defines.h inline_asm_z80.h makefile.gcc
 	$(CC) $(CFLAGS) inline_asm_z80.c
 
-struct_item.o: struct_item.c defines.h struct_item.h makefile
+struct_item.o: struct_item.c defines.h struct_item.h makefile.gcc
 	$(CC) $(CFLAGS) struct_item.c
 
 

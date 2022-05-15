@@ -10,19 +10,19 @@ HFILES = main.h file.h printf.h arch_z80.h
 OFILES = main.o file.o printf.o arch_z80.o
 
 
-all: $(OFILES) makefile
+all: $(OFILES) makefile.gcc
 	$(LD) $(OFILES) $(LDFLAGS) -o samesamecl
 
-main.o: main.c defines.h main.h makefile
+main.o: main.c defines.h main.h makefile.gcc
 	$(CC) $(CFLAGS) main.c
 
-file.o: file.c defines.h file.h makefile
+file.o: file.c defines.h file.h makefile.gcc
 	$(CC) $(CFLAGS) file.c
 
-printf.o: printf.c defines.h printf.h makefile
+printf.o: printf.c defines.h printf.h makefile.gcc
 	$(CC) $(CFLAGS) printf.c
 
-arch_z80.o: arch_z80.c defines.h arch_z80.h makefile
+arch_z80.o: arch_z80.c defines.h arch_z80.h makefile.gcc
 	$(CC) $(CFLAGS) arch_z80.c
 
 
