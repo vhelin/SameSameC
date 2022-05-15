@@ -11,7 +11,13 @@ pool:
 
 steps:
 - script: |
-    cmake .
-    cmake --build . --config Release -j
+    cd compiler
+    make clean
+    make
+    cd ..
+    cd linker
+    make clean
+    make
+    cd ..
   displayName: 'Build Release'
   timeoutInMinutes: 120
