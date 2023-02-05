@@ -3,7 +3,7 @@
 
 Yet Another ANSI C89 Like Language Cross Compiler Targeting 8-bit CPUs. Written by 2021 Ville Helin.
 
-**This is currently under early development, use it on your own risk.** SameSameC is GPL v2 software. Read the LICENSE file for more information. Some pieces of code were taken from WLA DX (https://github.com/vhelin/wla-dx), but not so many. The compiler produces WLA DX ASM files which the linker links together and assembles with WLA DX (included as Git submodule).
+**This is currently under early development, use it on your own risk.** SameSameC is GPL v2 software. Read the LICENSE file for more information. Some pieces of code were taken from WLA DX (https://github.com/vhelin/wla-dx), but not so many. The compiler produces WLA DX ASM files which the linker links together and assembles with WLA DX (included as a Git submodule).
 
 **I will not in general approve pull requests as I want to do this myself, up to the point when I decide I've learned enough. :) Ideas, bug reports and feature requests are welcome, though. And build scripts for platforms currently not supported.**
 
@@ -20,14 +20,14 @@ Yet Another ANSI C89 Like Language Cross Compiler Targeting 8-bit CPUs. Written 
 ## Features missing when compared with ANSI C89
 
 - No const strings. Will be implemented later.
-- No pointer arithmetics like
+- No pointer usage like
     *ptr = 1;
   Instead do
     ptr[0] = 1;
 - No syntactic sugar for multidimensional arrays. Perhaps implemented later. Meanwhile create your own using a one dimensional array.
 - No floats or doubles or typedefs. All you have are u8 (8-bit unsigned int), s8 (8-bit signed int), u16 (16-bit unsigned int), s16 (16-bit signed int) and structs/unions.
 - No casting. Perhaps implemented later. In calculations all involved will be automatically casted to the highest type in the calculation.
-- No free floating blocks inside blocks
+- No code blocks inside blocks
 
 ## Features not in ANSI C89
 
@@ -60,6 +60,7 @@ Yet Another ANSI C89 Like Language Cross Compiler Targeting 8-bit CPUs. Written 
 - Check that all pointer operations work properly
 - When defining an array sometimes [] takes only an integer and not an expression
 - When defining an array of pointers to structs/unions it's possible to give too many items
+- Add a proper register allocator; what currently is done is not good enough
 
 ## Add
 
