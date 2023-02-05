@@ -60,7 +60,7 @@ Yet Another ANSI C89 Like Language Cross Compiler Targeting 8-bit CPUs. Written 
 - Check that all pointer operations work properly
 - When defining an array sometimes [] takes only an integer and not an expression
 - When defining an array of pointers to structs/unions it's possible to give too many items
-- Add a proper register allocator; what currently is done is not good enough
+- Add a proper register allocator; what currently is done is not good enough as we are getting too bloated asm
 
 ## Add
 
