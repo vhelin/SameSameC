@@ -13,20 +13,14 @@ runTest() {
 
 if [ $# -eq 1 ]; then
     if [ "$1" = "-windows" ]; then
-        export PATH=$PATH:$PWD/windows/Release
-        export PATH=$PATH:$PWD/wla-dx/windows/Release
-        export PATH=$PATH:$PWD/build/binaries/Release:$PWD/build/binaries
-        export PATH=$PATH:$PWD/wla-dx/build/binaries/Release:$PWD/wla-dx/build/binaries
+        export PATH="$PWD/windows/Release:$PWD/wla-dx/windows/Release:$PWD/build/binaries/Release:$PWD/build/binaries:$PWD/wla-dx/build/binaries/Release:$PWD/wla-dx/build/binaries:$PATH"
     elif [ "$1" = "-windows-x86" ]; then
-        export PATH=$PATH:$PWD/build-xp/binaries:$PWD/wla-dx/build-xp/binaries
-        export PATH=$PATH:$PWD/binaries:$PWD/wla-dx/binaries
+        export PATH="$PWD/build-xp/binaries:$PWD/wla-dx/build-xp/binaries:$PWD/binaries:$PWD/wla-dx/binaries:$PATH"
     else
-        export PATH=$PATH:$PWD/binaries:$PWD/build/binaries
-        export PATH=$PATH:$PWD/wla-dx/binaries:$PWD/wla-dx/build/binaries
+        export PATH="$PWD/binaries:$PWD/build/binaries:$PWD/wla-dx/binaries:$PWD/wla-dx/build/binaries:$PATH"
     fi
 else
-    export PATH=$PATH:$PWD/binaries:$PWD/build/binaries
-    export PATH=$PATH:$PWD/wla-dx/binaries:$PWD/wla-dx/build/binaries
+    export PATH="$PWD/binaries:$PWD/build/binaries:$PWD/wla-dx/binaries:$PWD/wla-dx/build/binaries:$PATH"
 fi
 
 set +e

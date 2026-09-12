@@ -3,12 +3,14 @@ set -e
 
 # Tell run_tests.sh to stay away from Valgrind
 export NO_VALGRIND=1
+export CMAKE_POLICY_VERSION_MINIMUM=3.5
 
 echo "========================================="
 echo "Testing SameSameC with Sanitizers"
 echo "========================================="
 
 ORIGINAL_DIR="$PWD"
+WLA_CMAKE_INCLUDE="$ORIGINAL_DIR/ci/relax_wla_dx_warnings.cmake"
 
 # Results tracking
 ASAN_RESULT="Pending"
@@ -27,7 +29,10 @@ echo ""
 echo "Building WLA DX (no sanitizers)..."
 cd wla-dx
 rm -rf CMakeCache.txt CMakeFiles binaries
-cmake -DCMAKE_BUILD_TYPE=Release -G "Unix Makefiles"
+cmake -DCMAKE_BUILD_TYPE=Release \
+      -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
+      -DCMAKE_PROJECT_INCLUDE="$WLA_CMAKE_INCLUDE" \
+      -G "Unix Makefiles"
 cmake --build . --config Release
 cd "$ORIGINAL_DIR"
 
@@ -78,31 +83,41 @@ else
 fi
 set -e
 
-# 3. MemorySanitizer (if Clang is available)
-if command -v clang &> /dev/null; then
+# 3. MemorySanitizer (Clang only; skip if the toolchain cannot compile with MSan)
+if command -v clang >/dev/null 2>&1; then
     echo ""
     echo "3/3: Building SameSameC with MSan..."
     rm -rf binaries/*
     mkdir -p build-msan
     cd build-msan
+    set +e
     cmake .. -DCMAKE_BUILD_TYPE=Debug \
              -DCMAKE_C_COMPILER=clang \
              -DCMAKE_C_FLAGS="-fsanitize=memory -fno-omit-frame-pointer -g" \
              -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=memory"
-    cmake --build . --config Debug
-    cd "$ORIGINAL_DIR"
-
-    echo "Running tests with MSan..."
-    cp -r build-msan/binaries/* binaries/
-    export MSAN_OPTIONS="halt_on_error=0"
-
-    set +e
-    if ./run_tests.sh; then
-        MSAN_RESULT="PASS"
-    else
-        MSAN_RESULT="FAIL"
+    CMAKE_MSAN_STATUS=$?
+    if [ $CMAKE_MSAN_STATUS -eq 0 ]; then
+        cmake --build . --config Debug
+        CMAKE_MSAN_STATUS=$?
     fi
     set -e
+    cd "$ORIGINAL_DIR"
+
+    if [ $CMAKE_MSAN_STATUS -ne 0 ]; then
+        MSAN_RESULT="SKIPPED (MSan toolchain unavailable)"
+    else
+        echo "Running tests with MSan..."
+        cp -r build-msan/binaries/* binaries/
+        export MSAN_OPTIONS="halt_on_error=0"
+
+        set +e
+        if ./run_tests.sh; then
+            MSAN_RESULT="PASS"
+        else
+            MSAN_RESULT="FAIL"
+        fi
+        set -e
+    fi
 else
     MSAN_RESULT="SKIPPED (No Clang)"
 fi

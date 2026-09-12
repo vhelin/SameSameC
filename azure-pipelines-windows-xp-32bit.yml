@@ -7,14 +7,16 @@ trigger:
 pool:
   vmImage: 'windows-latest'
 
+variables:
+  CMAKE_POLICY_VERSION_MINIMUM: '3.5'
+
 steps:
 - checkout: self
   submodules: true
   displayName: 'Checkout code'
 
-# Setup MSYS2 MinGW 32-bit
 - bash: |
-    # MSYS2 is pre-installed on Azure agents
+    set -eux
     export PATH="/c/msys64/mingw32/bin:/c/msys64/usr/bin:$PATH"
 
     echo "Installing 32-bit MinGW toolchain..."
@@ -25,13 +27,14 @@ steps:
     gcc -dumpmachine
   displayName: 'Setup MSYS2 MinGW 32-bit'
 
-# Build
 - bash: |
+    set -eux
     export PATH="/c/msys64/mingw32/bin:/c/msys64/usr/bin:$PATH"
     CMAKE_XP_FLAGS="-D_WIN32_WINNT=0x0501 -DWINVER=0x0501 -static-libgcc"
 
     echo "Building SameSameC with 32-bit MinGW for Windows XP..."
-    mkdir build-xp
+    WLA_INCLUDE="$PWD/ci/relax_wla_dx_warnings.cmake"
+    mkdir -p build-xp
     cd build-xp
     cmake .. -G "MinGW Makefiles" \
              -DCMAKE_C_COMPILER=gcc \
@@ -41,11 +44,13 @@ steps:
     cd ..
 
     echo "Building WLA DX with 32-bit MinGW for Windows XP..."
-    mkdir wla-dx/build-xp
+    mkdir -p wla-dx/build-xp
     cd wla-dx/build-xp
     cmake .. -G "MinGW Makefiles" \
              -DCMAKE_C_COMPILER=gcc \
              -DCMAKE_BUILD_TYPE=Release \
+             -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
+             -DCMAKE_PROJECT_INCLUDE="$WLA_INCLUDE" \
              -DCMAKE_C_FLAGS="$CMAKE_XP_FLAGS"
     cmake --build . --config Release
     cd ../..
@@ -53,7 +58,6 @@ steps:
     echo "Build complete!"
   displayName: 'Build with MSYS2 MinGW 32-bit'
 
-# Verify binaries
 - powershell: |
     Write-Host "Verifying binaries..."
 
@@ -79,9 +83,8 @@ steps:
     }
   displayName: 'Verify binaries'
 
-# Run tests with proper PATH setup
 - bash: |
-    # Add build directories to PATH to find all executables
+    set -eux
     export PATH="$PWD/build-xp/binaries:$PWD/wla-dx/build-xp/binaries:$PATH"
 
     echo "PATH setup:"
@@ -89,22 +92,20 @@ steps:
     echo ""
 
     echo "Checking for executables..."
-    which samesamecc || echo "samesamecc not found"
-    which samesamecl || echo "samesamecl not found"
-    which wla-z80 || echo "wla-z80 not found"
-    which wlalink || echo "wlalink not found"
+    which samesamecc
+    which samesamecl
+    which wla-z80
+    which wlalink
     echo ""
 
     echo "Running tests..."
     ./run_tests.sh -windows-x86
   displayName: 'Run tests'
 
-# Save environment info
 - powershell: |
     gci env:* | sort-object name | Format-Table -AutoSize | Out-File $env:BUILD_ARTIFACTSTAGINGDIRECTORY/environment-variables.txt
   displayName: 'Save environment variables'
 
-# Copy ALL executables to a single directory for artifacts
 - powershell: |
     $artifactBinaries = "$(Build.ArtifactStagingDirectory)\binaries"
     New-Item -ItemType Directory -Force -Path $artifactBinaries | Out-Null
@@ -123,7 +124,6 @@ steps:
     Get-ChildItem -Path $artifactBinaries | ForEach-Object { Write-Host "  - $($_.Name)" }
   displayName: 'Prepare artifacts'
 
-# Publish artifacts
 - task: PublishBuildArtifacts@1
   inputs:
     pathtoPublish: '$(Build.ArtifactStagingDirectory)/binaries'

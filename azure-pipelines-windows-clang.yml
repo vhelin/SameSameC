@@ -8,6 +8,9 @@ trigger:
 pool:
   vmImage: 'windows-latest'
 
+variables:
+  CMAKE_POLICY_VERSION_MINIMUM: '3.5'
+
 strategy:
   matrix:
     Debug_Build:
@@ -19,29 +22,27 @@ steps:
 - checkout: self
   submodules: true
 
-# 1. Build the specific configuration using the ClangCL toolset
 - script: |
-    # -T ClangCL tells CMake to use the LLVM/Clang compiler driver
     if exist build rmdir /s /q build
     if exist wla-dx\build rmdir /s /q wla-dx\build
-    cmake . -B build -T ClangCL
-    cmake --build build --config $(config) -j
-    cmake wla-dx -B wla-dx/build -T ClangCL
-    cmake --build wla-dx/build --config $(config) -j
+    cmake . -B build -T ClangCL || exit /b 1
+    cmake --build build --config $(config) -j || exit /b 1
+    cmake wla-dx -B wla-dx/build -DCMAKE_POLICY_VERSION_MINIMUM=3.5 || exit /b 1
+    cmake --build wla-dx/build --config $(config) -j || exit /b 1
   displayName: 'Build $(config) with Clang'
 
-# 2. Run tests using the binaries from the Clang build
 - bash: |
-    # Add the specific binary folders created by CMake + MSVC/Clang
-    export PATH=$PWD/build/binaries/$(config):$PWD/wla-dx/build/binaries/$(config):$PATH
+    set -eux
+    export PATH="$PWD/build/binaries/$(config):$PWD/wla-dx/build/binaries/$(config):$PATH"
 
-    # Verify binaries are present
     echo "Checking for binaries in: $PWD/build/binaries/$(config)"
-    ls -l $PWD/build/binaries/$(config)
+    ls -l "$PWD/build/binaries/$(config)"
     echo "Checking for WLA DX binaries in: $PWD/wla-dx/build/binaries/$(config)"
-    ls -l $PWD/wla-dx/build/binaries/$(config)
+    ls -l "$PWD/wla-dx/build/binaries/$(config)"
 
-    # Run the test script
+    test -x "$PWD/build/binaries/$(config)/samesamecc.exe"
+    test -x "$PWD/build/binaries/$(config)/samesamecl.exe"
+
     ./run_tests.sh
   displayName: 'Run Tests ($(config))'
   workingDirectory: '$(Build.SourcesDirectory)'

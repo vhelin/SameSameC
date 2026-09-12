@@ -1,6 +1,6 @@
 
 cmake_minimum_required (VERSION 2.8.12...3.5 FATAL_ERROR)
-project (SameSameC)
+project (SameSameC C)
 
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/binaries/")
 
