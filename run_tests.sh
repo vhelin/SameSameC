@@ -15,13 +15,18 @@ if [ $# -eq 1 ]; then
     if [ "$1" = "-windows" ]; then
         export PATH=$PATH:$PWD/windows/Release
         export PATH=$PATH:$PWD/wla-dx/windows/Release
+        export PATH=$PATH:$PWD/build/binaries/Release:$PWD/build/binaries
+        export PATH=$PATH:$PWD/wla-dx/build/binaries/Release:$PWD/wla-dx/build/binaries
+    elif [ "$1" = "-windows-x86" ]; then
+        export PATH=$PATH:$PWD/build-xp/binaries:$PWD/wla-dx/build-xp/binaries
+        export PATH=$PATH:$PWD/binaries:$PWD/wla-dx/binaries
     else
-        export PATH=$PATH:$PWD/binaries
-        export PATH=$PATH:$PWD/wla-dx/binaries
+        export PATH=$PATH:$PWD/binaries:$PWD/build/binaries
+        export PATH=$PATH:$PWD/wla-dx/binaries:$PWD/wla-dx/build/binaries
     fi
 else
-    export PATH=$PATH:$PWD/binaries
-    export PATH=$PATH:$PWD/wla-dx/binaries
+    export PATH=$PATH:$PWD/binaries:$PWD/build/binaries
+    export PATH=$PATH:$PWD/wla-dx/binaries:$PWD/wla-dx/build/binaries
 fi
 
 set +e
@@ -38,7 +43,13 @@ fi
 # Valgrind test...
 # Makefiles in the tests folder use SAMESAMECVALGRIND to run Valgrind at the same time
 # with samesamecc and samesamecl
-if ! [ -x "$(command -v valgrind)" ]; then
+if [ -n "$NO_VALGRIND" ]; then
+  echo
+  echo '########################################################################'
+  echo 'INFO: Valgrind is disabled via NO_VALGRIND environment variable...'
+  echo '########################################################################'
+  export SAMESAMECVALGRIND=
+elif ! [ -x "$(command -v valgrind)" ]; then
   echo
   echo '########################################################################'
   echo 'WARNING: Valgrind is not installed so we cannot perform memory checks...'

@@ -1,5 +1,5 @@
 #
-# SameSameC Windows build script for CMake + MSVC
+# SameSameC Windows build script for CMake + Clang (clang-cl)
 #
 
 trigger:
@@ -19,21 +19,23 @@ steps:
 - checkout: self
   submodules: true
 
-# 1. Build the specific configuration
+# 1. Build the specific configuration using the ClangCL toolset
 - script: |
-    cmake . -B build
+    # -T ClangCL tells CMake to use the LLVM/Clang compiler driver
+    if exist build rmdir /s /q build
+    if exist wla-dx\build rmdir /s /q wla-dx\build
+    cmake . -B build -T ClangCL
     cmake --build build --config $(config) -j
-    cmake wla-dx -B wla-dx/build
+    cmake wla-dx -B wla-dx/build -T ClangCL
     cmake --build wla-dx/build --config $(config) -j
-  displayName: 'Build $(config)'
+  displayName: 'Build $(config) with Clang'
 
-# 2. Run tests using ONLY the binaries from that build
+# 2. Run tests using the binaries from the Clang build
 - bash: |
-    # Add the specific binary folders created by CMake + MSVC
-    # They follow the pattern: build/binaries/[Configuration]
+    # Add the specific binary folders created by CMake + MSVC/Clang
     export PATH=$PWD/build/binaries/$(config):$PWD/wla-dx/build/binaries/$(config):$PATH
 
-    # Debugging: List the files to be 100% sure they are there
+    # Verify binaries are present
     echo "Checking for binaries in: $PWD/build/binaries/$(config)"
     ls -l $PWD/build/binaries/$(config)
     echo "Checking for WLA DX binaries in: $PWD/wla-dx/build/binaries/$(config)"

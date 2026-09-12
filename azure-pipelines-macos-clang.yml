@@ -1,0 +1,43 @@
+#
+# SameSameC MacOS build script (Clang)
+#
+
+trigger:
+- master
+
+pool:
+  vmImage: 'macOS-latest'
+
+variables:
+  CC: clang
+  CXX: clang++
+
+steps:
+- checkout: self
+  submodules: true
+- script: |
+    cmake -DCMAKE_BUILD_TYPE=Debug -G "Unix Makefiles"
+    make
+    cd wla-dx
+    cmake -DGDB_DEBUGGING=ON -DCMAKE_BUILD_TYPE=Debug -G "Unix Makefiles"
+    make
+    cd ..
+  displayName: 'Build Debug (Clang)'
+  timeoutInMinutes: 60
+- script: |
+    ./run_tests.sh
+  displayName: 'Run Tests (Debug)'
+  timeoutInMinutes: 60
+- script: |
+    cmake -DCMAKE_BUILD_TYPE=Release -G "Unix Makefiles"
+    make
+    cd wla-dx
+    cmake -DCMAKE_BUILD_TYPE=Release -G "Unix Makefiles"
+    make
+    cd ..
+  displayName: 'Build Release (Clang)'
+  timeoutInMinutes: 60
+- script: |
+    ./run_tests.sh
+  displayName: 'Run Tests (Release)'
+  timeoutInMinutes: 60
