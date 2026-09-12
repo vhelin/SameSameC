@@ -1,7 +1,7 @@
 
 # SameSameC (ButDifferent)
 
-Yet Another ANSI C89 Like Language Cross Compiler Targeting 8-bit CPUs. Written by 2021+ Ville Helin.
+Yet Another ANSI C90 Like Language Cross Compiler Targeting 8-bit CPUs. Written by 2021+ Ville Helin.
 
 **This is currently under early development, use it on your own risk.** SameSameC is GPL v2 software. Read the LICENSE file for more information. Some pieces of code were taken from WLA DX (https://github.com/vhelin/wla-dx), but not so many. The compiler produces WLA DX ASM files which the linker links together and assembles with WLA DX (included as a Git submodule).
 
@@ -23,7 +23,7 @@ Yet Another ANSI C89 Like Language Cross Compiler Targeting 8-bit CPUs. Written 
 
 - Has optional (and experimental) register allocator via -ra flag!
 
-## Features missing when compared with ANSI C89
+## Features missing when compared with ANSI C90
 
 - No const strings. Will be implemented later.
 - No pointer usage like
@@ -35,7 +35,7 @@ Yet Another ANSI C89 Like Language Cross Compiler Targeting 8-bit CPUs. Written 
 - No casting. Perhaps implemented later. In calculations all involved will be automatically casted to the highest type in the calculation.
 - No code blocks inside blocks
 
-## Features not in ANSI C89
+## Features not in ANSI C90
 
 - No need to define a function or a global variable before referencing it unless the function or variable is in another source file.
 - Binary values can be defined with the prefix 0b (e.g., 0b10001101)
@@ -78,7 +78,7 @@ Yet Another ANSI C89 Like Language Cross Compiler Targeting 8-bit CPUs. Written 
 - Document all TAC_OP_* use cases
 - Add support for explicit casting and type checks
 - Add support for arrays with more than one dimension
-- Create a list of supported ANSI C89 features (and the new features)
+- Create a list of supported ANSI C90 features (and the new features)
 
 
 # Releases
@@ -96,4 +96,4 @@ Programmed using
 - Cygwin under Windows 11
 - Since 2026 I've used various LLMs for the development
 
-Should compile anywhere ANSI C89 source code can be compiled.
+Should compile anywhere ANSI C90 source code can be compiled.
