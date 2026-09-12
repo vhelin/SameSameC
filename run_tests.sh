@@ -2,12 +2,6 @@
 
 set -e
 
-prependPath() {
-    if [ -d "$1" ]; then
-        export PATH="$1:$PATH"
-    fi
-}
-
 runTest() {
     set -e
     cd $1
@@ -19,22 +13,15 @@ runTest() {
 
 if [ $# -eq 1 ]; then
     if [ "$1" = "-windows" ]; then
-        prependPath "$PWD/windows/Release"
-        prependPath "$PWD/wla-dx/windows/Release"
-        prependPath "$PWD/build/wla-dx-msvc/byte_tester/Release"
-        prependPath "$PWD/build/wla-dx-msvc/binaries/Release"
-        prependPath "$PWD/windows/Linker/Release"
-        prependPath "$PWD/windows/Compiler/Release"
+        export PATH="$PWD/windows/Release:$PWD/wla-dx/windows/Release:$PWD/build/binaries/Release:$PWD/build/binaries:$PWD/wla-dx/build/binaries/Release:$PWD/wla-dx/build/binaries:$PATH"
+    elif [ "$1" = "-windows-x86" ]; then
+        export PATH="$PWD/build-xp/binaries:$PWD/wla-dx/build-xp/binaries:$PWD/binaries:$PWD/wla-dx/binaries:$PATH"
     else
-        prependPath "$PWD/wla-dx/binaries"
-        prependPath "$PWD/binaries"
+        export PATH="$PWD/binaries:$PWD/build/binaries:$PWD/wla-dx/binaries:$PWD/wla-dx/build/binaries:$PATH"
     fi
 else
-    prependPath "$PWD/wla-dx/binaries"
-    prependPath "$PWD/binaries"
+    export PATH="$PWD/binaries:$PWD/build/binaries:$PWD/wla-dx/binaries:$PWD/wla-dx/build/binaries:$PATH"
 fi
-
-prependPath "$PWD/wla-dx/byte_tester"
 
 set +e
 
@@ -50,7 +37,13 @@ fi
 # Valgrind test...
 # Makefiles in the tests folder use SAMESAMECVALGRIND to run Valgrind at the same time
 # with samesamecc and samesamecl
-if ! [ -x "$(command -v valgrind)" ]; then
+if [ -n "$NO_VALGRIND" ]; then
+  echo
+  echo '########################################################################'
+  echo 'INFO: Valgrind is disabled via NO_VALGRIND environment variable...'
+  echo '########################################################################'
+  export SAMESAMECVALGRIND=
+elif ! [ -x "$(command -v valgrind)" ]; then
   echo
   echo '########################################################################'
   echo 'WARNING: Valgrind is not installed so we cannot perform memory checks...'

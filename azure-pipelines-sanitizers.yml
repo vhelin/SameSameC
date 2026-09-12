@@ -1,0 +1,22 @@
+trigger:
+- master
+- main
+
+variables:
+  CMAKE_POLICY_VERSION_MINIMUM: '3.5'
+
+jobs:
+- job: Linux_Sanitizers
+  displayName: 'Sanitizers'
+  pool:
+    vmImage: 'ubuntu-latest'
+  steps:
+  - checkout: self
+    submodules: true
+  - script: |
+      set -eux
+      sudo apt-get update
+      sudo apt-get install -y clang
+      chmod +x run_tests_with_sanitizers.sh
+      ./run_tests_with_sanitizers.sh
+    displayName: 'Run Linux Sanitizer Suite'

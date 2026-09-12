@@ -1,0 +1,67 @@
+#
+# SameSameC MacOS build script (GNU GCC)
+#
+
+trigger:
+- master
+
+pool:
+  vmImage: 'macOS-latest'
+
+variables:
+  CMAKE_POLICY_VERSION_MINIMUM: '3.5'
+
+steps:
+- checkout: self
+  submodules: true
+- script: |
+    set -eux
+    brew install gcc
+    GCC_BIN=$(ls /opt/homebrew/bin/gcc-[0-9]* /usr/local/bin/gcc-[0-9]* 2>/dev/null | sort -V | tail -n 1)
+    GCC_VER=$(basename "$GCC_BIN")
+    echo "Using $GCC_VER ($GCC_BIN)"
+    echo "##vso[task.setvariable variable=GCC_VER]$GCC_VER"
+  displayName: 'Install GNU GCC'
+
+- script: |
+    set -eux
+    export CC=$GCC_VER
+    export CXX=${GCC_VER/gcc/g++}
+    WLA_INCLUDE="$PWD/ci/relax_wla_dx_warnings.cmake"
+    cmake -DCMAKE_BUILD_TYPE=Debug -G "Unix Makefiles"
+    make
+    cd wla-dx
+    cmake -DCMAKE_BUILD_TYPE=Release \
+          -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
+          -DCMAKE_PROJECT_INCLUDE="$WLA_INCLUDE" \
+          -G "Unix Makefiles"
+    make
+    cd ..
+  displayName: 'Build Debug (GCC)'
+  timeoutInMinutes: 60
+- script: |
+    set -eux
+    ./run_tests.sh
+  displayName: 'Run Tests (Debug)'
+  timeoutInMinutes: 60
+- script: |
+    set -eux
+    export CC=$GCC_VER
+    export CXX=${GCC_VER/gcc/g++}
+    WLA_INCLUDE="$PWD/ci/relax_wla_dx_warnings.cmake"
+    cmake -DCMAKE_BUILD_TYPE=Release -G "Unix Makefiles"
+    make
+    cd wla-dx
+    cmake -DCMAKE_BUILD_TYPE=Release \
+          -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
+          -DCMAKE_PROJECT_INCLUDE="$WLA_INCLUDE" \
+          -G "Unix Makefiles"
+    make
+    cd ..
+  displayName: 'Build Release (GCC)'
+  timeoutInMinutes: 60
+- script: |
+    set -eux
+    ./run_tests.sh
+  displayName: 'Run Tests (Release)'
+  timeoutInMinutes: 60

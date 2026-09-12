@@ -1,5 +1,5 @@
 #
-# SameSameC Windows build script for CMake + MSVC
+# SameSameC Windows build script for CMake + Clang (clang-cl)
 #
 
 trigger:
@@ -23,11 +23,13 @@ steps:
   submodules: true
 
 - script: |
-    cmake . -B build || exit /b 1
+    if exist build rmdir /s /q build
+    if exist wla-dx\build rmdir /s /q wla-dx\build
+    cmake . -B build -T ClangCL || exit /b 1
     cmake --build build --config $(config) -j || exit /b 1
     cmake wla-dx -B wla-dx/build -DCMAKE_POLICY_VERSION_MINIMUM=3.5 || exit /b 1
     cmake --build wla-dx/build --config $(config) -j || exit /b 1
-  displayName: 'Build $(config)'
+  displayName: 'Build $(config) with Clang'
 
 - bash: |
     set -eux

@@ -1,0 +1,56 @@
+#
+# SameSameC MacOS build script (Clang)
+#
+
+trigger:
+- master
+
+pool:
+  vmImage: 'macOS-latest'
+
+variables:
+  CMAKE_POLICY_VERSION_MINIMUM: '3.5'
+  CC: clang
+  CXX: clang++
+
+steps:
+- checkout: self
+  submodules: true
+- script: |
+    set -eux
+    WLA_INCLUDE="$PWD/ci/relax_wla_dx_warnings.cmake"
+    cmake -DCMAKE_BUILD_TYPE=Debug -G "Unix Makefiles"
+    make
+    cd wla-dx
+    cmake -DCMAKE_BUILD_TYPE=Release \
+          -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
+          -DCMAKE_PROJECT_INCLUDE="$WLA_INCLUDE" \
+          -G "Unix Makefiles"
+    make
+    cd ..
+  displayName: 'Build Debug (Clang)'
+  timeoutInMinutes: 60
+- script: |
+    set -eux
+    ./run_tests.sh
+  displayName: 'Run Tests (Debug)'
+  timeoutInMinutes: 60
+- script: |
+    set -eux
+    WLA_INCLUDE="$PWD/ci/relax_wla_dx_warnings.cmake"
+    cmake -DCMAKE_BUILD_TYPE=Release -G "Unix Makefiles"
+    make
+    cd wla-dx
+    cmake -DCMAKE_BUILD_TYPE=Release \
+          -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
+          -DCMAKE_PROJECT_INCLUDE="$WLA_INCLUDE" \
+          -G "Unix Makefiles"
+    make
+    cd ..
+  displayName: 'Build Release (Clang)'
+  timeoutInMinutes: 60
+- script: |
+    set -eux
+    ./run_tests.sh
+  displayName: 'Run Tests (Release)'
+  timeoutInMinutes: 60
