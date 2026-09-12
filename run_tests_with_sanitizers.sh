@@ -50,6 +50,7 @@ cd "$ORIGINAL_DIR"
 echo "Running tests with ASan..."
 cp -r build-asan/binaries/* binaries/
 export ASAN_OPTIONS="detect_leaks=1:fast_unwind_on_malloc=0:halt_on_error=0:symbolize=1"
+export SAMESAMEC_FAILURE_ARTIFACT_DIR="$ORIGINAL_DIR/_ci_test_failure/asan"
 
 set +e
 if ./run_tests.sh; then
@@ -74,6 +75,7 @@ cd "$ORIGINAL_DIR"
 echo "Running tests with UBSan..."
 cp -r build-ubsan/binaries/* binaries/
 export UBSAN_OPTIONS="print_stacktrace=1:halt_on_error=0"
+export SAMESAMEC_FAILURE_ARTIFACT_DIR="$ORIGINAL_DIR/_ci_test_failure/ubsan"
 
 set +e
 if ./run_tests.sh; then
@@ -109,6 +111,7 @@ if command -v clang >/dev/null 2>&1; then
         echo "Running tests with MSan..."
         cp -r build-msan/binaries/* binaries/
         export MSAN_OPTIONS="halt_on_error=0"
+        export SAMESAMEC_FAILURE_ARTIFACT_DIR="$ORIGINAL_DIR/_ci_test_failure/msan"
 
         set +e
         if ./run_tests.sh; then

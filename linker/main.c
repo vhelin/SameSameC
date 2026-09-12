@@ -4,6 +4,7 @@
 */
 
 #include <ctype.h>
+#include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -21,11 +22,6 @@
 __near long __stack = 32*1024;
 #endif
 
-/* define this if you want to keep all temp files */
-
-#define KEEP_TMP_FILES 1
-
-
 extern struct file *g_files_first;
 
 char g_version_string[] = "$VER: SameSameC linker 0.8a (7.11.2021)";
@@ -36,11 +32,24 @@ int g_rom_banks = 1;
 char g_asm_file_name[MAX_NAME_LENGTH+1], g_object_file_name[MAX_NAME_LENGTH+1], g_link_file_name[MAX_NAME_LENGTH+1];
 
 
+static int make_combined_asm_name(char *out, size_t out_size, const char *rom) {
+
+  int n;
+
+  n = snprintf(out, out_size, "%s.combined.asm", rom);
+  if (n < 0 || (size_t)n >= out_size) {
+    fprintf(stderr, "MAIN: Combined ASM file name is too long.\n");
+    return FAILED;
+  }
+
+  return SUCCEEDED;
+}
+
 
 int main(int argc, char *argv[]) {
 
   int parse_flags_result, i, command_result = 0;
-  char command[MAX_NAME_LENGTH+1];
+  char command[1024];
   FILE *file_out;
   
   if (sizeof(double) != 8) {
@@ -92,14 +101,13 @@ int main(int argc, char *argv[]) {
   if (file_find_global_variable_inits() == FAILED)
     return 1;
   
-  /* create an ASM file that will contain all the user made ASM files */
+  /* write the combined ASM next to the ROM so a failing test can be inspected */
+  if (make_combined_asm_name(g_asm_file_name, sizeof(g_asm_file_name), argv[g_final_name_index]) == FAILED)
+    return 1;
 
-  tmpnam(g_asm_file_name);
+  if (g_verbose == YES)
+    fprintf(stderr, "ASM ---> %s\n", g_asm_file_name);
 
-#if defined(KEEP_TMP_FILES)
-  fprintf(stderr, "ASM ---> %s\n", g_asm_file_name);
-#endif
-  
   file_out = fopen(g_asm_file_name, "wb");
   if (file_out == NULL) {
     fprintf(stderr, "MAIN: Could not open file \"%s\" for writing.\n", g_asm_file_name);
@@ -140,10 +148,9 @@ int main(int argc, char *argv[]) {
 
   tmpnam(g_object_file_name);
 
-#if defined(KEEP_TMP_FILES)
-  fprintf(stderr, "OBJ ---> %s\n", g_object_file_name);
-#endif
-  
+  if (g_verbose == YES)
+    fprintf(stderr, "OBJ ---> %s\n", g_object_file_name);
+ 
   if (g_target == TARGET_SMS) {
     snprintf(command, sizeof(command), "wla-z80 -o %s %s", g_object_file_name, g_asm_file_name);
     command_result = system(command);
@@ -158,10 +165,9 @@ int main(int argc, char *argv[]) {
 
   tmpnam(g_link_file_name);
 
-#if defined(KEEP_TMP_FILES)
-  fprintf(stderr, "LNK ---> %s\n", g_link_file_name);
-#endif
-  
+  if (g_verbose == YES)
+    fprintf(stderr, "LNK ---> %s\n", g_link_file_name);
+ 
   file_out = fopen(g_link_file_name, "wb");
   if (file_out == NULL) {
     fprintf(stderr, "MAIN: Could not open file \"%s\" for writing.\n", g_link_file_name);
@@ -177,7 +183,7 @@ int main(int argc, char *argv[]) {
   /* link */
 
   if (g_target == TARGET_SMS) {
-    snprintf(command, sizeof(command), "wlalink -v %s %s", g_link_file_name, argv[g_final_name_index]);
+    snprintf(command, sizeof(command), "wlalink -v -S %s %s", g_link_file_name, argv[g_final_name_index]);
     command_result = system(command);
   }
 
@@ -249,13 +255,9 @@ void procedures_at_exit(void) {
     f1 = f2;
   }
 
-#if !defined(KEEP_TMP_FILES)
-  /* delete tmp files */
-  if (g_asm_file_name[0] != 0)
-    remove(g_asm_file_name);
+  /* keep <rom>.combined.asm; object and linkfile are tmpnam() scratch */
   if (g_object_file_name[0] != 0)
     remove(g_object_file_name);
   if (g_link_file_name[0] != 0)
     remove(g_link_file_name);
-#endif
 }

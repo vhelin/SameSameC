@@ -44,3 +44,5 @@ steps:
     ./run_tests.sh
   displayName: 'Run Tests ($(config))'
   workingDirectory: '$(Build.SourcesDirectory)'
+
+- template: ci/publish-test-failure-artifacts.yml

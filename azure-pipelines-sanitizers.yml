@@ -20,3 +20,4 @@ jobs:
       chmod +x run_tests_with_sanitizers.sh
       ./run_tests_with_sanitizers.sh
     displayName: 'Run Linux Sanitizer Suite'
+  - template: ci/publish-test-failure-artifacts.yml

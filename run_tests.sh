@@ -2,13 +2,76 @@
 
 set -e
 
+REPO_ROOT="$PWD"
+FAILURE_ARTIFACT_DIR="${SAMESAMEC_FAILURE_ARTIFACT_DIR:-$REPO_ROOT/_ci_test_failure}"
+
+_save_test_failure_artifacts() {
+    local dest="$FAILURE_ARTIFACT_DIR/$1"
+    local f
+
+    mkdir -p "$dest"
+
+    for f in main.ssc makefile *.asm *.sms *.sym *.combined.asm; do
+        if [ -e "$f" ]; then
+            cp -f "$f" "$dest/"
+        fi
+    done
+
+    if [ -f linked.sms ]; then
+        if command -v xxd >/dev/null 2>&1; then
+            xxd -l 256 linked.sms > "$dest/linked.sms.head.xxd" || true
+            xxd -s 128 -l 128 linked.sms > "$dest/linked.sms.0x80-0xFF.xxd" || true
+        elif command -v od >/dev/null 2>&1; then
+            od -An -tx1 -N 256 linked.sms > "$dest/linked.sms.head.hex" || true
+            od -An -tx1 -j 128 -N 128 linked.sms > "$dest/linked.sms.0x80-0xFF.hex" || true
+        fi
+    fi
+
+    if [ -f linked.sms.combined.asm ]; then
+        grep -n -E '\.SECTION|copy_bytes_bank_|global_variables_|mainmain:' linked.sms.combined.asm > "$dest/sections-and-helpers.txt" || true
+    fi
+
+    if [ -f linked.sym ]; then
+        grep -E 'copy_bytes|_init|mainmain|allocatorRa|^\[labels\]|^\[sections\]' linked.sym > "$dest/labels-of-interest.txt" || true
+        awk '
+            /^\[labels\]/ { p=1 }
+            /^\[sections\]/ { p=1 }
+            /^\[/ && $0 != "[labels]" && $0 != "[sections]" { p=0 }
+            p { print }
+        ' linked.sym > "$dest/labels-and-sections.txt" || true
+    fi
+
+    {
+        echo "test=$1"
+        date
+        uname -a 2>/dev/null || true
+        echo "samesamecc=$(command -v samesamecc 2>/dev/null || true)"
+        echo "samesamecl=$(command -v samesamecl 2>/dev/null || true)"
+        echo "wla-z80=$(command -v wla-z80 2>/dev/null || true)"
+        echo "wlalink=$(command -v wlalink 2>/dev/null || true)"
+        echo "byte_tester=$(command -v byte_tester 2>/dev/null || true)"
+    } > "$dest/environment.txt"
+
+    echo "Saved failure artifacts to $dest"
+}
+
 runTest() {
     set -e
-    cd $1
+    cd "$1"
     make clean
+    set +e
     make
+    status=$?
+    set -e
+    if [ "$status" -ne 0 ]; then
+        _save_test_failure_artifacts "$2"
+        cd ..
+        return "$status"
+    fi
     make clean
+    rm -f -- *.sym *.combined.asm
     cd ..
+    return 0
 }
 
 if [ $# -eq 1 ]; then
@@ -66,7 +129,7 @@ for CPU in */; do
     for SYSTEM in */; do
       cd $SYSTEM
         for TEST in */; do
-          OUT=$(runTest $TEST 2>&1)
+          OUT=$(runTest "$TEST" "$CPU$SYSTEM$TEST" 2>&1)
           if [ $? -ne 0 ]; then
             printf "\n\n%s\n\n" "$OUT"
             echo "########"

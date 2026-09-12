@@ -54,3 +54,4 @@ steps:
     ./run_tests.sh
   displayName: 'Run Tests (Release)'
   timeoutInMinutes: 60
+- template: ci/publish-test-failure-artifacts.yml
