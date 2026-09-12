@@ -23,6 +23,10 @@ else
     export PATH="$PWD/binaries:$PWD/build/binaries:$PWD/wla-dx/binaries:$PWD/wla-dx/build/binaries:$PATH"
 fi
 
+# WLA DX CMake writes byte_tester next to its sources, not into binaries/.
+# Allocator tests invoke it by name, so those directories must be on PATH.
+export PATH="$PWD/wla-dx/byte_tester:$PWD/wla-dx/build/byte_tester:$PWD/wla-dx/build/byte_tester/Debug:$PWD/wla-dx/build/byte_tester/Release:$PWD/wla-dx/build-xp/byte_tester:$PATH"
+
 set +e
 
 TEST_COUNT=0
