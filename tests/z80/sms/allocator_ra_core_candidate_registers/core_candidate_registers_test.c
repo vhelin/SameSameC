@@ -23,6 +23,7 @@ static int get_candidate_count(int size) {
   return 0;
 }
 
+
 static int get_candidate_register(int size, int candidate_index) {
 
   if (size == 8) {

@@ -22,6 +22,7 @@ static int get_units(int physical_register) {
   return 0;
 }
 
+
 static void initialize_policy(struct register_allocator_target_policy *policy) {
 
   memset(policy, 0, sizeof(struct register_allocator_target_policy));
