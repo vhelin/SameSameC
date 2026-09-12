@@ -50,10 +50,10 @@ pass_3.o: pass_3.c pass_3.h defines.h
 pass_4.o: pass_4.c pass_4.h defines.h
 	$(CC) $(CFLAGS) pass_4.c
 
-pass_5.o: pass_5.c pass_5.h defines.h
+pass_5.o: pass_5.c pass_5.h defines.h register_allocator.h z80_register_spill.h
 	$(CC) $(CFLAGS) pass_5.c
 
-pass_6_z80.o: pass_6_z80.c pass_6_z80.h defines.h
+pass_6_z80.o: pass_6_z80.c pass_6_z80.h defines.h register_allocator.h z80_register_spill.h
 	$(CC) $(CFLAGS) pass_6_z80.c
 
 printf.o: printf.c printf.h defines.h

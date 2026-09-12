@@ -21,6 +21,10 @@ if [ $# -eq 1 ]; then
     if [ "$1" = "-windows" ]; then
         prependPath "$PWD/windows/Release"
         prependPath "$PWD/wla-dx/windows/Release"
+        prependPath "$PWD/build/wla-dx-msvc/byte_tester/Release"
+        prependPath "$PWD/build/wla-dx-msvc/binaries/Release"
+        prependPath "$PWD/windows/Linker/Release"
+        prependPath "$PWD/windows/Compiler/Release"
     else
         prependPath "$PWD/wla-dx/binaries"
         prependPath "$PWD/binaries"
@@ -31,10 +35,6 @@ else
 fi
 
 prependPath "$PWD/wla-dx/byte_tester"
-prependPath "$PWD/build/wla-dx-msvc/byte_tester/Release"
-prependPath "$PWD/build/wla-dx-msvc/binaries/Release"
-prependPath "$PWD/windows/Linker/Release"
-prependPath "$PWD/windows/Compiler/Release"
 
 set +e
 
