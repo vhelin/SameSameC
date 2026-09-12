@@ -10,10 +10,14 @@ Yet Another ANSI C89 Like Language Cross Compiler Targeting 8-bit CPUs. Written 
 
 # Azure Pipelines CI
 
-- [![Build Status](https://dev.azure.com/villehelin0486/villehelin/_apis/build/status/vhelin.SameSameC%20Linux?branchName=master)](https://dev.azure.com/villehelin0486/villehelin/_build/latest?definitionId=4&branchName=master) - Linux
-- [![Build Status](https://dev.azure.com/villehelin0486/villehelin/_apis/build/status/vhelin.SameSameC%20macOS?branchName=master)](https://dev.azure.com/villehelin0486/villehelin/_build/latest?definitionId=7&branchName=master) - macOS
-- [![Build Status](https://dev.azure.com/villehelin0486/villehelin/_apis/build/status/vhelin.SameSameC%20Windows?branchName=master)](https://dev.azure.com/villehelin0486/villehelin/_build/latest?definitionId=5&branchName=master) - Windows
-- [![Build Status](https://dev.azure.com/villehelin0486/villehelin/_apis/build/status/vhelin.SameSameC%20Windows%20MSVC?branchName=master)](https://dev.azure.com/villehelin0486/villehelin/_build/latest?definitionId=9&branchName=master) - Windows MSVC
+- [![Build Status](https://dev.azure.com/villehelin0486/villehelin/_apis/build/status/vhelin.SameSameC%20Linux%20Sanitizers?branchName=master)](https://dev.azure.com/villehelin0486/villehelin/_build/latest?definitionId=33&branchName=master) - Linux Sanitizers (ASan, UBSan, MSan)
+- [![Build Status](https://dev.azure.com/villehelin0486/villehelin/_apis/build/status/vhelin.SameSameC%20Windows%20MSVC?branchName=master)](https://dev.azure.com/villehelin0486/villehelin/_build/latest?definitionId=32&branchName=master) - Windows MSVC
+- [![Build Status](https://dev.azure.com/villehelin0486/villehelin/_apis/build/status/vhelin.SameSameC%20Windows%20Clang?branchName=master)](https://dev.azure.com/villehelin0486/villehelin/_build/latest?definitionId=31&branchName=master) - Windows Clang
+- [![Build Status](https://dev.azure.com/villehelin0486/villehelin/_apis/build/status/vhelin.SameSameC%20Windows%20XP%2032-bit?branchName=master)](https://dev.azure.com/villehelin0486/villehelin/_build/latest?definitionId=34&branchName=master) - Windows XP 32-bit
+- [![Build Status](https://dev.azure.com/villehelin0486/villehelin/_apis/build/status/vhelin.SameSameC%20macOS%20GCC?branchName=master)](https://dev.azure.com/villehelin0486/villehelin/_build/latest?definitionId=30&branchName=master) - macOS GCC
+- [![Build Status](https://dev.azure.com/villehelin0486/villehelin/_apis/build/status/vhelin.SameSameC%20macOS%20Clang?branchName=master)](https://dev.azure.com/villehelin0486/villehelin/_build/latest?definitionId=29&branchName=master) - macOS Clang
+- [![Build Status](https://dev.azure.com/villehelin0486/villehelin/_apis/build/status/vhelin.SameSameC%20Linux%20GCC?branchName=master)](https://dev.azure.com/villehelin0486/villehelin/_build/latest?definitionId=28&branchName=master) - Linux GCC
+- [![Build Status](https://dev.azure.com/villehelin0486/villehelin/_apis/build/status/vhelin.SameSameC%20Linux%20Clang?branchName=master)](https://dev.azure.com/villehelin0486/villehelin/_build/latest?definitionId=27&branchName=master) - Linux Clang
 
 # Features
 
