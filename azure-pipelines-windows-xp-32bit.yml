@@ -99,7 +99,7 @@ steps:
     echo ""
 
     echo "Running tests..."
-    ./run_tests.sh -windows-x86
+    bash ./run_tests.sh -windows-x86
   displayName: 'Run tests'
 
 - template: ci/publish-test-failure-artifacts.yml

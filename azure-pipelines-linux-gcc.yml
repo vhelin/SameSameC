@@ -36,7 +36,7 @@ steps:
   timeoutInMinutes: 60
 - script: |
     set -eux
-    ./run_tests.sh
+    bash ./run_tests.sh
   displayName: 'Run Tests (Debug)'
   timeoutInMinutes: 60
 - script: |
@@ -55,7 +55,7 @@ steps:
   timeoutInMinutes: 60
 - script: |
     set -eux
-    ./run_tests.sh
+    bash ./run_tests.sh
   displayName: 'Run Tests (Release)'
   timeoutInMinutes: 60
 - template: ci/publish-test-failure-artifacts.yml

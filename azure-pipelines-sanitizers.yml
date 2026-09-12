@@ -17,7 +17,7 @@ jobs:
       set -eux
       sudo apt-get update
       sudo apt-get install -y clang
-      chmod +x run_tests_with_sanitizers.sh
-      ./run_tests_with_sanitizers.sh
+      chmod +x run_tests.sh run_tests_with_sanitizers.sh
+      bash ./run_tests_with_sanitizers.sh
     displayName: 'Run Linux Sanitizer Suite'
   - template: ci/publish-test-failure-artifacts.yml
