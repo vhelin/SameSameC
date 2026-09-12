@@ -1,0 +1,127 @@
+
+void convertNumbersToChars16QUICK(u16 value, u8 **chars);
+void printCalculationLine(u8 *chars, u8 addressLow, u8 addressHigh, u16 expected, u16 first, u16 second, u16 third);
+u16 calculationAdd3(u16 first, u16 second, u16 third);
+u16 calculationMultiplyAdd(u16 value, u16 multiplier, u16 addend);
+u16 calculationXorRoundTrip(u16 value, u16 mask);
+u16 calculationQuotientRoundTrip(u16 value, u16 divisor);
+
+void calculateAndPrint5(u8 *chars, u8 one, u8 zero) {
+
+  u8 *start = chars;
+  u8 *buffer = chars;
+  u16 extra1;
+  u16 extra2;
+  u16 extra3;
+
+  //////////////////////////////////////////////////////////////////////////////////////////
+  // $7521 = $7521 = $7521 = $7521
+  //////////////////////////////////////////////////////////////////////////////////////////
+
+  chars[0] = 0x04; // '$'
+  chars++;
+  chars[0] = 0x00;
+  chars++;
+
+  convertNumbersToChars16QUICK(0x7521, &chars); // "7521"
+
+  chars[0] = 0x00; // ' '
+  chars++;
+  chars[0] = 0x00;
+  chars++;
+  chars[0] = 0x1D; // '='
+  chars++;
+  chars[0] = 0x00;
+  chars++;
+  chars[0] = 0x00; // ' '
+  chars++;
+  chars[0] = 0x00;
+  chars++;
+  
+  chars[0] = 0x04; // '$'
+  chars++;
+  chars[0] = 0x00;
+  chars++;
+
+  s16 result = ((((0x6543 | 0x0095) % 0x1001) << 4) - 10000) ^ 0x4321;
+  convertNumbersToChars16QUICK(result, &chars); // "7521"
+
+  chars[0] = 0x00; // ' '
+  chars++;
+  chars[0] = 0x00;
+  chars++;
+  chars[0] = 0x1D; // '='
+  chars++;
+  chars[0] = 0x00;
+  chars++;
+  chars[0] = 0x00; // ' '
+  chars++;
+  chars[0] = 0x00;
+  chars++;
+  
+  chars[0] = 0x04; // '$'
+  chars++;
+  chars[0] = 0x00;
+  chars++;
+  
+  u16 var1 = 0x6543;
+  u8  var2 = 0x95;
+  u16 var3 = 10000;
+  u16 var4 = 0x4321;
+
+  result = (((var1 | var2) % 0x1001) << 4) - var3;
+  result ^= var4;
+  convertNumbersToChars16QUICK(result, &chars); // "7521"
+
+  chars[0] = 0x00; // ' '
+  chars++;
+  chars[0] = 0x00;
+  chars++;
+  chars[0] = 0x1D; // '='
+  chars++;
+  chars[0] = 0x00;
+  chars++;
+  chars[0] = 0x00; // ' '
+  chars++;
+  chars[0] = 0x00;
+  chars++;
+  
+  chars[0] = 0x04; // '$'
+  chars++;
+  chars[0] = 0x00;
+  chars++;
+  
+  result = ((((var1 | zero) | (zero | var2)) % (0x1001 | one)) << (4 - one + one)) - (zero | var3);
+  result ^= (var4 | zero);
+  convertNumbersToChars16QUICK(result, &chars); // "7521"
+
+  // output line
+  __z80_out[0xBF] = 0x00;
+  __z80_out[0xBF] = 0x45 | 0x38;
+  while (start < chars) {
+    __z80_out[0xBE] = start[0];
+    start++;
+  }
+
+  chars = buffer;
+
+  extra1 = calculationAdd3(0xA000, 0x0500, 0x00C3);
+  extra2 = calculationMultiplyAdd(0x0A5C, 0x0010, 3);
+  extra3 = calculationXorRoundTrip(extra2, 0x55AA);
+  extra3 = calculationQuotientRoundTrip(extra3, 43);
+  printCalculationLine(chars, 0x40, 0x7D, 0xA5C3, extra1, extra2, extra3);
+
+  extra1 = (0x0C0D << 4) | 0x000E;
+  extra2 = calculationAdd3(0xC000, 0x00D0, 0x000E);
+  extra3 = calculationQuotientRoundTrip(extra2, 47);
+  extra3 = calculationXorRoundTrip(extra3, 0x3C3C);
+  extra3 = calculationQuotientRoundTrip(extra3, 53);
+  printCalculationLine(chars, 0x80, 0x7D, 0xC0DE, extra1, extra2, extra3);
+
+  extra1 = 0xFFFF - 0x1234;
+  extra2 = calculationMultiplyAdd(0x0EDC, 0x0010, 0x000B);
+  extra3 = calculationXorRoundTrip(extra2, 0xA55A);
+  extra3 = calculationQuotientRoundTrip(extra3, 59);
+  extra3 = calculationXorRoundTrip(extra3, 0x5AA5);
+  printCalculationLine(chars, 0xC0, 0x7D, 0xEDCB, extra1, extra2, extra3);
+}

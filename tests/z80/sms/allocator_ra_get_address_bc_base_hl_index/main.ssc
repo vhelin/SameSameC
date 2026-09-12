@@ -1,0 +1,36 @@
+// @BT linked.sms
+// @BT TEST-01 01 START
+// @BT DD 21 00 00 DD 19 DD 7E F8 DD 86 F7 6F FD 21 F9 FF FD 19 FD 7E 00 4F FD 7E 01 47 09 7D DD AE F5 DD 77 F3 DD 36 F4 00 DD 21 00 C0 FD 21 F3 FF FD 19 FD 7E 00 DD 77 00 FD 7E 01 DD 77 01
+// @BT END
+// @BT TEST-02 02 START
+// @BT DD 21 00 00 DD 19 DD 6E F7 DD 66 F8 DD 4E F5 DD 46 F6 78 AC 67 79 AD 6F FD 21 F9 FF FD 19 FD 7E 00 4F FD 7E 01 47 29 09 DD 4E F3 DD 46 F4 78 AC 67 79 AD 6F DD 75 F1 DD 74 F2 DD 21 00 C0 FD 21 F1 FF FD 19 FD 7E 00 DD 77 00 FD 7E 01 DD 77 01
+// @BT END
+
+u16 g_allocator_get_address_bc_base_hl_index_sink;
+
+u16 allocatorRaGetAddressBcBaseHlIndexA(u8 *source, u8 left, u8 right, u16 mask) {
+
+  u16 out;
+
+  __asm(".DB \"01>\"");
+  out = (&source[left + right]) ^ mask;
+  g_allocator_get_address_bc_base_hl_index_sink = out;
+  __asm(".DB \"<01\"");
+
+  return out;
+}
+
+u16 allocatorRaGetAddressBcBaseHlIndexHl(u16 *source, u16 left, u16 right, u16 mask) {
+
+  u16 out;
+
+  __asm(".DB \"02>\"");
+  out = (&source[left ^ right]) ^ mask;
+  g_allocator_get_address_bc_base_hl_index_sink = out;
+  __asm(".DB \"<02\"");
+
+  return out;
+}
+
+void main(void) {
+}

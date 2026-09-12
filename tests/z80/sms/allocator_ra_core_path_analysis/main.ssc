@@ -1,0 +1,67 @@
+// @BT linked.sms
+// @BT TEST-01 01 START DD 21 00 00 DD 19 DD 7E FB DD 86 FA DD 7E F9 3C 4F 79 DD 86 F9 4F 81 DD 77 F8 END
+// @BT TEST-02 02 START DD 21 00 00 DD 19 DD 6E F9 DD 66 FA DD 4E F7 DD 46 F8 09 DD 75 F1 DD 74 F2 DD 6E F5 DD 66 F6 23 DD 4E F5 DD 46 F6 09 DD 4E F1 DD 46 F2 09 DD 75 F3 DD 74 F4 END
+// @BT TEST-03 03 START DD 21 00 00 DD 19 DD 7E FB DD 86 FA 4F DD 7E F9 DD 86 F8 81 DD 77 F7 END
+// @BT TEST-04 04 START DD 21 00 00 DD 19 DD 6E F9 DD 66 FA DD 4E F7 DD 46 F8 09 DD 75 EF DD 74 F0 DD 6E F5 DD 66 F6 DD 4E F3 DD 46 F4 09 DD 4E EF DD 46 F0 09 DD 75 F1 DD 74 F2 END
+// @BT TEST-05 05 START DD 21 00 00 DD 19 DD 6E F9 DD 66 FA DD 4E F7 DD 46 F8 09 DD 4E F5 DD 46 F6 79 EE FF 4F 78 EE FF 47 09 DD 75 F3 DD 74 F4 DD 21 00 C0 FD 21 F3 FF FD 19 FD 7E 00 DD 77 00 FD 7E 01 DD 77 01 END
+
+u16 g_allocator_core_path_target = 0;
+
+u8 allocatorRaCorePathFartherA(u8 a, u8 b, u8 c) {
+
+  u8 out;
+
+  __asm(".DB \"01>\"");
+  out = (a + b) + ((c + 1) + c);
+  __asm(".DB \"<01\"");
+
+  return out;
+}
+
+u16 allocatorRaCorePathFartherHl(u16 a, u16 b, u16 c) {
+
+  u16 out;
+
+  __asm(".DB \"02>\"");
+  out = (a + b) + ((c + 1) + c);
+  __asm(".DB \"<02\"");
+
+  return out;
+}
+
+u8 allocatorRaCorePathBoundaryA(u8 a, u8 b, u8 c, u8 d) {
+
+  u8 out;
+
+  __asm(".DB \"03>\"");
+  out = (a + b) + (c + d);
+  __asm(".DB \"<03\"");
+
+  return out;
+}
+
+u16 allocatorRaCorePathBoundaryHl(u16 a, u16 b, u16 c, u16 d) {
+
+  u16 out;
+
+  __asm(".DB \"04>\"");
+  out = (a + b) + (c + d);
+  __asm(".DB \"<04\"");
+
+  return out;
+}
+
+u16 allocatorRaCorePathPreservingOverlap(u16 a, u16 b, u16 c) {
+
+  u16 out;
+
+  __asm(".DB \"05>\"");
+  out = (a + b) + (~c);
+  g_allocator_core_path_target = out;
+  __asm(".DB \"<05\"");
+
+  return g_allocator_core_path_target;
+}
+
+void main(void) {
+}

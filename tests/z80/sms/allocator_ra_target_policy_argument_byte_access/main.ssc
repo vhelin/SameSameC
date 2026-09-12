@@ -1,0 +1,33 @@
+// @BT linked.sms
+// @BT TEST-01 01 START
+// @BT 21 00 00 39 2B 01 09 01 C5 D5 DD 21 00 00 44 4D
+// @BT DD 09 FD 21 00 C0 FD 4E 00 DD 71 FC FD 21 01 C0
+// @BT FD 4E 00 FD 46 01 DD 71 FA DD 70 FB FD 21 03 C0
+// @BT FD 4E 00 79 87 9F 47 DD 71 F8 DD 70 F9 FD 21 04
+// @BT C0 FD 4E 00 06 00 DD 71 F6 DD 70 F7 FD 21 05 C0
+// @BT FD 4E 00 FD 46 01 DD 71 F5 DD 36 F3 89 DD 36 F4
+// @BT 67 54 5D C3 06 00 DD 21 00 00 DD 19 DD 5E FD DD
+// @BT 56 FE
+// @BT END
+
+u8 g_allocator_byte_access_byte;
+u16 g_allocator_byte_access_word;
+s8 g_allocator_byte_access_signed;
+u8 g_allocator_byte_access_unsigned;
+u16 g_allocator_byte_access_narrowed;
+
+void allocatorRaPolicyByteAccessSink(u8 byte_value, u16 word_value, s16 signed_word, u16 unsigned_word, u8 narrowed_word, u16 constant_word) {
+
+  g_allocator_byte_access_byte = byte_value ^ narrowed_word;
+  g_allocator_byte_access_word = word_value ^ signed_word ^ unsigned_word ^ constant_word;
+}
+
+void allocatorRaPolicyArgumentByteAccess(void) {
+
+  __asm(".DB \"01>\"");
+  allocatorRaPolicyByteAccessSink(g_allocator_byte_access_byte, g_allocator_byte_access_word, g_allocator_byte_access_signed, g_allocator_byte_access_unsigned, g_allocator_byte_access_narrowed, 0x6789);
+  __asm(".DB \"<01\"");
+}
+
+void main(void) {
+}

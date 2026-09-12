@@ -1,0 +1,52 @@
+
+void printCalculationLine(u8 *chars, u8 addressLow, u8 addressHigh, u16 expected, u16 first, u16 second, u16 third);
+u16 calculationProductRestore(u16 value, u16 multiplier, u16 remainder);
+u16 calculationShiftRestore(u16 value, u16 shift, u16 mask);
+u16 calculationPartitionRestore(u16 value, u16 divisor, u16 mask);
+
+void calculateAndPrintComplexBank1(u8 *chars, u8 one, u8 zero) {
+
+  u16 extra1;
+  u16 extra2;
+  u16 extra3;
+
+  extra1 = ((((0x1F68 ^ 0x0C3C) + 0x0147) - (0x0147 + zero)) ^ 0x0C3C) + one - one;
+  extra2 = calculationPartitionRestore(extra1, 61, 0x5AA5);
+  extra3 = calculationProductRestore(extra2, 3, 2);
+  printCalculationLine(chars, 0x40, 0x7D, 0x1F68, extra1, extra2, extra3);
+
+  extra1 = (((((0x43BE + 0x0625) ^ 0x1B6D) ^ 0x1B6D) - 0x0625) | zero) + one - one;
+  extra2 = calculationShiftRestore(extra1, one, 0x739C);
+  extra3 = calculationPartitionRestore(extra2, 67, 0x2662);
+  printCalculationLine(chars, 0x80, 0x7D, 0x43BE, extra1, extra2, extra3);
+
+  extra1 = (((((0x2E91 * (one + 2)) + 2) / (one + 2)) ^ 0x4D2A) ^ 0x4D2A) + zero;
+  extra2 = calculationProductRestore(extra1, 5, 3);
+  extra3 = calculationShiftRestore(extra2, one, 0x18E7);
+  printCalculationLine(chars, 0xC0, 0x7D, 0x2E91, extra1, extra2, extra3);
+
+  extra1 = ((((0x145C ^ 0x63A9) + 0x027B) - (0x027B + zero)) ^ 0x63A9) + one - one;
+  extra2 = calculationProductRestore(extra1, 2, 1);
+  extra3 = calculationPartitionRestore(extra2, 71, 0x39E4);
+  printCalculationLine(chars, 0x00, 0x79, 0x145C, extra1, extra2, extra3);
+
+  extra1 = (((((0x286F + 0x051D) ^ 0x74B2) ^ 0x74B2) - 0x051D) | zero) + one - one;
+  extra2 = calculationShiftRestore(extra1, one, 0x1D73);
+  extra3 = calculationProductRestore(extra2, 2, 1);
+  printCalculationLine(chars, 0x00, 0x7A, 0x286F, extra1, extra2, extra3);
+
+  extra1 = (((((0x3295 * (one + one)) + one) / (one + one)) ^ 0x4A6D) ^ 0x4A6D) + zero;
+  extra2 = calculationPartitionRestore(extra1, 73, 0x25C8);
+  extra3 = calculationShiftRestore(extra2, one, 0x6E31);
+  printCalculationLine(chars, 0x00, 0x7B, 0x3295, extra1, extra2, extra3);
+
+  extra1 = ((((0x1BC7 ^ 0x52F4) + 0x0689) - (0x0689 + zero)) ^ 0x52F4) + one - one;
+  extra2 = calculationProductRestore(extra1, 3, 2);
+  extra3 = calculationPartitionRestore(extra2, 79, 0x47A5);
+  printCalculationLine(chars, 0x00, 0x7C, 0x1BC7, extra1, extra2, extra3);
+
+  extra1 = (((((0x253A + 0x03E7) ^ 0x6B14) ^ 0x6B14) - 0x03E7) | zero) + one - one;
+  extra2 = calculationShiftRestore(extra1, one, 0x30D9);
+  extra3 = calculationProductRestore(extra2, 2, 1);
+  printCalculationLine(chars, 0x00, 0x7D, 0x253A, extra1, extra2, extra3);
+}

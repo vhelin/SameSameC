@@ -1,0 +1,99 @@
+
+void convertNumbersToChars16(u16 value, u8 *chars, u8 *index);
+void printCalculationLine(u8 *chars, u8 addressLow, u8 addressHigh, u16 expected, u16 first, u16 second, u16 third);
+u16 calculationAdd3(u16 first, u16 second, u16 third);
+u16 calculationMultiplyAdd(u16 value, u16 multiplier, u16 addend);
+u16 calculationXorRoundTrip(u16 value, u16 mask);
+u16 calculationQuotientRoundTrip(u16 value, u16 divisor);
+
+void calculateAndPrint4(u8 *chars, u8 one, u8 zero) {
+
+  u16 index = 0;
+  u16 extra1;
+  u16 extra2;
+  u16 extra3;
+
+  //////////////////////////////////////////////////////////////////////////////////////////
+  // $1C9E = $1C9E = $1C9E = $1C9E
+  //////////////////////////////////////////////////////////////////////////////////////////
+
+  chars[index++] = 0x04; // '$'
+  chars[index++] = 0x00;
+
+  convertNumbersToChars16(0x1C9E, chars, &index); // "1C9E"
+
+  chars[index++] = 0x00; // ' '
+  chars[index++] = 0x00;
+  chars[index++] = 0x1D; // '='
+  chars[index++] = 0x00;
+  chars[index++] = 0x00; // ' '
+  chars[index++] = 0x00;
+
+  chars[index++] = 0x04; // '$'
+  chars[index++] = 0x00;
+  
+  s16 result = -(-666 * (-(-11)));
+  convertNumbersToChars16(result, chars, &index); // "1C9E"
+
+  chars[index++] = 0x00; // ' '
+  chars[index++] = 0x00;
+  chars[index++] = 0x1D; // '='
+  chars[index++] = 0x00;
+  chars[index++] = 0x00; // ' '
+  chars[index++] = 0x00;
+
+  chars[index++] = 0x04; // '$'
+  chars[index++] = 0x00;
+
+  s16 var1 = -666;
+  u8  var2 = 11;
+
+  result = -(var1 * (-(-var2)));
+  result = -result;
+  result = -result;
+  convertNumbersToChars16(result, chars, &index); // "1C9E"
+
+  chars[index++] = 0x00; // ' '
+  chars[index++] = 0x00;
+  chars[index++] = 0x1D; // '='
+  chars[index++] = 0x00;
+  chars[index++] = 0x00; // ' '
+  chars[index++] = 0x00;
+
+  chars[index++] = 0x04; // '$'
+  chars[index++] = 0x00;
+
+  result = -((var1 - zero) * (-(-(var2 - one + zero + one))));
+  result = -result | zero;
+  result = -result + one - one;
+  convertNumbersToChars16(result, chars, &index); // "1C9E"
+
+  // output line
+  u8 i;
+
+  __z80_out[0xBF] = 0x00;
+  __z80_out[0xBF] = 0x44 | 0x38;
+  for (i = 0; i < index; i++)
+    __z80_out[0xBE] = chars[i];
+
+  extra1 = 0x36DB << one;
+  extra2 = calculationMultiplyAdd(0x06DB, 0x0010, 6);
+  extra3 = calculationAdd3(0x6000, 0x0D00, 0x00B6);
+  extra3 = calculationQuotientRoundTrip(extra3, 31);
+  extra3 = calculationXorRoundTrip(extra3, 0x4242);
+  printCalculationLine(chars, 0x40, 0x7C, 0x6DB6, extra1, extra2, extra3);
+
+  extra1 = (0x007F << 8) | one;
+  extra2 = 0x8000 - 0x00FF;
+  extra3 = calculationAdd3(0x7000, 0x0F00, one);
+  extra3 = calculationXorRoundTrip(extra3, 0x7E7E);
+  extra3 = calculationQuotientRoundTrip(extra3, 37);
+  printCalculationLine(chars, 0x80, 0x7C, 0x7F01, extra1, extra2, extra3);
+
+  extra1 = 0x491A << one;
+  extra2 = calculationMultiplyAdd(0x0923, 0x0010, 4);
+  extra3 = calculationAdd3(0x9000, 0x0200, 0x0034);
+  extra3 = calculationQuotientRoundTrip(extra3, 41);
+  extra3 = calculationXorRoundTrip(extra3, 0x0F0F);
+  printCalculationLine(chars, 0xC0, 0x7C, 0x9234, extra1, extra2, extra3);
+}

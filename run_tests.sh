@@ -2,6 +2,12 @@
 
 set -e
 
+prependPath() {
+    if [ -d "$1" ]; then
+        export PATH="$1:$PATH"
+    fi
+}
+
 runTest() {
     set -e
     cd $1
@@ -13,16 +19,22 @@ runTest() {
 
 if [ $# -eq 1 ]; then
     if [ "$1" = "-windows" ]; then
-        export PATH=$PATH:$PWD/windows/Release
-        export PATH=$PATH:$PWD/wla-dx/windows/Release
+        prependPath "$PWD/windows/Release"
+        prependPath "$PWD/wla-dx/windows/Release"
     else
-        export PATH=$PATH:$PWD/binaries
-        export PATH=$PATH:$PWD/wla-dx/binaries
+        prependPath "$PWD/wla-dx/binaries"
+        prependPath "$PWD/binaries"
     fi
 else
-    export PATH=$PATH:$PWD/binaries
-    export PATH=$PATH:$PWD/wla-dx/binaries
+    prependPath "$PWD/wla-dx/binaries"
+    prependPath "$PWD/binaries"
 fi
+
+prependPath "$PWD/wla-dx/byte_tester"
+prependPath "$PWD/build/wla-dx-msvc/byte_tester/Release"
+prependPath "$PWD/build/wla-dx-msvc/binaries/Release"
+prependPath "$PWD/windows/Linker/Release"
+prependPath "$PWD/windows/Compiler/Release"
 
 set +e
 

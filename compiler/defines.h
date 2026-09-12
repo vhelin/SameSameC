@@ -5,6 +5,22 @@
 #define BACKEND_NONE 0
 #define BACKEND_Z80  1
 
+#define Z80_PHY_NONE 0
+#define Z80_PHY_A    1
+#define Z80_PHY_HL   2
+#define Z80_PHY_BC   3
+#define Z80_PHY_B    4
+#define Z80_PHY_C    5
+
+#define Z80_SPILL_REASON_NONE               0
+#define Z80_SPILL_REASON_FUNCTION_CALL      1
+#define Z80_SPILL_REASON_RETURN             2
+#define Z80_SPILL_REASON_LABEL              3
+#define Z80_SPILL_REASON_INLINE_ASM         4
+#define Z80_SPILL_REASON_UNMIGRATED_EMITTER 5
+#define Z80_SPILL_REASON_MAINMAIN           6
+#define Z80_SPILL_REASON_BLOCK_EXIT         7
+
 #define OUTPUT_NONE  0
 #define OUTPUT_ASM   1
 
@@ -341,6 +357,15 @@ struct temp_register {
   int register_index;
   int offset_to_fp;
   int size;
+  int spill_required;
+  int physical_register;
+  int original_register_index;
+  int live_start;
+  int live_end;
+  int read_count;
+  int write_count;
+  int spill_reason;
+  int spill_boundary_tac;
 };
 
 struct local_variables {
@@ -428,6 +453,7 @@ struct symbol_table_item {
 struct function_argument {
   unsigned char type;
   double  value;
+  int original_register_index;
   char   *label;
   unsigned char var_type;
   unsigned char var_type_promoted;
@@ -439,6 +465,7 @@ struct tac {
 
   unsigned char arg1_type;
   double arg1_d;
+  int arg1_original_register_index;
   char *arg1_s;
   unsigned char arg1_var_type;
   unsigned char arg1_var_type_promoted;
@@ -446,6 +473,7 @@ struct tac {
 
   unsigned char arg2_type;
   double arg2_d;
+  int arg2_original_register_index;
   char *arg2_s;
   unsigned char arg2_var_type;
   unsigned char arg2_var_type_promoted;
@@ -453,10 +481,17 @@ struct tac {
   
   unsigned char result_type;
   double result_d;
+  int result_original_register_index;
   char *result_s;
   unsigned char result_var_type;
   unsigned char result_var_type_promoted;
   struct tree_node *result_node;
+
+  int result_physical_register;
+  int arg1_physical_register;
+  int arg2_physical_register;
+  int store_retained_to_spill_operand;
+  int reload_spill_to_physical_operand;
 
   struct function_argument *arguments;
   int arguments_count;
@@ -500,6 +535,7 @@ struct tac {
 #define TAC_OP_ASM               28
 #define TAC_OP_XOR               29
 #define TAC_OP_COMPLEMENT        30
+#define TAC_OP_REGISTER_SPILL    31
 
 #define TAC_ARG_TYPE_NONE     0
 #define TAC_ARG_TYPE_CONSTANT 1

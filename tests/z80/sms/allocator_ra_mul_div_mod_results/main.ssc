@@ -1,0 +1,97 @@
+// @BT linked.sms
+// @BT TEST-01 01 START
+// @BT DD 21 00 00 DD 19 DD 66 FB DD 21 00 00 DD 19 D5 DD 5E FA 16 00 6A 06 08 29 30 01 19 10 FA D1 7D DD 21 00 00 DD 19 DD AE F9 DD 77 F8 DD 21 00 C0 FD 21 F8 FF FD 19 FD 7E 00 DD 77 00
+// @BT END
+// @BT TEST-02 02 START
+// @BT DD 21 00 00 DD 19 DD 66 FB DD 21 00 00 DD 19 D5 DD 5E FA AF 06 08 CB 14 17 93 30 01 83 10 F7 47 7C 17 2F D1 DD 21 00 00 DD 19 DD AE F9 DD 77 F8 DD 21 00 C0 FD 21 F8 FF FD 19 FD 7E 00 DD 77 00
+// @BT END
+// @BT TEST-03 03 START
+// @BT DD 21 00 00 DD 19 DD 66 FB DD 21 00 00 DD 19 D5 DD 5E FA AF 06 08 CB 14 17 93 30 01 83 10 F7 47 7C 17 2F D1 78 DD 21 00 00 DD 19 DD AE F9 DD 77 F8 DD 21 00 C0 FD 21 F8 FF FD 19 FD 7E 00 DD 77 00
+// @BT END
+// @BT TEST-04 04 START
+// @BT DD 21 00 00 DD 19 DD 4E F9 DD 46 FA D5 DD 5E F7 DD 56 F8 3E 10 21 00 00 CB 38 CB 19 30 01 19 EB 29 EB 3D 20 F3 D1 DD 4E F5 DD 46 F6 78 AC 67 79 AD 6F DD 75 F3 DD 74 F4 DD 21 01 C0 FD 21 F3 FF FD 19 FD 7E 00 DD 77 00 FD 7E 01 DD 77 01
+// @BT END
+// @BT TEST-05 05 START
+// @BT DD 21 00 00 DD 19 DD 4E F9 DD 46 FA D5 DD 5E F7 DD 56 F8 21 00 00 78 06 08 17 ED 6A ED 52 30 01 19 10 F6 17 2F 47 79 48 06 08 17 ED 6A ED 52 30 01 19 10 F6 17 2F D1 6F 61 DD 4E F5 DD 46 F6 78 AC 67 79 AD 6F DD 75 F3 DD 74 F4 DD 21 01 C0 FD 21 F3 FF FD 19 FD 7E 00 DD 77 00 FD 7E 01 DD 77 01
+// @BT END
+// @BT TEST-06 06 START
+// @BT DD 21 00 00 DD 19 DD 4E F9 DD 46 FA D5 DD 5E F7 DD 56 F8 21 00 00 78 06 08 17 ED 6A ED 52 30 01 19 10 F6 17 2F 47 79 48 06 08 17 ED 6A ED 52 30 01 19 10 F6 17 2F D1 DD 4E F5 DD 46 F6 78 AC 67 79 AD 6F DD 75 F3 DD 74 F4 DD 21 01 C0 FD 21 F3 FF FD 19 FD 7E 00 DD 77 00 FD 7E 01 DD 77 01
+// @BT END
+
+u8 g_allocator_mul_div_mod_sink_a;
+u16 g_allocator_mul_div_mod_sink_hl;
+
+u8 allocatorRaMulResultA(u8 left, u8 right, u8 mask) {
+
+  u8 out;
+
+  __asm(".DB \"01>\"");
+  out = (left * right) ^ mask;
+  g_allocator_mul_div_mod_sink_a = out;
+  __asm(".DB \"<01\"");
+
+  return out;
+}
+
+u8 allocatorRaDivResultA(u8 left, u8 right, u8 mask) {
+
+  u8 out;
+
+  __asm(".DB \"02>\"");
+  out = (left / right) ^ mask;
+  g_allocator_mul_div_mod_sink_a = out;
+  __asm(".DB \"<02\"");
+
+  return out;
+}
+
+u8 allocatorRaModResultA(u8 left, u8 right, u8 mask) {
+
+  u8 out;
+
+  __asm(".DB \"03>\"");
+  out = (left % right) ^ mask;
+  g_allocator_mul_div_mod_sink_a = out;
+  __asm(".DB \"<03\"");
+
+  return out;
+}
+
+u16 allocatorRaMulResultHl(u16 left, u16 right, u16 mask) {
+
+  u16 out;
+
+  __asm(".DB \"04>\"");
+  out = (left * right) ^ mask;
+  g_allocator_mul_div_mod_sink_hl = out;
+  __asm(".DB \"<04\"");
+
+  return out;
+}
+
+u16 allocatorRaDivResultHl(u16 left, u16 right, u16 mask) {
+
+  u16 out;
+
+  __asm(".DB \"05>\"");
+  out = (left / right) ^ mask;
+  g_allocator_mul_div_mod_sink_hl = out;
+  __asm(".DB \"<05\"");
+
+  return out;
+}
+
+u16 allocatorRaModResultHl(u16 left, u16 right, u16 mask) {
+
+  u16 out;
+
+  __asm(".DB \"06>\"");
+  out = (left % right) ^ mask;
+  g_allocator_mul_div_mod_sink_hl = out;
+  __asm(".DB \"<06\"");
+
+  return out;
+}
+
+void main(void) {
+}

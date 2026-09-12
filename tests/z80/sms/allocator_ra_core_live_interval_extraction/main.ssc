@@ -1,0 +1,43 @@
+// @BT linked.sms
+// @BT TEST-01 01 START
+// @BT DD 21 00 00 DD 19 DD 7E F9 DD 86 F8 DD 77 F7 21
+// @BT 00 C0 DD 75 F5 DD 74 F6 DD 7E FB DD 86 FA 6F 26 00 01
+// @BT 02 00 78 B1 28 04 29 0B 18 F8 DD 4E F5 DD 46 F6
+// @BT 09 23 E5 FD E1 DD 6E F7 FD 75 00
+// @BT END
+// @BT TEST-02 02 START
+// @BT DD 21 00 00 DD 19 DD 7E FB DD 86 FA DD 86 F9 DD
+// @BT 21 20 C0 DD 77 00 DD 21 00 00 DD 19 DD 7E F9 DD
+// @BT 86 F8 DD 86 FB DD 21 20 C0 DD 77 00
+// @BT END
+
+struct AllocatorRaCoreIntervalValue {
+  u8 pad;
+  u8 byte_value;
+  u16 word_value;
+};
+
+struct AllocatorRaCoreIntervalValue g_allocator_core_interval_values[8];
+u8 g_allocator_core_interval_sink;
+
+u8 allocatorRaCoreIntervalArrayWrite(u8 index_left, u8 index_right, u8 value_left, u8 value_right) {
+
+  __asm(".DB \"01>\"");
+  g_allocator_core_interval_values[index_left + index_right].byte_value = value_left + value_right;
+  __asm(".DB \"<01\"");
+
+  return value_left;
+}
+
+u8 allocatorRaCoreIntervalReused(u8 left, u8 right, u8 third, u8 fourth) {
+
+  __asm(".DB \"02>\"");
+  g_allocator_core_interval_sink = (left + right) + third;
+  g_allocator_core_interval_sink = (third + fourth) + left;
+  __asm(".DB \"<02\"");
+
+  return g_allocator_core_interval_sink;
+}
+
+void main(void) {
+}

@@ -17,6 +17,7 @@ CMakeFiles/
 cmake_install.cmake
 CTestfile.cmake
 [Mm]akefile
+!tests/z80/sms/**/[Mm]akefile
 *.ninja
 CPack*Config.cmake
 ImportGenerators.cmake

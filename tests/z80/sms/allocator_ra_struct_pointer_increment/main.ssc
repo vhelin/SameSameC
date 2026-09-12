@@ -1,0 +1,47 @@
+// @BT linked.sms
+// @BT TEST-01 01 START
+// @BT FD 21 05 C0 FD 7E 00 6F FD 7E 01 67 E5 FD E1 FD
+// @BT 6E 00 FD 66 01 DD 21 00 00 DD 19 DD 75 FA DD 74
+// @BT FB E5 FD E1 FD 6E 00 26 00 7D 3C 6F DD 4E FA DD
+// @BT 46 FB C5 FD E1 FD 75 00
+// @BT END
+// @BT TEST-02 02 START
+// @BT FD 21 05 C0 FD 7E 00 6F FD 7E 01 67 E5 FD E1 FD
+// @BT 6E 00 FD 66 01 23 DD 21 00 00 DD 19 DD 75 F9 DD
+// @BT 74 FA E5 FD E1 FD 6E 00 FD 66 01 2B DD 4E F9 DD
+// @BT 46 FA C5 FD E1 FD 75 00 FD 74 01
+// @BT END
+
+struct AllocatorRaStructPointerIncrementLeaf {
+  u8 byte_value;
+  u16 word_value;
+};
+
+struct AllocatorRaStructPointerIncrementRoot {
+  struct AllocatorRaStructPointerIncrementLeaf *leaf;
+};
+
+struct AllocatorRaStructPointerIncrementLeaf g_allocator_struct_pointer_increment_leaf;
+struct AllocatorRaStructPointerIncrementRoot g_allocator_struct_pointer_increment_root;
+struct AllocatorRaStructPointerIncrementRoot *g_allocator_struct_pointer_increment_root_ptr;
+
+u8 allocatorRaStructPointerIncrementA(void) {
+
+  __asm(".DB \"01>\"");
+  g_allocator_struct_pointer_increment_root_ptr->leaf->byte_value++;
+  __asm(".DB \"<01\"");
+
+  return g_allocator_struct_pointer_increment_leaf.byte_value;
+}
+
+u16 allocatorRaStructPointerDecrementHl(void) {
+
+  __asm(".DB \"02>\"");
+  g_allocator_struct_pointer_increment_root_ptr->leaf->word_value--;
+  __asm(".DB \"<02\"");
+
+  return g_allocator_struct_pointer_increment_leaf.word_value;
+}
+
+void main(void) {
+}

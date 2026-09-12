@@ -1,0 +1,34 @@
+// @BT linked.sms
+// @BT TEST-01 01 START DD 21 00 00 DD 19 DD 7E FB DD 86 FA 06 00 90 CA C6 00 DD 7E FA 3C DD 77 FA DD 7E FB 3D DD 77 FB C3 A3 00 DD 21 00 C0 FD 21 FA FF FD 19 FD 7E 00 DD 77 00 END
+// @BT TEST-02 02 START DD 21 00 00 DD 19 DD 7E FA DD 86 F9 47 DD 7E FB 90 CA 25 00 C3 32 00 DD 21 00 00 DD 19 DD 7E FB 3C DD 77 FB DD 21 00 C0 FD 21 FB FF FD 19 FD 7E 00 DD 77 00 END
+
+u8 g_cfg_loop_switch_sink = 0;
+
+u8 allocatorRaCfgLoopDebug(u8 count, u8 value) {
+
+  __asm(".DB \"01>\"");
+  while (count + value) {
+    value = value + 1;
+    count = count - 1;
+  }
+  g_cfg_loop_switch_sink = value;
+  __asm(".DB \"<01\"");
+
+  return g_cfg_loop_switch_sink;
+}
+
+u8 allocatorRaCfgSwitchDebug(u8 selector, u8 a, u8 b) {
+
+  __asm(".DB \"02>\"");
+  switch (selector) {
+  case a + b:
+    selector = selector + 1;
+  }
+  g_cfg_loop_switch_sink = selector;
+  __asm(".DB \"<02\"");
+
+  return g_cfg_loop_switch_sink;
+}
+
+void main(void) {
+}

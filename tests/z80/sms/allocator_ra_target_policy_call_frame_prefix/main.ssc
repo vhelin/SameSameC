@@ -1,0 +1,55 @@
+// @BT linked.sms
+// @BT TEST-01 01 START
+// @BT 21 00 00 39 2B 01 C6 00 C5 D5 DD 21 00 00 44 4D
+// @BT DD 09 FD 21 00 00 FD 19 FD 4E FC DD 71 FC 54 5D
+// @BT C3 45 00 DD 21 00 00 DD 19 DD 5E FD DD 56 FE
+// @BT END
+// @BT TEST-02 02 START
+// @BT 21 00 00 39 2B 01 FB 00 C5 D5 DD 21 00 00 44 4D
+// @BT DD 09 FD 21 00 00 FD 19 FD 4E FC DD 71 FB 54 5D
+// @BT C3 60 00 DD 21 00 00 DD 19 DD 6E FC DD 5E FD DD
+// @BT 56 FE FD 21 00 C0 FD 75 00
+// @BT END
+// @BT TEST-03 03 START
+// @BT 21 00 00 39 2B 01 40 01 C5 D5 DD 21 00 00 44 4D
+// @BT DD 09 FD 21 00 00 FD 19 FD 4E FA FD 46 FB DD 71
+// @BT F9 DD 70 FA 54 5D C3 06 00 DD 21 00 00 DD 19 DD
+// @BT 6E FB DD 66 FC DD 5E FD DD 56 FE FD 21 01 C0 FD
+// @BT 75 00 FD 74 01
+// @BT END
+
+u8 g_allocator_frame_byte;
+u16 g_allocator_frame_word;
+
+void allocatorRaPolicyFrameVoidCallee(u8 value) {
+
+  g_allocator_frame_byte = value;
+}
+
+u8 allocatorRaPolicyFrameByteCallee(u8 value) {
+
+  return value + 1;
+}
+
+u16 allocatorRaPolicyFrameWordCallee(u16 value) {
+
+  return value + 0x0103;
+}
+
+void allocatorRaPolicyCallFramePrefix(u8 byte_value, u16 word_value) {
+
+  __asm(".DB \"01>\"");
+  allocatorRaPolicyFrameVoidCallee(byte_value);
+  __asm(".DB \"<01\"");
+
+  __asm(".DB \"02>\"");
+  g_allocator_frame_byte = allocatorRaPolicyFrameByteCallee(byte_value);
+  __asm(".DB \"<02\"");
+
+  __asm(".DB \"03>\"");
+  g_allocator_frame_word = allocatorRaPolicyFrameWordCallee(word_value);
+  __asm(".DB \"<03\"");
+}
+
+void main(void) {
+}

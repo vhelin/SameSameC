@@ -1,0 +1,84 @@
+// @BT linked.sms
+// @BT TEST-01 01 START
+// @BT DD 21 00 00 DD 19 DD 7E F9 DD 86 F8 DD 77 F7 21
+// @BT 00 C0 DD 75 F5 DD 74 F6 DD 7E FB DD 86 FA 6F 26
+// @BT 00 01 01 00 78 B1 28 04 29 0B 18 F8 DD 4E F5 DD
+// @BT 46 F6
+// @BT 09 E5 FD E1 FD 6E 00 FD 66 01 E5 FD E1 DD 6E F7
+// @BT FD 75 00
+// @BT END
+// @BT TEST-02 02 START
+// @BT 21 00 C0 DD 21 00 00 DD 19 DD 75 F1 DD 74 F2 DD
+// @BT 7E FA DD 86 F9 6F 26 00 01 01 00 78 B1 28 04 29
+// @BT 0B 18 F8 DD 4E F1 DD 46 F2 09 E5 FD E1 FD 6E 00
+// @BT FD 66
+// @BT 01 E5 FD E1 FD 6E 00 26 00 7D DD AE F7 DD 77 F5
+// @BT DD 36 F6 00 DD 21 10 C0 FD 21 F5 FF FD 19 FD 7E
+// @BT 00 DD 77 00 FD 7E 01 DD 77 01
+// @BT END
+// @BT TEST-03 03 START
+// @BT 21 00 C0 DD 21 00 00 DD 19 DD 75 F6 DD 74 F7 DD
+// @BT 7E FB DD 86 FA 6F 26 00 01 01 00 78 B1 28 04 29
+// @BT 0B 18 F8 DD 4E F6 DD 46 F7 09 E5 FD E1 FD 6E 00
+// @BT FD 66
+// @BT 01 DD 75 F8 DD 74 F9 E5 FD E1 FD 6E 00 26 00 7D
+// @BT 3C 6F DD 4E F8 DD 46 F9 C5 FD E1 FD 75 00
+// @BT END
+// @BT TEST-04 04 START
+// @BT 21 00 C0 DD 21 00 00 DD 19 DD 75 F5 DD 74 F6 DD
+// @BT 7E FA DD 86 F9 6F 26 00 01 01 00 78 B1 28 04 29
+// @BT 0B 18 F8 DD 4E F5 DD 46 F6 09 E5 FD E1 FD 6E 00
+// @BT FD 66
+// @BT 01 DD 75 F7 DD 74 F8 E5 FD E1 FD 6E 00 FD 66 01
+// @BT 2B DD 4E F7 DD 46 F8 C5 FD E1 FD 75 00 FD 74 01
+// @BT END
+
+union AllocatorRaUnionPointerArrayValue {
+  u8 byte_value;
+  u16 word_value;
+};
+
+union AllocatorRaUnionPointerArrayValue *g_allocator_union_pointer_array[8];
+u16 g_allocator_union_pointer_array_sink;
+
+u8 allocatorRaUnionPointerArrayWrite(u8 index_left, u8 index_right, u8 left, u8 right) {
+
+  __asm(".DB \"01>\"");
+  g_allocator_union_pointer_array[index_left + index_right]->byte_value = left + right;
+  __asm(".DB \"<01\"");
+
+  return left;
+}
+
+u16 allocatorRaUnionPointerArrayRead(u8 index_left, u8 index_right, u16 mask) {
+
+  u16 out;
+
+  __asm(".DB \"02>\"");
+  out = g_allocator_union_pointer_array[index_left + index_right]->word_value ^ mask;
+  g_allocator_union_pointer_array_sink = out;
+  __asm(".DB \"<02\"");
+
+  return out;
+}
+
+u8 allocatorRaUnionPointerArrayIncrement(u8 index_left, u8 index_right) {
+
+  __asm(".DB \"03>\"");
+  g_allocator_union_pointer_array[index_left + index_right]->byte_value++;
+  __asm(".DB \"<03\"");
+
+  return index_left;
+}
+
+u16 allocatorRaUnionPointerArrayDecrement(u8 index_left, u8 index_right) {
+
+  __asm(".DB \"04>\"");
+  g_allocator_union_pointer_array[index_left + index_right]->word_value--;
+  __asm(".DB \"<04\"");
+
+  return index_right;
+}
+
+void main(void) {
+}

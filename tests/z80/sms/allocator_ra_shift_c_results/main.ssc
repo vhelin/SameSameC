@@ -1,0 +1,58 @@
+// @BT linked.sms
+// @BT TEST-01 01 START
+// @BT DD 21 00 00 DD 19 DD 6E FB 26 00 DD 4E FA 06 00
+// @BT 78 B1 28 04 29 0B 18 F8 DD 75 F5 DD 74 F6 DD 6E
+// @BT F9 26 00 DD 4E F8 06 00 09 DD 4E F5 DD 46 F6 78
+// @BT AC 67 79 AD 6F DD 75 F7 DD 21 00 C0 FD 21 F7 FF
+// @BT FD 19 FD 7E 00 DD 77 00
+// @BT END
+// @BT TEST-02 02 START
+// @BT DD 21 00 00 DD 19 DD 6E FB 26 00 DD 4E FA 06 00
+// @BT 78 B1 28 07 CB 3C CB 1D 0B 18 F5 DD 75 F5 DD 74
+// @BT F6 DD 6E F9 26 00 DD 4E F8 06 00 78 A4 67 79 A5
+// @BT 6F DD 4E F5 DD 46 F6 78 B4 67 79 B5 6F DD 75 F7
+// @BT DD 21 00 C0 FD 21 F7 FF FD 19 FD 7E 00 DD 77 00
+// @BT END
+
+u8 g_allocator_shift_c_sink;
+
+u8 allocatorRaShiftResultC(u8 value, u8 count, u8 left, u8 right) {
+
+  u8 out;
+
+  __asm(".DB \"01>\"");
+  out = (value << count) ^ (left + right);
+  g_allocator_shift_c_sink = out;
+  __asm(".DB \"<01\"");
+
+  __asm(".DB \"02>\"");
+  out = (value >> count) | (left & right);
+  g_allocator_shift_c_sink = out;
+  __asm(".DB \"<02\"");
+
+  return out;
+}
+
+u8 allocatorRaShiftResultB(u8 first, u8 first_count, u8 second, u8 second_count, u8 left, u8 right) {
+
+  u8 out;
+
+  __asm(".DB \"03>\"");
+    // @BT TEST-03 03 START
+    // @BT DD 21 00 00 DD 19 DD 6E FB 26 00 DD 4E FA 06 00
+    // @BT 78 B1 28 04 29 0B 18 F8 DD 75 F3 DD 74 F4 DD 6E
+    // @BT F9 26 00 DD 4E F8 06 00 78 B1 28 07 CB 3C CB 1D
+    // @BT 0B 18 F5 DD 75 F1 DD 74 F2 DD 6E F7 26 00 DD 4E
+    // @BT F6 06 00 09 DD 4E F1 DD 46 F2 78 AC 67 79 AD 6F
+    // @BT DD 4E F3 DD 46 F4 78 AC 67 79 AD 6F DD 75 F5 DD
+    // @BT 21 00 C0 FD 21 F5 FF FD 19 FD 7E 00 DD 77 00
+    // @BT END
+  out = (first << first_count) ^ ((second >> second_count) ^ (left + right));
+  g_allocator_shift_c_sink = out;
+  __asm(".DB \"<03\"");
+
+  return out;
+}
+
+void main(void) {
+}

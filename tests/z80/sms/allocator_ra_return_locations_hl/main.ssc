@@ -1,0 +1,82 @@
+// @BT linked.sms
+// @BT TEST-01 01 START
+// @BT 21 67 45 DD 21 00 00 DD 19 DD 75 FB DD 74 FC 21
+// @BT FF FF 19 F9 C9
+// @BT END
+// @BT TEST-02 02 START
+// @BT DD 6E F9 DD 66 FA DD 75 FB DD 74 FC 21 FF FF 19
+// @BT F9 C9
+// @BT END
+// @BT TEST-03 03 START
+// @BT DD 21 00 C0 DD 6E 00 DD 66 01 DD 21 00 00 DD 19
+// @BT DD 75 FB DD 74 FC 21 FF FF 19 F9 C9
+// @BT END
+// @BT TEST-04 04 START
+// @BT DD 6E F9 DD 66 FA DD 4E F7 DD 46 F8 09 DD 75 FB
+// @BT DD 74 FC 21 FF FF 19 F9 C9
+// @BT END
+// @BT TEST-05 05 START
+// @BT DD 6E FA 7D 87 9F 67 DD 75 FB DD 74 FC 21 FF FF
+// @BT 19 F9 C9
+// @BT END
+
+u16 g_return_source_hl = 0x1234;
+u8 g_return_guard_hl = 1;
+
+u16 allocatorRaReturnLocationsHlConst(void) {
+
+  if (g_return_guard_hl) {
+    __asm(".DB \"01>\"");
+    return 0x4567;
+  }
+  __asm(".DB \"<01\"");
+
+  return 0;
+}
+
+u16 allocatorRaReturnLocationsHlStack(u16 a) {
+
+  if (a) {
+    __asm(".DB \"02>\"");
+    return a;
+  }
+  __asm(".DB \"<02\"");
+
+  return 0;
+}
+
+u16 allocatorRaReturnLocationsHlGlobal(void) {
+
+  if (g_return_guard_hl) {
+    __asm(".DB \"03>\"");
+    return g_return_source_hl;
+  }
+  __asm(".DB \"<03\"");
+
+  return 0;
+}
+
+u16 allocatorRaReturnLocationsHlTemp(u16 a, u16 b) {
+
+  if (a) {
+    __asm(".DB \"04>\"");
+    return a + b;
+  }
+  __asm(".DB \"<04\"");
+
+  return 0;
+}
+
+s16 allocatorRaReturnLocationsHlSignedExtend(s8 a) {
+
+  if (a) {
+    __asm(".DB \"05>\"");
+    return a;
+  }
+  __asm(".DB \"<05\"");
+
+  return 0;
+}
+
+void main(void) {
+}

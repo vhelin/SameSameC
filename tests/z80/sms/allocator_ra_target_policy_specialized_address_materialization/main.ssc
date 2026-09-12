@@ -1,0 +1,113 @@
+// @BT linked.sms
+// @BT TEST-01 01 START
+// @BT 21 00 C0 DD 21 00 00 DD 19 DD 4E F9 DD 46 FA 09
+// @BT DD 4E F7 DD 46 F8 78 AC 67 79 AD 6F DD 75 F5 DD
+// @BT 74 F6 DD 21 04 C1 FD 21 F5 FF FD 19 FD 7E 00 DD
+// @BT 77 00 FD 7E 01 DD 77 01
+// @BT END
+// @BT TEST-02 02 START
+// @BT 21 00 C0 DD 21 00 C1 DD 4E 00 DD 46 01 09 DD 21
+// @BT 00 00 DD 19 DD 4E F9 DD 46 FA 78 AC 67 79 AD 6F
+// @BT DD 75 F7 DD 74 F8 DD 21 04 C1 FD 21 F7 FF FD 19
+// @BT FD 7E 00 DD 77 00 FD 7E 01 DD 77 01
+// @BT END
+// @BT TEST-03 03 START
+// @BT DD 21 00 00 DD 19 DD 4E F9 DD 46 FA D5 DD 5E F7
+// @BT DD 56 F8 3E 10 21 00 00 CB 38 CB 19 30 01 19 EB
+// @BT 29 EB 3D 20 F3 D1 DD 4E F5 DD 46 F6 78 AC 67 79
+// @BT AD 6F DD 75 F3 DD 74 F4 DD 21 04 C1 FD 21 F3 FF
+// @BT FD 19 FD 7E 00 DD 77 00 FD 7E 01 DD 77 01
+// @BT END
+// @BT TEST-04 04 START
+// @BT DD 21 00 00 DD 19 DD 4E F9 DD 46 FA DD 21 02 C1
+// @BT D5 DD 5E 00 DD 56 01 21 00 00 78 06 08 17 ED 6A
+// @BT ED 52 30 01 19 10 F6 17 2F 47 79 48 06 08 17 ED
+// @BT 6A ED 52 30 01 19 10 F6 17 2F D1 6F 61 DD 21 00
+// @BT 00 DD 19 DD 4E F7 DD 46 F8 78 AC 67 79 AD 6F DD
+// @BT 75 F5 DD 74 F6 DD 21 04 C1 FD 21 F5 FF FD 19 FD
+// @BT 7E 00 DD 77 00 FD 7E 01 DD 77 01
+// @BT END
+// @BT TEST-05 05 START
+// @BT FD 21 69 FF FD 19 FD 36 00 01 FD 21 69 FF FD 19
+// @BT FD 6E 00 26 00 DD 21 00 00 DD 19 DD 4E F7 DD 46
+// @BT F8 09 DD 21 67 FF DD 19 DD 75 00 DD 74 01 DD 21
+// @BT 00 00 DD 19 DD 4E F9 DD 46 FA DD 21 67 FF DD 19
+// @BT D5 DD 5E 00 DD 56 01 21 00 00 78 06 08 17 ED 6A
+// @BT ED 52 30 01 19 10 F6 17 2F 47 79 48 06 08 17 ED
+// @BT 6A ED 52 30 01 19 10 F6 17 2F D1 DD 21 00 00 DD
+// @BT 19 DD 4E F5 DD 46 F6 78 AC 67 79 AD 6F DD 21 65
+// @BT FF DD 19 DD 75 00 DD 74 01 DD 21 04 C1 FD 21 65
+// @BT FF FD 19 FD 7E 00 DD 77 00 FD 7E 01 DD 77 01
+// @BT END
+
+u8 g_allocator_specialized_address_values[256];
+u16 g_allocator_specialized_address_index;
+u16 g_allocator_specialized_address_operand;
+u16 g_allocator_specialized_address_sink;
+
+u16 allocatorRaPolicySpecializedGetLocal(u16 index, u16 mask) {
+
+  u16 out;
+
+  __asm(".DB \"01>\"");
+  out = (&g_allocator_specialized_address_values[index]) ^ mask;
+  g_allocator_specialized_address_sink = out;
+  __asm(".DB \"<01\"");
+
+  return out;
+}
+
+u16 allocatorRaPolicySpecializedGetGlobal(u16 mask) {
+
+  u16 out;
+
+  __asm(".DB \"02>\"");
+  out = (&g_allocator_specialized_address_values[g_allocator_specialized_address_index]) ^ mask;
+  g_allocator_specialized_address_sink = out;
+  __asm(".DB \"<02\"");
+
+  return out;
+}
+
+u16 allocatorRaPolicySpecializedMulLocal(u16 left, u16 right, u16 mask) {
+
+  u16 out;
+
+  __asm(".DB \"03>\"");
+  out = (left * right) ^ mask;
+  g_allocator_specialized_address_sink = out;
+  __asm(".DB \"<03\"");
+
+  return out;
+}
+
+u16 allocatorRaPolicySpecializedDivGlobal(u16 left, u16 mask) {
+
+  u16 out;
+
+  __asm(".DB \"04>\"");
+  out = (left / g_allocator_specialized_address_operand) ^ mask;
+  g_allocator_specialized_address_sink = out;
+  __asm(".DB \"<04\"");
+
+  return out;
+}
+
+u16 allocatorRaPolicySpecializedModFar(u16 left, u16 right, u16 mask) {
+
+  u8 padding[140];
+  u16 far_right;
+  u16 out;
+
+  __asm(".DB \"05>\"");
+  padding[0] = 1;
+  far_right = right + padding[0];
+  out = (left % far_right) ^ mask;
+  g_allocator_specialized_address_sink = out;
+  __asm(".DB \"<05\"");
+
+  return out;
+}
+
+void main(void) {
+}

@@ -1,0 +1,97 @@
+// @BT linked.sms
+// @BT TEST-01 01 START
+// @BT DD 21 00 C0 DD 7E 00 DD 21 00 C0 DD 77 00
+// @BT END
+// @BT TEST-02 02 START
+// @BT DD 21 01 C0 DD 6E 00 DD 66 01 DD 21 01 C0 DD 75
+// @BT 00 DD 74 01
+// @BT END
+// @BT TEST-03 03 START
+// @BT DD 7E FA DD 77 FA
+// @BT END
+// @BT TEST-04 04 START
+// @BT DD 6E F7 DD 66 F8 DD 75 F7 DD 74 F8
+// @BT END
+// @BT TEST-05 05 START
+// @BT DD 21 6E FF DD 19 DD 7E 00 DD 21 6E FF DD 19 DD
+// @BT 77 00
+// @BT END
+// @BT TEST-06 06 START
+// @BT DD 21 6B FF DD 19 DD 6E 00 DD 66 01 DD 21 6B FF
+// @BT DD 19 DD 75 00 DD 74 01
+// @BT END
+
+u8 g_allocator_inline_asm_byte;
+u16 g_allocator_inline_asm_word;
+u8 *g_allocator_inline_asm_padding;
+
+void allocatorRaPolicyInlineAsmGlobalByte(void) {
+
+  __asm(".DB \"01>\"");
+  __asm("LD A,(@g_allocator_inline_asm_byte)");
+  __asm("LD (@g_allocator_inline_asm_byte),A");
+  __asm(".DB \"<01\"");
+}
+
+void allocatorRaPolicyInlineAsmGlobalWord(void) {
+
+  __asm(".DB \"02>\"");
+  __asm("LD HL,(@g_allocator_inline_asm_word)");
+  __asm("LD (@g_allocator_inline_asm_word),HL");
+  __asm(".DB \"<02\"");
+}
+
+void allocatorRaPolicyInlineAsmNearByte(u8 left, u8 right) {
+
+  u8 scratch;
+
+  scratch = left + right;
+  __asm(".DB \"03>\"");
+  __asm("LD A,(@scratch)");
+  __asm("LD (@scratch),A");
+  __asm(".DB \"<03\"");
+  g_allocator_inline_asm_byte = scratch;
+}
+
+void allocatorRaPolicyInlineAsmNearWord(u16 left, u16 right) {
+
+  u16 scratch;
+
+  scratch = left ^ right;
+  __asm(".DB \"04>\"");
+  __asm("LD HL,(@scratch)");
+  __asm("LD (@scratch),HL");
+  __asm(".DB \"<04\"");
+  g_allocator_inline_asm_word = scratch;
+}
+
+void allocatorRaPolicyInlineAsmFarByte(u8 left, u8 right) {
+
+  u8 padding[140];
+  u8 scratch;
+
+  scratch = left + right;
+  g_allocator_inline_asm_padding = &padding[139];
+  __asm(".DB \"05>\"");
+  __asm("LD A,(@scratch)");
+  __asm("LD (@scratch),A");
+  __asm(".DB \"<05\"");
+  g_allocator_inline_asm_byte = scratch;
+}
+
+void allocatorRaPolicyInlineAsmFarWord(u16 left, u16 right) {
+
+  u8 padding[140];
+  u16 scratch;
+
+  scratch = left ^ right;
+  g_allocator_inline_asm_padding = &padding[139];
+  __asm(".DB \"06>\"");
+  __asm("LD HL,(@scratch)");
+  __asm("LD (@scratch),HL");
+  __asm(".DB \"<06\"");
+  g_allocator_inline_asm_word = scratch;
+}
+
+void main(void) {
+}

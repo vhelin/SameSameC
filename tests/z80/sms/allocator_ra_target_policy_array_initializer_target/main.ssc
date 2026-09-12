@@ -1,0 +1,79 @@
+// @BT linked.sms
+// @BT TEST-01 01 START
+// @BT 01 02 00 FD 21 F6 FF FD 19 FD 09 FD 6E 00 DD 75
+// @BT F5 01 05 00 FD 21 F6 FF FD 19 FD 09 FD 6E 00 7D
+// @BT DD AE F5 DD 21 00 C0 DD 77 00
+// @BT END
+// @BT TEST-02 02 START
+// @BT 01 02 00 FD 21 EF FF FD 19 FD 09 FD 09 FD 6E 00
+// @BT FD 66 01 DD 75 ED DD 74 EE 01 05 00 FD 21 EF FF
+// @BT FD 19 FD 09 FD 09 FD 6E 00 FD 66 01 DD 4E ED DD
+// @BT 46 EE 78 AC 67 79 AD 6F DD 21 01 C0 DD 75 00 DD
+// @BT 74 01
+// @BT END
+// @BT TEST-03 03 START
+// @BT 01 02 00 FD 21 6A FF FD 19 FD 09 FD 6E 00 DD 21
+// @BT 69 FF DD 19 DD 75 00 01 05 00 FD 21 6A FF FD 19
+// @BT FD 09 FD 6E 00 DD 21 68 FF DD 19 DD 75 00 01 8B
+// @BT 00 FD 21 70 FF FD 19 FD 09 FD 6E 00 4D DD 21 69
+// @BT FF DD 19 DD 7E 00 DD 21 68 FF DD 19 DD AE 00 A9
+// @BT DD 21 00 C0 DD 77 00
+// @BT END
+// @BT TEST-04 04 START
+// @BT 01 02 00 FD 21 63 FF FD 19 FD 09 FD 09 FD 6E 00
+// @BT FD 66 01 DD 21 61 FF DD 19 DD 75 00 DD 74 01 01
+// @BT 05 00 FD 21 63 FF FD 19 FD 09 FD 09 FD 6E 00 FD
+// @BT 66 01 DD 21 5F FF DD 19 DD 75 00 DD 74 01 01 8B
+// @BT 00 FD 21 6F FF FD 19 FD 09 FD 6E 00 26 00 DD 21
+// @BT 5D FF DD 19 DD 75 00 DD 74 01 DD 21 61 FF DD 19
+// @BT DD 6E 00 DD 66 01 DD 21 5F FF DD 19 DD 4E 00 DD
+// @BT 46 01 78 AC 67 79 AD 6F DD 21 5D FF DD 19 DD 4E
+// @BT 00 DD 46 01 78 AC 67 79 AD 6F DD 21 01 C0 DD 75
+// @BT 00 DD 74 01
+// @BT END
+
+u8 g_allocator_array_initializer_byte_sink;
+u16 g_allocator_array_initializer_word_sink;
+
+void allocatorRaPolicyArrayInitializerNearByte(u8 seed) {
+
+  u8 values[6] = { 1, 2, seed, 4, 5, 6 };
+
+  __asm(".DB \"01>\"");
+  g_allocator_array_initializer_byte_sink = values[2] ^ values[5];
+  __asm(".DB \"<01\"");
+}
+
+void allocatorRaPolicyArrayInitializerNearWord(u16 seed) {
+
+  u16 values[6] = { 0x0102, 0x0304, seed, 0x0506, 0x0708, 0x090a };
+
+  __asm(".DB \"02>\"");
+  g_allocator_array_initializer_word_sink = values[2] ^ values[5];
+  __asm(".DB \"<02\"");
+}
+
+void allocatorRaPolicyArrayInitializerFarByte(u8 seed) {
+
+  u8 padding[140];
+  u8 values[6] = { 7, 8, seed, 10, 11, 12 };
+
+  padding[139] = seed;
+  __asm(".DB \"03>\"");
+  g_allocator_array_initializer_byte_sink = values[2] ^ values[5] ^ padding[139];
+  __asm(".DB \"<03\"");
+}
+
+void allocatorRaPolicyArrayInitializerFarWord(u16 seed) {
+
+  u8 padding[140];
+  u16 values[6] = { 0x1112, 0x1314, seed, 0x1516, 0x1718, 0x191a };
+
+  padding[139] = seed;
+  __asm(".DB \"04>\"");
+  g_allocator_array_initializer_word_sink = values[2] ^ values[5] ^ padding[139];
+  __asm(".DB \"<04\"");
+}
+
+void main(void) {
+}

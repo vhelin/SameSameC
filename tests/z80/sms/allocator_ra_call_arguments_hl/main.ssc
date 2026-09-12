@@ -1,0 +1,19 @@
+// @BT linked.sms
+// @BT TEST-01 01 START
+// @BT DD 21 00 00 DD 19 DD 6E FB DD 66 FC DD 4E F9 DD 46 FA 09 DD 75 F6 DD 74 F7 21 00 00 39 2B 01 1C 01 C5 D5 DD 21 00 00 44 4D DD 09 DD 36 FB 67 DD 36 FC 45 FD 21 00 00 FD 19 FD 4E FB FD 46 FC DD 71 F9 DD 70 FA FD 21 00 C0 FD 4E 00 FD 46 01 DD 71 F7 DD 70 F8 FD 21 00 00 FD 19 FD 4E F6 FD 46 F7 DD 71 F5 DD 70 F6 FD 4E F8 79 87 9F 47 DD 71 F3 DD 70 F4 54 5D C3 31 00 DD 21 00 00 DD 19 DD 5E FD DD 56 FE
+// @BT END
+
+u16 g_call_source_hl = 0x1234;
+
+void allocatorRaCallArgumentsSinkHl(u16 constant_value, u16 stack_value, u16 global_value, u16 temp_value, s16 extended_value) {
+}
+
+void allocatorRaCallArgumentsHl(u16 a, u16 b, s8 small) {
+
+  __asm(".DB \"01>\"");
+  allocatorRaCallArgumentsSinkHl(0x4567, a, g_call_source_hl, a + b, small);
+  __asm(".DB \"<01\"");
+}
+
+void main(void) {
+}

@@ -1,0 +1,47 @@
+// @BT linked.sms
+// @BT TEST-01 01 START
+// @BT 21 00 C0 DD 21 00 00 DD 19 DD 75 F6 DD 74 F7 DD
+// @BT 7E FB DD 86 FA 6F 26 00 01 01 00 78 B1 28 04 29
+// @BT 0B 18 F8 DD 4E F6 DD 46 F7 09 E5 FD E1 FD 6E 00
+// @BT FD 66
+// @BT 01 23 DD 75 F8 DD 74 F9 E5 FD E1 FD 6E 00 26 00
+// @BT 7D 3C 6F DD 4E F8 DD 46 F9 C5 FD E1 FD 75 00
+// @BT END
+// @BT TEST-02 02 START
+// @BT 21 00 C0 DD 21 00 00 DD 19 DD 75 F5 DD 74 F6 DD
+// @BT 7E FA DD 86 F9 6F 26 00 01 01 00 78 B1 28 04 29
+// @BT 0B 18 F8 DD 4E F5 DD 46 F6 09 E5 FD E1 FD 6E 00
+// @BT FD 66
+// @BT 01 01 02 00 09 DD 75 F7 DD 74 F8 E5 FD E1 FD 6E
+// @BT 00 FD 66 01 2B DD 4E F7 DD 46 F8 C5 FD E1 FD 75
+// @BT 00 FD 74 01
+// @BT END
+
+struct AllocatorRaStructPointerArrayUpdateLeaf {
+  u8 pad;
+  u8 byte_value;
+  u16 word_value;
+};
+
+struct AllocatorRaStructPointerArrayUpdateLeaf *g_allocator_struct_pointer_array_update[8];
+
+u8 allocatorRaStructPointerArrayIncrement(u8 index_left, u8 index_right) {
+
+  __asm(".DB \"01>\"");
+  g_allocator_struct_pointer_array_update[index_left + index_right]->byte_value++;
+  __asm(".DB \"<01\"");
+
+  return index_left;
+}
+
+u16 allocatorRaStructPointerArrayDecrement(u8 index_left, u8 index_right) {
+
+  __asm(".DB \"02>\"");
+  g_allocator_struct_pointer_array_update[index_left + index_right]->word_value--;
+  __asm(".DB \"<02\"");
+
+  return index_right;
+}
+
+void main(void) {
+}

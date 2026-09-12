@@ -1,0 +1,132 @@
+// @BT linked.sms
+// @BT TEST-01 01 START
+// @BT DD 21 00 00 DD 19 DD 7E FB DD 86 FA 4F DD 7E F9
+// @BT DD 86 F8 47 DD 7E F7 DD 86 F6 A8 A9 DD 77 F4 DD
+// @BT 7E F4 DD AE F5 DD 77 F4 DD 21 00 C0 FD 21 F4 FF
+// @BT FD 19 FD 7E 00 DD 77 00
+// @BT END
+// @BT TEST-02 02 START
+// @BT DD 21 00 00 DD 19 DD 6E F9 DD 66 FA DD 4E F7 DD
+// @BT 46 F8 09 DD 4E F5 DD 46 F6 79 EE FF 4F 78 EE FF
+// @BT 47 09 DD 75 F3 DD 74 F4 DD 21 01 C0 FD 21 F3 FF
+// @BT FD 19 FD 7E 00 DD 77 00 FD 7E 01 DD 77 01
+// @BT END
+// @BT TEST-03 03 START
+// @BT DD 21 00 00 DD 19 DD 7E FB DD 86 FA 4F DD 7E F9
+// @BT DD 86 F8 A9 DD 77 F6 DD 7E F6 DD AE F7 DD 77 F6
+// @BT DD 21 00 C0 FD 21 F6 FF FD 19 FD 7E 00 DD 77 00
+// @BT END
+// @BT TEST-04 04 START
+// @BT DD 21 00 00 DD 19 DD 4E FB 06 00 FD 21 03 C0 FD
+// @BT 09 FD 6E 00 7D DD AE FA DD 77 F9 DD 21 00 C0 FD
+// @BT 21 F9 FF FD 19 FD 7E 00 DD 77 00
+// @BT END
+// @BT TEST-05 05 START
+// @BT DD 21 00 00 DD 19 DD 4E FA 06 00 FD 21 13 C0 FD
+// @BT 09 FD 09 FD 6E 00 FD 66 01 DD 4E F8 DD 46 F9 78
+// @BT AC 67 79 AD 6F DD 75 F6 DD 74 F7 DD 21 01 C0 FD
+// @BT 21 F6 FF FD 19 FD 7E 00 DD 77 00 FD 7E 01 DD 77
+// @BT 01
+// @BT END
+// @BT TEST-06 06 START
+// @BT DD 21 00 00 DD 19 DD 7E FC EE 5A DD 21 00 C0 DD
+// @BT 77 00
+// @BT END
+// @BT TEST-07 07 START
+// @BT DD 21 00 00 DD 19 DD 7E FC DD 86 FB DD 77 F8 DD
+// @BT 6E F9 DD 66 FA 23 DD 75 F6 DD 74 F7 21 00 00 39
+// @BT 2B 01 59 00 C5 D5 DD 21 00 00 44 4D DD 09 FD 21
+// @BT 00 00 FD 19 FD 4E F8 DD 71 FC FD 4E F6 FD 46 F7
+// @BT DD 71 FA DD 70 FB 54 5D C3 4A 02 DD 21 00 00 DD
+// @BT 19 DD 5E FD DD 56 FE
+// @BT END
+
+u8 g_allocator_location_byte_sink;
+u16 g_allocator_location_word_sink;
+u8 g_allocator_location_values_a[16];
+u16 g_allocator_location_values_hl[16];
+
+u8 allocatorRaPolicyLocationB(u8 a, u8 b, u8 c, u8 d, u8 e, u8 f, u8 mask) {
+
+  u8 out;
+
+  __asm(".DB \"01>\"");
+  out = (a + b) ^ ((c + d) ^ (e + f));
+  out = out ^ mask;
+  g_allocator_location_byte_sink = out;
+  __asm(".DB \"<01\"");
+
+  return out;
+}
+
+u16 allocatorRaPolicyLocationBc(u16 a, u16 b, u16 c) {
+
+  u16 out;
+
+  __asm(".DB \"02>\"");
+  out = (a + b) + (~c);
+  g_allocator_location_word_sink = out;
+  __asm(".DB \"<02\"");
+
+  return out;
+}
+
+u8 allocatorRaPolicyLocationC(u8 a, u8 b, u8 c, u8 d, u8 mask) {
+
+  u8 out;
+
+  __asm(".DB \"03>\"");
+  out = (a + b) ^ (c + d);
+  out = out ^ mask;
+  g_allocator_location_byte_sink = out;
+  __asm(".DB \"<03\"");
+
+  return out;
+}
+
+u8 allocatorRaPolicyLocationA(u8 index, u8 mask) {
+
+  u8 out;
+
+  __asm(".DB \"04>\"");
+  out = g_allocator_location_values_a[index] ^ mask;
+  g_allocator_location_byte_sink = out;
+  __asm(".DB \"<04\"");
+
+  return out;
+}
+
+u16 allocatorRaPolicyLocationHl(u8 index, u16 mask) {
+
+  u16 out;
+
+  __asm(".DB \"05>\"");
+  out = g_allocator_location_values_hl[index] ^ mask;
+  g_allocator_location_word_sink = out;
+  __asm(".DB \"<05\"");
+
+  return out;
+}
+
+void allocatorRaPolicyLocationConstant(u8 value) {
+
+  __asm(".DB \"06>\"");
+  g_allocator_location_byte_sink = value ^ 0x5a;
+  __asm(".DB \"<06\"");
+}
+
+void allocatorRaPolicyLocationSpillSink(u8 byte_value, u16 word_value) {
+
+  g_allocator_location_byte_sink = byte_value;
+  g_allocator_location_word_sink = word_value;
+}
+
+void allocatorRaPolicyLocationSpill(u8 left, u8 right, u16 word_value) {
+
+  __asm(".DB \"07>\"");
+  allocatorRaPolicyLocationSpillSink(left + right, word_value + 1);
+  __asm(".DB \"<07\"");
+}
+
+void main(void) {
+}

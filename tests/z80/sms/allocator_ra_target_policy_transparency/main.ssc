@@ -1,0 +1,54 @@
+// @BT linked.sms
+// @BT TEST-01 01 START
+// @BT DD 21 00 00 DD 19 DD 7E FB DD 86 FA 4F DD 7E F9
+// @BT DD 86 F8 47 DD 7E F7 DD 86 F6 A8 A9 DD 77 F4 DD
+// @BT 7E F4 DD AE F5 DD 77 F4 DD 21 00 C0 FD 21 F4 FF
+// @BT FD 19 FD 7E 00 DD 77 00
+// @BT END
+// @BT TEST-02 02 START
+// @BT DD 21 00 00 DD 19 DD 6E F9 DD 66 FA DD 4E F7 DD
+// @BT 46 F8 09 DD 75 F1 DD 74 F2 DD 6E F5 DD 66 F6 7D
+// @BT EE FF 6F 7C EE FF 67 DD 75 ED DD 74 EE DD 6E F3
+// @BT DD 66 F4 7D EE FF 6F 7C EE FF 67 DD 75 EB DD 74
+// @BT EC DD 6E F1 DD 66 F2 DD 4E ED DD 46 EE 09 DD 4E
+// @BT EB DD 46 EC 78 AC 67 79 AD 6F DD 75 EF DD 74 F0
+// @BT DD 21 01 C0 FD 21 EF FF FD 19 FD 7E 00 DD 77 00
+// @BT FD 7E 01 DD 77 01
+// @BT END
+
+u8 g_allocator_target_transparency_byte_sink;
+u16 g_allocator_target_transparency_word_sink;
+
+u8 allocatorRaTargetTransparencyByte(u8 a, u8 b, u8 c, u8 d, u8 e, u8 f, u8 mask) {
+
+  u8 out;
+
+  __asm(".DB \"01>\"");
+  out = (a + b) ^ ((c + d) ^ (e + f));
+  out = out ^ mask;
+  g_allocator_target_transparency_byte_sink = out;
+  __asm(".DB \"<01\"");
+
+  return out;
+}
+
+u16 allocatorRaTargetTransparencyWord(u16 a, u16 b, u16 c, u16 d) {
+
+  u16 held;
+  u16 alternate;
+  u16 passthrough;
+  u16 out;
+
+  __asm(".DB \"02>\"");
+  held = a + b;
+  alternate = ~c;
+  passthrough = ~d;
+  out = (held + alternate) ^ passthrough;
+  g_allocator_target_transparency_word_sink = out;
+  __asm(".DB \"<02\"");
+
+  return out;
+}
+
+void main(void) {
+}

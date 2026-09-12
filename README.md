@@ -1,11 +1,11 @@
 
 # SameSameC (ButDifferent)
 
-Yet Another ANSI C89 Like Language Cross Compiler Targeting 8-bit CPUs. Written by 2021 Ville Helin.
+Yet Another ANSI C89 Like Language Cross Compiler Targeting 8-bit CPUs. Written by 2021+ Ville Helin.
 
 **This is currently under early development, use it on your own risk.** SameSameC is GPL v2 software. Read the LICENSE file for more information. Some pieces of code were taken from WLA DX (https://github.com/vhelin/wla-dx), but not so many. The compiler produces WLA DX ASM files which the linker links together and assembles with WLA DX (included as a Git submodule).
 
-**I will not in general approve pull requests as I want to do this myself, up to the point when I decide I've learned enough. :) Ideas, bug reports and feature requests are welcome, though. And build scripts for platforms currently not supported.**
+**Ideas, bug reports, pull requests and feature requests are welcome, though. And build scripts for platforms currently not supported.**
 
 
 # Azure Pipelines CI
@@ -16,6 +16,8 @@ Yet Another ANSI C89 Like Language Cross Compiler Targeting 8-bit CPUs. Written 
 - [![Build Status](https://dev.azure.com/villehelin0486/villehelin/_apis/build/status/vhelin.SameSameC%20Windows%20MSVC?branchName=master)](https://dev.azure.com/villehelin0486/villehelin/_build/latest?definitionId=9&branchName=master) - Windows MSVC
 
 # Features
+
+- Has optional (and experimental) register allocator via -ra flag!
 
 ## Features missing when compared with ANSI C89
 
@@ -60,7 +62,7 @@ Yet Another ANSI C89 Like Language Cross Compiler Targeting 8-bit CPUs. Written 
 - Check that all pointer operations work properly
 - When defining an array sometimes [] takes only an integer and not an expression
 - When defining an array of pointers to structs/unions it's possible to give too many items
-- Add a proper register allocator; what currently is done is not good enough as we are getting too bloated asm
+- Continue the Z80 register allocator work tracked in [REGISTER_ALLOCATOR.md](REGISTER_ALLOCATOR.md); the current implementation is feature-flagged with `-ra` and covered by SMS allocator tests.
 
 ## Add
 
@@ -87,6 +89,7 @@ Programmed using
 - "Basics of Compiler Design"
   - http://web.archive.org/web/20120915222417/http://www.diku.dk/hjemmesider/ansatte/torbenm/Basics/basics_lulu2.pdf
 - Emacs
-- Cygwin under Windows 10
+- Cygwin under Windows 11
+- Since 2026 I've used various LLMs for the development
 
 Should compile anywhere ANSI C89 source code can be compiled.

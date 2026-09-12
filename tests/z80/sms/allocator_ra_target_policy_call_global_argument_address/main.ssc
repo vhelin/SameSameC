@@ -1,0 +1,51 @@
+// @BT linked.sms
+// @BT TEST-01 01 START
+// @BT 21 00 00 39 2B 01 63 00 C5 D5 DD 21 00 00 44 4D
+// @BT DD 09 FD 21 00 00 FD 19 FD 4E FC DD 71 FC FD 21
+// @BT 00 C0 FD 4E 00 DD 71 FB FD 21 00 00 FD 19 FD 4E
+// @BT FB DD 71 FA FD 21 01 C0 FD 4E 00 FD 46 01 DD 71
+// @BT F8 DD 70 F9 FD 21 00 00 FD 19 FD 4E FA DD 71 F7
+// @BT 54 5D C3 FC 00 DD 21 00 00 DD 19 DD 5E FD DD 56
+// @BT FE
+// @BT END
+// @BT TEST-02 02 START
+// @BT 21 00 00 39 2B 01 E7 00 C5 D5 DD 21 00 00 44 4D
+// @BT DD 09 FD 21 03 C0 FD 4E 00 79 87 9F 47 DD 71 FB
+// @BT DD 70 FC FD 21 04 C0 FD 4E 00 06 00 DD 71 F9 DD
+// @BT 70 FA FD 21 05 C0 FD 4E 00 FD 46 01 DD 71 F8 54
+// @BT 5D C3 49 01 DD 21 00 00 DD 19 DD 5E FD DD 56 FE
+// @BT END
+
+u8 g_allocator_call_global_byte;
+u16 g_allocator_call_global_word;
+s8 g_allocator_call_global_signed;
+u8 g_allocator_call_global_unsigned;
+u16 g_allocator_call_global_narrowed;
+u16 g_allocator_call_global_sink;
+
+void allocatorRaPolicyCallGlobalCacheSink(u8 first, u8 global_byte, u8 middle, u16 global_word, u8 last) {
+
+  g_allocator_call_global_sink = first ^ global_byte ^ middle ^ global_word ^ last;
+}
+
+void allocatorRaPolicyCallGlobalTransportSink(s16 signed_word, u16 unsigned_word, u8 narrowed_word) {
+
+  g_allocator_call_global_sink = signed_word ^ unsigned_word ^ narrowed_word;
+}
+
+void allocatorRaPolicyCallGlobalCache(u8 first, u8 middle, u8 last) {
+
+  __asm(".DB \"01>\"");
+  allocatorRaPolicyCallGlobalCacheSink(first, g_allocator_call_global_byte, middle, g_allocator_call_global_word, last);
+  __asm(".DB \"<01\"");
+}
+
+void allocatorRaPolicyCallGlobalTransport(void) {
+
+  __asm(".DB \"02>\"");
+  allocatorRaPolicyCallGlobalTransportSink(g_allocator_call_global_signed, g_allocator_call_global_unsigned, g_allocator_call_global_narrowed);
+  __asm(".DB \"<02\"");
+}
+
+void main(void) {
+}

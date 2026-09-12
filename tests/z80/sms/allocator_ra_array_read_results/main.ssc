@@ -1,0 +1,62 @@
+// @BT linked.sms
+// @BT TEST-01 01 START
+// @BT DD 21 00 00 DD 19 DD 4E FB 06 00 FD 21 00 C0 FD 09
+// @BT FD 6E 00 7D DD AE FA DD 77 F9 DD 21 30 C0 FD 21
+// @BT F9 FF FD 19 FD 7E 00 DD 77 00
+// @BT END
+// @BT TEST-02 02 START
+// @BT DD 21 00 00 DD 19 DD 4E FA 06 00 FD 21 10 C0 FD
+// @BT 09 FD 09 FD 6E 00 FD 66 01 DD 4E F8 DD 46 F9 78
+// @BT AC 67 79 AD 6F DD 75 F6 DD 74 F7 DD 21 31 C0 FD
+// @BT 21 F6 FF FD 19 FD 7E 00 DD 77 00 FD 7E 01 DD 77
+// @BT 01
+// @BT END
+// @BT TEST-03 03 START
+// @BT DD 21 00 00 DD 19 DD 4E FB ED 78 DD AE FA DD 77
+// @BT F9 DD 21 30 C0 FD 21 F9 FF FD 19 FD 7E 00 DD 77
+// @BT 00
+// @BT END
+
+u8 g_allocator_array_read_values_a[16];
+u16 g_allocator_array_read_values_hl[16];
+u8 g_allocator_array_read_sink_a;
+u16 g_allocator_array_read_sink_hl;
+
+u8 allocatorRaArrayReadResultA(u8 index, u8 mask) {
+
+  u8 out;
+
+  __asm(".DB \"01>\"");
+  out = g_allocator_array_read_values_a[index] ^ mask;
+  g_allocator_array_read_sink_a = out;
+  __asm(".DB \"<01\"");
+
+  return out;
+}
+
+u16 allocatorRaArrayReadResultHl(u8 index, u16 mask) {
+
+  u16 out;
+
+  __asm(".DB \"02>\"");
+  out = g_allocator_array_read_values_hl[index] ^ mask;
+  g_allocator_array_read_sink_hl = out;
+  __asm(".DB \"<02\"");
+
+  return out;
+}
+
+u8 allocatorRaZ80InReadResultA(u8 port, u8 mask) {
+
+  u8 out;
+
+  __asm(".DB \"03>\"");
+  out = __z80_in[port] ^ mask;
+  g_allocator_array_read_sink_a = out;
+  __asm(".DB \"<03\"");
+
+  return out;
+}
+
+void main(void) {
+}

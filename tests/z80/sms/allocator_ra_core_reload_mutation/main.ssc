@@ -1,0 +1,45 @@
+// @BT linked.sms
+// @BT TEST-01 01 START
+// @BT 21 00 C0 DD 21 00 00 DD 19 DD 75 F6 DD 74 F7 DD
+// @BT 7E FB DD 86 FA 6F 4D 44 D5 11 03 00 3E 10 21 00
+// @BT 00 CB 38 CB 19 30 01 19 EB 29 EB 3D 20 F3 D1 DD
+// @BT 4E F6 DD 46 F7 09 7D 6F 7C 67 DD 75 F8 DD 74 F9
+// @BT E5 FD E1 FD 6E 00 26 00 7D 3C 6F DD 4E F8 DD 46
+// @BT F9 C5 FD E1 FD 75 00
+// @BT END
+// @BT TEST-02 02 START
+// @BT 21 00 C0 DD 21 00 00 DD 19 DD 75 F5 DD 74 F6 DD
+// @BT 7E FA DD 86 F9 6F 4D 44 D5 11 03 00 3E 10 21 00
+// @BT 00 CB 38 CB 19 30 01 19 EB 29 EB 3D 20 F3 D1 DD
+// @BT 4E F5 DD 46 F6 09 23 DD 75 F7 DD 74 F8 E5 FD E1
+// @BT FD 6E 00 FD 66 01 2B DD 4E F7 DD 46 F8 C5 FD E1
+// @BT FD 75 00 FD 74 01
+// @BT END
+
+struct AllocatorRaCoreReloadMutationValue {
+  u8 byte_value;
+  u16 word_value;
+};
+
+struct AllocatorRaCoreReloadMutationValue g_allocator_core_reload_mutation_values[8];
+
+u8 allocatorRaCoreReloadMutationByte(u8 index_left, u8 index_right) {
+
+  __asm(".DB \"01>\"");
+  g_allocator_core_reload_mutation_values[index_left + index_right].byte_value++;
+  __asm(".DB \"<01\"");
+
+  return index_left;
+}
+
+u16 allocatorRaCoreReloadMutationWord(u8 index_left, u8 index_right) {
+
+  __asm(".DB \"02>\"");
+  g_allocator_core_reload_mutation_values[index_left + index_right].word_value--;
+  __asm(".DB \"<02\"");
+
+  return index_right;
+}
+
+void main(void) {
+}
