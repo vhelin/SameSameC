@@ -4,15 +4,17 @@ set -e
 
 REPO_ROOT="$PWD"
 FAILURE_ARTIFACT_DIR="${SAMESAMEC_FAILURE_ARTIFACT_DIR:-$REPO_ROOT/_ci_test_failure}"
-POSIX_MAKE_MK="$REPO_ROOT/ci/posix-make.mk"
 MAKE_POSIX_SHELL=$(command -v bash)
 
-# Git Bash / MinGW make need a Windows path; Cygwin make wants the POSIX one.
-# Use the full path so MinGW make does not pick WSL's System32\bash.exe.
+# MinGW make on Azure Windows is cmd.exe by default, so `! grep` is
+# CreateProcess'd as a program named `!`. Passing Git Bash makes it a
+# unixy shell (`!` is a metacharacter). Do not use .ONESHELL: that
+# concatenates huge recipes (liveness extraction) into one command line
+# and hits Windows error 206 (filename/command too long).
+# Use the full path so CreateProcess does not pick WSL's System32\bash.exe.
 case "$(uname -s)" in
     MINGW*|MSYS*)
         if command -v cygpath >/dev/null 2>&1; then
-            POSIX_MAKE_MK=$(cygpath -m "$POSIX_MAKE_MK")
             MAKE_POSIX_SHELL=$(cygpath -m "$MAKE_POSIX_SHELL")
         fi
         case "$MAKE_POSIX_SHELL" in
@@ -22,13 +24,8 @@ case "$(uname -s)" in
         ;;
 esac
 
-if [ ! -f "$POSIX_MAKE_MK" ]; then
-    echo "Missing $POSIX_MAKE_MK" >&2
-    exit 1
-fi
-
 _run_make() {
-    make -f makefile -f "$POSIX_MAKE_MK" SHELL="$MAKE_POSIX_SHELL" "$@"
+    make SHELL="$MAKE_POSIX_SHELL" "$@"
 }
 
 _save_test_failure_artifacts() {
