@@ -1,0 +1,44 @@
+// @BT linked.sms
+// @BT TEST-01 01 START
+// @BT 21 00 C0 01 01 00 E5 FD E1 FD 09 FD 6E 00 26 00 7D DD 21 00 00 DD 19 DD AE FB DD 77 FA DD 21 04 C0 FD 21 FA FF FD 19 FD 7E 00 DD 77 00
+// @BT END
+// @BT TEST-02 02 START
+// @BT 21 00 C0 01 01 00 E5 FD E1 FD 09 FD 09 FD 6E 00 FD 66 01 DD 21 00 00 DD 19 DD 4E F9 DD 46 FA 78 AC 67 79 AD 6F DD 75 F7 DD 74 F8 DD 21 05 C0 FD 21 F7 FF FD 19 FD 7E 00 DD 77 00 FD 7E 01 DD 77 01
+// @BT END
+
+struct AllocatorRaArrayReadComputedBaseStruct {
+  u8 pad;
+  u8 byte_value;
+  u16 word_value;
+};
+
+struct AllocatorRaArrayReadComputedBaseStruct g_allocator_array_read_computed_base_struct;
+u8 g_allocator_array_read_computed_base_sink_a;
+u16 g_allocator_array_read_computed_base_sink_hl;
+
+u8 allocatorRaArrayReadComputedBaseA(u8 mask) {
+
+  u8 out;
+
+  __asm(".DB \"01>\"");
+  out = g_allocator_array_read_computed_base_struct.byte_value ^ mask;
+  g_allocator_array_read_computed_base_sink_a = out;
+  __asm(".DB \"<01\"");
+
+  return out;
+}
+
+u16 allocatorRaArrayReadComputedBaseHl(u16 mask) {
+
+  u16 out;
+
+  __asm(".DB \"02>\"");
+  out = g_allocator_array_read_computed_base_struct.word_value ^ mask;
+  g_allocator_array_read_computed_base_sink_hl = out;
+  __asm(".DB \"<02\"");
+
+  return out;
+}
+
+void main(void) {
+}

@@ -1,0 +1,90 @@
+// @BT linked.sms
+// @BT TEST-01 01 START
+// @BT 21 00 00 39 2B 01 06 02 C5 D5 DD 21 00 00 44 4D
+// @BT DD 09 FD 21 00 00 FD 19 FD 4E FB FD 46 FC DD 71
+// @BT F9 DD 70 FA 54 5D C3 00 03 DD 21 00 00 DD 19 DD
+// @BT 6E FB DD 66 FC DD 5E FD DD 56 FE FD 21 00 C0 FD
+// @BT 75 00 FD 74 01
+// @BT END
+// @BT TEST-02 02 START
+// @BT 21 00 00 39 2B 01 37 00 C5 D5 DD 21 00 00 44 4D
+// @BT DD 09 FD 21 00 00 FD 19 FD 4E FB FD 46 FC DD 71
+// @BT F9 DD 70 FA 54 5D C3 00 03 DD 21 00 00 DD 19 DD
+// @BT 6E FB DD 66 FC DD 5E FD DD 56 FE FD 21 F7 FF FD
+// @BT 19 FD 75 00 FD 74 01 DD 21 00 00 DD 19 DD 6E F7
+// @BT DD 66 F8 DD 4E F9 DD 46 FA 78 AC 67 79 AD 6F DD
+// @BT 21 00 C0 DD 75 00 DD 74 01
+// @BT END
+// @BT TEST-03 03 START
+// @BT FD 21 6D FF FD 19 FD 6E 00 26 00 DD 21 00 00 DD
+// @BT 19 DD 4E FB DD 46 FC 09 DD 21 69 FF DD 19 DD 75
+// @BT 00 DD 74 01 21 00 00 39 2B 01 FA 00 C5 D5 DD 21
+// @BT 00 00 44 4D DD 09 FD 21 69 FF FD 19 FD 4E 00 FD
+// @BT 46 01 DD 71 F9 DD 70 FA 54 5D C3 00 03 DD 21 00
+// @BT 00 DD 19 DD 6E FB DD 66 FC DD 5E FD DD 56 FE FD
+// @BT 21 6B FF FD 19 FD 75 00 FD 74 01 DD 21 6B FF DD
+// @BT 19 DD 6E 00 DD 66 01 DD 21 00 00 DD 19 DD 4E F9
+// @BT DD 46 FA 78 AC 67 79 AD 6F DD 21 00 C0 DD 75 00
+// @BT DD 74 01
+// @BT END
+// @BT TEST-04 04 START
+// @BT 21 00 00 39 2B 01 7A 01 C5 D5 DD 21 00 00 44 4D
+// @BT DD 09 FD 21 00 00 FD 19 FD 4E F9 FD 46 FA DD 71
+// @BT F9 DD 70 FA 54 5D C3 00 03 DD 21 00 00 DD 19 DD
+// @BT 6E FB DD 66 FC DD 5E FD DD 56 FE DD 21 00 00 DD
+// @BT 19 DD 4E F7 DD 46 F8 78 AC 67 79 AD 6F DD 75 F5
+// @BT DD 74 F6 DD 21 00 C0 FD 21 F5 FF FD 19 FD 7E 00
+// @BT DD 77 00 FD 7E 01 DD 77 01
+// @BT END
+
+u16 g_allocator_call_result_store_word;
+
+u16 allocatorRaPolicyCallResultStoreWordCallee(u16 value) __orga 0x0300 {
+
+  return value + 1;
+}
+
+void allocatorRaPolicyCallResultStoreGlobal(u16 value) {
+
+  __asm(".DB \"01>\"");
+  g_allocator_call_result_store_word = allocatorRaPolicyCallResultStoreWordCallee(value);
+  __asm(".DB \"<01\"");
+}
+
+void allocatorRaPolicyCallResultStoreLocal(u16 value, u16 mask) {
+
+  u16 out;
+
+  __asm(".DB \"02>\"");
+  out = allocatorRaPolicyCallResultStoreWordCallee(value);
+  g_allocator_call_result_store_word = out ^ mask;
+  __asm(".DB \"<02\"");
+}
+
+void allocatorRaPolicyCallResultStoreFar(u16 value, u16 mask) {
+
+  u8 padding[140];
+  u16 out;
+
+  padding[0] = 1;
+
+  __asm(".DB \"03>\"");
+  out = allocatorRaPolicyCallResultStoreWordCallee(value + padding[0]);
+  g_allocator_call_result_store_word = out ^ mask;
+  __asm(".DB \"<03\"");
+}
+
+u16 allocatorRaPolicyCallResultStoreRetained(u16 value, u16 mask) {
+
+  u16 out;
+
+  __asm(".DB \"04>\"");
+  out = allocatorRaPolicyCallResultStoreWordCallee(value) ^ mask;
+  g_allocator_call_result_store_word = out;
+  __asm(".DB \"<04\"");
+
+  return out;
+}
+
+void main(void) {
+}

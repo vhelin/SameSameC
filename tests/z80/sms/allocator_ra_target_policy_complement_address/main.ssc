@@ -1,0 +1,119 @@
+// @BT linked.sms
+// @BT TEST-01 01 START
+// @BT DD 21 00 C0 DD 7E 00 EE FF DD 21 01 C0 DD 77 00
+// @BT END
+// @BT TEST-02 02 START
+// @BT DD 21 00 00 DD 19 DD 7E FC EE FF DD 77 FB
+// @BT END
+// @BT TEST-03 03 START
+// @BT DD 21 6E FF DD 19 DD 7E 00 EE FF DD 21 6D FF DD
+// @BT 19 DD 77 00
+// @BT END
+// @BT TEST-04 04 START
+// @BT DD 21 00 00 DD 19 DD 7E FC EE FF DD AE FB DD 21
+// @BT 01 C0 DD 77 00
+// @BT END
+// @BT TEST-05 05 START
+// @BT DD 21 02 C0 DD 6E 00 DD 66 01 7D EE FF 6F 7C EE
+// @BT FF 67 DD 21 04 C0 DD 75 00 DD 74 01
+// @BT END
+// @BT TEST-06 06 START
+// @BT DD 21 00 00 DD 19 DD 6E FB DD 66 FC 7D EE FF 6F
+// @BT 7C EE FF 67 DD 75 F9 DD 74 FA
+// @BT END
+// @BT TEST-07 07 START
+// @BT DD 21 6B FF DD 19 DD 6E 00 DD 66 01 7D EE FF 6F
+// @BT 7C EE FF 67 DD 21 69 FF DD 19 DD 75 00 DD 74 01
+// @BT END
+// @BT TEST-08 08 START
+// @BT DD 21 00 00 DD 19 DD 6E FB DD 66 FC 7D EE FF 6F
+// @BT 7C EE FF 67 DD 4E F9 DD 46 FA 78 AC 67 79 AD 6F
+// @BT DD 21 04 C0 DD 75 00 DD 74 01
+// @BT END
+
+u8 g_allocator_complement_source_byte;
+u8 g_allocator_complement_target_byte;
+u16 g_allocator_complement_source_word;
+u16 g_allocator_complement_target_word;
+u8 *g_allocator_complement_padding;
+
+void allocatorRaPolicyComplementGlobalByte(void) {
+
+  __asm(".DB \"01>\"");
+  g_allocator_complement_target_byte = ~g_allocator_complement_source_byte;
+  __asm(".DB \"<01\"");
+}
+
+void allocatorRaPolicyComplementNearByte(u8 source) {
+
+  u8 result;
+
+  __asm(".DB \"02>\"");
+  result = ~source;
+  __asm(".DB \"<02\"");
+  g_allocator_complement_target_byte = result;
+}
+
+void allocatorRaPolicyComplementFarByte(u8 left, u8 right) {
+
+  u8 padding[140];
+  u8 source;
+  u8 result;
+
+  source = left + right;
+  g_allocator_complement_padding = &padding[139];
+  __asm("NOP");
+  __asm(".DB \"03>\"");
+  result = ~source;
+  __asm(".DB \"<03\"");
+  g_allocator_complement_target_byte = result;
+}
+
+void allocatorRaPolicyComplementRetainedResultByte(u8 source, u8 other) {
+
+  __asm(".DB \"04>\"");
+  g_allocator_complement_target_byte = (~source) ^ other;
+  __asm(".DB \"<04\"");
+}
+
+void allocatorRaPolicyComplementGlobalWord(void) {
+
+  __asm(".DB \"05>\"");
+  g_allocator_complement_target_word = ~g_allocator_complement_source_word;
+  __asm(".DB \"<05\"");
+}
+
+void allocatorRaPolicyComplementNearWord(u16 source) {
+
+  u16 result;
+
+  __asm(".DB \"06>\"");
+  result = ~source;
+  __asm(".DB \"<06\"");
+  g_allocator_complement_target_word = result;
+}
+
+void allocatorRaPolicyComplementFarWord(u16 left, u16 right) {
+
+  u8 padding[140];
+  u16 source;
+  u16 result;
+
+  source = left ^ right;
+  g_allocator_complement_padding = &padding[139];
+  __asm("NOP");
+  __asm(".DB \"07>\"");
+  result = ~source;
+  __asm(".DB \"<07\"");
+  g_allocator_complement_target_word = result;
+}
+
+void allocatorRaPolicyComplementRetainedResultWord(u16 source, u16 other) {
+
+  __asm(".DB \"08>\"");
+  g_allocator_complement_target_word = (~source) ^ other;
+  __asm(".DB \"<08\"");
+}
+
+void main(void) {
+}

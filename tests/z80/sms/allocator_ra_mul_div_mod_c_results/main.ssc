@@ -1,0 +1,48 @@
+// @BT linked.sms
+// @BT TEST-01 01 START
+// @BT DD 21 00 00 DD 19 DD 66 FB DD 21 00 00 DD 19 D5
+// @BT DD 5E FA 16 00 6A 06 08 29 30 01 19 10 FA D1 4D
+// @BT DD 21 00 00 DD 19 DD 7E F9 DD 86 F8 A9 DD 77 F7
+// @BT DD 21 00 C0 FD 21 F7 FF FD 19 FD 7E 00 DD 77 00
+// @BT END
+// @BT TEST-02 02 START
+// @BT DD 21 00 00 DD 19 DD 66 FB DD 21 00 00 DD 19 D5
+// @BT DD 5E FA AF 06 08 CB 14 17 93 30 01 83 10 F7 47
+// @BT 7C 17 2F D1 4F DD 21 00 00 DD 19 DD 7E F9 DD A6
+// @BT F8 B1 DD 77 F7 DD 21 00 C0 FD 21 F7 FF FD 19 FD
+// @BT 7E 00 DD 77 00
+// @BT END
+// @BT TEST-03 03 START
+// @BT DD 21 00 00 DD 19 DD 66 FB DD 21 00 00 DD 19 D5
+// @BT DD 5E FA AF 06 08 CB 14 17 93 30 01 83 10 F7 47
+// @BT 7C 17 2F D1 48 DD 21 00 00 DD 19 DD 7E F9 DD B6
+// @BT F8 A9 DD 77 F7 DD 21 00 C0 FD 21 F7 FF FD 19 FD
+// @BT 7E 00 DD 77 00
+// @BT END
+
+u8 g_allocator_mul_div_mod_c_sink;
+
+u8 allocatorRaMulDivModResultC(u8 left, u8 right, u8 a, u8 b) {
+
+  u8 out;
+
+  __asm(".DB \"01>\"");
+  out = (left * right) ^ (a + b);
+  g_allocator_mul_div_mod_c_sink = out;
+  __asm(".DB \"<01\"");
+
+  __asm(".DB \"02>\"");
+  out = (left / right) | (a & b);
+  g_allocator_mul_div_mod_c_sink = out;
+  __asm(".DB \"<02\"");
+
+  __asm(".DB \"03>\"");
+  out = (left % right) ^ (a | b);
+  g_allocator_mul_div_mod_c_sink = out;
+  __asm(".DB \"<03\"");
+
+  return out;
+}
+
+void main(void) {
+}

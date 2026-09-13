@@ -41,6 +41,8 @@ steps:
     test -x "$PWD/build/binaries/$(config)/samesamecc.exe"
     test -x "$PWD/build/binaries/$(config)/samesamecl.exe"
 
-    ./run_tests.sh
+    bash ./run_tests.sh
   displayName: 'Run Tests ($(config))'
   workingDirectory: '$(Build.SourcesDirectory)'
+
+- template: ci/publish-test-failure-artifacts.yml

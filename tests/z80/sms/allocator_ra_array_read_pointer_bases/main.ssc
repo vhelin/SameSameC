@@ -1,0 +1,37 @@
+// @BT linked.sms
+// @BT TEST-01 01 START
+// @BT DD 21 00 00 DD 19 DD 7E F9 DD 86 F8 4F 06 00 FD 21 FA FF FD 19 C5 FD 4E 00 FD 46 01 FD 21 00 00 FD 09 C1 FD 09 FD 6E 00 7D DD AE F7 DD 77 F6 DD 21 00 C0 FD 21 F6 FF FD 19 FD 7E 00 DD 77 00
+// @BT END
+// @BT TEST-02 02 START
+// @BT DD 21 00 00 DD 19 DD 6E F7 DD 66 F8 DD 4E F5 DD 46 F6 78 AC 67 79 AD 6F FD 21 F9 FF FD 19 FD 7E 00 4F FD 7E 01 47 C5 FD E1 4D 44 FD 09 FD 09 FD 6E 00 FD 66 01 DD 4E F3 DD 46 F4 78 AC 67 79 AD 6F DD 75 F1 DD 74 F2 DD 21 01 C0 FD 21 F1 FF FD 19 FD 7E 00 DD 77 00 FD 7E 01 DD 77 01
+// @BT END
+
+u8 g_allocator_array_read_pointer_base_sink_a;
+u16 g_allocator_array_read_pointer_base_sink_hl;
+
+u8 allocatorRaArrayReadPointerBaseA(u8 *source, u8 left, u8 right, u8 mask) {
+
+  u8 out;
+
+  __asm(".DB \"01>\"");
+  out = source[left + right] ^ mask;
+  g_allocator_array_read_pointer_base_sink_a = out;
+  __asm(".DB \"<01\"");
+
+  return out;
+}
+
+u16 allocatorRaArrayReadPointerBaseHl(u16 *source, u16 left, u16 right, u16 mask) {
+
+  u16 out;
+
+  __asm(".DB \"02>\"");
+  out = source[left ^ right] ^ mask;
+  g_allocator_array_read_pointer_base_sink_hl = out;
+  __asm(".DB \"<02\"");
+
+  return out;
+}
+
+void main(void) {
+}

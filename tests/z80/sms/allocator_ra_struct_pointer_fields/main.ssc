@@ -1,0 +1,55 @@
+// @BT linked.sms
+// @BT TEST-01 01 START
+// @BT DD 21 00 00 DD 19 DD 7E FB DD 86 FA DD 77 F9 DD
+// @BT 21 07 C0 DD 6E 00 DD 66 01 23 E5 FD E1 FD 6E 00
+// @BT FD 66 01 23 E5 FD E1 DD 21 00 00 DD 19 DD 6E F9
+// @BT FD 75 00
+// @BT END
+// @BT TEST-02 02 START
+// @BT DD 21 07 C0 DD 6E 00 DD 66 01 23 E5 FD E1 FD 6E
+// @BT 00 FD 66 01 01 01 00 E5 FD E1 FD 09 FD 09 FD 6E
+// @BT 00 FD 66 01 DD 21 00 00 DD 19 DD 4E F9 DD 46 FA
+// @BT 78 AC 67 79 AD 6F DD 75 F7 DD 74 F8 DD 21 09 C0
+// @BT FD 21 F7 FF FD 19 FD 7E 00 DD 77 00 FD 7E 01 DD
+// @BT 77 01
+// @BT END
+
+struct AllocatorRaStructPointerInner {
+  u8 pad;
+  u8 byte_value;
+  u16 word_value;
+};
+
+struct AllocatorRaStructPointerOuter {
+  u8 pad;
+  struct AllocatorRaStructPointerInner *inner;
+};
+
+struct AllocatorRaStructPointerInner g_allocator_struct_pointer_inner;
+struct AllocatorRaStructPointerOuter g_allocator_struct_pointer_outer;
+struct AllocatorRaStructPointerOuter *g_allocator_struct_pointer_outer_ptr;
+u16 g_allocator_struct_pointer_sink_hl;
+
+u8 allocatorRaStructPointerFieldWriteA(u8 value_left, u8 value_right) {
+
+  __asm(".DB \"01>\"");
+  g_allocator_struct_pointer_outer_ptr->inner->byte_value = value_left + value_right;
+  __asm(".DB \"<01\"");
+
+  return value_left;
+}
+
+u16 allocatorRaStructPointerFieldReadHl(u16 mask) {
+
+  u16 out;
+
+  __asm(".DB \"02>\"");
+  out = g_allocator_struct_pointer_outer_ptr->inner->word_value ^ mask;
+  g_allocator_struct_pointer_sink_hl = out;
+  __asm(".DB \"<02\"");
+
+  return out;
+}
+
+void main(void) {
+}

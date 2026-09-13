@@ -1,0 +1,80 @@
+// @BT linked.sms
+// @BT TEST-01 01 START
+// @BT DD 21 00 00 DD 19 DD 7E FC DD 86 FB DD 77 FA 21
+// @BT 00 00 39 2B 01 61 01 C5 D5 DD 21 00 00 44 4D DD
+// @BT 09 FD 21 00 00 FD 19 FD 4E FA DD 71 FC 54 5D C3
+// @BT CA 01 DD 21 00 00 DD 19 DD 5E FD DD 56 FE
+// @BT END
+// @BT TEST-02 02 START
+// @BT 21 00 00 39 2B 01 CC 00 C5 D5 DD 21 00 00 44 4D
+// @BT DD 09 FD 21 00 00 FD 19 FD 4E F9 FD 46 FA DD 71
+// @BT F9 DD 70 FA 54 5D C3 57 00 DD 21 00 00 DD 19 DD
+// @BT 6E FB DD 66 FC DD 5E FD DD 56 FE DD 21 00 00 DD
+// @BT 19 DD 4E F7 DD 46 F8 78 AC 67 79 AD 6F DD 75 F5
+// @BT DD 74 F6 DD 21 01 C0 FD 21 F5 FF FD 19 FD 7E 00
+// @BT DD 77 00 FD 7E 01 DD 77 01
+// @BT END
+// @BT TEST-03 03 START
+// @BT DD 21 00 00 DD 19 DD 7E FC 06 00 90 CA 93 01 21
+// @BT FF FF 19 F9 C9 DD 21 00 C0 FD 21 FC FF FD 19 FD
+// @BT 7E 00 DD 77 00
+// @BT END
+// @BT TEST-04 04 START
+// @BT DD 21 00 00 DD 19 DD 6E F9 DD 66 FA 01 00 00 A7
+// @BT ED 42 CA 3C 00 DD 6E F9 DD 66 FA DD 4E F7 DD 46
+// @BT F8 09 DD 75 FB DD 74 FC 21 FF FF 19 F9 C9
+// @BT END
+
+u8 g_allocator_policy_boundary_byte_sink;
+u16 g_allocator_policy_boundary_word_sink;
+
+void allocatorRaPolicyBoundaryVoidCallee(u8 value) {
+  g_allocator_policy_boundary_byte_sink = value;
+}
+
+u16 allocatorRaPolicyBoundaryWordCallee(u16 value) {
+  return value + 0x0103;
+}
+
+void allocatorRaPolicyBoundaryVoidCall(u8 left, u8 right) {
+
+  __asm(".DB \"01>\"");
+  allocatorRaPolicyBoundaryVoidCallee(left + right);
+  __asm(".DB \"<01\"");
+}
+
+u16 allocatorRaPolicyBoundaryValueCall(u16 value, u16 mask) {
+
+  u16 out;
+
+  __asm(".DB \"02>\"");
+  out = allocatorRaPolicyBoundaryWordCallee(value) ^ mask;
+  g_allocator_policy_boundary_word_sink = out;
+  __asm(".DB \"<02\"");
+
+  return out;
+}
+
+void allocatorRaPolicyBoundaryPlainReturn(u8 condition) {
+
+  __asm(".DB \"03>\"");
+  if (condition) {
+    return;
+  }
+  g_allocator_policy_boundary_byte_sink = condition;
+  __asm(".DB \"<03\"");
+}
+
+u16 allocatorRaPolicyBoundaryReturnValue(u16 condition, u16 value) {
+
+  __asm(".DB \"04>\"");
+  if (condition) {
+    return condition + value;
+  }
+  __asm(".DB \"<04\"");
+
+  return value;
+}
+
+void main(void) {
+}

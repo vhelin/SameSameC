@@ -15,6 +15,8 @@ int is_last_tac(int op);
 int tac_try_find_definition(struct tac *t, char *label, struct tree_node *node, int tac_use);
 int tac_promote_argument(struct tac *t, int type, int tac_use);
 struct tac *add_tac(void);
+struct tac *insert_tac(int index);
+int tac_set_register_spill(struct tac *t, struct tree_node *function_node, int temp_index, int no_physical_register, int physical_register, int destination_offset, int byte_count);
 struct tac *add_tac_label(char *label);
 struct tac *add_tac_jump(char *label);
 struct tac *add_tac_calculation(int op, int r1, int r2, int rresult);

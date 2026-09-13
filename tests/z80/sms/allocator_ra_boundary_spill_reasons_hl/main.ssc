@@ -1,0 +1,49 @@
+// @BT linked.sms
+// @BT TEST-02 02 START
+// @BT DD 21 00 00 DD 19 DD 6E F9 DD 66 FA 01 00 00 A7
+// @BT ED 42 CA 3E 01 DD 6E F9 DD 66 FA DD 4E F7 DD 46
+// @BT F8 09 DD 75 FB DD 74 FC 21 FF FF 19 F9 C9
+// @BT END
+// @BT TEST-03 03 START
+// @BT DD 21 00 00 DD 19 DD 6E F9 DD 66 FA 01 00 00 A7 ED 42 CA ED 00 DD 6E F9 DD 66 FA DD 4E F7 DD 46 F8 09 4D 44 FD 21 00 C0 FD 09 FD 09 DD 6E F7 DD 66 F8 FD 75 00 FD 74 01 DD 6E F9 DD 66 FA DD 75 FB DD 74 FC 21 FF FF 19 F9 C9
+// @BT END
+
+void allocatorRaBoundarySpillReasonSinkHl(u16 value) {
+}
+
+u16 g_allocator_boundary_values_hl[256];
+
+u16 allocatorRaBoundarySpillReasonCallHl(u16 a, u16 b) {
+
+  __asm(".DB \"01>\"");
+  allocatorRaBoundarySpillReasonSinkHl(a + b);
+  __asm(".DB \"<01\"");
+
+  return a;
+}
+
+u16 allocatorRaBoundarySpillReasonReturnHl(u16 a, u16 b) {
+
+  __asm(".DB \"02>\"");
+  if (a) {
+    return a + b;
+  }
+  __asm(".DB \"<02\"");
+
+  return b;
+}
+
+u16 allocatorRaBoundarySpillReasonUnmigratedHl(u16 a, u16 b) {
+
+  __asm(".DB \"03>\"");
+  if (a) {
+    g_allocator_boundary_values_hl[a + b] = b;
+    return a;
+  }
+  __asm(".DB \"<03\"");
+
+  return b;
+}
+
+void main(void) {
+}

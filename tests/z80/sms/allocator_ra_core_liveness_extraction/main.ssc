@@ -1,0 +1,222 @@
+// @BT linked.sms
+// @BT TEST-01 01 START
+// @BT 0E 00 DD 21 00 00 DD 19 DD 7E FB DD 46 FA 90 CA
+// @BT 50 03 C3 52 03 0E 01 79 06 00 90 CA 69 03 DD 21
+// @BT 00 00 DD 19 DD 7E F9 3C DD 77 F9 C3 77 03 DD 21
+// @BT 00 00 DD 19 DD 7E F9 C6 02 DD 77 F9 DD 21 00 C0
+// @BT FD 21 F9 FF FD 19 FD 7E 00 DD 77 00
+// @BT END
+// @BT TEST-02 02 START
+// @BT DD 21 00 00 DD 19 DD 7E FB DD 86 FA 06 00 90 CA
+// @BT E1 04 DD 7E FA 3C DD 77 FA DD 7E FB 3D DD 77 FB
+// @BT C3 BE 04 DD 21 00 C0 FD 21 FA FF FD 19 FD 7E 00
+// @BT DD 77 00
+// @BT END
+
+u8 g_allocator_core_liveness_sink;
+
+u8 allocatorRaCoreLivenessDiamond(u8 left, u8 right, u8 condition) {
+
+  __asm(".DB \"01>\"");
+  if (left == right) {
+    condition = condition + 1;
+  }
+  else {
+    condition = condition + 2;
+  }
+  g_allocator_core_liveness_sink = condition;
+  __asm(".DB \"<01\"");
+
+  return g_allocator_core_liveness_sink;
+}
+
+u8 allocatorRaCoreLivenessLoop(u8 count, u8 value) {
+
+  __asm(".DB \"02>\"");
+  while (count + value) {
+    value = value + 1;
+    count = count - 1;
+  }
+  g_allocator_core_liveness_sink = value;
+  __asm(".DB \"<02\"");
+
+  return g_allocator_core_liveness_sink;
+}
+
+u8 allocatorRaCoreLivenessLoopJoin(u8 count, u8 value) {
+
+  value = value + 0;
+  while (count + value) {
+    value = value + 1;
+    count = count - 1;
+  }
+
+  return value;
+}
+
+u16 allocatorRaCoreLivenessLoopJoin16(u8 count, u16 value) {
+
+  value = value + 0;
+  while (count + value) {
+    value = value + 1;
+    count = count - 1;
+  }
+
+  return value;
+}
+
+u8 allocatorRaCoreLivenessTwoLoops(u8 count1, u8 value1, u8 count2, u8 value2) {
+
+  value1 = value1 + 0;
+  while (count1 + value1) {
+    value1 = value1 + 1;
+    count1 = count1 - 1;
+  }
+  g_allocator_core_liveness_sink = value1;
+
+  value2 = value2 + 0;
+  while (count2 + value2) {
+    value2 = value2 + 1;
+    count2 = count2 - 1;
+  }
+
+  return value2;
+}
+
+u8 allocatorRaCoreLivenessLoopConflict(u8 count1, u8 value1, u8 count2, u8 value2) {
+
+  value1 = value1 + 0;
+  while (count1 + value1) {
+    value1 = value1 + 1;
+    count1 = count1 - 1;
+  }
+
+  value2 = value2 + 0;
+  while (count2 + value2) {
+    value2 = value2 + 1;
+    count2 = count2 - 1;
+  }
+
+  return value1 + value2;
+}
+
+u8 allocatorRaCoreLivenessMultiValue(u8 count, u8 value1, u8 value2) {
+
+  value1 = value1 + 0;
+  value2 = value2 + 0;
+  while (count + value1 + value2) {
+    value1 = value1 + 1;
+    value2 = value2 + 2;
+    count = count - 1;
+  }
+
+  return value1 + value2;
+}
+
+u8 allocatorRaCoreLivenessNestedLoops(u8 outerCount, u8 outerValue, u8 innerCount, u8 innerValue) {
+
+  outerValue = outerValue + 0;
+  while (outerCount + outerValue) {
+    innerValue = innerValue + 0;
+    while (innerCount + innerValue) {
+      innerValue = innerValue + 1;
+      innerCount = innerCount - 1;
+    }
+    outerValue = outerValue + 1;
+    outerCount = outerCount - 1;
+  }
+
+  return outerValue + innerValue;
+}
+
+u16 allocatorRaCoreLivenessNestedDisjoint(u8 outerCount, u8 outerValue, u8 innerCount, u16 innerValue) {
+
+  outerValue = outerValue + 0;
+  while (outerCount + outerValue) {
+    innerValue = innerValue + 0;
+    while (innerCount + innerValue) {
+      innerValue = innerValue + 1;
+      innerCount = innerCount - 1;
+    }
+    g_allocator_core_liveness_sink = innerValue;
+    outerValue = outerValue + 1;
+    outerCount = outerCount - 1;
+  }
+
+  return innerValue + outerValue;
+}
+
+u8 allocatorRaCoreLivenessNestedConflict(u8 outerCount, u8 outerValue, u8 innerCount, u8 innerValue) {
+
+  outerValue = outerValue + 0;
+  while (outerCount + outerValue) {
+    innerValue = innerValue + 0;
+    while (innerCount + innerValue) {
+      innerValue = innerValue + 1;
+      innerCount = innerCount - 1;
+    }
+    g_allocator_core_liveness_sink = innerValue;
+    outerValue = outerValue + 1;
+    outerCount = outerCount - 1;
+  }
+
+  return innerValue + outerValue;
+}
+
+u8 allocatorRaCoreLivenessBreakExit(u8 count, u8 value, u8 stop) {
+
+  value = value + 0;
+  while (count + value) {
+    if (stop)
+      break;
+    value = value + 1;
+    count = count - 1;
+  }
+
+  return value;
+}
+
+u8 allocatorRaCoreLivenessContinueExit(u8 count, u8 value, u8 skip) {
+
+  value = value + 0;
+  while (count + value) {
+    if (skip)
+      continue;
+    value = value + 1;
+    count = count - 1;
+  }
+
+  return value;
+}
+
+u8 allocatorRaCoreLivenessEarlyReturn(u8 count, u8 value, u8 stop) {
+
+  value = value + 0;
+  while (count + value) {
+    if (stop)
+      return value;
+    value = value + 1;
+    count = count - 1;
+  }
+
+  return value;
+}
+
+u8 allocatorRaCoreLivenessMultiLatchWriters(u8 count, u8 value, u8 skip) {
+
+  value = value + 0;
+  while (count + value) {
+    if (skip) {
+      value = value + 2;
+      count = count - 1;
+      continue;
+    }
+    value = value + 1;
+    count = count - 1;
+  }
+
+  return value;
+}
+
+void main(void) {
+}

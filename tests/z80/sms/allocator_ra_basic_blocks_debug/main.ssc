@@ -1,0 +1,36 @@
+// @BT linked.sms
+// @BT TEST-01 01 START
+// @BT DD 21 00 00 DD 19 DD 7E FB DD 86 FA 06 00 90 CA BC 00 DD 7E F9 3C DD 77 F9
+// @BT END
+// @BT TEST-02 02 START
+// @BT DD 21 00 00 DD 19 DD 7E FB DD 86 FA DD 77 F9 21 00 00 39 2B 01 40 00 C5 D5 DD 21 00 00 44 4D DD 09 FD 21 00 00 FD 19 FD 4E F9 DD 71 FC 54 5D C3 D1 00 DD 21 00 00 DD 19 DD 5E FD DD 56 FE
+// @BT END
+
+u8 g_basic_blocks_sink = 0;
+
+void allocatorRaBasicBlocksSinkA(u8 value) {
+  g_basic_blocks_sink = value;
+}
+
+u8 allocatorRaBasicBlocksBranchA(u8 a, u8 b, u8 c) {
+
+  __asm(".DB \"01>\"");
+  if (a + b) {
+    c = c + 1;
+  }
+  __asm(".DB \"<01\"");
+
+  return c;
+}
+
+u8 allocatorRaBasicBlocksCallA(u8 a, u8 b) {
+
+  __asm(".DB \"02>\"");
+  allocatorRaBasicBlocksSinkA(a + b);
+  __asm(".DB \"<02\"");
+
+  return a;
+}
+
+void main(void) {
+}

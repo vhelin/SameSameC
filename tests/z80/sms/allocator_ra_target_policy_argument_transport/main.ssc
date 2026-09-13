@@ -1,0 +1,30 @@
+// @BT linked.sms
+// @BT TEST-01 01 START
+// @BT DD 21 00 00 DD 19 DD 7E FC DD 86 FB DD 77 F6 DD
+// @BT 6E F9 DD 66 FA 23 DD 75 F4 DD 74 F5 21 00 00 39
+// @BT 2B 01 17 01 C5 D5 DD 21 00 00 44 4D DD 09 FD 21
+// @BT 00 00 FD 19 FD 4E F6 DD 71 FC FD 4E F4 FD 46 F5
+// @BT DD 71 FA DD 70 FB FD 4E F8 79 87 9F 47 DD 71 F8
+// @BT DD 70 F9 FD 4E F7 06 00 DD 71 F6 DD 70 F7 FD 4E
+// @BT F9 FD 46 FA DD 71 F5 DD 36 F3 67 DD 36 F4 45 54
+// @BT 5D C3 06 00 DD 21 00 00 DD 19 DD 5E FD DD 56 FE
+// @BT END
+
+u8 g_allocator_transport_byte;
+u16 g_allocator_transport_word;
+
+void allocatorRaPolicyTransportSink(u8 computed_byte, u16 computed_word, s16 signed_word, u16 unsigned_word, u8 narrowed_word, u16 constant_word) {
+
+  g_allocator_transport_byte = computed_byte ^ narrowed_word;
+  g_allocator_transport_word = computed_word ^ signed_word ^ unsigned_word ^ constant_word;
+}
+
+void allocatorRaPolicyArgumentTransport(u8 left, u8 right, u16 word_value, s8 signed_value, u8 unsigned_value) {
+
+  __asm(".DB \"01>\"");
+  allocatorRaPolicyTransportSink(left + right, word_value + 1, signed_value, unsigned_value, word_value, 0x4567);
+  __asm(".DB \"<01\"");
+}
+
+void main(void) {
+}

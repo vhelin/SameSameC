@@ -1,0 +1,64 @@
+// @BT linked.sms
+// @BT TEST-01 01 START
+// @BT 0E 00 DD 21 00 00 DD 19 DD 7E FB DD 21 00 C0 DD 46 00 90 CA BC 00 C3 BE 00 0E 01 79 06 00 90 CA D4 00 DD 21 01 C0 DD 7E 00 3C DD 21 01 C0 DD 77 00
+// @BT END
+// @BT TEST-02 02 START
+// @BT 0E 00 DD 21 00 C0 DD 7E 00 06 2A 90 C2 07 01 C3 09 01 0E 01 79 06 00 90 CA 1F 01 DD 21 01 C0 DD 7E 00 3C DD 21 01 C0 DD 77 00
+// @BT END
+// @BT TEST-03 03 START
+// @BT DD 21 00 00 DD 19 DD 7E FB DD 86 FA 0E 00 DD 21 00 C0 DD 46 00 90 CA 2A 00 C3 2C 00 0E 01 79 06 00 90 CA 42 00 DD 21 01 C0 DD 7E 00 3C DD 21 01 C0 DD 77 00
+// @BT END
+// @BT TEST-04 04 START
+// @BT DD 21 00 00 DD 19 DD 7E FB DD 86 FA DD 21 00 C0 47 DD 7E 00 90 CA 5B 01 C3 6A 01 DD 21 01 C0 DD 7E 00 3C DD 21 01 C0 DD 77 00
+// @BT END
+
+u8 g_compare_value = 7;
+u8 g_compare_target = 0;
+
+u8 allocatorRaCompareLocationsAStackGlobal(u8 a) {
+
+  __asm(".DB \"01>\"");
+  if (a == g_compare_value) {
+    g_compare_target = g_compare_target + 1;
+  }
+  __asm(".DB \"<01\"");
+
+  return g_compare_target;
+}
+
+u8 allocatorRaCompareLocationsAGlobalConst(void) {
+
+  __asm(".DB \"02>\"");
+  if (g_compare_value != 42) {
+    g_compare_target = g_compare_target + 1;
+  }
+  __asm(".DB \"<02\"");
+
+  return g_compare_target;
+}
+
+u8 allocatorRaCompareLocationsATempGlobal(u8 a, u8 b) {
+
+  __asm(".DB \"03>\"");
+  if ((a + b) == g_compare_value) {
+    g_compare_target = g_compare_target + 1;
+  }
+  __asm(".DB \"<03\"");
+
+  return g_compare_target;
+}
+
+u8 allocatorRaCompareLocationsARetainedArg2(u8 a, u8 b) {
+
+  __asm(".DB \"04>\"");
+  switch (g_compare_value) {
+    case a + b:
+      g_compare_target = g_compare_target + 1;
+  }
+  __asm(".DB \"<04\"");
+
+  return g_compare_target;
+}
+
+void main(void) {
+}

@@ -1,0 +1,72 @@
+// @BT linked.sms
+// @BT TEST-01 01 START
+// @BT DD 21 00 00 DD 19 DD 6E FB 26 00 DD 4E FA 06 00
+// @BT 78 B1 28 04 29 0B 18 F8 DD 4E F9 06 00 78 AC 67
+// @BT 79 AD 6F DD 75 F8 DD 21 00 C0 FD 21 F8 FF FD 19
+// @BT FD 7E 00 DD 77 00
+// @BT END
+// @BT TEST-02 02 START
+// @BT DD 21 00 00 DD 19 DD 7E FB DD 86 FA 6F 26 00 DD
+// @BT 4E F9 06 00 78 B1 28 04 29 0B 18 F8 DD 75 F8 DD
+// @BT 21 00 C0 FD 21 F8 FF FD 19 FD 7E 00 DD 77 00
+// @BT END
+// @BT TEST-03 03 START
+// @BT DD 21 00 00 DD 19 DD 6E F9 DD 66 FA DD 4E F7 DD 46 F8 78 B1 28 04 29 0B 18 F8 DD 4E F5 DD 46 F6 78 AC 67 79 AD 6F DD 75 F3 DD 74 F4 DD 21 01 C0 FD 21 F3 FF FD 19 FD 7E 00 DD 77 00 FD 7E 01 DD 77 01
+// @BT END
+// @BT TEST-04 04 START
+// @BT DD 21 00 00 DD 19 DD 6E F9 DD 66 FA DD 4E F7 DD 46 F8 09 DD 4E F5 DD 46 F6 78 B1 28 04 29 0B 18 F8 DD 75 F3 DD 74 F4 DD 21 01 C0 FD 21 F3 FF FD 19 FD 7E 00 DD 77 00 FD 7E 01 DD 77 01
+// @BT END
+
+u8 g_allocator_shift_sink_a;
+u16 g_allocator_shift_sink_hl;
+
+u8 allocatorRaShiftResultA(u8 value, u8 count, u8 mask) {
+
+  u8 out;
+
+  __asm(".DB \"01>\"");
+  out = (value << count) ^ mask;
+  g_allocator_shift_sink_a = out;
+  __asm(".DB \"<01\"");
+
+  return out;
+}
+
+u8 allocatorRaShiftArg1A(u8 value, u8 bias, u8 count) {
+
+  u8 out;
+
+  __asm(".DB \"02>\"");
+  out = (value + bias) << count;
+  g_allocator_shift_sink_a = out;
+  __asm(".DB \"<02\"");
+
+  return out;
+}
+
+u16 allocatorRaShiftResultHl(u16 value, u16 count, u16 mask) {
+
+  u16 out;
+
+  __asm(".DB \"03>\"");
+  out = (value << count) ^ mask;
+  g_allocator_shift_sink_hl = out;
+  __asm(".DB \"<03\"");
+
+  return out;
+}
+
+u16 allocatorRaShiftArg1Hl(u16 value, u16 bias, u16 count) {
+
+  u16 out;
+
+  __asm(".DB \"04>\"");
+  out = (value + bias) << count;
+  g_allocator_shift_sink_hl = out;
+  __asm(".DB \"<04\"");
+
+  return out;
+}
+
+void main(void) {
+}

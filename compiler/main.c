@@ -69,7 +69,7 @@ extern struct tac *g_tacs;
 extern int g_tacs_count;
 
 int g_line_count_status = ON, g_bank = 0, g_slot = 0, g_ram_bank = 0, g_ram_slot = 0;
-int g_verbose_mode = OFF, g_test_mode = OFF;
+int g_verbose_mode = OFF, g_test_mode = OFF, g_allocator_enabled = NO, g_allocator_force_all_spill = NO;
 int g_extra_definitions = OFF, g_commandline_parsing = ON, g_makefile_rules = NO;
 int g_listfile_data = NO, g_quiet = NO, g_use_incdir = NO;
 int g_create_sizeof_definitions = YES;
@@ -156,6 +156,9 @@ int main(int argc, char *argv[]) {
     printf("-rs <SLOT> RAM Slot (for global variables)\n");
     printf("-q         Quiet\n");
     printf("-v         Verbose messages\n");
+    printf("-ra        Enable experimental Z80 register allocator\n");
+    printf("-ra-all-spill Enable allocator metadata but force every temp to spill\n");
+    printf("-no-ra     Disable experimental Z80 register allocator metadata\n");
     printf("-I <DIR>   Include directory\n");
     printf("-D <DEF>   Declare definition\n\n");
     printf("Achitectures:\n");
@@ -340,6 +343,21 @@ int parse_flags(char **flags, int flagc, int *print_usage) {
     }
     else if (!strcmp(flags[count], "-q")) {
       g_quiet = YES;
+      continue;
+    }
+    else if (!strcmp(flags[count], "-ra")) {
+      g_allocator_enabled = YES;
+      g_allocator_force_all_spill = NO;
+      continue;
+    }
+    else if (!strcmp(flags[count], "-ra-all-spill")) {
+      g_allocator_enabled = YES;
+      g_allocator_force_all_spill = YES;
+      continue;
+    }
+    else if (!strcmp(flags[count], "-no-ra")) {
+      g_allocator_enabled = NO;
+      g_allocator_force_all_spill = NO;
       continue;
     }
     else if (!strcmp(flags[count], "-mz80")) {

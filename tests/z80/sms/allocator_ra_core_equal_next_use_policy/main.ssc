@@ -1,0 +1,36 @@
+// @BT linked.sms
+// @BT TEST-01 01 START DD 21 00 00 DD 19 DD 6E F9 DD 66 FA DD 4E F7 DD 46 F8 09 DD 75 F1 DD 74 F2 DD 6E F5 DD 66 F6 23 DD 4E F5 DD 46 F6 09 DD 4E F1 DD 46 F2 09 DD 75 F3 DD 74 F4 END
+// @BT TEST-02 02 START
+// @BT DD 7E F7 DD 86 F6 DD 77 F3 DD 7E F7 DD 86 F6 4F
+// @BT 06 00 FD 21 F4 FF FD 19 C5 FD 4E 00 FD 46 01 FD
+// @BT 21 00 00 FD 09 C1 FD 09 FD 6E 00 4D 79 3C DD 4E
+// @BT F3 06 00 FD 21 F4 FF FD 19 C5 FD 4E 00 FD 46 01
+// @BT FD 21 00 00 FD 09 C1 FD 09 FD 77 00
+// @BT END
+
+u16 allocatorRaCoreEqualNextUsePolicyUnequal(u16 a, u16 b, u16 c) {
+
+  u16 out;
+
+  __asm(".DB \"01>\"");
+  out = (a + b) + ((c + 1) + c);
+  __asm(".DB \"<01\"");
+
+  return out;
+}
+
+u8 allocatorRaCoreEqualNextUsePolicyPreferred(u8 **roots, u8 root_left, u8 root_right, u8 index_left, u8 index_right) {
+
+  u8 *target;
+
+  target = roots[root_left + root_right];
+
+  __asm(".DB \"02>\"");
+  target[index_left + index_right] = target[index_left + index_right] + 1;
+  __asm(".DB \"<02\"");
+
+  return index_left;
+}
+
+void main(void) {
+}

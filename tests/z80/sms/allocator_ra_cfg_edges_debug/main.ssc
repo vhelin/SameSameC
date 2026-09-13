@@ -1,0 +1,22 @@
+// @BT linked.sms
+// @BT TEST-01 01 START 0E 00 DD 21 00 00 DD 19 DD 7E FB DD 46 FA 90 CA 23 00 C3 25 00 0E 01 79 06 00 90 CA 3C 00 DD 21 00 00 DD 19 DD 7E F9 3C DD 77 F9 C3 4A 00 DD 21 00 00 DD 19 DD 7E F9 C6 02 DD 77 F9 DD 21 00 C0 FD 21 F9 FF FD 19 FD 7E 00 DD 77 00 END
+
+u8 g_cfg_edges_sink = 0;
+
+u8 allocatorRaCfgEdgesDebug(u8 a, u8 b, u8 c) {
+
+  __asm(".DB \"01>\"");
+  if (a == b) {
+    c = c + 1;
+  }
+  else {
+    c = c + 2;
+  }
+  g_cfg_edges_sink = c;
+  __asm(".DB \"<01\"");
+
+  return g_cfg_edges_sink;
+}
+
+void main(void) {
+}

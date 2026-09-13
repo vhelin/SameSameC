@@ -25,6 +25,7 @@
     <ClCompile Include="..\..\compiler\pass_5.c" />
     <ClCompile Include="..\..\compiler\pass_6_z80.c" />
     <ClCompile Include="..\..\compiler\printf.c" />
+    <ClCompile Include="..\..\compiler\register_allocator.c" />
     <ClCompile Include="..\..\compiler\source_line_manager.c" />
     <ClCompile Include="..\..\compiler\stack.c" />
     <ClCompile Include="..\..\compiler\struct_item.c" />
@@ -32,6 +33,7 @@
     <ClCompile Include="..\..\compiler\tac.c" />
     <ClCompile Include="..\..\compiler\token.c" />
     <ClCompile Include="..\..\compiler\tree_node.c" />
+    <ClCompile Include="..\..\compiler\z80_register_spill.c" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\compiler\defines.h" />
@@ -40,6 +42,7 @@
     <ClInclude Include="..\..\compiler\include_file.h" />
     <ClInclude Include="..\..\compiler\inline_asm.h" />
     <ClInclude Include="..\..\compiler\inline_asm_z80.h" />
+    <ClInclude Include="..\..\compiler\z80_register_spill.h" />
     <ClInclude Include="..\..\compiler\main.h" />
     <ClInclude Include="..\..\compiler\parse.h" />
     <ClInclude Include="..\..\compiler\pass_1.h" />
@@ -49,6 +52,7 @@
     <ClInclude Include="..\..\compiler\pass_5.h" />
     <ClInclude Include="..\..\compiler\pass_6_z80.h" />
     <ClInclude Include="..\..\compiler\printf.h" />
+    <ClInclude Include="..\..\compiler\register_allocator.h" />
     <ClInclude Include="..\..\compiler\source_line_manager.h" />
     <ClInclude Include="..\..\compiler\stack.h" />
     <ClInclude Include="..\..\compiler\struct_item.h" />

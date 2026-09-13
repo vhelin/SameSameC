@@ -20,7 +20,16 @@ steps:
     export PATH="/c/msys64/mingw32/bin:/c/msys64/usr/bin:$PATH"
 
     echo "Installing 32-bit MinGW toolchain..."
-    pacman -Sy --noconfirm mingw-w64-i686-toolchain mingw-w64-i686-cmake
+    ok=0
+    for attempt in 1 2 3 4 5; do
+      if pacman -Sy --noconfirm mingw-w64-i686-toolchain mingw-w64-i686-cmake; then
+        ok=1
+        break
+      fi
+      echo "pacman failed (attempt $attempt); retrying..."
+      sleep $((attempt * 8))
+    done
+    test "$ok" -eq 1
 
     echo "Verifying installation..."
     gcc --version
@@ -99,8 +108,10 @@ steps:
     echo ""
 
     echo "Running tests..."
-    ./run_tests.sh -windows-x86
+    bash ./run_tests.sh -windows-x86
   displayName: 'Run tests'
+
+- template: ci/publish-test-failure-artifacts.yml
 
 - powershell: |
     gci env:* | sort-object name | Format-Table -AutoSize | Out-File $env:BUILD_ARTIFACTSTAGINGDIRECTORY/environment-variables.txt

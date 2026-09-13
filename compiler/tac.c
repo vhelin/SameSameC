@@ -387,6 +387,11 @@ void print_tac(struct tac *t, int is_comment, FILE *file_out) {
     else
       fprintf(file_out, "variable \"%s\" size ? offset ? type ?", t->result_node->children[1]->label);
   }
+  else if (t->op == TAC_OP_REGISTER_SPILL) {
+    fprintf(file_out, "spill r%d phy %d -> fp%d bytes %d",
+        (int)t->arg1_d, t->arg1_physical_register, (int)t->result_d,
+        (int)t->arg2_d);
+  }
   else if (t->op == TAC_OP_ASM) {
     struct inline_asm *ia;
     struct asm_line *al;
@@ -448,9 +453,13 @@ void print_tacs(void) {
 int tac_set_arg1(struct tac *t, int arg_type, double d, char *s) {
 
   t->arg1_type = arg_type;
+  t->arg1_original_register_index = -1;
   
-  if (arg_type == TAC_ARG_TYPE_CONSTANT || arg_type == TAC_ARG_TYPE_TEMP)
+  if (arg_type == TAC_ARG_TYPE_CONSTANT || arg_type == TAC_ARG_TYPE_TEMP) {
     t->arg1_d = d;
+    if (arg_type == TAC_ARG_TYPE_TEMP)
+      t->arg1_original_register_index = (int)d;
+  }
   else {
     free(t->arg1_s);
     t->arg1_s = NULL;
@@ -476,9 +485,13 @@ int tac_set_arg1(struct tac *t, int arg_type, double d, char *s) {
 int tac_set_arg2(struct tac *t, int arg_type, double d, char *s) {
 
   t->arg2_type = arg_type;
+  t->arg2_original_register_index = -1;
   
-  if (arg_type == TAC_ARG_TYPE_CONSTANT || arg_type == TAC_ARG_TYPE_TEMP)
+  if (arg_type == TAC_ARG_TYPE_CONSTANT || arg_type == TAC_ARG_TYPE_TEMP) {
     t->arg2_d = d;
+    if (arg_type == TAC_ARG_TYPE_TEMP)
+      t->arg2_original_register_index = (int)d;
+  }
   else {
     free(t->arg2_s);
     t->arg2_s = NULL;
@@ -504,9 +517,13 @@ int tac_set_arg2(struct tac *t, int arg_type, double d, char *s) {
 int tac_set_result(struct tac *t, int arg_type, double d, char *s) {
 
   t->result_type = arg_type;
+  t->result_original_register_index = -1;
   
-  if (arg_type == TAC_ARG_TYPE_CONSTANT || arg_type == TAC_ARG_TYPE_TEMP)
+  if (arg_type == TAC_ARG_TYPE_CONSTANT || arg_type == TAC_ARG_TYPE_TEMP) {
     t->result_d = d;
+    if (arg_type == TAC_ARG_TYPE_TEMP)
+      t->result_original_register_index = (int)d;
+  }
   else {
     free(t->result_s);
     t->result_s = NULL;
@@ -534,6 +551,7 @@ int tac_copy_arg(struct tac *t, int source, int destination) {
   if (source == TAC_USE_ARG2 && destination == TAC_USE_ARG1) {
     t->arg1_type = t->arg2_type;
     t->arg1_d = t->arg2_d;
+    t->arg1_original_register_index = t->arg2_original_register_index;
     t->arg1_var_type = t->arg2_var_type;
     t->arg1_var_type_promoted = t->arg2_var_type_promoted;
     t->arg1_node = t->arg2_node;
@@ -608,6 +626,7 @@ struct tac *add_tac(void) {
 
   t->arg1_type = TAC_ARG_TYPE_NONE;
   t->arg1_d = 0;
+  t->arg1_original_register_index = -1;
   t->arg1_s = NULL;
   t->arg1_var_type = VARIABLE_TYPE_NONE;
   t->arg1_var_type_promoted = VARIABLE_TYPE_NONE;
@@ -615,6 +634,7 @@ struct tac *add_tac(void) {
 
   t->arg2_type = TAC_ARG_TYPE_NONE;
   t->arg2_d = 0;
+  t->arg2_original_register_index = -1;
   t->arg2_s = NULL;
   t->arg2_var_type = VARIABLE_TYPE_NONE;
   t->arg2_var_type_promoted = VARIABLE_TYPE_NONE;
@@ -622,10 +642,17 @@ struct tac *add_tac(void) {
 
   t->result_type = TAC_ARG_TYPE_NONE;
   t->result_d = 0;
+  t->result_original_register_index = -1;
   t->result_s = NULL;
   t->result_var_type = VARIABLE_TYPE_NONE;
   t->result_var_type_promoted = VARIABLE_TYPE_NONE;
   t->result_node = NULL;
+
+  t->result_physical_register = Z80_PHY_NONE;
+  t->arg1_physical_register = Z80_PHY_NONE;
+  t->arg2_physical_register = Z80_PHY_NONE;
+  t->store_retained_to_spill_operand = -1;
+  t->reload_spill_to_physical_operand = -1;
 
   t->arguments = NULL;
   t->arguments_count = 0;
@@ -639,6 +666,85 @@ struct tac *add_tac(void) {
   t->line_number = g_current_line_number;
   
   return t;
+}
+
+
+struct tac *insert_tac(int index) {
+
+  struct tac empty_tac;
+  struct tac *t;
+  int old_count;
+
+  if (index < 0 || index > g_tacs_count) {
+    fprintf(stderr, "tac_storage: insert index=%d count=%d capacity=%d status=invalid_input\n",
+        index, g_tacs_count, g_tacs_max);
+    return NULL;
+  }
+
+  old_count = g_tacs_count;
+  t = add_tac();
+  if (t == NULL) {
+    fprintf(stderr, "tac_storage: insert index=%d count=%d capacity=%d status=allocation_failed\n",
+        index, old_count, g_tacs_max);
+    return NULL;
+  }
+  empty_tac = *t;
+  if (index < old_count) {
+    memmove(&g_tacs[index + 1], &g_tacs[index],
+        (size_t)(old_count - index) * sizeof(struct tac));
+  }
+  g_tacs[index] = empty_tac;
+  fprintf(stderr, "tac_storage: insert index=%d old_count=%d count=%d capacity=%d moved=%d status=complete\n",
+      index, old_count, g_tacs_count, g_tacs_max, old_count - index);
+  return &g_tacs[index];
+}
+
+
+int tac_set_register_spill(struct tac *t, struct tree_node *function_node,
+    int temp_index, int no_physical_register, int physical_register,
+    int destination_offset, int byte_count) {
+
+  if (t == NULL || function_node == NULL || temp_index < 0 ||
+      physical_register == no_physical_register || byte_count <= 0 ||
+      (t != NULL && (t->op != TAC_OP_DEAD ||
+      t->arg1_type != TAC_ARG_TYPE_NONE || t->arg1_d != 0 ||
+      t->arg1_original_register_index != -1 || t->arg1_s != NULL ||
+      t->arg1_var_type != VARIABLE_TYPE_NONE ||
+      t->arg1_var_type_promoted != VARIABLE_TYPE_NONE ||
+      t->arg1_node != NULL || t->arg2_type != TAC_ARG_TYPE_NONE ||
+      t->arg2_d != 0 || t->arg2_original_register_index != -1 ||
+      t->arg2_s != NULL || t->arg2_var_type != VARIABLE_TYPE_NONE ||
+      t->arg2_var_type_promoted != VARIABLE_TYPE_NONE ||
+      t->arg2_node != NULL || t->result_type != TAC_ARG_TYPE_NONE ||
+      t->result_d != 0 || t->result_original_register_index != -1 ||
+      t->result_s != NULL || t->result_var_type != VARIABLE_TYPE_NONE ||
+      t->result_var_type_promoted != VARIABLE_TYPE_NONE ||
+      t->result_node != NULL ||
+      t->result_physical_register != no_physical_register ||
+      t->arg1_physical_register != no_physical_register ||
+      t->arg2_physical_register != no_physical_register ||
+      t->store_retained_to_spill_operand != -1 ||
+      t->reload_spill_to_physical_operand != -1 || t->arguments != NULL ||
+      t->arguments_count != 0 || t->function_node != NULL ||
+      t->is_function != NO))) {
+    fprintf(stderr, "tac_storage: register_spill temp=r%d phy=%d destination_offset=%d bytes=%d status=invalid_input\n",
+        temp_index, physical_register, destination_offset, byte_count);
+    return FAILED;
+  }
+
+  t->op = TAC_OP_REGISTER_SPILL;
+  t->arg1_type = TAC_ARG_TYPE_TEMP;
+  t->arg1_d = temp_index;
+  t->arg1_original_register_index = temp_index;
+  t->arg1_physical_register = physical_register;
+  t->arg2_type = TAC_ARG_TYPE_CONSTANT;
+  t->arg2_d = byte_count;
+  t->result_type = TAC_ARG_TYPE_CONSTANT;
+  t->result_d = destination_offset;
+  t->function_node = function_node;
+  fprintf(stderr, "tac_storage: register_spill temp=r%d phy=%d destination_offset=%d bytes=%d status=complete\n",
+      temp_index, physical_register, destination_offset, byte_count);
+  return SUCCEEDED;
 }
 
 
@@ -751,9 +857,11 @@ void tac_swap_args(struct tac *t) {
   struct tree_node *node;
   double d;
   char *s;
+  int original_register_index;
 
   type = t->arg1_type;
   d = t->arg1_d;
+  original_register_index = t->arg1_original_register_index;
   s = t->arg1_s;
   var_type = t->arg1_var_type;
   var_type_promoted = t->arg1_var_type_promoted;
@@ -761,6 +869,7 @@ void tac_swap_args(struct tac *t) {
 
   t->arg1_type = t->arg2_type;
   t->arg1_d = t->arg2_d;
+  t->arg1_original_register_index = t->arg2_original_register_index;
   t->arg1_s = t->arg2_s;
   t->arg1_var_type = t->arg2_var_type;
   t->arg1_var_type_promoted = t->arg2_var_type_promoted;
@@ -768,6 +877,7 @@ void tac_swap_args(struct tac *t) {
 
   t->arg2_type = type;
   t->arg2_d = d;
+  t->arg2_original_register_index = original_register_index;
   t->arg2_s = s;
   t->arg2_var_type = var_type;
   t->arg2_var_type_promoted = var_type_promoted;

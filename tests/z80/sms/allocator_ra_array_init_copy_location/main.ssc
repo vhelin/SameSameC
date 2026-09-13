@@ -1,0 +1,71 @@
+// @BT linked.sms
+// @BT TEST-01 01 START
+// @BT FD 21 F4 FF FD 19 FD 6E 00 DD 75 F2 01 01 00 FD
+// @BT 21 F4 FF FD 19 FD 09 FD 6E 00 7D DD 86 F2 DD 77
+// @BT F3 01 02 00 FD 21 F4 FF FD 19 FD 09 FD 6E 00 7D
+// @BT DD 86 F3 DD 77 F3 01 03 00 FD 21 F4 FF FD 19 FD
+// @BT 09 FD 6E 00 7D DD 86 F3 DD 77 F3 01 04 00 FD 21
+// @BT F4 FF FD 19 FD 09 FD 6E 00 7D DD 86 F3 DD 77 F3
+// @BT 01 05 00 FD 21 F4 FF FD 19 FD 09 FD 6E 00 7D DD
+// @BT AE F3 DD 77 F3 DD 7E F3 DD AE FA DD 77 F3 DD 21
+// @BT 00 C0 FD 21 F3 FF FD 19 FD 7E 00 DD 77 00
+// @BT END
+// @BT TEST-02 02 START
+// @BT FD 21 EB FF FD 19 FD 6E 00 FD 66 01 DD 75 E7 DD
+// @BT 74 E8 01 01 00 FD 21 EB FF FD 19 FD 09 FD 09 FD
+// @BT 6E 00 FD 66 01 DD 4E E7 DD 46 E8 09 DD 75 E9 DD
+// @BT 74 EA 01 02 00 FD 21 EB FF FD 19 FD 09 FD 09 FD
+// @BT 6E 00 FD 66 01 DD 4E E9 DD 46 EA 09 DD 75 E9 DD
+// @BT 74 EA 01 03 00 FD 21 EB FF FD 19 FD 09 FD 09 FD
+// @BT 6E 00 FD 66 01 DD 4E E9 DD 46 EA 09 DD 75 E9 DD
+// @BT 74 EA 01 04 00 FD 21 EB FF FD 19 FD 09 FD 09 FD
+// @BT 6E 00 FD 66 01 DD 4E E9 DD 46 EA 09 DD 75 E9 DD
+// @BT 74 EA 01 05 00 FD 21 EB FF FD 19 FD 09 FD 09 FD
+// @BT 6E 00 FD 66 01 DD 4E E9 DD 46 EA 78 AC 67 79 AD
+// @BT 6F DD 75 E9 DD 74 EA DD 6E E9 DD 66 EA DD 4E F7
+// @BT DD 46 F8 78 AC 67 79 AD 6F DD 75 E9 DD 74 EA DD
+// @BT 21 01 C0 FD 21 E9 FF FD 19 FD 7E 00 DD 77 00 FD
+// @BT 7E 01 DD 77 01
+// @BT END
+
+u8 g_allocator_array_init_copy_location_sink_a;
+u16 g_allocator_array_init_copy_location_sink_hl;
+
+u8 allocatorRaArrayInitCopyLocationA(u8 seed, u8 mask) {
+
+  u8 values[6] = { 1, 2, 3, 4, seed, 6 };
+  u8 out;
+
+  __asm(".DB \"01>\"");
+  out = values[0] + values[1];
+  out = out + values[2];
+  out = out + values[3];
+  out = out + values[4];
+  out = out ^ values[5];
+  out = out ^ mask;
+  g_allocator_array_init_copy_location_sink_a = out;
+  __asm(".DB \"<01\"");
+
+  return out;
+}
+
+u16 allocatorRaArrayInitCopyLocationHl(u16 seed, u16 mask) {
+
+  u16 values[6] = { 0x0102, 0x0304, 0x0506, 0x0708, seed, 0x090a };
+  u16 out;
+
+  __asm(".DB \"02>\"");
+  out = values[0] + values[1];
+  out = out + values[2];
+  out = out + values[3];
+  out = out + values[4];
+  out = out ^ values[5];
+  out = out ^ mask;
+  g_allocator_array_init_copy_location_sink_hl = out;
+  __asm(".DB \"<02\"");
+
+  return out;
+}
+
+void main(void) {
+}

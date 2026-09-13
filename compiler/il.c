@@ -21,11 +21,59 @@
 #define DEBUG_IL 1
 */
 
-extern int g_current_line_number, g_current_filename_id;
+extern struct tac *g_tacs;
+extern int g_current_line_number, g_current_filename_id, g_tacs_count, g_allocator_enabled;
 extern int g_temp_r, g_temp_label_id;
 extern char g_tmp[4096], g_error_message[sizeof(g_tmp) + MAX_NAME_LENGTH + 1 + 1024], g_label[MAX_NAME_LENGTH + 1];
 
 static int g_max_var_type = VARIABLE_TYPE_NONE, g_max_var_types[64], g_max_var_type_index = 0;
+
+
+static char *_get_current_function_name_for_allocator_debug(void) {
+
+  int i;
+
+  for (i = g_tacs_count - 1; i >= 0; i--) {
+    if (g_tacs[i].op == TAC_OP_LABEL && g_tacs[i].is_function == YES && g_tacs[i].function_node != NULL && g_tacs[i].function_node->children[1] != NULL)
+      return g_tacs[i].function_node->children[1]->label;
+  }
+
+  return "<unknown>";
+}
+
+
+static int _generate_il_create_array_read_pointer_base_temp(struct tree_node *node, int index_var_type, int *base_register) {
+
+  struct tac *t;
+
+  *base_register = -1;
+
+  if (g_allocator_enabled == NO || node->definition == NULL || node->definition->children[0]->value_double <= 0.0 || node->definition->value != 0)
+    return SUCCEEDED;
+  if (!(index_var_type == VARIABLE_TYPE_INT16 || index_var_type == VARIABLE_TYPE_UINT16))
+    return SUCCEEDED;
+
+  *base_register = g_temp_r++;
+
+  t = add_tac();
+  if (t == NULL)
+    return FAILED;
+
+  t->op = TAC_OP_ASSIGNMENT;
+  if (tac_set_result(t, TAC_ARG_TYPE_TEMP, (double)(*base_register), NULL) == FAILED)
+    return FAILED;
+  if (tac_set_arg1(t, TAC_ARG_TYPE_LABEL, 0.0, node->label) == FAILED)
+    return FAILED;
+  t->arg1_node = node->definition;
+
+  tac_promote_argument(t, VARIABLE_TYPE_UINT16, TAC_USE_RESULT);
+  tac_promote_argument(t, VARIABLE_TYPE_UINT16, TAC_USE_ARG1);
+
+  fprintf(stderr, "register_allocator: array_read_pointer_base_temp function=%s label=%s r%d\n",
+          _get_current_function_name_for_allocator_debug(), node->label, *base_register);
+
+  return SUCCEEDED;
+}
 
 
 int il_stack_calculate_expression(struct tree_node *node, int calculate_max_var_type) {
@@ -410,7 +458,7 @@ int il_stack_calculate_expression(struct tree_node *node, int calculate_max_var_
       si[z].sign = SI_SIGN_POSITIVE;
     }
     else if (child->type == TREE_NODE_TYPE_ARRAY_ITEM) {
-      int rindex = g_temp_r, index_max_var_type;
+      int rindex = g_temp_r, index_max_var_type, base_register;
       struct tac *t;
       
 #if defined(DEBUG_IL)
@@ -428,6 +476,9 @@ int il_stack_calculate_expression(struct tree_node *node, int calculate_max_var_
       index_max_var_type = g_max_var_type;
       g_max_var_type = g_max_var_types[--g_max_var_type_index];
 
+      if (_generate_il_create_array_read_pointer_base_temp(child, index_max_var_type, &base_register) == FAILED)
+        return FAILED;
+
       t = add_tac();
       if (t == NULL)
         return FAILED;
@@ -436,7 +487,12 @@ int il_stack_calculate_expression(struct tree_node *node, int calculate_max_var_
 
       tac_set_result(t, TAC_ARG_TYPE_TEMP, (double)g_temp_r++, NULL);
       t->arg1_var_type = g_max_var_type;
-      tac_set_arg1(t, TAC_ARG_TYPE_LABEL, 0.0, child->label);
+      if (base_register >= 0) {
+        tac_set_arg1(t, TAC_ARG_TYPE_TEMP, (double)base_register, NULL);
+        t->arg1_node = child->definition;
+      }
+      else
+        tac_set_arg1(t, TAC_ARG_TYPE_LABEL, 0.0, child->label);
       tac_set_arg2(t, TAC_ARG_TYPE_TEMP, (double)rindex, NULL);
 
       /* promote to the maximum of this expression */
@@ -445,7 +501,7 @@ int il_stack_calculate_expression(struct tree_node *node, int calculate_max_var_
       t->arg2_var_type_promoted = index_max_var_type;
 
       /* find the definition */
-      if (tac_try_find_definition(t, child->label, child, TAC_USE_ARG1) == FAILED)
+      if (base_register < 0 && tac_try_find_definition(t, child->label, child, TAC_USE_ARG1) == FAILED)
         return FAILED;
       
       si[z].type = STACK_ITEM_TYPE_OPERATOR;
@@ -677,6 +733,7 @@ static int _increment_decrement(char *label, int increment) {
 static struct tac *_add_tac_calculation(int op, int r1, int r2, int rresult, struct stack_item *si[64], double v[64], struct stack *sta) {
 
   struct tac *t = add_tac();
+  int promoted_type = g_max_var_type;
 
   if (t == NULL)
     return NULL;
@@ -725,10 +782,17 @@ static struct tac *_add_tac_calculation(int op, int r1, int r2, int rresult, str
     tac_set_arg2(t, TAC_ARG_TYPE_CONSTANT, v[r2], NULL);
   }
 
+  /* C integer promotion makes byte-width shift operands 16-bit ints. */
+  if ((op == TAC_OP_SHIFT_LEFT || op == TAC_OP_SHIFT_RIGHT) &&
+      (promoted_type == VARIABLE_TYPE_INT8 || promoted_type == VARIABLE_TYPE_UINT8)) {
+    promoted_type = VARIABLE_TYPE_INT16;
+    g_max_var_type = promoted_type;
+  }
+
   /* promote to the maximum of this expression */
-  t->result_var_type_promoted = g_max_var_type;
-  t->arg1_var_type_promoted = g_max_var_type;
-  t->arg2_var_type_promoted = g_max_var_type;
+  t->result_var_type_promoted = promoted_type;
+  t->arg1_var_type_promoted = promoted_type;
+  t->arg2_var_type_promoted = promoted_type;
   
   return t;
 }

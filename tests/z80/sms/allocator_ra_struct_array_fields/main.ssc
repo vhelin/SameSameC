@@ -1,0 +1,50 @@
+// @BT linked.sms
+// @BT TEST-01 01 START
+// @BT DD 21 00 00 DD 19 DD 7E F9 DD 86 F8 DD 77 F7 21
+// @BT 00 C0 DD 75 F5 DD 74 F6 DD 7E FB DD 86 FA 6F 26
+// @BT 00 01 02 00 78 B1 28 04 29 0B 18 F8 DD 4E F5 DD
+// @BT 46 F6
+// @BT 09 23 E5 FD E1 DD 6E F7 FD 75 00
+// @BT END
+// @BT TEST-02 02 START
+// @BT 21 00 C0 DD 21 00 00 DD 19 DD 75 F3 DD 74 F4 DD
+// @BT 7E FA DD 86 F9 6F 26 00 01 02 00 78 B1 28 04 29
+// @BT 0B 18 F8 DD 4E F3 DD 46 F4 09 01 02 00 E5 FD E1
+// @BT FD 09
+// @BT FD 6E 00 26 00 7D DD AE F7 DD 77 F5 DD 36 F6 00
+// @BT DD 21 20 C0 FD 21 F5 FF FD 19 FD 7E 00 DD 77 00
+// @BT FD 7E 01 DD 77 01
+// @BT END
+
+struct AllocatorRaStructArrayField {
+  u8 pad;
+  u8 byte_value;
+  u16 word_value;
+};
+
+struct AllocatorRaStructArrayField g_allocator_struct_array_field_values[8];
+u16 g_allocator_struct_array_field_sink_hl;
+
+u8 allocatorRaStructArrayFieldWriteA(u8 index_left, u8 index_right, u8 value_left, u8 value_right) {
+
+  __asm(".DB \"01>\"");
+  g_allocator_struct_array_field_values[index_left + index_right].byte_value = value_left + value_right;
+  __asm(".DB \"<01\"");
+
+  return value_left;
+}
+
+u16 allocatorRaStructArrayFieldReadHl(u8 index_left, u8 index_right, u16 mask) {
+
+  u16 out;
+
+  __asm(".DB \"02>\"");
+  out = g_allocator_struct_array_field_values[index_left + index_right].word_value ^ mask;
+  g_allocator_struct_array_field_sink_hl = out;
+  __asm(".DB \"<02\"");
+
+  return out;
+}
+
+void main(void) {
+}

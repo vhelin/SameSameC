@@ -1,0 +1,33 @@
+// @BT linked.sms
+// @BT TEST-01 01 START
+// @BT DD 21 01 C0 DD 36 00 2A
+// @BT END
+// @BT TEST-02 02 START
+// @BT DD 21 01 C0 FD 21 FB FF FD 19 FD 7E 00 DD 77 00
+// @BT END
+// @BT TEST-03 03 START
+// @BT DD 21 01 C0 FD 21 00 C0 FD 7E 00 DD 77 00
+// @BT END
+
+u8 g_assignment_source = 7;
+u8 g_assignment_target = 0;
+
+u8 allocatorRaAssignmentLocationsA(u8 a) {
+
+  __asm(".DB \"01>\"");
+  g_assignment_target = 42;
+  __asm(".DB \"<01\"");
+
+  __asm(".DB \"02>\"");
+  g_assignment_target = a;
+  __asm(".DB \"<02\"");
+
+  __asm(".DB \"03>\"");
+  g_assignment_target = g_assignment_source;
+  __asm(".DB \"<03\"");
+
+  return g_assignment_target;
+}
+
+void main(void) {
+}

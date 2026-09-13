@@ -1,0 +1,21 @@
+// @BT linked.sms
+// @BT TEST-01 01 START
+// @BT DD 21 00 00 DD 19 DD 7E FB DD 86 FA 4F 06 00 FD 21 00 C0 FD 09 DD 6E F9 FD 75 00 DD 7E FB DD 86 FA DD AE F9 DD 77 F8
+// @BT END
+
+u8 g_allocator_array_write_barrier_removed_a[256];
+
+u8 allocatorRaArrayWriteBarrierRemovedA(u8 left, u8 right, u8 value) {
+
+  u8 after;
+
+  __asm(".DB \"01>\"");
+  g_allocator_array_write_barrier_removed_a[left + right] = value;
+  after = (left + right) ^ value;
+  __asm(".DB \"<01\"");
+
+  return after;
+}
+
+void main(void) {
+}

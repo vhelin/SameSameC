@@ -1,0 +1,35 @@
+// @BT linked.sms
+// @BT TEST-01 01 START
+// @BT DD 21 00 00 DD 19 DD 7E FB DD 86 FA 4F DD 7E F9
+// @BT DD 86 F8 69 26 00 4F 06 00 78 B1 28 04 29 0B 18
+// @BT F8 DD 75 F7 DD 21 00 C0 FD 21 F7 FF FD 19 FD 7E
+// @BT 00 DD 77 00
+// @BT END
+// @BT TEST-02 02 START
+// @BT DD 21 00 00 DD 19 DD 7E FB DD AE FA 4F DD 7E F9
+// @BT DD 86 F8 69 26 00 4F 06 00 78 B1 28 07 CB 3C CB
+// @BT 1D 0B 18 F5 DD 75 F7 DD 21 00 C0 FD 21 F7 FF FD
+// @BT 19 FD 7E 00 DD 77 00
+// @BT END
+
+u8 g_allocator_shift_value_c_sink;
+
+u8 allocatorRaShiftValueC(u8 value_left, u8 value_right, u8 count_left, u8 count_right) {
+
+  u8 out;
+
+  __asm(".DB \"01>\"");
+  out = (value_left + value_right) << (count_left + count_right);
+  g_allocator_shift_value_c_sink = out;
+  __asm(".DB \"<01\"");
+
+  __asm(".DB \"02>\"");
+  out = (value_left ^ value_right) >> (count_left + count_right);
+  g_allocator_shift_value_c_sink = out;
+  __asm(".DB \"<02\"");
+
+  return out;
+}
+
+void main(void) {
+}

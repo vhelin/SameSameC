@@ -1,0 +1,20 @@
+// @BT linked.sms
+// @BT TEST-01 01 START
+// @BT DD 21 00 00 DD 19 FD 21 FB FF FD 19 FD 7E 00 DD 77 F9 DD 7E
+// @BT F9 DD 86 FA DD 77 F9
+// @BT END
+
+u8 allocatorRaAssignmentProducerA(u8 a, u8 b) {
+
+  u8 c;
+
+  __asm(".DB \"01>\"");
+  c = a;
+  c = c + b;
+  __asm(".DB \"<01\"");
+
+  return c;
+}
+
+void main(void) {
+}

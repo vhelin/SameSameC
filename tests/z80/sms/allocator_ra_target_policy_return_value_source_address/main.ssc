@@ -1,0 +1,179 @@
+// @BT linked.sms
+// @BT TEST-01 01 START
+// @BT DD 21 00 C0 DD 6E 00 DD 21 00 00 DD 19 DD 75 FC
+// @BT 21 FF FF 19 F9 C9
+// @BT END
+// @BT TEST-02 02 START
+// @BT DD 6E FB DD 75 FC 21 FF FF 19 F9 C9
+// @BT END
+// @BT TEST-03 03 START
+// @BT DD 21 6E FF DD 19 DD 6E 00 DD 21 00 00 DD 19 DD
+// @BT 75 FC 21 FF FF 19 F9 C9
+// @BT END
+// @BT TEST-04 04 START
+// @BT DD 21 01 C0 DD 6E 00 DD 66 01 DD 21 00 00 DD 19
+// @BT DD 75 FB DD 74 FC 21 FF FF 19 F9 C9
+// @BT END
+// @BT TEST-05 05 START
+// @BT DD 6E F9 DD 66 FA DD 75 FB DD 74 FC 21 FF FF 19
+// @BT F9 C9
+// @BT END
+// @BT TEST-06 06 START
+// @BT DD 21 6B FF DD 19 DD 6E 00 DD 66 01 DD 21 00 00
+// @BT DD 19 DD 75 FB DD 74 FC 21 FF FF 19 F9 C9
+// @BT END
+// @BT TEST-07 07 START
+// @BT DD 6E FA 7D 87 9F 67 DD 75 FB DD 74 FC 21 FF FF
+// @BT 19 F9 C9
+// @BT END
+// @BT TEST-08 08 START
+// @BT DD 6E FA 26 00 DD 75 FB DD 74 FC 21 FF FF 19 F9
+// @BT C9
+// @BT END
+// @BT TEST-09 09 START
+// @BT DD 7E FB DD 86 FA 6F DD 75 FC 21 FF FF 19 F9 C9
+// @BT END
+// @BT TEST-10 10 START
+// @BT DD 6E F9 DD 66 FA DD 4E F7 DD 46 F8 09 DD 75 FB
+// @BT DD 74 FC 21 FF FF 19 F9 C9
+// @BT END
+// @BT TEST-11 11 START
+// @BT 2E 5A DD 75 FC 21 FF FF 19 F9 C9
+// @BT END
+
+u8 g_allocator_return_source_byte;
+u16 g_allocator_return_source_word;
+
+u8 allocatorRaPolicyReturnSourceGlobalByte(u8 gate) {
+
+  if (gate) {
+    __asm(".DB \"01>\"");
+    return g_allocator_return_source_byte;
+  }
+  __asm(".DB \"<01\"");
+
+  return 0;
+}
+
+u8 allocatorRaPolicyReturnSourceNearByte(u8 value) {
+
+  if (value) {
+    __asm(".DB \"02>\"");
+    return value;
+  }
+  __asm(".DB \"<02\"");
+
+  return 0;
+}
+
+u8 allocatorRaPolicyReturnSourceFarByte(u8 value) {
+
+  u8 padding[140];
+  u8 out;
+
+  padding[0] = 1;
+  out = value + padding[0];
+  if (padding[0]) {
+    __asm(".DB \"03>\"");
+    return out;
+  }
+  __asm(".DB \"<03\"");
+
+  return 0;
+}
+
+u16 allocatorRaPolicyReturnSourceGlobalWord(u8 gate) {
+
+  if (gate) {
+    __asm(".DB \"04>\"");
+    return g_allocator_return_source_word;
+  }
+  __asm(".DB \"<04\"");
+
+  return 0;
+}
+
+u16 allocatorRaPolicyReturnSourceNearWord(u16 value) {
+
+  if (value) {
+    __asm(".DB \"05>\"");
+    return value;
+  }
+  __asm(".DB \"<05\"");
+
+  return 0;
+}
+
+u16 allocatorRaPolicyReturnSourceFarWord(u16 value) {
+
+  u8 padding[140];
+  u16 out;
+
+  padding[0] = 1;
+  out = value + padding[0];
+  if (padding[0]) {
+    __asm(".DB \"06>\"");
+    return out;
+  }
+  __asm(".DB \"<06\"");
+
+  return 0;
+}
+
+s16 allocatorRaPolicyReturnSourceSignedWiden(s8 value) {
+
+  if (value) {
+    __asm(".DB \"07>\"");
+    return value;
+  }
+  __asm(".DB \"<07\"");
+
+  return 0;
+}
+
+u16 allocatorRaPolicyReturnSourceUnsignedWiden(u8 value) {
+
+  if (value) {
+    __asm(".DB \"08>\"");
+    return value;
+  }
+  __asm(".DB \"<08\"");
+
+  return 0;
+}
+
+u8 allocatorRaPolicyReturnSourceRetainedA(u8 left, u8 right) {
+
+  if (left) {
+    __asm(".DB \"09>\"");
+    return left + right;
+  }
+  __asm(".DB \"<09\"");
+
+  return 0;
+}
+
+u16 allocatorRaPolicyReturnSourceRetainedHl(u16 left, u16 right) {
+
+  if (left) {
+    __asm(".DB \"10>\"");
+    return left + right;
+  }
+  __asm(".DB \"<10\"");
+
+  return 0;
+}
+
+u8 allocatorRaPolicyReturnSourceConstant(u8 gate) {
+
+  if (gate) {
+    __asm(".DB \"11>\"");
+    return 0x5a;
+  }
+  __asm(".DB \"<11\"");
+
+  return 0;
+}
+
+void main(void) {
+}

@@ -1,11 +1,11 @@
 
 # SameSameC (ButDifferent)
 
-Yet Another ANSI C89 Like Language Cross Compiler Targeting 8-bit CPUs. Written by 2021 Ville Helin.
+Yet Another ANSI C90 Like Language Cross Compiler Targeting 8-bit CPUs. Written by 2021+ Ville Helin.
 
 **This is currently under early development, use it on your own risk.** SameSameC is GPL v2 software. Read the LICENSE file for more information. Some pieces of code were taken from WLA DX (https://github.com/vhelin/wla-dx), but not so many. The compiler produces WLA DX ASM files which the linker links together and assembles with WLA DX (included as a Git submodule).
 
-**I will not in general approve pull requests as I want to do this myself, up to the point when I decide I've learned enough. :) Ideas, bug reports and feature requests are welcome, though. And build scripts for platforms currently not supported.**
+**Ideas, bug reports, pull requests and feature requests are welcome, though. And build scripts for platforms currently not supported.**
 
 
 # Azure Pipelines CI
@@ -21,7 +21,9 @@ Yet Another ANSI C89 Like Language Cross Compiler Targeting 8-bit CPUs. Written 
 
 # Features
 
-## Features missing when compared with ANSI C89
+- Has optional (and experimental) register allocator via -ra flag!
+
+## Features missing when compared with ANSI C90
 
 - No const strings. Will be implemented later.
 - No pointer usage like
@@ -33,7 +35,7 @@ Yet Another ANSI C89 Like Language Cross Compiler Targeting 8-bit CPUs. Written 
 - No casting. Perhaps implemented later. In calculations all involved will be automatically casted to the highest type in the calculation.
 - No code blocks inside blocks
 
-## Features not in ANSI C89
+## Features not in ANSI C90
 
 - No need to define a function or a global variable before referencing it unless the function or variable is in another source file.
 - Binary values can be defined with the prefix 0b (e.g., 0b10001101)
@@ -64,7 +66,7 @@ Yet Another ANSI C89 Like Language Cross Compiler Targeting 8-bit CPUs. Written 
 - Check that all pointer operations work properly
 - When defining an array sometimes [] takes only an integer and not an expression
 - When defining an array of pointers to structs/unions it's possible to give too many items
-- Add a proper register allocator; what currently is done is not good enough as we are getting too bloated asm
+- Continue the Z80 register allocator work tracked in [REGISTER_ALLOCATOR.md](REGISTER_ALLOCATOR.md); the current implementation is feature-flagged with `-ra` and covered by SMS allocator tests.
 
 ## Add
 
@@ -76,7 +78,7 @@ Yet Another ANSI C89 Like Language Cross Compiler Targeting 8-bit CPUs. Written 
 - Document all TAC_OP_* use cases
 - Add support for explicit casting and type checks
 - Add support for arrays with more than one dimension
-- Create a list of supported ANSI C89 features (and the new features)
+- Create a list of supported ANSI C90 features (and the new features)
 
 
 # Releases
@@ -91,6 +93,7 @@ Programmed using
 - "Basics of Compiler Design"
   - http://web.archive.org/web/20120915222417/http://www.diku.dk/hjemmesider/ansatte/torbenm/Basics/basics_lulu2.pdf
 - Emacs
-- Cygwin under Windows 10
+- Cygwin under Windows 11
+- Since 2026 I've used various LLMs for the development
 
-Should compile anywhere ANSI C89 source code can be compiled.
+Should compile anywhere ANSI C90 source code can be compiled.

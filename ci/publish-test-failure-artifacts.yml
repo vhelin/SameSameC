@@ -1,0 +1,20 @@
+# Publish linker/compiler intermediates from the first failing test.
+# run_tests.sh writes these under _ci_test_failure/ when a test fails.
+steps:
+- bash: |
+    set -eux
+    if [ ! -d _ci_test_failure ]; then
+      mkdir -p _ci_test_failure
+      echo "The job failed before run_tests.sh wrote a per-test dump." > _ci_test_failure/README.txt
+    fi
+    echo "Failure dump contents:"
+    find _ci_test_failure -type f | sort
+  condition: failed()
+  displayName: 'Prepare failing test intermediates'
+- task: PublishPipelineArtifact@1
+  displayName: 'Publish failing test intermediates'
+  condition: failed()
+  continueOnError: true
+  inputs:
+    targetPath: '$(Build.SourcesDirectory)/_ci_test_failure'
+    artifact: 'test-failure-$(System.JobId)-$(System.JobAttempt)'

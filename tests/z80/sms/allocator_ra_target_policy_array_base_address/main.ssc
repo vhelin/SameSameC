@@ -1,0 +1,117 @@
+// @BT linked.sms
+// @BT TEST-01 01 START
+// @BT DD 21 00 00 DD 19 DD 4E FC 06 00 FD 21 00 C0 C5
+// @BT FD 4E 00 FD 46 01 FD 21 00 00 FD 09 C1 FD 09 FD
+// @BT 6E 00 DD 21 02 C0 DD 75 00
+// @BT END
+// @BT TEST-02 02 START
+// @BT DD 21 00 00 DD 19 DD 4E FC 06 00 FD 21 00 C0 C5
+// @BT FD 4E 00 FD 46 01 FD 21 00 00 FD 09 C1 FD 09 DD
+// @BT 6E FB FD 75 00
+// @BT END
+// @BT TEST-03 03 START
+// @BT DD 21 00 00 DD 19 DD 4E FA 06 00 FD 21 FB FF FD
+// @BT 19 C5 FD 4E 00 FD 46 01 FD 21 00 00 FD 09 C1 FD
+// @BT 09 FD 6E 00 DD 21 02 C0 DD 75 00
+// @BT END
+// @BT TEST-04 04 START
+// @BT DD 21 00 00 DD 19 DD 4E FA 06 00 FD 21 FB FF FD
+// @BT 19 C5 FD 4E 00 FD 46 01 FD 21 00 00 FD 09 C1 FD
+// @BT 09 DD 6E F9 FD 75 00
+// @BT END
+// @BT TEST-05 05 START
+// @BT DD 21 00 00 DD 19 DD 4E FA 06 00 FD 21 6C FF FD
+// @BT 19 C5 FD 4E 00 FD 46 01 FD 21 00 00 FD 09 C1 FD
+// @BT 09 FD 6E 00 DD 21 02 C0 DD 75 00
+// @BT END
+// @BT TEST-06 06 START
+// @BT DD 21 00 00 DD 19 DD 4E FC 06 00 FD 21 69 FF FD
+// @BT 19 FD 09 DD 6E FB FD 75 00 DD 4E FC 06 00 FD 21
+// @BT 69 FF FD 19 FD 09 FD 6E 00 DD 21 02 C0 DD 75 00
+// @BT END
+// @BT TEST-07 07 START
+// @BT 21 03 C0 01 01 00 E5 FD E1 FD 09 FD 6E 00 DD 21
+// @BT 02 C0 DD 75 00
+// @BT END
+// @BT TEST-08 08 START
+// @BT 21 03 C0 23 E5 FD E1 DD 21 00 00 DD 19 DD 6E FC
+// @BT FD 75 00
+// @BT END
+
+struct AllocatorRaPolicyArrayBaseStruct {
+  u8 pad;
+  u8 value;
+};
+
+u8 *g_allocator_array_base_pointer;
+u8 g_allocator_array_base_sink;
+struct AllocatorRaPolicyArrayBaseStruct g_allocator_array_base_struct;
+
+void allocatorRaPolicyArrayBaseGlobalRead(u8 index) {
+
+  __asm(".DB \"01>\"");
+  g_allocator_array_base_sink = g_allocator_array_base_pointer[index];
+  __asm(".DB \"<01\"");
+}
+
+void allocatorRaPolicyArrayBaseGlobalWrite(u8 index, u8 value) {
+
+  __asm(".DB \"02>\"");
+  g_allocator_array_base_pointer[index] = value;
+  __asm(".DB \"<02\"");
+}
+
+void allocatorRaPolicyArrayBaseNearRead(u8 *source, u8 index) {
+
+  __asm(".DB \"03>\"");
+  g_allocator_array_base_sink = source[index];
+  __asm(".DB \"<03\"");
+}
+
+void allocatorRaPolicyArrayBaseNearWrite(u8 *target, u8 index, u8 value) {
+
+  __asm(".DB \"04>\"");
+  target[index] = value;
+  __asm(".DB \"<04\"");
+}
+
+void allocatorRaPolicyArrayBaseFarRead(u8 *argument, u8 index) {
+
+  u8 padding[140];
+  u8 *source;
+
+  source = argument;
+  g_allocator_array_base_pointer = &padding[139];
+  __asm(".DB \"05>\"");
+  g_allocator_array_base_sink = source[index];
+  __asm(".DB \"<05\"");
+}
+
+void allocatorRaPolicyArrayBaseFarWrite(u8 index, u8 value) {
+
+  u8 padding[140];
+  u8 target[6];
+
+  g_allocator_array_base_pointer = &padding[139];
+  __asm(".DB \"06>\"");
+  target[index] = value;
+  g_allocator_array_base_sink = target[index];
+  __asm(".DB \"<06\"");
+}
+
+void allocatorRaPolicyArrayBaseRetainedRead(void) {
+
+  __asm(".DB \"07>\"");
+  g_allocator_array_base_sink = g_allocator_array_base_struct.value;
+  __asm(".DB \"<07\"");
+}
+
+void allocatorRaPolicyArrayBaseRetainedWrite(u8 value) {
+
+  __asm(".DB \"08>\"");
+  g_allocator_array_base_struct.value = value;
+  __asm(".DB \"<08\"");
+}
+
+void main(void) {
+}

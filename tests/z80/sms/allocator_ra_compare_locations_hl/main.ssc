@@ -1,0 +1,64 @@
+// @BT linked.sms
+// @BT TEST-01 01 START
+// @BT DD 21 00 00 DD 19 DD 36 F7 00 DD 36 F8 00 DD 6E F9 DD 66 FA DD 21 00 C0 DD 4E 00 DD 46 01 A7 ED 42 CA 57 01 C3 65 01 DD 21 00 00 DD 19 DD 36 F7 01 DD 36 F8 00 DD 21 00 00 DD 19 DD 6E F7 DD 66 F8 01 00 00 A7 ED 42 CA 8F 01 DD 21 02 C0 DD 6E 00 DD 66 01 23 DD 21 02 C0 DD 75 00 DD 74 01
+// @BT END
+// @BT TEST-02 02 START
+// @BT DD 21 00 00 DD 19 DD 36 F9 00 DD 36 FA 00 DD 21 00 C0 DD 6E 00 DD 66 01 01 34 12 A7 ED 42 C2 DA 01 C3 E8 01 DD 21 00 00 DD 19 DD 36 F9 01 DD 36 FA 00 DD 21 00 00 DD 19 DD 6E F9 DD 66 FA 01 00 00 A7 ED 42 CA 12 02 DD 21 02 C0 DD 6E 00 DD 66 01 23 DD 21 02 C0 DD 75 00 DD 74 01
+// @BT END
+// @BT TEST-03 03 START
+// @BT DD 21 00 00 DD 19 DD 6E F9 DD 66 FA DD 4E F7 DD 46 F8 09 DD 36 F5 00 DD 36 F6 00 DD 21 00 C0 DD 4E 00 DD 46 01 A7 ED 42 CA D1 00 C3 DF 00 DD 21 00 00 DD 19 DD 36 F5 01 DD 36 F6 00 DD 21 00 00 DD 19 DD 6E F5 DD 66 F6 01 00 00 A7 ED 42 CA 09 01 DD 21 02 C0 DD 6E 00 DD 66 01 23 DD 21 02 C0 DD 75 00 DD 74 01
+// @BT END
+// @BT TEST-04 04 START
+// @BT DD 21 00 00 DD 19 DD 6E F9 DD 66 FA DD 4E F7 DD 46 F8 09 DD 21 00 C0 44 4D DD 6E 00 DD 66 01 A7 ED 42 CA 36 00 C3 4B 00 DD 21 02 C0 DD 6E 00 DD 66 01 23 DD 21 02 C0 DD 75 00 DD 74 01
+// @BT END
+
+u16 g_compare_value_hl = 0x1234;
+u16 g_compare_target_hl = 0;
+
+u16 allocatorRaCompareLocationsHlStackGlobal(u16 a) {
+
+  __asm(".DB \"01>\"");
+  if (a == g_compare_value_hl) {
+    g_compare_target_hl = g_compare_target_hl + 1;
+  }
+  __asm(".DB \"<01\"");
+
+  return g_compare_target_hl;
+}
+
+u16 allocatorRaCompareLocationsHlGlobalConst(void) {
+
+  __asm(".DB \"02>\"");
+  if (g_compare_value_hl != 0x1234) {
+    g_compare_target_hl = g_compare_target_hl + 1;
+  }
+  __asm(".DB \"<02\"");
+
+  return g_compare_target_hl;
+}
+
+u16 allocatorRaCompareLocationsHlTempGlobal(u16 a, u16 b) {
+
+  __asm(".DB \"03>\"");
+  if ((a + b) == g_compare_value_hl) {
+    g_compare_target_hl = g_compare_target_hl + 1;
+  }
+  __asm(".DB \"<03\"");
+
+  return g_compare_target_hl;
+}
+
+u16 allocatorRaCompareLocationsHlRetainedArg2(u16 a, u16 b) {
+
+  __asm(".DB \"04>\"");
+  switch (g_compare_value_hl) {
+    case a + b:
+      g_compare_target_hl = g_compare_target_hl + 1;
+  }
+  __asm(".DB \"<04\"");
+
+  return g_compare_target_hl;
+}
+
+void main(void) {
+}

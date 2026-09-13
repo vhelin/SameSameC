@@ -1,0 +1,114 @@
+// @BT linked.sms
+// @BT TEST-01 01 START
+// @BT DD 21 00 00 DD 19 DD 7E FB DD 86 FA DD AE F9 DD
+// @BT 77 F8 DD 21 00 C0 FD 21 F8 FF FD 19 FD 7E 00 DD
+// @BT 77 00
+// @BT END
+// @BT TEST-02 02 START
+// @BT FD 21 6E FF FD 19 DD 21 00 00 DD 19 DD 6E FB FD
+// @BT 75 00 DD 7E FB 3C 01 8B 00 FD 21 6E FF FD 19 FD
+// @BT 09 FD 77 00 FD 21 6E FF FD 19 FD 6E 00 DD 21 6C
+// @BT FF DD 19 DD 75 00 01 8B 00 FD 21 6E FF FD 19 FD
+// @BT 09 FD 6E 00 7D DD 21 6C FF DD 19 DD AE 00 DD 21
+// @BT 6D FF DD 19 DD 77 00 DD 21 6D FF DD 19 DD 7E 00
+// @BT DD 21 00 00 DD 19 DD AE FA DD 21 6D FF DD 19 DD
+// @BT 77 00 DD 21 00 C0 FD 21 6D FF FD 19 FD 7E 00 DD
+// @BT 77 00
+// @BT END
+// @BT TEST-03 03 START
+// @BT FD 21 F4 FF FD 19 FD 6E 00 DD 75 F2 01 04 00 FD
+// @BT 21 F4 FF FD 19 FD 09 FD 6E 00 7D DD 86 F2 DD 77
+// @BT F3 DD 7E F3 DD AE FA DD 77 F3 DD 21 00 C0 FD 21
+// @BT F3 FF FD 19 FD 7E 00 DD 77 00
+// @BT END
+// @BT TEST-04 04 START
+// @BT FD 21 EB FF FD 19 FD 6E 00 FD 66 01 DD 75 E7 DD
+// @BT 74 E8 01 04 00 FD 21 EB FF FD 19 FD 09 FD 09 FD
+// @BT 6E 00 FD 66 01 DD 4E E7 DD 46 E8 09 DD 75 E9 DD
+// @BT 74 EA DD 6E E9 DD 66 EA DD 4E F7 DD 46 F8 78 AC
+// @BT 67 79 AD 6F DD 75 E9 DD 74 EA DD 21 01 C0 FD 21
+// @BT E9 FF FD 19 FD 7E 00 DD 77 00 FD 7E 01 DD 77 01
+// @BT END
+// @BT TEST-05 05 START
+// @BT DD 21 00 00 DD 19 DD 7E FC DD 86 FB DD 77 F8 DD
+// @BT 6E F9 DD 66 FA 23 DD 75 F6 DD 74 F7 21 00 00 39
+// @BT 2B 01 59 00 C5 D5 DD 21 00 00 44 4D DD 09 FD 21
+// @BT 00 00 FD 19 FD 4E F8 DD 71 FC FD 4E F6 FD 46 F7
+// @BT DD 71 FA DD 70 FB 54 5D C3 BF 02 DD 21 00 00 DD
+// @BT 19 DD 5E FD DD 56 FE
+// @BT END
+
+u8 g_allocator_address_byte_sink;
+u16 g_allocator_address_word_sink;
+
+u8 allocatorRaPolicyAddressNear(u8 left, u8 right, u8 mask) {
+
+  u8 out;
+
+  __asm(".DB \"01>\"");
+  out = (left + right) ^ mask;
+  g_allocator_address_byte_sink = out;
+  __asm(".DB \"<01\"");
+
+  return out;
+}
+
+u8 allocatorRaPolicyAddressFar(u8 seed, u8 mask) {
+
+  u8 values[140];
+  u8 out;
+
+  __asm(".DB \"02>\"");
+  values[0] = seed;
+  values[139] = seed + 1;
+  out = values[0] ^ values[139];
+  out = out ^ mask;
+  g_allocator_address_byte_sink = out;
+  __asm(".DB \"<02\"");
+
+  return out;
+}
+
+u8 allocatorRaPolicyAddressArrayByte(u8 seed, u8 mask) {
+
+  u8 values[6] = { 1, 2, 3, 4, seed, 6 };
+  u8 out;
+
+  __asm(".DB \"03>\"");
+  out = values[0] + values[4];
+  out = out ^ mask;
+  g_allocator_address_byte_sink = out;
+  __asm(".DB \"<03\"");
+
+  return out;
+}
+
+u16 allocatorRaPolicyAddressArrayWord(u16 seed, u16 mask) {
+
+  u16 values[6] = { 0x0102, 0x0304, 0x0506, 0x0708, seed, 0x090a };
+  u16 out;
+
+  __asm(".DB \"04>\"");
+  out = values[0] + values[4];
+  out = out ^ mask;
+  g_allocator_address_word_sink = out;
+  __asm(".DB \"<04\"");
+
+  return out;
+}
+
+void allocatorRaPolicyAddressSpillSink(u8 byte_value, u16 word_value) {
+
+  g_allocator_address_byte_sink = byte_value;
+  g_allocator_address_word_sink = word_value;
+}
+
+void allocatorRaPolicyAddressSpill(u8 left, u8 right, u16 word_value) {
+
+  __asm(".DB \"05>\"");
+  allocatorRaPolicyAddressSpillSink(left + right, word_value + 1);
+  __asm(".DB \"<05\"");
+}
+
+void main(void) {
+}
