@@ -9570,12 +9570,14 @@ int register_allocator_discover_reload_graph(char *function_name,
     int instruction;
     int scan_start;
     int stop_path;
+    int ineligible_use;
 
     block_index = queue[queue_index];
     visited_count++;
     scan_start = block_index == start_block ? spill_instruction + 1 :
         blocks[block_index].start_tac;
     stop_path = NO;
+    ineligible_use = NO;
     for (instruction = scan_start;
         instruction <= blocks[block_index].end_tac; instruction++) {
       if (is_active(context, instruction, temp_index) == NO)
@@ -9583,6 +9585,7 @@ int register_allocator_discover_reload_graph(char *function_name,
       if (reads_temp(context, instruction, temp_index) == YES) {
         if (is_reload_eligible(context, instruction, temp_index) != YES) {
           stop_path = YES;
+          ineligible_use = YES;
           reload_chain->stop_instruction = instruction;
           break;
         }
@@ -9603,10 +9606,10 @@ int register_allocator_discover_reload_graph(char *function_name,
         break;
       }
     }
-    if (stop_path == YES) {
+    if (ineligible_use == YES)
       stopped_paths++;
+    if (stop_path == YES)
       continue;
-    }
     for (edge_index = 0; edge_index < edge_count; edge_index++) {
       int successor;
 

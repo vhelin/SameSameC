@@ -69,10 +69,11 @@ all: linked.sms core_reload_chain_apply_test
 	grep -q "reload_graph_transaction function=coreReloadGraphAtomicReject.*mutations=0 transaction=rejected atomic=yes status=dependency_failed" core_reload_chain_apply_test.log
 	grep -q "reload_graph_transaction function=coreReloadGraphBackwardReject.*mutations=0 transaction=rejected atomic=yes status=dependency_failed" core_reload_chain_apply_test.log
 	grep -q "reload_graph function=coreReloadGraphPathStop.*reloads=0 visited=4 stopped=1 truncated=no qualification=rejected.*status=complete" core_reload_chain_apply_test.log
+	grep -q "reload_graph function=coreReloadGraphRedefine.*reloads=1 visited=2 stopped=0 truncated=no qualification=ready.*status=complete" core_reload_chain_apply_test.log
 	grep -q "reload_graph function=coreReloadGraphTruncated.*reloads=0.*truncated=yes qualification=rejected.*status=complete" core_reload_chain_apply_test.log
 	grep -q "reload_graph function=coreReloadGraphInvalidBlock.*status=invalid_block" core_reload_chain_apply_test.log
 	grep -q "reload_graph function=coreReloadGraphInvalidEdge.*status=invalid_edge" core_reload_chain_apply_test.log
-	grep -q "core_reload_graph: diamond=3 cycle_deduplicated=yes path_stop=rejected truncated=rejected invalid=2 transaction_rejected=1 backward_rejected=1 partial=0 join=1 status=complete" core_reload_chain_apply_test.log
+	grep -q "core_reload_graph: diamond=3 cycle_deduplicated=yes path_stop=rejected truncated=rejected invalid=2 transaction_rejected=1 backward_rejected=1 partial=0 join=1 redefine=kept status=complete" core_reload_chain_apply_test.log
 	grep -q "reload_chain function=coreChainApplyIneligible.*count=1.*stop=3 reason=read_ineligible status=complete" core_reload_chain_apply_test.log
 	grep -q "reload_chain function=coreChainApplyReadWrite.*count=1.*stop=2 reason=redefined_after_read status=complete" core_reload_chain_apply_test.log
 	grep -q "core_reload_chain_apply: function=coreChainApplyEmpty discovered=0 applied=0 status=complete" core_reload_chain_apply_test.log

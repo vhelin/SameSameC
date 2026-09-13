@@ -482,7 +482,25 @@ static int test_reload_graph_discovery(struct reload_apply_context *context) {
       chain.count != 0 || reload_instructions[0] != -1)
     return FAILED;
 
-  fprintf(stderr, "core_reload_graph: diamond=3 cycle_deduplicated=yes path_stop=rejected truncated=rejected invalid=2 transaction_rejected=1 backward_rejected=1 partial=0 join=1 status=complete\n");
+  reset_context(context);
+  add_reload(context, 1, 100);
+  context->writes[3] = YES;
+  blocks[0].start_tac = 0;
+  blocks[0].end_tac = 1;
+  blocks[1].start_tac = 2;
+  blocks[1].end_tac = 3;
+  edges[0].from_block = 0;
+  edges[0].to_block = 1;
+  edges[0].kind = RA_CFG_EDGE_FALLTHROUGH;
+  if (register_allocator_discover_reload_graph("coreReloadGraphRedefine", 2,
+      TEST_INSTRUCTION_COUNT, blocks, edges, 1, 0, 0, 7, context,
+      is_active, reads_temp, writes_temp, is_reload_eligible,
+      reload_instructions, TEST_RELOAD_CAPACITY, &chain) == FAILED ||
+      chain.count != 1 || chain.truncated != NO ||
+      reload_instructions[0] != 1)
+    return FAILED;
+
+  fprintf(stderr, "core_reload_graph: diamond=3 cycle_deduplicated=yes path_stop=rejected truncated=rejected invalid=2 transaction_rejected=1 backward_rejected=1 partial=0 join=1 redefine=kept status=complete\n");
   return SUCCEEDED;
 }
 
