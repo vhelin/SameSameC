@@ -4,6 +4,32 @@ set -e
 
 REPO_ROOT="$PWD"
 FAILURE_ARTIFACT_DIR="${SAMESAMEC_FAILURE_ARTIFACT_DIR:-$REPO_ROOT/_ci_test_failure}"
+POSIX_MAKE_MK="$REPO_ROOT/ci/posix-make.mk"
+MAKE_POSIX_SHELL=$(command -v bash)
+
+# Git Bash / MinGW make need a Windows path; Cygwin make wants the POSIX one.
+# Use the full path so MinGW make does not pick WSL's System32\bash.exe.
+case "$(uname -s)" in
+    MINGW*|MSYS*)
+        if command -v cygpath >/dev/null 2>&1; then
+            POSIX_MAKE_MK=$(cygpath -m "$POSIX_MAKE_MK")
+            MAKE_POSIX_SHELL=$(cygpath -m "$MAKE_POSIX_SHELL")
+        fi
+        case "$MAKE_POSIX_SHELL" in
+            *.exe|*.EXE) ;;
+            *) MAKE_POSIX_SHELL="${MAKE_POSIX_SHELL}.exe" ;;
+        esac
+        ;;
+esac
+
+if [ ! -f "$POSIX_MAKE_MK" ]; then
+    echo "Missing $POSIX_MAKE_MK" >&2
+    exit 1
+fi
+
+_run_make() {
+    make -f makefile -f "$POSIX_MAKE_MK" SHELL="$MAKE_POSIX_SHELL" "$@"
+}
 
 _save_test_failure_artifacts() {
     local dest="$FAILURE_ARTIFACT_DIR/$1"
@@ -11,11 +37,19 @@ _save_test_failure_artifacts() {
 
     mkdir -p "$dest"
 
-    for f in main.ssc makefile *.asm *.sms *.sym *.combined.asm; do
+    for f in main.ssc makefile *.sms *.sym; do
         if [ -e "$f" ]; then
             cp -f "$f" "$dest/"
         fi
     done
+
+    # *.asm is gitignored; Azure artifact publish may skip those names.
+    if [ -f main.asm ]; then
+        cp -f main.asm "$dest/main.compiler.asm.txt"
+    fi
+    if [ -f linked.sms.combined.asm ]; then
+        cp -f linked.sms.combined.asm "$dest/linked.sms.combined.asm.txt"
+    fi
 
     if [ -f linked.sms ]; then
         if command -v xxd >/dev/null 2>&1; then
@@ -58,9 +92,9 @@ _save_test_failure_artifacts() {
 runTest() {
     set -e
     cd "$1"
-    make clean
+    _run_make clean
     set +e
-    make
+    _run_make
     status=$?
     set -e
     if [ "$status" -ne 0 ]; then
@@ -68,7 +102,7 @@ runTest() {
         cd ..
         return "$status"
     fi
-    make clean
+    _run_make clean
     rm -f -- *.sym *.combined.asm
     cd ..
     return 0
@@ -122,6 +156,8 @@ fi
 
 echo
 echo Running tests...
+echo "make=$(command -v make) SHELL=$MAKE_POSIX_SHELL"
+make --version | head -n 1
 cd tests
 
 for CPU in */; do
