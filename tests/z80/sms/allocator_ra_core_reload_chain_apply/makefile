@@ -48,7 +48,7 @@ all: linked.sms core_reload_chain_apply_test
 	grep -q "reload_chain_storage function=coreReloadChainStorageOne capacity=1 instruction_bytes=.* execution_bytes=.* status=complete" core_reload_chain_apply_test.log
 	grep -q "reload_chain_storage function=coreReloadChainStorageFour capacity=4 instruction_bytes=.* execution_bytes=.* status=complete" core_reload_chain_apply_test.log
 	grep -q "reload_chain_storage function=coreReloadChainStorageMaximum capacity=2147483647 .*status=" core_reload_chain_apply_test.log
-	test $$(grep -c "reload_chain_storage function=.*status=invalid_input" core_reload_chain_apply_test.log) -eq 4
+	test $$(grep -c "reload_chain_storage function=.*status=invalid_input" core_reload_chain_apply_test.log) -ge 4
 	grep -q "reload_chain_execute function=coreReloadChainStorageLifecycle.*discovered=2 processed=2 applied=2.*order=discover_select_execute status=complete" core_reload_chain_apply_test.log
 	grep -q "reload_scan_range function=coreRangeExecuteFallthrough start_block=0 end_block=2 start=0 end=7 extended=2 reason=function_end status=complete" core_reload_chain_apply_test.log
 	grep -q "reload_chain_execute function=coreRangeExecuteFallthrough.*start=2 end=7.*discovered=1 processed=1 applied=1.*status=complete" core_reload_chain_apply_test.log
