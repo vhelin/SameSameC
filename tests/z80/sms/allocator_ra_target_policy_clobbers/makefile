@@ -22,7 +22,7 @@ all: linked.sms
 	grep -q "linear_scan retain.*function=allocatorRaPolicyClobberComplement.*8-bit in C.*COMPLEMENT.*XOR arg1" compiler.log
 	grep -q "retained result in C" main.asm
 	grep -q "retained arg1 in C" main.asm
-	! grep -q "stack offset requested for retained" compiler.log
+	: && ! grep -q "stack offset requested for retained" compiler.log
 	$(BT) -s main.ssc
 
 

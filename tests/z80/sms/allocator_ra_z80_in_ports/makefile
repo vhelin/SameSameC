@@ -16,8 +16,8 @@ all: linked.sms
 	grep -q "resolve function=allocatorRaZ80InPortHl operand=arg2 kind=PHY_HL" compiler.log
 	grep -q "z80_in_port function=allocatorRaZ80InPortA kind=PHY_A" compiler.log
 	grep -q "z80_in_port function=allocatorRaZ80InPortHl kind=PHY_HL" compiler.log
-	! grep -q "target_specialized_address_materialization.*emitter=z80_in_port_address" compiler.log
-	! grep -q "stack offset requested for retained" compiler.log
+	: && ! grep -q "target_specialized_address_materialization.*emitter=z80_in_port_address" compiler.log
+	: && ! grep -q "stack offset requested for retained" compiler.log
 	grep -q "retained arg2 in A" main.asm
 	grep -q "retained arg2 in HL" main.asm
 	grep -q "LD  C,A" main.asm

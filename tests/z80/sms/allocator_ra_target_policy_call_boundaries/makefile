@@ -19,13 +19,13 @@ all: linked.sms
 	grep -q "spill function=allocatorRaPolicyBoundaryVoidCall.*reason=function_call.*(FUNCTION_CALL)" compiler.log
 	grep -q "return_boundary_consumer function=allocatorRaPolicyBoundaryReturnValue.*(RETURN_VALUE) action=defer_to_candidate_policy" compiler.log
 	grep -q "linear_scan retain function=allocatorRaPolicyBoundaryReturnValue.*16-bit in HL.*(ADD).*\(RETURN_VALUE arg1\)" compiler.log
-	! grep -q "spill function=allocatorRaPolicyBoundaryReturnValue.*reason=return.*(RETURN_VALUE)" compiler.log
+	: && ! grep -q "spill function=allocatorRaPolicyBoundaryReturnValue.*reason=return.*(RETURN_VALUE)" compiler.log
 	grep -q "call_result_convention function=allocatorRaPolicyBoundaryValueCall.*size=16 target=z80 phy=HL" compiler.log
 	grep -q "linear_scan retain function=allocatorRaPolicyBoundaryValueCall.*16-bit in HL.*FUNCTION_CALL_USE_RETURN_VALUE.*XOR arg1" compiler.log
 	grep -q "; spill: function_call" main.asm
 	grep -q "; retained result in HL" main.asm
 	grep -q "retained call result in HL" main.asm
-	! grep -q "stack offset requested for retained" compiler.log
+	: && ! grep -q "stack offset requested for retained" compiler.log
 	$(BT) -s main.ssc
 
 

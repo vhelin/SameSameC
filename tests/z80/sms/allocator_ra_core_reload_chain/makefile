@@ -40,8 +40,8 @@ all: linked.sms core_reload_chain_test
 	grep -q "reload_chain function=coreChainZeroCapacity.*status=invalid_input" core_reload_chain_test.log
 	grep -q "reload_chain function=coreChainNullOutput.*status=invalid_input" core_reload_chain_test.log
 	grep -q "reload_chain function=coreChainNullResult.*status=invalid_input" core_reload_chain_test.log
-	! grep -q "reload_chain function=allocatorRaCoreReloadChain.*status=invalid_input" compiler.log
-	! grep -q "stack offset requested for retained" compiler.log
+	: && ! grep -q "reload_chain function=allocatorRaCoreReloadChain.*status=invalid_input" compiler.log
+	: && ! grep -q "stack offset requested for retained" compiler.log
 
 
 linked.sms: $(OFILES) makefile

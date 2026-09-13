@@ -23,7 +23,7 @@ all: linked.sms
 	grep -q "linear_scan skip function=allocatorRaTargetTransparencyWord.*reason=clobber_between" compiler.log
 	grep -q "retained result in C" main.asm
 	grep -q "retained result in B" main.asm
-	! grep -q "stack offset requested for retained" compiler.log
+	: && ! grep -q "stack offset requested for retained" compiler.log
 	$(BT) -s main.ssc
 
 

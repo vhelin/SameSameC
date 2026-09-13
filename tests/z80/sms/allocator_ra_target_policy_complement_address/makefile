@@ -28,13 +28,13 @@ all: linked.sms
 	grep -q "function=allocatorRaPolicyComplementFarWord emitter=complement_16bit_result_address operand=result kind=STACK_SPILL offset=-151 mode=frame_address folded_offset=0 address_target=IX target=z80" compiler.log
 	grep -q "complement_8bit function=allocatorRaPolicyComplementRetainedResultByte.*result_kind=PHY_A result_phy=A" compiler.log
 	grep -q "function=allocatorRaPolicyComplementRetainedResultByte emitter=complement_8bit_arg1_address" compiler.log
-	! grep -q "function=allocatorRaPolicyComplementRetainedResultByte emitter=complement_8bit_result_address" compiler.log
+	: && ! grep -q "function=allocatorRaPolicyComplementRetainedResultByte emitter=complement_8bit_result_address" compiler.log
 	grep -q "complement_16bit function=allocatorRaPolicyComplementRetainedResultWord.*result_kind=PHY_HL result_phy=HL" compiler.log
 	grep -q "function=allocatorRaPolicyComplementRetainedResultWord emitter=complement_16bit_arg1_address" compiler.log
-	! grep -q "function=allocatorRaPolicyComplementRetainedResultWord emitter=complement_16bit_result_address" compiler.log
-	! grep -q "target_specialized_address_materialization.*emitter=complement_.*kind=PHY" compiler.log
-	! grep -q "target_specialized_address_materialization.*emitter=complement_.*mode=invalid" compiler.log
-	! grep -q "_load_location_address_to_ix" compiler.log
+	: && ! grep -q "function=allocatorRaPolicyComplementRetainedResultWord emitter=complement_16bit_result_address" compiler.log
+	: && ! grep -q "target_specialized_address_materialization.*emitter=complement_.*kind=PHY" compiler.log
+	: && ! grep -q "target_specialized_address_materialization.*emitter=complement_.*mode=invalid" compiler.log
+	: && ! grep -q "_load_location_address_to_ix" compiler.log
 	$(BT) -s main.ssc
 
 

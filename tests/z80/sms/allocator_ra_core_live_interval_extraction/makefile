@@ -26,7 +26,7 @@ all: linked.sms core_live_interval_test
 	grep -q "temp_compaction stage=after_reuse function=allocatorRaCoreIntervalReused temps=1 highest_r=0" compiler.log
 	grep -q "linear_scan retain_interval function=allocatorRaCoreIntervalReused.*producer_tac=25.*consumer_tac=26" compiler.log
 	grep -q "linear_scan retain_interval function=allocatorRaCoreIntervalReused.*producer_tac=29.*consumer_tac=30" compiler.log
-	! grep -q "interval_.*function=allocatorRaCoreInterval.*status=invalid_input" compiler.log
+	: && ! grep -q "interval_.*function=allocatorRaCoreInterval.*status=invalid_input" compiler.log
 	grep -q "interval_note function=coreIntervals temp=r3 size=16 instruction=9 access=read range=2..9 reads=3 writes=1 status=complete" core_live_interval_test.log
 	grep -q "interval_build function=coreIntervals capacity=5 intervals=2 algorithm=aggregate_access_range status=complete" core_live_interval_test.log
 	grep -q "interval_note function=coreBadTemp.*status=invalid_input" core_live_interval_test.log

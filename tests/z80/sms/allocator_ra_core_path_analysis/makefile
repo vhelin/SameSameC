@@ -30,9 +30,9 @@ all: linked.sms core_path_analysis_test
 	test $$(grep -c "interval_blocking function=.*status=invalid_input" core_path_analysis_test.log) -eq 7
 	test $$(grep -c "transparent_range function=.*status=invalid_input" core_path_analysis_test.log) -eq 9
 	test $$(grep -c "candidate_path function=.*status=invalid_input" core_path_analysis_test.log) -eq 13
-	! grep -q "interval_blocking function=allocatorRaCorePath.*status=invalid" compiler.log
-	! grep -q "transparent_range function=allocatorRaCorePath.*status=invalid" compiler.log
-	! grep -q "candidate_path function=allocatorRaCorePath.*status=invalid" compiler.log
+	: && ! grep -q "interval_blocking function=allocatorRaCorePath.*status=invalid" compiler.log
+	: && ! grep -q "transparent_range function=allocatorRaCorePath.*status=invalid" compiler.log
+	: && ! grep -q "candidate_path function=allocatorRaCorePath.*status=invalid" compiler.log
 
 
 linked.sms: $(OFILES) makefile

@@ -16,8 +16,8 @@ all: linked.sms
 	grep -q "resolve function=allocatorRaShiftRightCountBc operand=arg2 kind=PHY_BC" compiler.log
 	grep -q "shift_count function=allocatorRaShiftLeftCountBc kind=PHY_BC" compiler.log
 	grep -q "shift_count function=allocatorRaShiftRightCountBc kind=PHY_BC" compiler.log
-	! grep -q "reason=unmigrated_emitter.*SHIFT" compiler.log
-	! grep -q "stack offset requested for retained" compiler.log
+	: && ! grep -q "reason=unmigrated_emitter.*SHIFT" compiler.log
+	: && ! grep -q "stack offset requested for retained" compiler.log
 	grep -q "retained arg2 in BC" main.asm
 	$(BT) -s main.ssc
 

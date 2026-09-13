@@ -20,8 +20,8 @@ all: linked.sms
 	grep -q "array_write_index function=allocatorRaArrayWriteBcBaseHlIndex kind=PHY_HL" compiler.log
 	grep -q "retained result in BC" main.asm
 	grep -q "retained arg2 in HL" main.asm
-	! grep -q "reason=unmigrated_emitter.*ARRAY_WRITE" compiler.log
-	! grep -q "stack offset requested for retained" compiler.log
+	: && ! grep -q "reason=unmigrated_emitter.*ARRAY_WRITE" compiler.log
+	: && ! grep -q "stack offset requested for retained" compiler.log
 	$(BT) -s main.ssc
 
 

@@ -13,7 +13,7 @@ all: linked.sms core_cfg_storage_test
 	./core_cfg_storage_test > core_cfg_storage_test.log 2>&1
 	$(BT) -s main.ssc
 	for function in allocatorRaCoreCfgSink allocatorRaCoreCfgDiamond allocatorRaCoreCfgLoop allocatorRaCoreCfgBoundaries; do test "$$(grep -c "register_allocator_core: control_flow_storage function=$$function instructions=80 blocks=80 edges=160 instruction_bytes=[1-9][0-9]* block_bytes=[1-9][0-9]* edge_bytes=[1-9][0-9]* status=complete" compiler.log)" -eq 1 || exit 1; done
-	! grep -q "register_allocator_core: control_flow_storage function=allocatorRaCoreCfg.*status=invalid_input" compiler.log
+	: && ! grep -q "register_allocator_core: control_flow_storage function=allocatorRaCoreCfg.*status=invalid_input" compiler.log
 	test "$$(grep -c "register_allocator_core: block_build function=allocatorRaCoreCfgDiamond instructions=80 blocks=9 algorithm=leader_partition status=complete" compiler.log)" -eq 1
 	test "$$(grep -c "register_allocator_core: block_build function=allocatorRaCoreCfgLoop instructions=80 blocks=5 algorithm=leader_partition status=complete" compiler.log)" -eq 1
 	test "$$(grep -c "register_allocator_core: block_build function=allocatorRaCoreCfgBoundaries instructions=80 blocks=5 algorithm=leader_partition status=complete" compiler.log)" -eq 1
@@ -33,10 +33,10 @@ all: linked.sms core_cfg_storage_test
 	grep -q "basic_block function=allocatorRaCoreCfgBoundaries block=2.*reason=inline_asm" compiler.log
 	grep -q "basic_block function=allocatorRaCoreCfgBoundaries block=3.*reason=inline_asm" compiler.log
 	grep -q "basic_block function=allocatorRaCoreCfgBoundaries block=4.*reason=return" compiler.log
-	! grep -q "register_allocator_core: block_build.*status=capacity_exceeded" compiler.log
-	! grep -q "register_allocator_core: cfg_build.*status=capacity_exceeded" compiler.log
-	! grep -q "register_allocator_core: cfg_build.*status=missing_instruction" compiler.log
-	! grep -q "register_allocator_core: cfg_build.*status=missing_target" compiler.log
+	: && ! grep -q "register_allocator_core: block_build.*status=capacity_exceeded" compiler.log
+	: && ! grep -q "register_allocator_core: cfg_build.*status=capacity_exceeded" compiler.log
+	: && ! grep -q "register_allocator_core: cfg_build.*status=missing_instruction" compiler.log
+	: && ! grep -q "register_allocator_core: cfg_build.*status=missing_target" compiler.log
 	grep -q "control_flow_storage function=coreCfgStorageOne instructions=1 blocks=1 edges=2.*status=complete" core_cfg_storage_test.log
 	grep -q "control_flow_storage function=coreCfgStorageFour instructions=4 blocks=4 edges=8.*status=complete" core_cfg_storage_test.log
 	grep -q "control_flow_storage function=coreCfgStorageForty instructions=40 blocks=40 edges=80.*status=complete" core_cfg_storage_test.log

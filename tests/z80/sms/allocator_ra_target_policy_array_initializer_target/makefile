@@ -21,9 +21,9 @@ all: linked.sms
 	grep -q "array_init_copy function=allocatorRaPolicyArrayInitializerFarByte.*kind=STACK_LOCAL offset=-150 size=1 bytes=6 const_items=6 policy=location_address" compiler.log
 	grep -q "array_init_copy function=allocatorRaPolicyArrayInitializerFarWord.*kind=STACK_LOCAL offset=-157 size=2 bytes=12 const_items=6 policy=location_address" compiler.log
 	test "$$(grep -c "CALL copy_bytes_bank_" main.asm)" -eq 4
-	! grep -q "target_specialized_address_materialization.*emitter=array_initializer_target.*mode=invalid" compiler.log
-	! grep -q "_load_location_address_to_hl" compiler.log
-	! grep -q "array_init_copy.*kind=PHY" compiler.log
+	: && ! grep -q "target_specialized_address_materialization.*emitter=array_initializer_target.*mode=invalid" compiler.log
+	: && ! grep -q "_load_location_address_to_hl" compiler.log
+	: && ! grep -q "array_init_copy.*kind=PHY" compiler.log
 	$(BT) -s main.ssc
 
 

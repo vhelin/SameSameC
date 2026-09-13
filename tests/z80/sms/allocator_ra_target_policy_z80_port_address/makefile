@@ -21,9 +21,9 @@ all: linked.sms
 	grep -q "z80_in_port function=allocatorRaPolicyZ80InGlobal kind=GLOBAL size=1 phy=NONE" compiler.log
 	grep -q "z80_out_port function=allocatorRaPolicyZ80OutNear kind=STACK_LOCAL size=1 phy=NONE" compiler.log
 	grep -q "z80_in_port function=allocatorRaPolicyZ80InFar kind=STACK_LOCAL size=1 phy=NONE" compiler.log
-	! grep -q "target_specialized_address_materialization.*emitter=z80_.*_port_address.*kind=PHY" compiler.log
-	! grep -q "target_specialized_address_materialization.*emitter=z80_.*_port_address.*mode=invalid" compiler.log
-	! grep -q "has no IX address materialization" compiler.log
+	: && ! grep -q "target_specialized_address_materialization.*emitter=z80_.*_port_address.*kind=PHY" compiler.log
+	: && ! grep -q "target_specialized_address_materialization.*emitter=z80_.*_port_address.*mode=invalid" compiler.log
+	: && ! grep -q "has no IX address materialization" compiler.log
 	$(BT) -s main.ssc
 
 

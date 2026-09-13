@@ -13,7 +13,7 @@ all: linked.sms
 	grep -q "return_boundary_consumer function=allocatorRaBoundaryReturnValueA.*action=defer_to_candidate_policy" compiler.log
 	grep -q "linear_scan retain function=allocatorRaBoundaryReturnValueA.*8-bit in A.*consumer_tac=.*RETURN_VALUE arg1" compiler.log
 	grep -q "return_value_source function=allocatorRaBoundaryReturnValueA kind=PHY_A size=1 phy=A" compiler.log
-	! grep -q "function=allocatorRaBoundaryReturnValueA emitter=return_value_source_address.*kind=PHY" compiler.log
+	: && ! grep -q "function=allocatorRaBoundaryReturnValueA emitter=return_value_source_address.*kind=PHY" compiler.log
 	$(BT) -s main.ssc
 
 

@@ -15,8 +15,8 @@ all: linked.sms
 	grep -q "function=allocatorRaPolicyUncachedMulLocal emitter=mul_div_mod_8_arg2 operand=arg2 kind=STACK_LOCAL offset=-6 mode=frame_displacement folded_offset=-6 address_target=IX_UNCACHED target=z80" compiler.log
 	grep -q "function=allocatorRaPolicyUncachedDivGlobal emitter=mul_div_mod_8_arg2 operand=arg2 kind=GLOBAL offset=999999 mode=global_label folded_offset=0 address_target=IX_UNCACHED target=z80" compiler.log
 	grep -q "function=allocatorRaPolicyUncachedModFar emitter=mul_div_mod_8_arg2 operand=arg2 kind=STACK_LOCAL offset=-148 mode=frame_address folded_offset=0 address_target=IX_UNCACHED target=z80" compiler.log
-	! grep -q "target_address_materialization target=IX_UNCACHED.*mode=invalid" compiler.log
-	! grep -q "_load_location_address_to_ix_uncached" compiler.log
+	: && ! grep -q "target_address_materialization target=IX_UNCACHED.*mode=invalid" compiler.log
+	: && ! grep -q "_load_location_address_to_ix_uncached" compiler.log
 	$(BT) -s main.ssc
 
 

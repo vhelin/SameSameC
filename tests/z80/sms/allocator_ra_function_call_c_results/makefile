@@ -18,7 +18,7 @@ all: linked.sms
 	grep -q "function_call_return function=allocatorRaFunctionCallOrResultC.*kind=PHY_C.*phy=C.*var_type=4.*promoted_type=4" compiler.log
 	grep -q "retained call result in C" main.asm
 	grep -q "retained arg1 in C" main.asm
-	! grep -q "stack offset requested for retained" compiler.log
+	: && ! grep -q "stack offset requested for retained" compiler.log
 	$(BT) -s main.ssc
 
 

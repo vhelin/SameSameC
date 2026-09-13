@@ -20,7 +20,7 @@ all: linked.sms
 	grep -q "retained result in HL" main.asm
 	grep -q "retained arg1 in A" main.asm
 	grep -q "retained arg1 in HL" main.asm
-	! grep -Eq "reason=unmigrated_emitter.*ARRAY_READ" compiler.log
+	: && ! grep -Eq "reason=unmigrated_emitter.*ARRAY_READ" compiler.log
 	$(BT) -s main.ssc
 
 

@@ -14,7 +14,7 @@ all: linked.sms core_candidate_registers_test
 	for function in allocatorRaCoreCandidateRegistersByte allocatorRaCoreCandidateRegistersWord main; do grep -q "candidate_registers function=$$function target=z80 size=8 capacity=3 count=3 status=complete" compiler.log || exit 1; grep -q "candidate_registers function=$$function target=z80 size=16 capacity=2 count=2 status=complete" compiler.log || exit 1; done
 	for candidate in "size=8 candidate=0 phy=1" "size=8 candidate=1 phy=5" "size=8 candidate=2 phy=4" "size=16 candidate=0 phy=2" "size=16 candidate=1 phy=3"; do grep -q "candidate_register function=allocatorRaCoreCandidateRegistersByte target=z80 $$candidate status=complete" compiler.log || exit 1; done
 	awk '/candidate_registers function=allocatorRaCoreCandidateRegistersByte.*size=16.*status=complete/{getline; if ($$0 ~ /active_slot_role function=allocatorRaCoreCandidateRegistersByte/) found=1} END {exit !found}' compiler.log
-	! grep -q "candidate_registers function=allocatorRaCoreCandidateRegisters.*status=invalid" compiler.log
+	: && ! grep -q "candidate_registers function=allocatorRaCoreCandidateRegisters.*status=invalid" compiler.log
 	grep -q "candidate_registers function=coreCandidateRegistersByte target=opaque-candidates size=8 capacity=3 count=3 status=complete" core_candidate_registers_test.log
 	grep -q "candidate_register function=coreCandidateRegistersByte.*candidate=1 phy=-7 status=complete" core_candidate_registers_test.log
 	grep -q "candidate_registers function=coreCandidateRegistersWord target=opaque-candidates size=16 capacity=3 count=2 status=complete" core_candidate_registers_test.log

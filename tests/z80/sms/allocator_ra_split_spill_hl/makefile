@@ -18,13 +18,13 @@ all: linked.sms
 	grep -q "candidate_selection_prepare function=allocatorRaSplitSpillArrayA.*single_read=no phy=2 proceed=yes blocked=no preservation_queried=yes preservation_supported=yes preservation_phy=2 reason=multi_read status=complete" compiler.log
 	grep -q "candidate_selection_prepare function=allocatorRaSplitSpillArrayHl.*single_read=no phy=2 proceed=yes blocked=no preservation_queried=yes preservation_supported=yes preservation_phy=2 reason=multi_read status=complete" compiler.log
 	test `grep -c "candidate_selection_prepare function=allocatorRaSplitSpill.*preservation_queried=yes" compiler.log` -eq 2
-	! grep -q "candidate_selection_prepare function=allocatorRaSplitSpill.*status=invalid\|candidate_selection_prepare function=allocatorRaSplitSpill.*status=dependency_failed" compiler.log
+	: && ! grep -q "candidate_selection_prepare function=allocatorRaSplitSpill.*status=invalid\|candidate_selection_prepare function=allocatorRaSplitSpill.*status=dependency_failed" compiler.log
 	test `grep -c "candidate_selection_orchestrate function=allocatorRaSplitSpill.*proceed=yes.*order=prepare_finalize status=complete" compiler.log` -eq 14
-	! grep -q "candidate_selection_orchestrate function=allocatorRaSplitSpill.*status=invalid\|candidate_selection_orchestrate function=allocatorRaSplitSpill.*status=dependency_failed" compiler.log
+	: && ! grep -q "candidate_selection_orchestrate function=allocatorRaSplitSpill.*status=invalid\|candidate_selection_orchestrate function=allocatorRaSplitSpill.*status=dependency_failed" compiler.log
 	test `grep -c "candidate_transition_prepare function=allocatorRaSplitSpill.*order=slot_resolve_transition_plan status=complete" compiler.log` -eq 14
-	! grep -q "candidate_transition_prepare function=allocatorRaSplitSpill.*status=invalid\|candidate_transition_prepare function=allocatorRaSplitSpill.*status=dependency_failed" compiler.log
+	: && ! grep -q "candidate_transition_prepare function=allocatorRaSplitSpill.*status=invalid\|candidate_transition_prepare function=allocatorRaSplitSpill.*status=dependency_failed" compiler.log
 	test `grep -c "candidate_transition_execute function=allocatorRaSplitSpill.*order=prepare_apply status=complete" compiler.log` -eq 14
-	! grep -q "candidate_transition_execute function=allocatorRaSplitSpill.*status=invalid\|candidate_transition_execute function=allocatorRaSplitSpill.*status=dependency_failed" compiler.log
+	: && ! grep -q "candidate_transition_execute function=allocatorRaSplitSpill.*status=invalid\|candidate_transition_execute function=allocatorRaSplitSpill.*status=dependency_failed" compiler.log
 	grep -q "linear_scan spill_insert function=allocatorRaSplitSpillArrayA.*destination=existing_spill_slot" compiler.log
 	grep -q "linear_scan spill_insert function=allocatorRaSplitSpillArrayHl.*destination=existing_spill_slot" compiler.log
 	grep -q "spill_insert_emit function=allocatorRaSplitSpillArrayA op=ARRAY_READ operand=arg1 phy=HL spill_offset=-8 bytes=2" compiler.log
@@ -38,7 +38,7 @@ all: linked.sms
 	test `grep -c "reload_graph_transaction_stage function=allocatorRaSplitSpill.*apply=yes transaction=staged status=complete" compiler.log` -eq 2
 	test `grep -c "reload_graph_transaction function=allocatorRaSplitSpill.*mutations=1 transaction=committed atomic=yes status=complete" compiler.log` -eq 2
 	test `grep -c "reload_transaction_apply function=allocatorRaSplitSpill.*mutations=1 transaction=committed atomic=yes status=complete" compiler.log` -eq 2
-	! grep -q "reload_graph_transaction function=allocatorRaSplitSpill.*transaction=rejected" compiler.log
+	: && ! grep -q "reload_graph_transaction function=allocatorRaSplitSpill.*transaction=rejected" compiler.log
 	grep -q "reload_emission function=allocatorRaSplitSpillArrayA requested=yes.*operand=0.*emit=yes status=complete" compiler.log
 	grep -q "reload_emission function=allocatorRaSplitSpillArrayHl requested=yes.*operand=0.*emit=yes status=complete" compiler.log
 	grep -q "reload_insert_emit function=allocatorRaSplitSpillArrayA op=ARRAY_WRITE operand=result source_offset=-8 bytes=2 phy=BC" compiler.log
@@ -51,7 +51,7 @@ all: linked.sms
 	grep -q "array_write_base function=allocatorRaSplitSpillArrayHl kind=PHY_BC memory_pointer_load=no" compiler.log
 	grep -q "preserve retained arg1 in spill slot" main.asm
 	grep -q "reload result from spill slot into BC" main.asm
-	! grep -q "stack offset requested for retained" compiler.log
+	: && ! grep -q "stack offset requested for retained" compiler.log
 	$(BT) -s main.ssc
 
 

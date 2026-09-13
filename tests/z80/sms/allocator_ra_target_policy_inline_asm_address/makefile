@@ -27,8 +27,8 @@ all: linked.sms
 	grep -q "inline_asm_operand function=allocatorRaPolicyInlineAsmFarByte access=read.*kind=STACK_LOCAL offset=-146 size=1 policy=stack_location" compiler.log
 	grep -q "inline_asm_operand function=allocatorRaPolicyInlineAsmFarWord access=write.*kind=STACK_LOCAL offset=-149 size=2 policy=stack_location" compiler.log
 	grep -q "inline_asm_contract function=allocatorRaPolicyInlineAsmFarByte.*policy=hard_barrier operand_policy=stack_location clobbers=A|BC|DE|HL|IX|IY|SP|FLAGS" compiler.log
-	! grep -q "inline_asm_operand.*kind=PHY" compiler.log
-	! grep -q "target_specialized_address_materialization.*emitter=inline_asm_.*mode=invalid" compiler.log
+	: && ! grep -q "inline_asm_operand.*kind=PHY" compiler.log
+	: && ! grep -q "target_specialized_address_materialization.*emitter=inline_asm_.*mode=invalid" compiler.log
 	$(BT) -s main.ssc
 
 

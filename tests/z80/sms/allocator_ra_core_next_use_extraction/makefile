@@ -28,8 +28,8 @@ all: linked.sms core_next_use_test
 	grep -q "linear_scan retain_interval function=allocatorRaCoreNextUseWord.*producer_tac=22.*consumer_tac=23" compiler.log
 	grep -q "linear_scan retain_interval function=allocatorRaCoreNextUseReused.*producer_tac=36.*consumer_tac=37" compiler.log
 	grep -q "linear_scan retain_interval function=allocatorRaCoreNextUseReused.*producer_tac=40.*consumer_tac=41" compiler.log
-	! grep -q "register_allocator_core: next_use function=allocatorRaCoreNextUse.*status=invalid_range" compiler.log
-	! grep -q "register_allocator_core: next_use function=allocatorRaCoreNextUse.*stop=redefined" compiler.log
+	: && ! grep -q "register_allocator_core: next_use function=allocatorRaCoreNextUse.*status=invalid_range" compiler.log
+	: && ! grep -q "register_allocator_core: next_use function=allocatorRaCoreNextUse.*stop=redefined" compiler.log
 	grep -q "next_use function=coreFound temp=r2 range=0..5 next=3 stop=read status=found" core_next_use_test.log
 	grep -q "next_use function=coreRedefined temp=r2 range=0..2 next=none stop=redefined at=2 status=complete" core_next_use_test.log
 	grep -q "next_use function=coreBlockEnd temp=r2 range=0..0 next=none stop=block_end status=complete" core_next_use_test.log

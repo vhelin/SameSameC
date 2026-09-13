@@ -17,7 +17,7 @@ all: linked.sms core_reload_chain_apply_test
 	grep -q "reload_chain_apply function=allocatorRaCoreReloadChainApplyWord.*discovered=1 capacity=.* truncated=no status=complete" compiler.log
 	test $$(grep -c "reload_graph_transaction_stage function=allocatorRaCoreReloadChainApply.*apply=yes transaction=staged status=complete" compiler.log) -eq 2
 	test $$(grep -c "reload_graph_transaction function=allocatorRaCoreReloadChainApply.*reloads=1 processed=1 mutations=1 transaction=committed atomic=yes status=complete" compiler.log) -eq 2
-	! grep -q "reload_graph_transaction function=allocatorRaCoreReloadChainApply.*transaction=rejected" compiler.log
+	: && ! grep -q "reload_graph_transaction function=allocatorRaCoreReloadChainApply.*transaction=rejected" compiler.log
 	grep -q "linear_scan reload_insert function=allocatorRaCoreReloadChainApplyByte.*source=existing_spill_slot phy=BC" compiler.log
 	grep -q "linear_scan reload_insert function=allocatorRaCoreReloadChainApplyWord.*source=existing_spill_slot phy=BC" compiler.log
 	grep -q "reload_emission function=allocatorRaCoreReloadChainApplyByte requested=yes.*bytes=2 emit=yes status=complete" compiler.log
@@ -76,8 +76,8 @@ all: linked.sms core_reload_chain_apply_test
 	grep -q "reload_chain function=coreChainApplyIneligible.*count=1.*stop=3 reason=read_ineligible status=complete" core_reload_chain_apply_test.log
 	grep -q "reload_chain function=coreChainApplyReadWrite.*count=1.*stop=2 reason=redefined_after_read status=complete" core_reload_chain_apply_test.log
 	grep -q "core_reload_chain_apply: function=coreChainApplyEmpty discovered=0 applied=0 status=complete" core_reload_chain_apply_test.log
-	! grep -q "reload_chain_apply function=allocatorRaCoreReloadChainApply.*status=out_of_memory" compiler.log
-	! grep -q "stack offset requested for retained" compiler.log
+	: && ! grep -q "reload_chain_apply function=allocatorRaCoreReloadChainApply.*status=out_of_memory" compiler.log
+	: && ! grep -q "stack offset requested for retained" compiler.log
 
 
 linked.sms: $(OFILES) makefile

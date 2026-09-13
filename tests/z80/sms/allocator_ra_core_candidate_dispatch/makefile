@@ -21,7 +21,7 @@ all: linked.sms core_candidate_dispatch_test
 	grep -q "candidate_dispatch function=coreCandidateDispatchDependency.*status=dependency_failed" core_candidate_dispatch_test.log
 	test $$(grep -c "candidate_dispatch function=.*status=invalid_callback" core_candidate_dispatch_test.log) -eq 3
 	test $$(grep -c "candidate_dispatch function=.*status=invalid_input" core_candidate_dispatch_test.log) -eq 8
-	! grep -q "candidate_dispatch function=allocatorRaCoreCandidateDispatch.*status=invalid" compiler.log
+	: && ! grep -q "candidate_dispatch function=allocatorRaCoreCandidateDispatch.*status=invalid" compiler.log
 
 
 linked.sms: $(OFILES) makefile

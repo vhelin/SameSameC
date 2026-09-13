@@ -16,7 +16,7 @@ all: linked.sms core_target_policy_contract_test
 	grep -q "target_policy_validate function=allocatorRaCoreTargetPolicyWord target=z80 hooks=23 status=complete" compiler.log
 	awk '/target_policy_validate function=allocatorRaCoreTargetPolicyByte/{getline; if ($$0 ~ /target_policy function=allocatorRaCoreTargetPolicyByte/) found=1} END {exit !found}' compiler.log
 	awk '/target_policy_validate function=allocatorRaCoreTargetPolicyWord/{getline; if ($$0 ~ /target_policy function=allocatorRaCoreTargetPolicyWord/) found=1} END {exit !found}' compiler.log
-	! grep -q "target_policy_validate function=allocatorRaCoreTargetPolicy.*status=invalid" compiler.log
+	: && ! grep -q "target_policy_validate function=allocatorRaCoreTargetPolicy.*status=invalid" compiler.log
 	grep -q "target_policy_validate function=coreTargetPolicyComplete target=opaque hooks=23 status=complete" core_target_policy_contract_test.log
 	grep -q "target_policy_validate function=<null> target=opaque hooks=0 status=invalid_input" core_target_policy_contract_test.log
 	grep -q "target_policy_validate function=coreTargetPolicyNull target=<null> hooks=0 status=invalid_input" core_target_policy_contract_test.log

@@ -16,9 +16,9 @@ all: linked.sms
 	test "$$(grep -c "block_exit_spill_decision function=allocatorRaCompareCRelational .*temp=r2 .*spill=exempt" compiler.log)" -eq 15
 	test "$$(grep -c "compare_8bit function=allocatorRaCompareCRelational.*op_name=JUMP_EQ.*arg1_kind=PHY_C.*arg2_kind=CONST" compiler.log)" -eq 4
 	test $$(grep -c "retained arg1 in C" main.asm) -eq 8
-	! grep -q "retained arg1 in B" main.asm
+	: && ! grep -q "retained arg1 in B" main.asm
 	test $$(grep -c "SUB A,B" main.asm) -ge 4
-	! grep -q "stack offset requested for retained" compiler.log
+	: && ! grep -q "stack offset requested for retained" compiler.log
 	$(BT) -s main.ssc
 
 

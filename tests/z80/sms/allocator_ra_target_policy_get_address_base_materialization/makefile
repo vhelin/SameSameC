@@ -15,9 +15,9 @@ all: linked.sms
 	grep -q "function=allocatorRaPolicyGetAddressBaseLocal emitter=get_address_base operand=arg1 kind=STACK_LOCAL offset=-25 mode=frame_address folded_offset=0 address_target=HL target=z80" compiler.log
 	grep -q "function=allocatorRaPolicyGetAddressBaseFar emitter=get_address_base operand=arg1 kind=STACK_LOCAL offset=-165 mode=frame_address folded_offset=0 address_target=HL target=z80" compiler.log
 	grep -q "get_address_base function=allocatorRaPolicyGetAddressBasePointer kind=PHY_HL memory_pointer_load=no offset=0 phy=HL" compiler.log
-	! grep -q "function=allocatorRaPolicyGetAddressBasePointer emitter=get_address_base" compiler.log
-	! grep -q "target_specialized_address_materialization.*emitter=get_address_base.*mode=invalid" compiler.log
-	! grep -q "_load_location_address_to_hl" compiler.log
+	: && ! grep -q "function=allocatorRaPolicyGetAddressBasePointer emitter=get_address_base" compiler.log
+	: && ! grep -q "target_specialized_address_materialization.*emitter=get_address_base.*mode=invalid" compiler.log
+	: && ! grep -q "_load_location_address_to_hl" compiler.log
 	$(BT) -s main.ssc
 
 

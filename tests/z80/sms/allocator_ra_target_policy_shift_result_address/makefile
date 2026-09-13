@@ -25,8 +25,8 @@ all: linked.sms
 	grep -q "function=allocatorRaPolicyShiftGlobalWordRight emitter=shift_16bit_result_address operand=result kind=GLOBAL offset=999999 mode=global_label folded_offset=0 address_target=IX target=z80" compiler.log
 	grep -q "function=allocatorRaPolicyShiftNearWordLeft emitter=shift_16bit_result_address operand=result kind=STACK_LOCAL offset=-11 mode=frame_displacement folded_offset=-11 address_target=IX target=z80" compiler.log
 	grep -q "function=allocatorRaPolicyShiftFarWordRight emitter=shift_16bit_result_address operand=result kind=STACK_LOCAL offset=-151 mode=frame_address folded_offset=0 address_target=IX target=z80" compiler.log
-	! grep -q "target_specialized_address_materialization.*emitter=shift_.*result_address.*kind=PHY" compiler.log
-	! grep -q "target_specialized_address_materialization.*emitter=shift_.*result_address.*mode=invalid" compiler.log
+	: && ! grep -q "target_specialized_address_materialization.*emitter=shift_.*result_address.*kind=PHY" compiler.log
+	: && ! grep -q "target_specialized_address_materialization.*emitter=shift_.*result_address.*mode=invalid" compiler.log
 	$(BT) -s main.ssc
 
 

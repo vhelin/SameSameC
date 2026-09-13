@@ -21,9 +21,9 @@ all: linked.sms
 	test "$$(grep -c "target_specialized_address_materialization.*emitter=shift_.*result_address" compiler.log)" -eq 2
 	grep -q "function=allocatorRaShiftArg1A emitter=shift_16bit_result_address" compiler.log
 	grep -q "function=allocatorRaShiftArg1Hl emitter=shift_16bit_result_address" compiler.log
-	! grep -q "function=allocatorRaShiftResultA emitter=shift_.*result_address" compiler.log
-	! grep -q "function=allocatorRaShiftResultHl emitter=shift_.*result_address" compiler.log
-	! grep -q "reason=unmigrated_emitter.*SHIFT" compiler.log
+	: && ! grep -q "function=allocatorRaShiftResultA emitter=shift_.*result_address" compiler.log
+	: && ! grep -q "function=allocatorRaShiftResultHl emitter=shift_.*result_address" compiler.log
+	: && ! grep -q "reason=unmigrated_emitter.*SHIFT" compiler.log
 	$(BT) -s main.ssc
 
 

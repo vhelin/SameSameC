@@ -18,7 +18,7 @@ all: linked.sms
 	grep -q "linear_scan retain function=allocatorRaBcRetentionHlConflict.*r1 16-bit in BC" compiler.log
 	grep -q "resolve function=allocatorRaBcRetentionHlConflict operand=result kind=PHY_BC" compiler.log
 	grep -q "function=allocatorRaBcRetentionHlConflict emitter=complement_16bit_arg1_address operand=arg1 kind=STACK_LOCAL offset=-11 mode=frame_displacement folded_offset=-11 address_target=IX target=z80" compiler.log
-	! grep -q "function=allocatorRaBcRetentionHlConflict emitter=complement_16bit_result_address" compiler.log
+	: && ! grep -q "function=allocatorRaBcRetentionHlConflict emitter=complement_16bit_result_address" compiler.log
 	grep -q "register 1 size 2 spill no phy BC" main.asm
 	grep -q "retained result in BC" main.asm
 	grep -q "retained arg2 in BC" main.asm

@@ -19,9 +19,9 @@ all: linked.sms
 	awk '/target_active_slot function=allocatorRaTargetPolicyByte.*phy=C slot=4 name=C status=complete/ { seen=1 } seen && /active_slot_assign function=allocatorRaTargetPolicyByte.*slot=4 .*status=complete/ { found=1; exit } END { exit !found }' compiler.log
 	grep -q "overlap_check function=allocatorRaTargetPolicyByte.*candidate=B.*active_C=yes.*conflict=no" compiler.log
 	grep -q "overlap_check function=allocatorRaTargetPolicyWord.*candidate=BC.*active_HL=yes.*conflict=no" compiler.log
-	! grep -q "target_active_slot.*status=invalid_policy" compiler.log
-	! grep -q "target_active_slots.*status=invalid_policy" compiler.log
-	! grep -q "stack offset requested for retained" compiler.log
+	: && ! grep -q "target_active_slot.*status=invalid_policy" compiler.log
+	: && ! grep -q "target_active_slots.*status=invalid_policy" compiler.log
+	: && ! grep -q "stack offset requested for retained" compiler.log
 	$(BT) -s main.ssc
 
 

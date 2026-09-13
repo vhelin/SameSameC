@@ -25,7 +25,7 @@ all: linked.sms
 	grep -q "array_write_base function=allocatorRaStructPointerArrayDecrement kind=PHY_BC.*phy=BC" compiler.log
 	grep -q "preserve retained arg1 in spill slot" main.asm
 	grep -q "reload result from spill slot into BC" main.asm
-	! grep -q "stack offset requested for retained" compiler.log
+	: && ! grep -q "stack offset requested for retained" compiler.log
 	$(BT) -s main.ssc
 
 linked.sms: $(OFILES) makefile

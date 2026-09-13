@@ -16,8 +16,8 @@ all: linked.sms
 	grep -q "function=allocatorRaPolicySpecializedMulLocal emitter=mul_div_mod_16_arg2 operand=arg2 kind=STACK_LOCAL offset=-9 mode=frame_displacement folded_offset=-9 address_target=IX target=z80" compiler.log
 	grep -q "function=allocatorRaPolicySpecializedDivGlobal emitter=mul_div_mod_16_arg2 operand=arg2 kind=GLOBAL offset=999999 mode=global_label folded_offset=0 address_target=IX target=z80" compiler.log
 	grep -q "function=allocatorRaPolicySpecializedModFar emitter=mul_div_mod_16_arg2 operand=arg2 kind=STACK_LOCAL offset=-153 mode=frame_address folded_offset=0 address_target=IX target=z80" compiler.log
-	! grep -q "target_specialized_address_materialization.*mode=invalid" compiler.log
-	! grep -q "has no IX address materialization" compiler.log
+	: && ! grep -q "target_specialized_address_materialization.*mode=invalid" compiler.log
+	: && ! grep -q "has no IX address materialization" compiler.log
 	$(BT) -s main.ssc
 
 

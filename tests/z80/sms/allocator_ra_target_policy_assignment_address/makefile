@@ -27,9 +27,9 @@ all: linked.sms
 	grep -q "function=allocatorRaPolicyAssignmentFarWord emitter=assignment_arg1_address operand=arg1 kind=STACK_LOCAL offset=-149 mode=frame_address folded_offset=0 address_target=IY target=z80" compiler.log
 	grep -q "assignment function=allocatorRaPolicyAssignmentSignExtend arg1_kind=STACK_LOCAL arg1_phy=NONE arg1_size=1 result_kind=GLOBAL result_phy=NONE result_size=2" compiler.log
 	grep -q "assignment function=allocatorRaPolicyAssignmentZeroExtend arg1_kind=STACK_LOCAL arg1_phy=NONE arg1_size=1 result_kind=GLOBAL result_phy=NONE result_size=2" compiler.log
-	! grep -q "target_specialized_address_materialization.*emitter=assignment_.*kind=PHY" compiler.log
-	! grep -q "target_specialized_address_materialization.*emitter=assignment_.*mode=invalid" compiler.log
-	! grep -q "_load_location_address_to_i[xy]" compiler.log
+	: && ! grep -q "target_specialized_address_materialization.*emitter=assignment_.*kind=PHY" compiler.log
+	: && ! grep -q "target_specialized_address_materialization.*emitter=assignment_.*mode=invalid" compiler.log
+	: && ! grep -q "_load_location_address_to_i[xy]" compiler.log
 	$(BT) -s main.ssc
 
 

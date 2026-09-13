@@ -21,7 +21,7 @@ all: linked.sms core_candidate_fallback_plan_test
 	grep -q "candidate_fallback_plan function=coreUnsupportedPrecedence.*plan=2 reason=fallback_unsupported status=complete" core_candidate_fallback_plan_test.log
 	grep -q "candidate_fallback_plan function=corePathPrecedence.*plan=3 reason=fallback_path status=complete" core_candidate_fallback_plan_test.log
 	test $$(grep -c "candidate_fallback_plan function=.*status=invalid_input" core_candidate_fallback_plan_test.log) -eq 8
-	! grep -q "candidate_fallback_plan function=allocatorRaCoreCandidateFallback.*status=invalid" compiler.log
+	: && ! grep -q "candidate_fallback_plan function=allocatorRaCoreCandidateFallback.*status=invalid" compiler.log
 
 
 linked.sms: $(OFILES) makefile

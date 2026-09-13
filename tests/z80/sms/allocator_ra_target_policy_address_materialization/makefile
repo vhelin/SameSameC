@@ -19,8 +19,8 @@ all: linked.sms
 	test "$$(grep -c "target=IY kind=STACK_LOCAL offset=-146 mode=frame_address folded_offset=0 target_policy=z80" compiler.log)" -eq 4
 	grep -q "target=HL kind=STACK_LOCAL offset=-12 mode=frame_address folded_offset=0 target_policy=z80" compiler.log
 	grep -q "target=HL kind=STACK_LOCAL offset=-21 mode=frame_address folded_offset=0 target_policy=z80" compiler.log
-	! grep -q "target_address_materialization.*mode=invalid" compiler.log
-	! grep -q "has no .* address materialization" compiler.log
+	: && ! grep -q "target_address_materialization.*mode=invalid" compiler.log
+	: && ! grep -q "has no .* address materialization" compiler.log
 	$(BT) -s main.ssc
 
 

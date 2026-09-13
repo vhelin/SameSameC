@@ -20,9 +20,9 @@ all: linked.sms
 	grep -q "linear_scan alternate function=allocatorRaLinearScanFartherNextUseBoundaryA.*primary=A alternate=C reason=clobber_between" compiler.log
 	grep -q "linear_scan retain function=allocatorRaLinearScanFartherNextUseBoundaryA.*8-bit in C.*ADD arg1" compiler.log
 	grep -q "linear_scan skip function=allocatorRaLinearScanFartherNextUseBoundaryHl.*reason=clobber_between" compiler.log
-	! grep -q "linear_scan spill function=allocatorRaLinearScanFartherNextUseA.*reason=farther_next_use" compiler.log
-	! grep -q "linear_scan spill function=allocatorRaLinearScanFartherNextUseBoundaryA.*reason=farther_next_use" compiler.log
-	! grep -q "linear_scan spill function=allocatorRaLinearScanFartherNextUseBoundaryHl.*reason=farther_next_use" compiler.log
+	: && ! grep -q "linear_scan spill function=allocatorRaLinearScanFartherNextUseA.*reason=farther_next_use" compiler.log
+	: && ! grep -q "linear_scan spill function=allocatorRaLinearScanFartherNextUseBoundaryA.*reason=farther_next_use" compiler.log
+	: && ! grep -q "linear_scan spill function=allocatorRaLinearScanFartherNextUseBoundaryHl.*reason=farther_next_use" compiler.log
 	grep -q "register 0 size 1 spill no phy A" main.asm
 	grep -q "register 1 size 1 spill yes phy NONE" main.asm
 	grep -q "register 0 size 1 spill no phy C" main.asm

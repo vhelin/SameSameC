@@ -25,7 +25,7 @@ all: linked.sms
 	grep -q "retained call result in A" main.asm
 	grep -q "retained call result in HL" main.asm
 	grep -q "retained call result in C" main.asm
-	! grep -q "stack offset requested for retained" compiler.log
+	: && ! grep -q "stack offset requested for retained" compiler.log
 	$(BT) -s main.ssc
 
 

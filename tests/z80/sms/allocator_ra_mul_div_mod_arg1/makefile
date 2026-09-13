@@ -28,8 +28,8 @@ all: linked.sms
 	grep -q "mul_div_mod_arg1 function=allocatorRaMulArg1Hl op=MUL kind=PHY_HL" compiler.log
 	grep -q "mul_div_mod_arg1 function=allocatorRaDivArg1Hl op=DIV kind=PHY_HL" compiler.log
 	grep -q "mul_div_mod_arg1 function=allocatorRaModArg1Hl op=MOD kind=PHY_HL" compiler.log
-	! grep -Eq "reason=unmigrated_emitter.*(MUL|DIV|MOD)" compiler.log
-	! grep -q "stack offset requested for retained" compiler.log
+	: && ! grep -Eq "reason=unmigrated_emitter.*(MUL|DIV|MOD)" compiler.log
+	: && ! grep -q "stack offset requested for retained" compiler.log
 	grep -q "retained arg1 in A" main.asm
 	grep -q "retained arg1 in HL" main.asm
 	$(BT) -s main.ssc

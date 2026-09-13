@@ -27,8 +27,8 @@ all: linked.sms core_spill_mutation_test
 	grep -q "spill_mutation function=coreSpillMutationBadRetained.*retained=invalid.*status=invalid_input" core_spill_mutation_test.log
 	grep -q "spill_mutation function=coreSpillMutationNoRegister.*status=invalid_input" core_spill_mutation_test.log
 	grep -q "spill_mutation function=coreSpillMutationNullOutput.*status=invalid_input" core_spill_mutation_test.log
-	! grep -q "spill_mutation function=allocatorRaCoreSpillMutation.*status=invalid_input" compiler.log
-	! grep -q "stack offset requested for retained" compiler.log
+	: && ! grep -q "spill_mutation function=allocatorRaCoreSpillMutation.*status=invalid_input" compiler.log
+	: && ! grep -q "stack offset requested for retained" compiler.log
 
 
 linked.sms: $(OFILES) makefile

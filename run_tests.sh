@@ -6,12 +6,12 @@ REPO_ROOT="$PWD"
 FAILURE_ARTIFACT_DIR="${SAMESAMEC_FAILURE_ARTIFACT_DIR:-$REPO_ROOT/_ci_test_failure}"
 MAKE_POSIX_SHELL=$(command -v bash)
 
-# MinGW make on Azure Windows is cmd.exe by default, so `! grep` is
-# CreateProcess'd as a program named `!`. Passing Git Bash makes it a
-# unixy shell (`!` is a metacharacter). Do not use .ONESHELL: that
-# concatenates huge recipes (liveness extraction) into one command line
-# and hits Windows error 206 (filename/command too long).
-# Use the full path so CreateProcess does not pick WSL's System32\bash.exe.
+# Azure Windows uses MinGW make. Even with SHELL=bash it still CreateProcess's
+# "simple" recipes, and `!` is not a MinGW shell metacharacter, so `! grep`
+# is treated as a program named `!`. Test makefiles therefore start those
+# lines with `: && ! grep` (`:` is a unixy builtin, which forces the shell).
+# Do not use .ONESHELL: huge recipes then exceed Windows' CreateProcess limit.
+# Use the full Git Bash path so CreateProcess does not pick WSL bash.exe.
 case "$(uname -s)" in
     MINGW*|MSYS*)
         if command -v cygpath >/dev/null 2>&1; then

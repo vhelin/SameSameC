@@ -33,7 +33,7 @@ all: linked.sms
 	grep -q "preserve retained arg1 in spill slot" main.asm
 	grep -q "reload result from spill slot into BC" main.asm
 	grep -q "retained arg1 in HL" main.asm
-	! grep -q "stack offset requested for retained" compiler.log
+	: && ! grep -q "stack offset requested for retained" compiler.log
 	$(BT) -s main.ssc
 
 

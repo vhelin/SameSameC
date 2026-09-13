@@ -23,16 +23,16 @@ all: linked.sms
 	grep -q "array_read_result function=allocatorRaArrayReadResultB kind=PHY_C size=1 phy=C value_bytes=1" compiler.log
 	grep -q "array_read_result function=allocatorRaArrayReadResultB kind=PHY_B size=1 phy=B value_bytes=1" compiler.log
 	grep -q "array_read_physical_result function=allocatorRaArrayReadResultB result_phy=B value_bytes=1 via=L store=B status=complete" compiler.log
-	! grep -q "array_read_result function=allocatorRaArrayReadResultB kind=STACK_SPILL" compiler.log
+	: && ! grep -q "array_read_result function=allocatorRaArrayReadResultB kind=STACK_SPILL" compiler.log
 	sed -n '/allocatorRaArrayReadResultB:/,/\.ENDS/p' main.asm | grep -q "LD  C,L"
 	sed -n '/allocatorRaArrayReadResultB:/,/\.ENDS/p' main.asm | grep -q "LD  B,L"
 	sed -n '/allocatorRaArrayReadResultB:/,/\.ENDS/p' main.asm | grep -q "retained result in B"
 	sed -n '/allocatorRaArrayReadResultB:/,/\.ENDS/p' main.asm | grep -q "retained arg1 in B"
 	sed -n '/allocatorRaArrayReadResultB:/,/\.ENDS/p' main.asm | grep -q "XOR A,B"
-	! sed -n '/allocatorRaArrayReadResultB:/,/\.ENDS/p' main.asm | grep -q "LD  (IX+0),L"
+	: && ! sed -n '/allocatorRaArrayReadResultB:/,/\.ENDS/p' main.asm | grep -q "LD  (IX+0),L"
 	grep -q "retained result in C" main.asm
 	grep -q "retained arg1 in C" main.asm
-	! grep -q "stack offset requested for retained" compiler.log
+	: && ! grep -q "stack offset requested for retained" compiler.log
 	$(BT) -s main.ssc
 
 

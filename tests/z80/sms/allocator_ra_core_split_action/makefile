@@ -26,8 +26,8 @@ all: linked.sms core_split_action_test
 	grep -q "split_action function=coreSplitBadSingleRead.*status=invalid_input" core_split_action_test.log
 	grep -q "split_action function=coreSplitNoSelected.*status=invalid_input" core_split_action_test.log
 	grep -q "split_action function=coreSplitSingleWithPreservation.*status=invalid_input" core_split_action_test.log
-	! grep -q "split_action function=allocatorRaCoreSplit.*status=invalid_input" compiler.log
-	! grep -q "stack offset requested for retained" compiler.log
+	: && ! grep -q "split_action function=allocatorRaCoreSplit.*status=invalid_input" compiler.log
+	: && ! grep -q "stack offset requested for retained" compiler.log
 
 
 linked.sms: $(OFILES) makefile

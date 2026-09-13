@@ -22,8 +22,8 @@ all: linked.sms
 	grep -q "function=allocatorRaInlineAsmBarrierHl emitter=inline_asm_write_address operand=variable kind=STACK_LOCAL offset=-13 mode=frame_displacement folded_offset=-13 address_target=IX target=z80" compiler.log
 	grep -q "z80_clobber function=allocatorRaInlineAsmBarrierA.*(ASM).*clobbers=A|BC|DE|HL|IX|IY|SP|FLAGS" compiler.log
 	grep -q "z80_clobber function=allocatorRaInlineAsmBarrierHl.*(ASM).*clobbers=A|BC|DE|HL|IX|IY|SP|FLAGS" compiler.log
-	! grep -q "inline_asm_operand.*kind=PHY" compiler.log
-	! grep -q "stack offset requested for retained" compiler.log
+	: && ! grep -q "inline_asm_operand.*kind=PHY" compiler.log
+	: && ! grep -q "stack offset requested for retained" compiler.log
 	$(BT) -s main.ssc
 
 

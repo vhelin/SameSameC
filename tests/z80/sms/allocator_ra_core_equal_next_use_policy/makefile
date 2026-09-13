@@ -19,7 +19,7 @@ all: linked.sms core_equal_next_use_policy_test
 	grep -q "equal_next_use_preference function=coreEqualPolicyUnequal.*queried=no prefer=no reason=unequal_next_use status=complete" core_equal_next_use_policy_test.log
 	grep -q "equal_next_use_preference function=coreEqualPolicyBadCallback.*queried=yes prefer=invalid status=invalid_callback" core_equal_next_use_policy_test.log
 	test $$(grep -c "equal_next_use_preference function=.*status=invalid_input" core_equal_next_use_policy_test.log) -eq 13
-	! grep -q "equal_next_use_preference function=allocatorRaCoreEqualNextUsePolicy.*status=invalid" compiler.log
+	: && ! grep -q "equal_next_use_preference function=allocatorRaCoreEqualNextUsePolicy.*status=invalid" compiler.log
 
 
 linked.sms: $(OFILES) makefile

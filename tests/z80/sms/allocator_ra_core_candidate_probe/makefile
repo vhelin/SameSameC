@@ -34,7 +34,7 @@ all: linked.sms core_candidate_probe_test
 	test $$(grep -c "candidate_range function=.*status=invalid_input" core_candidate_probe_test.log) -eq 5
 	test $$(grep -c "candidate_qualification function=.*status=invalid_input" core_candidate_probe_test.log) -eq 5
 	test $$(grep -c "candidate_probe function=.*status=invalid_input" core_candidate_probe_test.log) -eq 5
-	! grep -q "candidate_.*function=allocatorRaCoreProbe.*status=invalid" compiler.log
+	: && ! grep -q "candidate_.*function=allocatorRaCoreProbe.*status=invalid" compiler.log
 
 
 linked.sms: $(OFILES) makefile

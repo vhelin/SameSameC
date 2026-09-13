@@ -14,8 +14,8 @@ all: linked.sms
 	grep -q "forced_all_spill function=allocatorRaAllSpillMode temps=1" compiler.log
 	grep -q "spill slot function=allocatorRaAllSpillMode r0 offset=-9 size=1" compiler.log
 	grep -q "register 0 size 1 spill yes phy NONE" main.asm
-	! grep -q "retained result in A" main.asm
-	! grep -q "no spill slot function=allocatorRaAllSpillMode" compiler.log
+	: && ! grep -q "retained result in A" main.asm
+	: && ! grep -q "no spill slot function=allocatorRaAllSpillMode" compiler.log
 
 
 linked.sms: $(OFILES) makefile

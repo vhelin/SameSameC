@@ -34,11 +34,11 @@ all: linked.sms
 	test `grep -c "reload_graph_transaction_stage function=allocatorRaPolicySplit.*operand=0 phy=3 apply=yes transaction=staged status=complete" compiler.log` -eq 2
 	test `grep -c "reload_graph_transaction function=allocatorRaPolicySplit.*mutations=1 transaction=committed atomic=yes status=complete" compiler.log` -eq 2
 	test `grep -c "reload_transaction_apply function=allocatorRaPolicySplit.*mutations=1 transaction=committed atomic=yes status=complete" compiler.log` -eq 2
-	! grep -q "reload_graph_preflight function=allocatorRaPolicySplitNonzero" compiler.log
-	! grep -q "target_split_.*function=allocatorRaPolicySplitNonzero" compiler.log
+	: && ! grep -q "reload_graph_preflight function=allocatorRaPolicySplitNonzero" compiler.log
+	: && ! grep -q "target_split_.*function=allocatorRaPolicySplitNonzero" compiler.log
 	grep -q "preserve retained arg1 in spill slot" main.asm
 	grep -q "reload result from spill slot into BC" main.asm
-	! grep -q "stack offset requested for retained" compiler.log
+	: && ! grep -q "stack offset requested for retained" compiler.log
 	$(BT) -s main.ssc
 
 

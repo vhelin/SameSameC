@@ -18,8 +18,8 @@ all: linked.sms
 	grep -q "function=allocatorRaArrayInitCopyLocationA emitter=array_initializer_target operand=target kind=STACK_LOCAL offset=-12 mode=frame_address folded_offset=0 address_target=HL target=z80" compiler.log
 	grep -q "function=allocatorRaArrayInitCopyLocationHl emitter=array_initializer_target operand=target kind=STACK_LOCAL offset=-21 mode=frame_address folded_offset=0 address_target=HL target=z80" compiler.log
 	grep -q "CALL copy_bytes_bank_" main.asm
-	! grep -q "array_init_copy.*kind=PHY" compiler.log
-	! grep -q "stack offset requested for retained" compiler.log
+	: && ! grep -q "array_init_copy.*kind=PHY" compiler.log
+	: && ! grep -q "stack offset requested for retained" compiler.log
 	$(BT) -s main.ssc
 
 

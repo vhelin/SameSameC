@@ -23,7 +23,7 @@ all: linked.sms
 	grep -q "retained result in A" main.asm
 	grep -q "retained arg2 in C" main.asm
 	grep -q "retained arg1 in A" main.asm
-	! grep -q "stack offset requested for retained" compiler.log
+	: && ! grep -q "stack offset requested for retained" compiler.log
 	$(BT) -s main.ssc
 
 

@@ -20,8 +20,8 @@ all: linked.sms
 	grep -q "function=allocatorRaPolicyCallOldFrameSpills callee=allocatorRaPolicyCallOldFrameSink argument=2 kind=STACK_SPILL offset=-9 mode=frame_displacement folded_offset=-9 cache_before=ready cache_action=reuse cache_after=ready address_target=IY_OLD_FRAME target=z80" compiler.log
 	grep -q "function=allocatorRaPolicyCallOldFrameSpills callee=allocatorRaPolicyCallOldFrameSink argument=3 kind=STACK_SPILL offset=-10 mode=frame_displacement folded_offset=-10 cache_before=ready cache_action=reuse cache_after=ready address_target=IY_OLD_FRAME target=z80" compiler.log
 	grep -q "function=allocatorRaPolicyCallOldFrameSpills callee=allocatorRaPolicyCallOldFrameSink argument=4 kind=STACK_SPILL offset=-11 mode=frame_displacement folded_offset=-11 cache_before=ready cache_action=reuse cache_after=ready address_target=IY_OLD_FRAME target=z80" compiler.log
-	! grep -q "target_address_materialization target=IY_OLD_FRAME.*mode=invalid" compiler.log
-	! grep -q "_load_call_argument_address_to_iy" compiler.log
+	: && ! grep -q "target_address_materialization target=IY_OLD_FRAME.*mode=invalid" compiler.log
+	: && ! grep -q "_load_call_argument_address_to_iy" compiler.log
 	$(BT) -s main.ssc
 
 

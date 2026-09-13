@@ -17,10 +17,10 @@ all: linked.sms
 	grep -q "target_return_slot_access function=allocatorRaPolicyReturnSlotAccess callee=allocatorRaPolicyReturnSignedByte role=caller_load size=1 target=z80 low_offset=-4 high_offset=0" compiler.log
 	grep -q "target_return_slot_access function=allocatorRaPolicyReturnSlotAccess callee=allocatorRaPolicyReturnUnsignedByte role=caller_load size=1 target=z80 low_offset=-4 high_offset=0" compiler.log
 	grep -q "target_return_slot_access function=allocatorRaPolicyReturnSlotAccess callee=allocatorRaPolicyReturnWord role=caller_load size=2 target=z80 low_offset=-5 high_offset=-4" compiler.log
-	! grep -q "Target policy cannot locate" compiler.log
+	: && ! grep -q "Target policy cannot locate" compiler.log
 	test "$$(grep -c "return value -> L" main.asm)" -eq 2
 	test "$$(grep -c "return value -> HL" main.asm)" -eq 1
-	! grep -q "stack offset requested for retained" compiler.log
+	: && ! grep -q "stack offset requested for retained" compiler.log
 	$(BT) -s main.ssc
 
 

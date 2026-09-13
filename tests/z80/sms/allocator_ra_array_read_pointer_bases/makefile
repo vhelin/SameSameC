@@ -10,7 +10,7 @@ OFILES = main.asm
 
 
 all: linked.sms
-	! grep -q "array_read_pointer_base_temp function=allocatorRaArrayReadPointerBaseA" compiler.log
+	: && ! grep -q "array_read_pointer_base_temp function=allocatorRaArrayReadPointerBaseA" compiler.log
 	grep -q "array_read_pointer_base_temp function=allocatorRaArrayReadPointerBaseHl" compiler.log
 	grep -q "linear_scan retain.*function=allocatorRaArrayReadPointerBaseA.*producer_tac=.*ADD.*consumer_tac=.*ARRAY_READ.*arg2" compiler.log
 	grep -q "linear_scan retain.*function=allocatorRaArrayReadPointerBaseHl.*producer_tac=.*XOR.*consumer_tac=.*ARRAY_READ.*arg2" compiler.log
@@ -21,11 +21,11 @@ all: linked.sms
 	grep -q "array_read_base function=allocatorRaArrayReadPointerBaseA kind=STACK_LOCAL memory_pointer_load=yes" compiler.log
 	grep -q "array_read_base function=allocatorRaArrayReadPointerBaseHl kind=PHY_BC memory_pointer_load=no" compiler.log
 	grep -q "function=allocatorRaArrayReadPointerBaseA emitter=array_read_base_address operand=arg1 kind=STACK_LOCAL offset=-6 mode=frame_address folded_offset=0 address_target=IY target=z80" compiler.log
-	! grep -q "function=allocatorRaArrayReadPointerBaseHl emitter=array_read_base_address" compiler.log
+	: && ! grep -q "function=allocatorRaArrayReadPointerBaseHl emitter=array_read_base_address" compiler.log
 	grep -q "array_read_index function=allocatorRaArrayReadPointerBaseA kind=PHY_A" compiler.log
 	grep -q "array_read_index function=allocatorRaArrayReadPointerBaseHl kind=PHY_HL" compiler.log
-	! grep -q "reason=unmigrated_emitter.*ARRAY_READ" compiler.log
-	! grep -q "stack offset requested for retained" compiler.log
+	: && ! grep -q "reason=unmigrated_emitter.*ARRAY_READ" compiler.log
+	: && ! grep -q "stack offset requested for retained" compiler.log
 	grep -q "retained arg1 in BC" main.asm
 	grep -q "retained arg2 in A" main.asm
 	grep -q "retained arg2 in HL" main.asm

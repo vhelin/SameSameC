@@ -18,9 +18,9 @@ all: linked.sms
 	grep -q "compare_8bit function=allocatorRaCompareCNeqBOverlap.*arg1_kind=PHY_C.*arg2_kind=CONST" compiler.log
 	grep -q "retained arg1 in C" main.asm
 	test "$$(grep -c "retained arg1 in C" main.asm)" -eq 2
-	! grep -q "retained arg1 in B" main.asm
+	: && ! grep -q "retained arg1 in B" main.asm
 	grep -q "SUB A,B" main.asm
-	! grep -q "stack offset requested for retained" compiler.log
+	: && ! grep -q "stack offset requested for retained" compiler.log
 	$(BT) -s main.ssc
 
 

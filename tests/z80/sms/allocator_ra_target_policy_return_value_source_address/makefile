@@ -30,10 +30,10 @@ all: linked.sms
 	grep -q "return_value_source function=allocatorRaPolicyReturnSourceRetainedA kind=PHY_A size=1 phy=A arg_type=4 return_type=4" compiler.log
 	grep -q "return_value_source function=allocatorRaPolicyReturnSourceRetainedHl kind=PHY_HL size=2 phy=HL arg_type=5 return_type=5" compiler.log
 	grep -q "return_value_source function=allocatorRaPolicyReturnSourceConstant kind=CONST size=1 phy=NONE arg_type=4 return_type=4" compiler.log
-	! grep -q "function=allocatorRaPolicyReturnSourceRetained.*emitter=return_value_source_address" compiler.log
-	! grep -q "function=allocatorRaPolicyReturnSourceConstant.*emitter=return_value_source_address" compiler.log
-	! grep -q "target_specialized_address_materialization.*emitter=return_value_source_address.*kind=PHY" compiler.log
-	! grep -q "target_specialized_address_materialization.*emitter=return_value_source_address.*mode=invalid" compiler.log
+	: && ! grep -q "function=allocatorRaPolicyReturnSourceRetained.*emitter=return_value_source_address" compiler.log
+	: && ! grep -q "function=allocatorRaPolicyReturnSourceConstant.*emitter=return_value_source_address" compiler.log
+	: && ! grep -q "target_specialized_address_materialization.*emitter=return_value_source_address.*kind=PHY" compiler.log
+	: && ! grep -q "target_specialized_address_materialization.*emitter=return_value_source_address.*mode=invalid" compiler.log
 	$(BT) -s main.ssc
 
 

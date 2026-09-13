@@ -14,7 +14,7 @@ all: linked.sms core_physical_overlap_test
 	./core_physical_overlap_test > core_physical_overlap_test.log 2>&1
 	grep -q "physical_overlap function=allocatorRaCorePhysicalOverlapByte target=z80 left=4 left_units=2 right=5 right_units=4 overlap=no status=complete" compiler.log
 	grep -q "physical_overlap function=allocatorRaCorePhysicalOverlapWord target=z80 left=3 left_units=6 right=2 right_units=24 overlap=no status=complete" compiler.log
-	! grep -q "physical_overlap function=allocatorRaCorePhysicalOverlap.*status=invalid" compiler.log
+	: && ! grep -q "physical_overlap function=allocatorRaCorePhysicalOverlap.*status=invalid" compiler.log
 	grep -q "overlap_check function=allocatorRaCorePhysicalOverlapByte.*candidate=B.*active_C=yes.*conflict=no" compiler.log
 	grep -q "overlap_check function=allocatorRaCorePhysicalOverlapWord.*candidate=BC.*active_HL=yes.*conflict=no" compiler.log
 	grep -q "physical_overlap function=corePhysicalOverlap target=opaque left=10 left_units=1 right=10 right_units=1 overlap=yes status=complete" core_physical_overlap_test.log

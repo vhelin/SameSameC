@@ -19,7 +19,7 @@ all: linked.sms core_candidate_fallback_policy_test
 	grep -q "candidate_fallbacks function=coreFallbackPolicySingle target=opaque-fallback size=8 candidates=1 unsupported=no path=no conflict=no status=complete" core_candidate_fallback_policy_test.log
 	test $$(grep -c "candidate_fallbacks function=.*status=invalid_callback" core_candidate_fallback_policy_test.log) -eq 3
 	test $$(grep -c "candidate_fallbacks function=.*status=invalid_input" core_candidate_fallback_policy_test.log) -eq 10
-	! grep -q "candidate_fallbacks function=allocatorRaCoreCandidateFallbackPolicy.*status=invalid" compiler.log
+	: && ! grep -q "candidate_fallbacks function=allocatorRaCoreCandidateFallbackPolicy.*status=invalid" compiler.log
 
 
 linked.sms: $(OFILES) makefile

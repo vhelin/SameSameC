@@ -31,8 +31,8 @@ all: linked.sms core_spill_emission_test
 	grep -q "spill_emission function=coreSpillEmissionNegativeBytes.*bytes=-1 status=invalid_input" core_spill_emission_test.log
 	grep -q "spill_emission function=coreSpillEmissionStaleSkip requested=no.*status=invalid_input" core_spill_emission_test.log
 	grep -q "spill_emission function=coreSpillEmissionNullOutput.*status=invalid_input" core_spill_emission_test.log
-	! grep -q "spill_emission function=allocatorRaCoreSpillEmission.*status=invalid_input" compiler.log
-	! grep -q "stack offset requested for retained" compiler.log
+	: && ! grep -q "spill_emission function=allocatorRaCoreSpillEmission.*status=invalid_input" compiler.log
+	: && ! grep -q "stack offset requested for retained" compiler.log
 
 
 linked.sms: $(OFILES) makefile

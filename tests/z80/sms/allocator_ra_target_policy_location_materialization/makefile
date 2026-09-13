@@ -21,8 +21,8 @@ all: linked.sms
 	grep -q "target_location_materialization function=allocatorRaPolicyLocationB operand=result source=physical kind=PHY_B offset=0 size=1 phy=B target=z80" compiler.log
 	grep -q "target_location_materialization function=allocatorRaPolicyLocationB operand=result source=physical kind=PHY_C offset=0 size=1 phy=C target=z80" compiler.log
 	test "$$(grep -c "target_location_materialization function=allocatorRaPolicyLocation" compiler.log)" -eq 80
-	! grep -q "Target policy cannot materialize" compiler.log
-	! grep -q "stack offset requested for retained" compiler.log
+	: && ! grep -q "Target policy cannot materialize" compiler.log
+	: && ! grep -q "stack offset requested for retained" compiler.log
 	$(BT) -s main.ssc
 
 

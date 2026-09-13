@@ -24,10 +24,10 @@ all: linked.sms
 	grep -q "target_argument_byte_access function=allocatorRaPolicyArgumentTransport callee=allocatorRaPolicyTransportSink argument=5 transport=truncate source_low=0 source_high=1 target_low=0 target_high=-1 target=z80" compiler.log
 	grep -q "target_argument_byte_access function=allocatorRaPolicyArgumentTransport callee=allocatorRaPolicyTransportSink argument=6 transport=word source_low=0 source_high=1 target_low=0 target_high=1 target=z80" compiler.log
 	test "$$(grep -c "target_argument_byte_access function=allocatorRaPolicyArgumentTransport" compiler.log)" -eq 6
-	! grep -q "Target policy cannot transport argument" compiler.log
-	! grep -q "invalid byte access" compiler.log
+	: && ! grep -q "Target policy cannot transport argument" compiler.log
+	: && ! grep -q "invalid byte access" compiler.log
 	test "$$(grep -c "copy argument" main.asm)" -eq 6
-	! grep -q "stack offset requested for retained" compiler.log
+	: && ! grep -q "stack offset requested for retained" compiler.log
 	$(BT) -s main.ssc
 
 

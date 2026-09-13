@@ -16,9 +16,9 @@ all: linked.sms
 	grep -q "target_return_transport function=main size=0 target=z80 slot_start=0 frame_end=-4" compiler.log
 	grep -q 'OFFSET -00004 SIZE 000001 "return value"' compiler.log
 	grep -q 'OFFSET -00005 SIZE 000002 "return value"' compiler.log
-	! grep -A4 'STACK FRAME of FUNCTION "main"' compiler.log | grep -q '"return value"'
-	! grep -q "Target policy cannot reserve" compiler.log
-	! grep -q "stack offset requested for retained" compiler.log
+	: && ! grep -A4 'STACK FRAME of FUNCTION "main"' compiler.log | grep -q '"return value"'
+	: && ! grep -q "Target policy cannot reserve" compiler.log
+	: && ! grep -q "stack offset requested for retained" compiler.log
 	$(BT) -s main.ssc
 
 

@@ -17,13 +17,13 @@ all: linked.sms
 	grep -q "linear_scan retain_interval function=allocatorRaShiftResultC.*16-bit in HL.*producer_tac=.*(ADD).*consumer_tac=.*(XOR arg2)" compiler.log
 	grep -q "linear_scan retain_interval function=allocatorRaShiftResultC.*16-bit in HL.*producer_tac=.*(AND).*consumer_tac=.*(OR arg2)" compiler.log
 	grep -q "linear_scan retain function=allocatorRaShiftResultB.*16-bit in HL.*producer_tac=.*(ADD).*consumer_tac=.*(XOR arg2)" compiler.log
-	! grep -q "shift_physical_result function=allocatorRaShiftResult" compiler.log
+	: && ! grep -q "shift_physical_result function=allocatorRaShiftResult" compiler.log
 	test "$$(grep -c "shift left HL by BC" main.asm)" -eq 2
 	test "$$(grep -c "shift right HL by BC" main.asm)" -eq 2
 	test "$$(grep -c "target_specialized_address_materialization.*emitter=shift_16bit_result_address.*kind=STACK_SPILL" compiler.log)" -eq 4
 	test "$$(grep -c "target_specialized_address_materialization function=allocatorRaShiftResultC emitter=shift_16bit_result_address" compiler.log)" -eq 2
 	test "$$(grep -c "target_specialized_address_materialization function=allocatorRaShiftResultB emitter=shift_16bit_result_address" compiler.log)" -eq 2
-	! grep -q "stack offset requested for retained" compiler.log
+	: && ! grep -q "stack offset requested for retained" compiler.log
 	$(BT) -s main.ssc
 
 

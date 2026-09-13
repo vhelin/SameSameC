@@ -27,8 +27,8 @@ all: linked.sms
 	grep -q "array_read_base function=allocatorRaStructDeepPointerFieldReadHl kind=PHY_HL memory_pointer_load=no" compiler.log
 	grep -q "retained result in HL" main.asm
 	grep -q "retained arg1 in HL" main.asm
-	! grep -q "reason=unmigrated_emitter.*ARRAY" compiler.log
-	! grep -q "stack offset requested for retained" compiler.log
+	: && ! grep -q "reason=unmigrated_emitter.*ARRAY" compiler.log
+	: && ! grep -q "stack offset requested for retained" compiler.log
 	$(BT) -s main.ssc
 
 

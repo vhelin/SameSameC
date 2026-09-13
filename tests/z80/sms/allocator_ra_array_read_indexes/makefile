@@ -16,8 +16,8 @@ all: linked.sms
 	grep -q "resolve function=allocatorRaArrayReadIndexHl operand=arg2 kind=PHY_HL" compiler.log
 	grep -q "array_read_index function=allocatorRaArrayReadIndexA kind=PHY_A" compiler.log
 	grep -q "array_read_index function=allocatorRaArrayReadIndexHl kind=PHY_HL" compiler.log
-	! grep -q "reason=unmigrated_emitter.*ARRAY_READ" compiler.log
-	! grep -q "stack offset requested for retained" compiler.log
+	: && ! grep -q "reason=unmigrated_emitter.*ARRAY_READ" compiler.log
+	: && ! grep -q "stack offset requested for retained" compiler.log
 	grep -q "retained arg2 in A" main.asm
 	grep -q "retained arg2 in HL" main.asm
 	$(BT) -s main.ssc

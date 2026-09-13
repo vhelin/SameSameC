@@ -28,7 +28,7 @@ all: linked.sms core_candidate_arbitration_test
 	grep -q "candidate_arbitrate function=coreCandidateArbitrationLateDuplicate.*duplicate_candidate=0 status=invalid_input" core_candidate_arbitration_test.log
 	grep -q "candidate_arbitration function=coreCandidateArbitrationLateDuplicate.*selected=-1 phy=-999 status=invalid_input" core_candidate_arbitration_test.log
 	test $$(grep -c "candidate_arbitration function=.*status=invalid_input" core_candidate_arbitration_test.log) -eq 14
-	! grep -q "candidate_arbitration function=allocatorRaCoreCandidateArbitration.*status=invalid" compiler.log
+	: && ! grep -q "candidate_arbitration function=allocatorRaCoreCandidateArbitration.*status=invalid" compiler.log
 
 
 linked.sms: $(OFILES) makefile

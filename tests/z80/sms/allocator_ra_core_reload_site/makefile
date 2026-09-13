@@ -27,8 +27,8 @@ all: linked.sms core_reload_site_test
 	grep -q "reload_site function=coreReloadBadStart.*status=invalid_input" core_reload_site_test.log
 	grep -q "reload_site function=coreReloadNullEligible.*status=invalid_input" core_reload_site_test.log
 	grep -q "reload_site function=coreReloadNullOutput.*status=invalid_input" core_reload_site_test.log
-	! grep -q "reload_site function=allocatorRaCoreReload.*status=invalid_input" compiler.log
-	! grep -q "stack offset requested for retained" compiler.log
+	: && ! grep -q "reload_site function=allocatorRaCoreReload.*status=invalid_input" compiler.log
+	: && ! grep -q "stack offset requested for retained" compiler.log
 
 
 linked.sms: $(OFILES) makefile

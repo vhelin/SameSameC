@@ -22,8 +22,8 @@ all: linked.sms
 	grep -q "function=allocatorRaPolicyCallGlobalCache.*argument=1 kind=STACK_LOCAL offset=-4.*cache_before=reset cache_action=initialize cache_after=ready" compiler.log
 	grep -q "function=allocatorRaPolicyCallGlobalCache.*argument=3 kind=STACK_LOCAL offset=-5.*cache_before=reset cache_action=initialize cache_after=ready" compiler.log
 	grep -q "function=allocatorRaPolicyCallGlobalCache.*argument=5 kind=STACK_LOCAL offset=-6.*cache_before=reset cache_action=initialize cache_after=ready" compiler.log
-	! grep -q "target_specialized_address_materialization.*emitter=function_call_argument_source.*mode=invalid" compiler.log
-	! grep -q "_load_location_address_to_iy" compiler.log
+	: && ! grep -q "target_specialized_address_materialization.*emitter=function_call_argument_source.*mode=invalid" compiler.log
+	: && ! grep -q "_load_location_address_to_iy" compiler.log
 	$(BT) -s main.ssc
 
 

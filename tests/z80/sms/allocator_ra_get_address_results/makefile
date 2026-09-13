@@ -16,7 +16,7 @@ all: linked.sms
 	grep -q "resolve function=allocatorRaGetAddressArrayResultHl operand=result kind=PHY_HL" compiler.log
 	grep -q "retained result in HL" main.asm
 	grep -q "retained arg1 in HL" main.asm
-	! grep -Eq "reason=unmigrated_emitter.*GET_ADDRESS" compiler.log
+	: && ! grep -Eq "reason=unmigrated_emitter.*GET_ADDRESS" compiler.log
 	$(BT) -s main.ssc
 
 

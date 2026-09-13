@@ -24,8 +24,8 @@ all: linked.sms core_reload_mutation_test
 	grep -q "reload_mutation function=coreReloadMutationNoneWithRegister.*status=invalid_input" core_reload_mutation_test.log
 	grep -q "reload_mutation function=coreReloadMutationInsertWithoutRegister.*status=invalid_input" core_reload_mutation_test.log
 	grep -q "reload_mutation function=coreReloadMutationNullOutput.*status=invalid_input" core_reload_mutation_test.log
-	! grep -q "reload_mutation function=allocatorRaCoreReloadMutation.*status=invalid_input" compiler.log
-	! grep -q "stack offset requested for retained" compiler.log
+	: && ! grep -q "reload_mutation function=allocatorRaCoreReloadMutation.*status=invalid_input" compiler.log
+	: && ! grep -q "stack offset requested for retained" compiler.log
 
 
 linked.sms: $(OFILES) makefile

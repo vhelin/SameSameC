@@ -23,9 +23,9 @@ all: linked.sms
 	grep -q "array_write_base function=allocatorRaPolicyArrayBaseFarWrite kind=STACK_LOCAL memory_pointer_load=no offset=-151" compiler.log
 	grep -q "array_read_base function=allocatorRaPolicyArrayBaseRetainedRead kind=PHY_HL memory_pointer_load=no.*phy=HL" compiler.log
 	grep -q "array_write_base function=allocatorRaPolicyArrayBaseRetainedWrite kind=PHY_HL memory_pointer_load=no.*phy=HL" compiler.log
-	! grep -q "function=allocatorRaPolicyArrayBaseRetainedRead emitter=array_read_base_address" compiler.log
-	! grep -q "function=allocatorRaPolicyArrayBaseRetainedWrite emitter=array_write_base_address" compiler.log
-	! grep -q "target_specialized_address_materialization.*emitter=array_.*_base_address.*mode=invalid" compiler.log
+	: && ! grep -q "function=allocatorRaPolicyArrayBaseRetainedRead emitter=array_read_base_address" compiler.log
+	: && ! grep -q "function=allocatorRaPolicyArrayBaseRetainedWrite emitter=array_write_base_address" compiler.log
+	: && ! grep -q "target_specialized_address_materialization.*emitter=array_.*_base_address.*mode=invalid" compiler.log
 	$(BT) -s main.ssc
 
 

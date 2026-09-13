@@ -17,9 +17,9 @@ all: linked.sms
 	grep -q "function_call_return function=allocatorRaPolicyCallResultStoreGlobal.*kind=GLOBAL size=2 phy=NONE var_type=5 promoted_type=5" compiler.log
 	grep -q "function_call_return function=allocatorRaPolicyCallResultStoreLocal.*kind=STACK_LOCAL size=2 phy=NONE var_type=5 promoted_type=5" compiler.log
 	grep -q "function_call_return function=allocatorRaPolicyCallResultStoreRetained.*kind=PHY_HL size=2 phy=HL" compiler.log
-	! grep -q "function=allocatorRaPolicyCallResultStoreRetained emitter=function_call_result_store" compiler.log
-	! grep -q "target_specialized_address_materialization.*emitter=function_call_result_store.*mode=invalid" compiler.log
-	! grep -q "_load_location_address_to_iy" compiler.log
+	: && ! grep -q "function=allocatorRaPolicyCallResultStoreRetained emitter=function_call_result_store" compiler.log
+	: && ! grep -q "target_specialized_address_materialization.*emitter=function_call_result_store.*mode=invalid" compiler.log
+	: && ! grep -q "_load_location_address_to_iy" compiler.log
 	$(BT) -s main.ssc
 
 

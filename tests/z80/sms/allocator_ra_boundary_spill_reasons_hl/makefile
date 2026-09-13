@@ -13,15 +13,15 @@ all: linked.sms
 	$(BT) -s main.ssc
 	grep -q "migrated_emitter function=allocatorRaBoundarySpillReasonUnmigratedHl.*ARRAY_WRITE.*barrier=removed" compiler.log
 	grep -q "linear_scan retain.*function=allocatorRaBoundarySpillReasonUnmigratedHl.*consumer_tac=.*ARRAY_WRITE.*arg2" compiler.log
-	! grep -q "reason=unmigrated_emitter.*ARRAY_WRITE" compiler.log
-	! grep -q "stack offset requested for retained" compiler.log
+	: && ! grep -q "reason=unmigrated_emitter.*ARRAY_WRITE" compiler.log
+	: && ! grep -q "stack offset requested for retained" compiler.log
 	grep -q "retained arg2 in HL" main.asm
 	grep -q "return_boundary_consumer function=allocatorRaBoundarySpillReasonReturnHl.*action=defer_to_candidate_policy" compiler.log
 	grep -q "linear_scan retain function=allocatorRaBoundarySpillReasonReturnHl.*16-bit in HL.*consumer_tac=.*RETURN_VALUE arg1" compiler.log
 	grep -q "return_value_source function=allocatorRaBoundarySpillReasonReturnHl kind=PHY_HL size=2 phy=HL" compiler.log
 	grep -q "; spill: function_call" main.asm
-	! grep -q "; spill: return" main.asm
-	! grep -q "; spill: unmigrated_emitter" main.asm
+	: && ! grep -q "; spill: return" main.asm
+	: && ! grep -q "; spill: unmigrated_emitter" main.asm
 
 
 linked.sms: $(OFILES) makefile

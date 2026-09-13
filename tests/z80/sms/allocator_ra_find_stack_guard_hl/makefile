@@ -14,7 +14,7 @@ all: linked.sms
 	grep -q "linear_scan retain function=allocatorRaFindStackGuardHL" compiler.log
 	grep -q "retained result in HL" main.asm
 	grep -q "retained arg1 in HL" main.asm
-	! grep -q "stack offset requested for retained" compiler.log
+	: && ! grep -q "stack offset requested for retained" compiler.log
 
 
 linked.sms: $(OFILES) makefile

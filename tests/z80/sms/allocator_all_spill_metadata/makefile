@@ -14,8 +14,8 @@ all: linked.sms
 	grep -q "migrated_emitter function=allocatorAllSpillMetadata.*ARRAY_WRITE.*barrier=removed" compiler.log
 	grep -q "linear_scan retain.*function=allocatorAllSpillMetadata.*consumer_tac=.*ARRAY_WRITE.*arg2" compiler.log
 	grep -q "resolve function=allocatorAllSpillMetadata operand=arg2 kind=PHY_A" compiler.log
-	! grep -q "reason=unmigrated_emitter.*ARRAY_WRITE" compiler.log
-	! grep -q "stack offset requested for retained" compiler.log
+	: && ! grep -q "reason=unmigrated_emitter.*ARRAY_WRITE" compiler.log
+	: && ! grep -q "stack offset requested for retained" compiler.log
 	grep -q "register 0 size 1 spill no phy A" main.asm
 	grep -q "retained result in A" main.asm
 	grep -q "retained arg2 in A" main.asm

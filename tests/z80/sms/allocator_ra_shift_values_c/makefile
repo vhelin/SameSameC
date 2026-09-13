@@ -14,7 +14,7 @@ all: linked.sms
 	test "$$(grep -c "resolve function=allocatorRaShiftValueC operand=arg2 kind=PHY_A.*phy=A" compiler.log)" -eq 2
 	test "$$(grep -c "retained arg1 in C" main.asm)" -ge 2
 	test "$$(grep -c "LD  L,C" main.asm)" -eq 2
-	! grep -q "stack offset requested for retained" compiler.log
+	: && ! grep -q "stack offset requested for retained" compiler.log
 	$(BT) -s main.ssc
 
 linked.sms: $(OFILES) makefile

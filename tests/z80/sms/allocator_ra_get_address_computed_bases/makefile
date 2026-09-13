@@ -21,9 +21,9 @@ all: linked.sms
 	grep -q "resolve function=allocatorRaGetAddressComputedBaseHl operand=arg1 kind=PHY_HL" compiler.log
 	grep -q "get_address_base function=allocatorRaGetAddressComputedBaseA kind=PHY_HL memory_pointer_load=no" compiler.log
 	grep -q "get_address_base function=allocatorRaGetAddressComputedBaseHl kind=PHY_HL memory_pointer_load=no" compiler.log
-	! grep -q "linear_scan retain.*function=allocatorRaGetAddressComputedBaseA.*ASSIGNMENT.*XOR" compiler.log
-	! grep -q "linear_scan retain.*function=allocatorRaGetAddressComputedBaseHl.*ASSIGNMENT.*XOR" compiler.log
-	! grep -q "stack offset requested for retained" compiler.log
+	: && ! grep -q "linear_scan retain.*function=allocatorRaGetAddressComputedBaseA.*ASSIGNMENT.*XOR" compiler.log
+	: && ! grep -q "linear_scan retain.*function=allocatorRaGetAddressComputedBaseHl.*ASSIGNMENT.*XOR" compiler.log
+	: && ! grep -q "stack offset requested for retained" compiler.log
 	grep -q "retained result in HL" main.asm
 	grep -q "retained arg1 in HL" main.asm
 	$(BT) -s main.ssc

@@ -29,8 +29,8 @@ all: linked.sms core_candidate_test
 	grep -q "candidate_discover function=coreCandidateBadRange.*status=invalid_input" core_candidate_test.log
 	grep -q "candidate_discover function=coreCandidateNullCallback.*status=invalid_input" core_candidate_test.log
 	grep -q "candidate_discover function=coreCandidateNullOutput.*status=invalid_input" core_candidate_test.log
-	! grep -q "candidate_discover function=allocatorRaCoreCandidate.*status=invalid_input" compiler.log
-	! grep -q "stack offset requested for retained" compiler.log
+	: && ! grep -q "candidate_discover function=allocatorRaCoreCandidate.*status=invalid_input" compiler.log
+	: && ! grep -q "stack offset requested for retained" compiler.log
 
 
 linked.sms: $(OFILES) makefile

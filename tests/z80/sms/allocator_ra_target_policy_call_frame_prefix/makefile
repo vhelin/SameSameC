@@ -20,11 +20,11 @@ all: linked.sms
 	grep -q "target_call_frame_prefix function=allocatorRaPolicyCallFramePrefix callee=allocatorRaPolicyFrameByteCallee role=caller_restore target=z80 frame_end=-4 return_sp=-1 saved_fp_low=-3 saved_fp_high=-2" compiler.log
 	grep -q "target_call_frame_prefix function=allocatorRaPolicyCallFramePrefix callee=allocatorRaPolicyFrameWordCallee role=caller_setup target=z80 frame_end=-4 return_sp=-1 saved_fp_low=-3 saved_fp_high=-2" compiler.log
 	grep -q "target_call_frame_prefix function=allocatorRaPolicyCallFramePrefix callee=allocatorRaPolicyFrameWordCallee role=caller_restore target=z80 frame_end=-4 return_sp=-1 saved_fp_low=-3 saved_fp_high=-2" compiler.log
-	! grep -q "invalid call-frame prefix" compiler.log
+	: && ! grep -q "invalid call-frame prefix" compiler.log
 	test "$$(grep -c "target_call_frame_prefix function=allocatorRaPolicyCallFramePrefix callee=.* role=caller_setup" compiler.log)" -eq 3
 	test "$$(grep -c "target_call_frame_prefix function=allocatorRaPolicyCallFramePrefix callee=.* role=caller_restore" compiler.log)" -eq 3
 	test "$$(grep -c "old stack frame address -> DE" main.asm)" -eq 4
-	! grep -q "stack offset requested for retained" compiler.log
+	: && ! grep -q "stack offset requested for retained" compiler.log
 	$(BT) -s main.ssc
 
 

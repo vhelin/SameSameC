@@ -21,7 +21,7 @@ all: linked.sms core_primary_candidate_evaluation_test
 	grep -q "primary_candidate_evaluation function=corePrimaryCandidateBadPath.*invalid_fact=path_safe status=invalid_callback" core_primary_candidate_evaluation_test.log
 	grep -q "primary_candidate_evaluation function=corePrimaryCandidateBadActive.*invalid_fact=active status=invalid_callback" core_primary_candidate_evaluation_test.log
 	test $$(grep -c "primary_candidate_evaluation function=.*status=invalid_input" core_primary_candidate_evaluation_test.log) -eq 8
-	! grep -q "primary_candidate_evaluation function=allocatorRaCorePrimaryCandidateEvaluation.*status=invalid" compiler.log
+	: && ! grep -q "primary_candidate_evaluation function=allocatorRaCorePrimaryCandidateEvaluation.*status=invalid" compiler.log
 
 
 linked.sms: $(OFILES) makefile

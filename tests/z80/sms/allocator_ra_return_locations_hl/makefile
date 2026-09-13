@@ -13,8 +13,8 @@ all: linked.sms
 	grep -q "return_boundary_consumer function=allocatorRaReturnLocationsHlTemp.*action=defer_to_candidate_policy" compiler.log
 	grep -q "linear_scan retain function=allocatorRaReturnLocationsHlTemp.*16-bit in HL.*consumer_tac=.*RETURN_VALUE arg1" compiler.log
 	grep -q "return_value_source function=allocatorRaReturnLocationsHlTemp kind=PHY_HL size=2 phy=HL" compiler.log
-	! grep -q "function=allocatorRaReturnLocationsHlTemp emitter=return_value_source_address" compiler.log
-	! grep -q "function=allocatorRaReturnLocationsHlConst emitter=return_value_source_address" compiler.log
+	: && ! grep -q "function=allocatorRaReturnLocationsHlTemp emitter=return_value_source_address" compiler.log
+	: && ! grep -q "function=allocatorRaReturnLocationsHlConst emitter=return_value_source_address" compiler.log
 	$(BT) -s main.ssc
 
 

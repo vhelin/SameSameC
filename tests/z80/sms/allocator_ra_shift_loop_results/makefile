@@ -31,17 +31,17 @@ all: linked.sms
 	grep -q "loop_register_selection function=allocatorRaShiftLoopConflict.*selected=-1 phy=0.*selection=ineligible reason=no_path_safe_register status=complete" compiler.log
 	grep -q "shift_result function=allocatorRaShiftLoopConflict op=SHIFT_LEFT kind=STACK_SPILL size=1 phy=NONE var_type=4 promoted_type=4" compiler.log
 	sed -n '/allocatorRaShiftLeftLoop:/,/\.ENDS/p' main.asm | grep -q "ADD HL,HL"
-	! sed -n '/allocatorRaShiftLeftLoop:/,/\.ENDS/p' main.asm | grep -q "SRL H"
+	: && ! sed -n '/allocatorRaShiftLeftLoop:/,/\.ENDS/p' main.asm | grep -q "SRL H"
 	sed -n '/allocatorRaShiftRightLoop:/,/\.ENDS/p' main.asm | grep -q "SRL H"
-	! sed -n '/allocatorRaShiftRightLoop:/,/\.ENDS/p' main.asm | grep -q "ADD HL,HL"
+	: && ! sed -n '/allocatorRaShiftRightLoop:/,/\.ENDS/p' main.asm | grep -q "ADD HL,HL"
 	test "$$(grep -c "LD  C,L" main.asm)" -eq 2
 	test "$$(grep -c "retained result in C" main.asm)" -eq 2
 	test "$$(grep -c "retained arg2 in C" main.asm)" -eq 2
-	! sed -n '/allocatorRaShiftLeftLoop:/,/\.ENDS/p' main.asm | grep -q "(IX-7)\|(IY-7)"
-	! sed -n '/allocatorRaShiftRightLoop:/,/\.ENDS/p' main.asm | grep -q "(IX-7)\|(IY-7)"
+	: && ! sed -n '/allocatorRaShiftLeftLoop:/,/\.ENDS/p' main.asm | grep -q "(IX-7)\|(IY-7)"
+	: && ! sed -n '/allocatorRaShiftRightLoop:/,/\.ENDS/p' main.asm | grep -q "(IX-7)\|(IY-7)"
 	sed -n '/allocatorRaShiftLoopConflict:/,/\.ENDS/p' main.asm | grep -q "LD  (IX-10),L"
-	! sed -n '/allocatorRaShiftLoopConflict:/,/\.ENDS/p' main.asm | grep -q "retained result in C"
-	! grep -q "stack offset requested for retained" compiler.log
+	: && ! sed -n '/allocatorRaShiftLoopConflict:/,/\.ENDS/p' main.asm | grep -q "retained result in C"
+	: && ! grep -q "stack offset requested for retained" compiler.log
 	$(BT) -s main.ssc
 
 

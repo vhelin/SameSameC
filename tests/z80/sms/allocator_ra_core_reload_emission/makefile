@@ -37,8 +37,8 @@ all: linked.sms core_reload_emission_test
 	grep -q "reload_emission function=coreReloadEmissionNegativeBytes.*bytes=-1 status=invalid_input" core_reload_emission_test.log
 	grep -q "reload_emission function=coreReloadEmissionStaleSkip requested=no.*status=invalid_input" core_reload_emission_test.log
 	grep -q "reload_emission function=coreReloadEmissionNullOutput.*status=invalid_input" core_reload_emission_test.log
-	! grep -q "reload_emission function=allocatorRaCoreReloadEmission.*status=invalid_input" compiler.log
-	! grep -q "stack offset requested for retained" compiler.log
+	: && ! grep -q "reload_emission function=allocatorRaCoreReloadEmission.*status=invalid_input" compiler.log
+	: && ! grep -q "stack offset requested for retained" compiler.log
 
 
 linked.sms: $(OFILES) makefile

@@ -21,8 +21,8 @@ all: linked.sms
 	grep -q "linear_scan retain_interval.*function=allocatorRaStructPointerArrayRead.*ARRAY_READ.*XOR arg1" compiler.log
 	grep -q "array_write_base function=allocatorRaStructPointerArrayWrite kind=PHY_HL.*phy=HL" compiler.log
 	grep -q "array_read_base function=allocatorRaStructPointerArrayRead kind=PHY_HL.*phy=HL" compiler.log
-	! grep -q "reason=unmigrated_emitter.*ARRAY" compiler.log
-	! grep -q "stack offset requested for retained" compiler.log
+	: && ! grep -q "reason=unmigrated_emitter.*ARRAY" compiler.log
+	: && ! grep -q "stack offset requested for retained" compiler.log
 	$(BT) -s main.ssc
 
 linked.sms: $(OFILES) makefile

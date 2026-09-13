@@ -20,12 +20,12 @@ all: linked.sms linked_default.sms linked_no_ra.sms
 	grep -q "target_argument_byte_access function=allocatorRaPolicyArgumentByteAccess callee=allocatorRaPolicyByteAccessSink argument=5 transport=truncate source_low=0 source_high=1 target_low=0 target_high=-1 target=z80" compiler.log
 	grep -q "target_argument_byte_access function=allocatorRaPolicyArgumentByteAccess callee=allocatorRaPolicyByteAccessSink argument=6 transport=word source_low=0 source_high=1 target_low=0 target_high=1 target=z80" compiler.log
 	test "$$(grep -c "target_argument_byte_access function=allocatorRaPolicyArgumentByteAccess" compiler.log)" -eq 6
-	! grep -q "invalid byte access" compiler.log
-	! grep -q "target_argument_byte_access" default.log
-	! grep -q "target_argument_byte_access" no_ra.log
+	: && ! grep -q "invalid byte access" compiler.log
+	: && ! grep -q "target_argument_byte_access" default.log
+	: && ! grep -q "target_argument_byte_access" no_ra.log
 	cmp -s linked_default.sms linked_no_ra.sms
 	test "$$(grep -c "copy argument" main.asm)" -eq 6
-	! grep -q "stack offset requested for retained" compiler.log
+	: && ! grep -q "stack offset requested for retained" compiler.log
 	$(BT) -s main.ssc
 
 

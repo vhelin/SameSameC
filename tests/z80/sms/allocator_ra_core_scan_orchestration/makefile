@@ -122,14 +122,14 @@ all: linked.sms core_scan_orchestration_test
 	grep -q "candidate_transition_apply function=coreCandidateApplyBadRetain.*stage=slot_transition status=dependency_failed" core_scan_orchestration_test.log
 	grep -q "candidate_transition_apply function=coreCandidateApplyStale.*stage=slot_transition status=dependency_failed" core_scan_orchestration_test.log
 	test `grep -c "candidate_transition_apply function=.*status=invalid_input" core_scan_orchestration_test.log` -eq 2
-	! grep -q "candidate_transition function=allocatorRaCoreScanOrchestration.*status=invalid" compiler.log
-	! grep -q "candidate_transition_prepare function=allocatorRaCoreScanOrchestration.*status=invalid\|candidate_transition_prepare function=allocatorRaCoreScanOrchestration.*status=dependency_failed" compiler.log
-	! grep -q "candidate_transition_execute function=allocatorRaCoreScanOrchestration.*status=invalid\|candidate_transition_execute function=allocatorRaCoreScanOrchestration.*status=dependency_failed" compiler.log
-	! grep -q "active_replaceability function=allocatorRaCoreScanOrchestration.*status=invalid" compiler.log
-	! grep -q "candidate_selection_finalize function=allocatorRaCoreScanOrchestration.*status=invalid\|candidate_selection_finalize function=allocatorRaCoreScanOrchestration.*status=dependency_failed" compiler.log
-	! grep -q "candidate_selection_prepare function=allocatorRaCoreScanOrchestration.*status=invalid\|candidate_selection_prepare function=allocatorRaCoreScanOrchestration.*status=dependency_failed" compiler.log
-	! grep -q "candidate_selection_orchestrate function=allocatorRaCoreScanOrchestration.*status=invalid\|candidate_selection_orchestrate function=allocatorRaCoreScanOrchestration.*status=dependency_failed" compiler.log
-	! grep -q "candidate_transition_apply function=allocatorRaCoreScanOrchestration.*status=invalid\|candidate_transition_apply function=allocatorRaCoreScanOrchestration.*status=dependency_failed" compiler.log
+	: && ! grep -q "candidate_transition function=allocatorRaCoreScanOrchestration.*status=invalid" compiler.log
+	: && ! grep -q "candidate_transition_prepare function=allocatorRaCoreScanOrchestration.*status=invalid\|candidate_transition_prepare function=allocatorRaCoreScanOrchestration.*status=dependency_failed" compiler.log
+	: && ! grep -q "candidate_transition_execute function=allocatorRaCoreScanOrchestration.*status=invalid\|candidate_transition_execute function=allocatorRaCoreScanOrchestration.*status=dependency_failed" compiler.log
+	: && ! grep -q "active_replaceability function=allocatorRaCoreScanOrchestration.*status=invalid" compiler.log
+	: && ! grep -q "candidate_selection_finalize function=allocatorRaCoreScanOrchestration.*status=invalid\|candidate_selection_finalize function=allocatorRaCoreScanOrchestration.*status=dependency_failed" compiler.log
+	: && ! grep -q "candidate_selection_prepare function=allocatorRaCoreScanOrchestration.*status=invalid\|candidate_selection_prepare function=allocatorRaCoreScanOrchestration.*status=dependency_failed" compiler.log
+	: && ! grep -q "candidate_selection_orchestrate function=allocatorRaCoreScanOrchestration.*status=invalid\|candidate_selection_orchestrate function=allocatorRaCoreScanOrchestration.*status=dependency_failed" compiler.log
+	: && ! grep -q "candidate_transition_apply function=allocatorRaCoreScanOrchestration.*status=invalid\|candidate_transition_apply function=allocatorRaCoreScanOrchestration.*status=dependency_failed" compiler.log
 
 
 linked.sms: $(OFILES) makefile

@@ -20,8 +20,8 @@ all: linked.sms
 	grep -q "array_write_base function=allocatorRaArrayWritePointerBaseHl kind=STACK_LOCAL memory_pointer_load=yes" compiler.log
 	grep -q "function=allocatorRaArrayWritePointerBaseA emitter=array_write_base_address operand=result kind=STACK_LOCAL offset=-6 mode=frame_address folded_offset=0 address_target=IY target=z80" compiler.log
 	grep -q "function=allocatorRaArrayWritePointerBaseHl emitter=array_write_base_address operand=result kind=STACK_LOCAL offset=-7 mode=frame_address folded_offset=0 address_target=IY target=z80" compiler.log
-	! grep -q "reason=unmigrated_emitter.*ARRAY_WRITE" compiler.log
-	! grep -q "stack offset requested for retained" compiler.log
+	: && ! grep -q "reason=unmigrated_emitter.*ARRAY_WRITE" compiler.log
+	: && ! grep -q "stack offset requested for retained" compiler.log
 	grep -q "retained arg1 in A" main.asm
 	grep -q "retained arg1 in HL" main.asm
 	$(BT) -s main.ssc

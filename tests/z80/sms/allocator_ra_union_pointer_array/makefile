@@ -27,7 +27,7 @@ all: linked.sms
 	grep -q "array_read_base function=allocatorRaUnionPointerArrayRead kind=PHY_HL.*phy=HL" compiler.log
 	grep -q "array_write_base function=allocatorRaUnionPointerArrayIncrement kind=PHY_BC.*phy=BC" compiler.log
 	grep -q "array_write_base function=allocatorRaUnionPointerArrayDecrement kind=PHY_BC.*phy=BC" compiler.log
-	! grep -q "stack offset requested for retained" compiler.log
+	: && ! grep -q "stack offset requested for retained" compiler.log
 	$(BT) -s main.ssc
 
 linked.sms: $(OFILES) makefile

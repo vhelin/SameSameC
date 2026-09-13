@@ -35,8 +35,8 @@ all: linked.sms core_candidate_evaluation_test
 	grep -q "candidate_selection function=coreCandidateSelectionFirst.*selected=0 phy=88 status=complete" core_candidate_evaluation_test.log
 	test $$(grep -c "candidate_selection function=.*status=dependency_failed" core_candidate_evaluation_test.log) -eq 4
 	test $$(grep -c "candidate_selection function=.*status=invalid_input" core_candidate_evaluation_test.log) -eq 4
-	! grep -q "candidate_evaluations function=allocatorRaCoreCandidateEvaluation.*status=invalid" compiler.log
-	! grep -q "candidate_selection function=allocatorRaCoreCandidateEvaluation.*status=invalid" compiler.log
+	: && ! grep -q "candidate_evaluations function=allocatorRaCoreCandidateEvaluation.*status=invalid" compiler.log
+	: && ! grep -q "candidate_selection function=allocatorRaCoreCandidateEvaluation.*status=invalid" compiler.log
 
 
 linked.sms: $(OFILES) makefile

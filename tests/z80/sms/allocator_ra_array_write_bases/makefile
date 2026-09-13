@@ -16,8 +16,8 @@ all: linked.sms
 	grep -q "linear_scan retain.*function=allocatorRaArrayWriteBaseStructHl.*consumer_tac=.*ARRAY_WRITE.*result" compiler.log
 	grep -q "resolve function=allocatorRaArrayWriteBaseStructA operand=result kind=PHY_HL" compiler.log
 	grep -q "resolve function=allocatorRaArrayWriteBaseStructHl operand=result kind=PHY_HL" compiler.log
-	! grep -q "reason=unmigrated_emitter.*ARRAY_WRITE" compiler.log
-	! grep -q "stack offset requested for retained" compiler.log
+	: && ! grep -q "reason=unmigrated_emitter.*ARRAY_WRITE" compiler.log
+	: && ! grep -q "stack offset requested for retained" compiler.log
 	grep -q "retained result in HL" main.asm
 	$(BT) -s main.ssc
 

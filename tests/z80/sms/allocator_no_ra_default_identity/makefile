@@ -14,8 +14,8 @@ all: linked.sms linked_no_ra.sms
 	cmp -s default.asm no_ra.asm
 	cmp -s linked.sms linked_no_ra.sms
 	$(BT) -s main.ssc
-	! grep -q "register_allocator:" default.log
-	! grep -q "register_allocator:" no_ra.log
+	: && ! grep -q "register_allocator:" default.log
+	: && ! grep -q "register_allocator:" no_ra.log
 
 
 linked.sms: default.asm makefile

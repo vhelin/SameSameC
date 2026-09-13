@@ -22,8 +22,8 @@ all: linked.sms core_reload_action_test
 	grep -q "reload_action function=coreReloadActionEqual.*status=invalid_input" core_reload_action_test.log
 	grep -q "reload_action function=coreReloadActionOpaqueInsert.*reload_phy=0 action=insert reason=target_register_selected status=complete" core_reload_action_test.log
 	grep -q "reload_action function=coreReloadActionOpaqueNone.*reload_phy=-1 action=none reason=target_unsupported status=complete" core_reload_action_test.log
-	! grep -q "reload_action function=allocatorRaCoreReloadAction.*status=invalid_input" compiler.log
-	! grep -q "stack offset requested for retained" compiler.log
+	: && ! grep -q "reload_action function=allocatorRaCoreReloadAction.*status=invalid_input" compiler.log
+	: && ! grep -q "stack offset requested for retained" compiler.log
 
 
 linked.sms: $(OFILES) makefile

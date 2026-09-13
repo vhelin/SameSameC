@@ -20,12 +20,12 @@ all: linked.sms
 	grep -q "target_argument_layout function=allocatorRaPolicyCallAlternate argument=1 size=1 target=z80 slot_start=-5 frame_end=-6" compiler.log
 	grep -q "target_argument_layout function=allocatorRaPolicyCallAlternate argument=2 size=1 target=z80 slot_start=-6 frame_end=-7" compiler.log
 	grep -q "target_argument_layout function=allocatorRaPolicyCallAlternate argument=3 size=1 target=z80 slot_start=-7 frame_end=-8" compiler.log
-	! grep -q "target_argument_layout function=main" compiler.log
-	! grep -q "Target policy cannot place argument" compiler.log
+	: && ! grep -q "target_argument_layout function=main" compiler.log
+	: && ! grep -q "Target policy cannot place argument" compiler.log
 	grep -q "copy argument 1" main.asm
 	grep -q "copy argument 2" main.asm
 	grep -q "copy argument 3" main.asm
-	! grep -q "stack offset requested for retained" compiler.log
+	: && ! grep -q "stack offset requested for retained" compiler.log
 	$(BT) -s main.ssc
 
 

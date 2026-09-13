@@ -25,9 +25,9 @@ all: linked.sms
 	grep -q "retained arg2 in HL" main.asm
 	grep -q "sign extend 8-bit C -> 16-bit BC preserving A" main.asm
 	grep -q "array_write_index function=allocatorRaArrayWritePromotedIndexHl.*kind=PHY_HL.*phy=HL.*var_type=4" compiler.log
-	! grep -q "reason=unmigrated_emitter.*ARRAY_WRITE" compiler.log
-	! grep -q "stack offset requested for retained" compiler.log
-	! grep -q "loop_stack_storage_adapter" compiler.log
+	: && ! grep -q "reason=unmigrated_emitter.*ARRAY_WRITE" compiler.log
+	: && ! grep -q "stack offset requested for retained" compiler.log
+	: && ! grep -q "loop_stack_storage_adapter" compiler.log
 	$(BT) -s main.ssc
 
 

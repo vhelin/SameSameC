@@ -14,7 +14,7 @@ all: linked.sms core_active_slot_storage_test
 	./core_active_slot_storage_test > core_active_slot_storage_test.log 2>&1
 	for function in allocatorRaCoreActiveSlotStorageByte allocatorRaCoreActiveSlotStorageWord main; do grep -q "active_slot_storage function=$$function slots=5 bytes=100 status=complete" compiler.log || exit 1; grep -q "target_active_slots function=$$function target=z80 slots=5 status=complete bytes=100 storage=policy_sized" compiler.log || exit 1; grep -q "target_active_slots_release function=$$function target=z80 slots=5 bytes=100 status=complete" compiler.log || exit 1; done
 	test $$(grep -c "active_slot_storage function=allocatorRaCoreActiveSlotStorage.*status=complete" compiler.log) -eq 2
-	! grep -q "target_active_slots.*status=out_of_memory" compiler.log
+	: && ! grep -q "target_active_slots.*status=out_of_memory" compiler.log
 	awk '/active_slot_storage function=allocatorRaCoreActiveSlotStorageByte/{getline; if ($$0 ~ /target_active_slots function=allocatorRaCoreActiveSlotStorageByte/) found=1} END {exit !found}' compiler.log
 	grep -q "active_slot_storage function=coreActiveSlotStorageOne slots=1 bytes=20 status=complete" core_active_slot_storage_test.log
 	grep -q "active_slot_storage function=coreActiveSlotStorageThree slots=3 bytes=60 status=complete" core_active_slot_storage_test.log

@@ -24,8 +24,8 @@ all: linked.sms core_temp_state_test
 	grep -q "temp_state_retain function=coreBadBooleanState.*status=invalid_input" core_temp_state_test.log
 	grep -q "temp_state_spill function=coreBadSpilledState.*status=invalid_input" core_temp_state_test.log
 	grep -q "temp_state_spill function=coreNullReason.*status=invalid_input" core_temp_state_test.log
-	! grep -q "temp_state_.*function=allocatorRaCoreTempState.*status=invalid_input" compiler.log
-	! grep -q "stack offset requested for retained" compiler.log
+	: && ! grep -q "temp_state_.*function=allocatorRaCoreTempState.*status=invalid_input" compiler.log
+	: && ! grep -q "stack offset requested for retained" compiler.log
 
 
 linked.sms: $(OFILES) makefile

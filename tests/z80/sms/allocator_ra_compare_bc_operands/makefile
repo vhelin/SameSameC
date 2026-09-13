@@ -18,7 +18,7 @@ all: linked.sms
 	grep -q "retained arg1 in C" main.asm
 	test "$$(grep -c "retained arg1 in C" main.asm)" -eq 2
 	grep -q "SUB A,B" main.asm
-	! grep -q "stack offset requested for retained" compiler.log
+	: && ! grep -q "stack offset requested for retained" compiler.log
 	$(BT) -s main.ssc
 
 
