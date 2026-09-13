@@ -1,2 +1,6 @@
 *.sh text eol=lf
 *.mk text eol=lf
+makefile text eol=lf
+Makefile text eol=lf
+**/makefile text eol=lf
+**/Makefile text eol=lf

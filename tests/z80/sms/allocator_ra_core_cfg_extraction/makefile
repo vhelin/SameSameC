@@ -17,9 +17,9 @@ all: linked.sms core_cfg_storage_test
 	test "$$(grep -c "register_allocator_core: block_build function=allocatorRaCoreCfgDiamond instructions=80 blocks=9 algorithm=leader_partition status=complete" compiler.log)" -eq 1
 	test "$$(grep -c "register_allocator_core: block_build function=allocatorRaCoreCfgLoop instructions=80 blocks=5 algorithm=leader_partition status=complete" compiler.log)" -eq 1
 	test "$$(grep -c "register_allocator_core: block_build function=allocatorRaCoreCfgBoundaries instructions=80 blocks=5 algorithm=leader_partition status=complete" compiler.log)" -eq 1
-	test "$$(grep -c "register_allocator_core: cfg_build function=allocatorRaCoreCfgDiamond blocks=9 edges=8 algorithm=label_resolved status=complete" compiler.log)" -eq 1
-	test "$$(grep -c "register_allocator_core: cfg_build function=allocatorRaCoreCfgLoop blocks=5 edges=3 algorithm=label_resolved status=complete" compiler.log)" -eq 1
-	test "$$(grep -c "register_allocator_core: cfg_build function=allocatorRaCoreCfgBoundaries blocks=5 edges=0 algorithm=label_resolved status=complete" compiler.log)" -eq 1
+	test "$$(grep -c "register_allocator_core: cfg_build function=allocatorRaCoreCfgDiamond blocks=9 edges=10 algorithm=label_resolved status=complete" compiler.log)" -eq 1
+	test "$$(grep -c "register_allocator_core: cfg_build function=allocatorRaCoreCfgLoop blocks=5 edges=5 algorithm=label_resolved status=complete" compiler.log)" -eq 1
+	test "$$(grep -c "register_allocator_core: cfg_build function=allocatorRaCoreCfgBoundaries blocks=5 edges=4 algorithm=label_resolved status=complete" compiler.log)" -eq 1
 	grep -q "join_path_reservation_commit function=allocatorRaCoreCfgDiamond temp=r0 .*reservations=4 .*committed=4 .*commit=committed status=complete" compiler.log
 	test "$$(grep -c "join_assignment_apply_entry function=allocatorRaCoreCfgDiamond temp=r0 .*phy=C status=complete" compiler.log)" -eq 3
 	test "$$(grep -c "block_exit_spill_decision function=allocatorRaCoreCfgDiamond .*temp=r0 .*spill=exempt" compiler.log)" -eq 3
@@ -33,6 +33,10 @@ all: linked.sms core_cfg_storage_test
 	grep -q "basic_block function=allocatorRaCoreCfgBoundaries block=2.*reason=inline_asm" compiler.log
 	grep -q "basic_block function=allocatorRaCoreCfgBoundaries block=3.*reason=inline_asm" compiler.log
 	grep -q "basic_block function=allocatorRaCoreCfgBoundaries block=4.*reason=return" compiler.log
+	grep -q "cfg_edge function=allocatorRaCoreCfgBoundaries from_block=0 to_block=1 kind=fallthrough" compiler.log
+	grep -q "cfg_edge function=allocatorRaCoreCfgBoundaries from_block=1 to_block=2 kind=fallthrough" compiler.log
+	grep -q "cfg_edge function=allocatorRaCoreCfgBoundaries from_block=2 to_block=3 kind=fallthrough" compiler.log
+	grep -q "cfg_edge function=allocatorRaCoreCfgBoundaries from_block=3 to_block=4 kind=fallthrough" compiler.log
 	: && ! grep -q "register_allocator_core: block_build.*status=capacity_exceeded" compiler.log
 	: && ! grep -q "register_allocator_core: cfg_build.*status=capacity_exceeded" compiler.log
 	: && ! grep -q "register_allocator_core: cfg_build.*status=missing_instruction" compiler.log
@@ -49,6 +53,7 @@ all: linked.sms core_cfg_storage_test
 	grep -q "block_build function=coreCfgPostMutation instructions=5 blocks=2.*status=complete" core_cfg_storage_test.log
 	grep -q "cfg_build function=coreCfgPostMutation blocks=2 edges=2.*status=complete" core_cfg_storage_test.log
 	grep -q "post_mutation_reconstruction instructions=5 inserted=1 blocks=2 edges=2 shifted_jump=2 shifted_label=3 status=complete" core_cfg_storage_test.log
+	grep -q "cfg_build function=coreCfgCallAsmFallthrough blocks=4 edges=3.*status=complete" core_cfg_storage_test.log
 
 
 linked.sms: $(OFILES) makefile

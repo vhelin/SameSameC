@@ -174,6 +174,65 @@ static int test_post_mutation_reconstruction(void) {
   return status;
 }
 
+static int test_call_asm_fallthrough(void) {
+
+  struct register_allocator_control_flow_storage storage;
+  struct register_allocator_instruction *instructions;
+  struct register_allocator_basic_block *blocks;
+  struct register_allocator_cfg_edge *edges;
+  int block_count;
+  int edge_count;
+  int instruction_index;
+  int status;
+
+  block_count = 0;
+  edge_count = 0;
+  if (register_allocator_plan_control_flow_storage("coreCfgCallAsmFallthrough",
+      4, &storage) == FAILED)
+    return FAILED;
+  instructions = (struct register_allocator_instruction *)calloc(1,
+      storage.instruction_bytes);
+  blocks = (struct register_allocator_basic_block *)calloc(1,
+      storage.block_bytes);
+  edges = (struct register_allocator_cfg_edge *)calloc(1, storage.edge_bytes);
+  if (instructions == NULL || blocks == NULL || edges == NULL) {
+    free(edges);
+    free(blocks);
+    free(instructions);
+    return FAILED;
+  }
+  for (instruction_index = 0; instruction_index < 4; instruction_index++)
+    clear_instruction(&instructions[instruction_index], instruction_index);
+  instructions[0].end_reason = RA_BLOCK_END_INLINE_ASM;
+  instructions[1].end_reason = RA_BLOCK_END_FUNCTION_CALL;
+  instructions[2].end_reason = RA_BLOCK_END_UNMIGRATED;
+  instructions[3].end_reason = RA_BLOCK_END_RETURN;
+
+  status = register_allocator_build_basic_blocks("coreCfgCallAsmFallthrough",
+      instructions, 4, blocks, storage.max_blocks, &block_count);
+  if (status == SUCCEEDED)
+    status = register_allocator_build_cfg("coreCfgCallAsmFallthrough",
+        instructions, 4, blocks, block_count, edges, storage.max_edges,
+        &edge_count);
+  if (status == SUCCEEDED && (block_count != 4 || edge_count != 3 ||
+      blocks[0].end_reason != RA_BLOCK_END_INLINE_ASM ||
+      blocks[1].end_reason != RA_BLOCK_END_FUNCTION_CALL ||
+      blocks[2].end_reason != RA_BLOCK_END_UNMIGRATED ||
+      blocks[3].end_reason != RA_BLOCK_END_RETURN ||
+      edges[0].from_block != 0 || edges[0].to_block != 1 ||
+      edges[0].kind != RA_CFG_EDGE_FALLTHROUGH ||
+      edges[1].from_block != 1 || edges[1].to_block != 2 ||
+      edges[1].kind != RA_CFG_EDGE_FALLTHROUGH ||
+      edges[2].from_block != 2 || edges[2].to_block != 3 ||
+      edges[2].kind != RA_CFG_EDGE_FALLTHROUGH))
+    status = FAILED;
+
+  free(edges);
+  free(blocks);
+  free(instructions);
+  return status;
+}
+
 int main(void) {
 
   struct register_allocator_control_flow_storage storage;
@@ -218,5 +277,7 @@ int main(void) {
     return 6;
   if (test_post_mutation_reconstruction() == FAILED)
     return 7;
+  if (test_call_asm_fallthrough() == FAILED)
+    return 8;
   return 0;
 }

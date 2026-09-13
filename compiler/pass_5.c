@@ -7652,11 +7652,6 @@ static int _debug_register_allocator_join_reconciliation(struct tree_node *funct
             loop_flow_profile.back_edge_count > 1 ?
             "inspect_multi_latch" : "preserve_stack"));
       effective_loop_join = loop_join;
-      if (loop_flow_profile.entry_edge_count == 1 &&
-          loop_flow_profile.back_edge_count > 1 &&
-          effective_loop_join.entry_predecessor >= 0 &&
-          effective_loop_join.latch_predecessor >= 0)
-        effective_loop_join.status = RA_LOOP_JOIN_READY;
 select_loop_candidate:
       candidate_live_in = (char *)malloc(storage.buffer_bytes);
       if (candidate_live_in == NULL) {
@@ -7819,6 +7814,7 @@ select_loop_candidate:
           (loop_candidate.status == RA_LOOP_CANDIDATE_AMBIGUOUS ?
           "ambiguous" : "ineligible"), loop_candidate_reason);
         if (effective_loop_join.status == RA_LOOP_JOIN_READY &&
+          loop_flow_profile.back_edge_count <= 1 &&
           ((loop_candidate.status == RA_LOOP_CANDIDATE_INELIGIBLE &&
           loop_candidate.reason == RA_LOOP_CANDIDATE_REASON_NO_LIVE_IN) ||
           loop_candidate.status == RA_LOOP_CANDIDATE_READY)) {

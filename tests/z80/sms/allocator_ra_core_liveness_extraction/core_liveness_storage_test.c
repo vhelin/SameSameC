@@ -1537,6 +1537,17 @@ static int test_join_schedule_planning(void) {
       assignments[2].physical_register != 4)
     return FAILED;
 
+  initialize_join_schedule_outputs(assignments, &schedule);
+  if (register_allocator_plan_join_schedule("coreJoinScheduleResult", 12,
+      2, -1, paths, 2, producer_physical_registers, 10, 0, -1, 4,
+      assignments, 3, &schedule) == FAILED ||
+      schedule.status != RA_JOIN_SCHEDULE_READY ||
+      schedule.assignment_count != 3 ||
+      assignments[2].role != RA_JOIN_ASSIGNMENT_CONSUMER ||
+      assignments[2].instruction != 10 || assignments[2].operand != 0 ||
+      assignments[2].physical_register != 4)
+    return FAILED;
+
   paths[1].definition_instruction = paths[0].definition_instruction;
   producer_physical_registers[0] = 4;
   producer_physical_registers[1] = -1;
@@ -1632,7 +1643,7 @@ static int test_join_schedule_planning(void) {
       2, -1, paths, 2, producer_physical_registers, 12, 1, -1, 4,
       assignments, 3, &schedule) != FAILED ||
       register_allocator_plan_join_schedule("coreJoinScheduleOperand", 12, 2,
-      -1, paths, 2, producer_physical_registers, 10, 0, -1, 4,
+      -1, paths, 2, producer_physical_registers, 10, 3, -1, 4,
       assignments, 3, &schedule) != FAILED ||
       register_allocator_plan_join_schedule("coreJoinScheduleCapacityValue",
       12, 2, -1, paths, 2, producer_physical_registers, 10, 1, -1, 4,
@@ -1836,6 +1847,16 @@ static int test_join_assignment_application(void) {
   initialize_join_assignment_application(assignments, &schedule, &context,
       &application);
   assignments[2].operand = 0;
+  if (register_allocator_apply_join_assignments(
+      "coreJoinAssignmentConsumerResult", 12, 2, -1, assignments, 3,
+      &schedule, &context, apply_join_assignment_transaction,
+      &application) == FAILED ||
+      application.status != RA_JOIN_ASSIGNMENT_APPLICATION_APPLIED ||
+      application.applied_count != 3)
+    return FAILED;
+  initialize_join_assignment_application(assignments, &schedule, &context,
+      &application);
+  assignments[2].operand = 3;
   if (expect_invalid_join_assignment_application(
       "coreJoinAssignmentConsumerOperand", assignments, 3, &schedule,
       &context, &application) == FAILED)
@@ -5229,11 +5250,11 @@ static int test_loop_latch_selection(void) {
   if (register_allocator_select_loop_latch("coreLoopLatchUnique", 5, 10,
       blocks, 1, edges, 6, 2, instructions, loop_fact_is_active,
       loop_fact_writes_temp, &selection) == FAILED ||
-      selection.status != RA_LOOP_LATCH_SELECTION_READY ||
+      selection.status != RA_LOOP_LATCH_SELECTION_AMBIGUOUS ||
       selection.entry_edge_count != 1 || selection.back_edge_count != 2 ||
       selection.defining_latch_count != 1 ||
       selection.latch_definition != 7 ||
-      selection.loop_join.status != RA_LOOP_JOIN_READY ||
+      selection.loop_join.status != RA_LOOP_JOIN_AMBIGUOUS ||
       selection.loop_join.entry_predecessor != 0 ||
       selection.loop_join.latch_predecessor != 3 ||
       selection.loop_join.entry_edge != 0 ||
@@ -5243,9 +5264,10 @@ static int test_loop_latch_selection(void) {
   instructions[7].writes = NO;
   initialize_loop_latch_selection(&selection);
   if (register_allocator_select_loop_latch("coreLoopLatchMissing", 5, 10,
-      blocks, 1, edges, 6, 2, instructions, loop_fact_is_active,
+      blocks, 1, edges, 4, 2, instructions, loop_fact_is_active,
       loop_fact_writes_temp, &selection) == FAILED ||
       selection.status != RA_LOOP_LATCH_SELECTION_INELIGIBLE ||
+      selection.back_edge_count != 1 ||
       selection.defining_latch_count != 0 ||
       selection.loop_join.status != RA_LOOP_JOIN_NOT_LOOP)
     return FAILED;
@@ -5459,6 +5481,17 @@ static int test_loop_join_fact_discovery(void) {
       facts.consumer_instruction != 4 || facts.consumer_operand != 2)
     return FAILED;
 
+  instructions[4].operand = 0;
+  initialize_loop_facts(&facts);
+  if (register_allocator_discover_loop_join_facts("coreLoopFactsResult", 4,
+      12, blocks, 1, 2, &loop_join, instructions, loop_fact_is_active,
+      loop_fact_reads_temp, loop_fact_writes_temp,
+      loop_fact_get_consumer_operand, &facts) == FAILED ||
+      facts.status != RA_LOOP_FACTS_READY ||
+      facts.consumer_instruction != 4 || facts.consumer_operand != 0)
+    return FAILED;
+  instructions[4].operand = 2;
+
   instructions[2].active = NO;
   instructions[5].active = NO;
   instructions[9].active = NO;
@@ -5531,7 +5564,7 @@ static int test_loop_join_fact_discovery(void) {
       loop_fact_get_consumer_operand, &facts) != FAILED)
     return FAILED;
   instructions[4].reads = YES;
-  instructions[4].operand = 0;
+  instructions[4].operand = 3;
   if (register_allocator_discover_loop_join_facts("coreLoopFactsOperand", 4,
       12, blocks, 1, 2, &loop_join, instructions, loop_fact_is_active,
       loop_fact_reads_temp, loop_fact_writes_temp,
@@ -5652,6 +5685,14 @@ static int test_loop_join_definition_planning(void) {
     return FAILED;
 
   initialize_loop_definition(&definition);
+  if (register_allocator_plan_loop_join_definition("coreLoopDefinitionResult", 4,
+      12, blocks, 1, 2, YES, &loop_join, 2, 9, 4, 0,
+      &definition) == FAILED ||
+      definition.status != RA_LOOP_DEFINITION_READY ||
+      definition.consumer_instruction != 4 || definition.consumer_operand != 0)
+    return FAILED;
+
+  initialize_loop_definition(&definition);
   if (register_allocator_plan_loop_join_definition("coreLoopDefinitionNotLive",
       4, 12, blocks, 1, 2, NO, &loop_join, 2, 9, 4, 1,
       &definition) == FAILED ||
@@ -5688,7 +5729,7 @@ static int test_loop_join_definition_planning(void) {
       4, 12, blocks, 1, 2, YES, &loop_join, 2, 9, 6, 1,
       &definition) != FAILED ||
       register_allocator_plan_loop_join_definition("coreLoopDefinitionOperand", 4,
-      12, blocks, 1, 2, YES, &loop_join, 2, 9, 4, 0,
+      12, blocks, 1, 2, YES, &loop_join, 2, 9, 4, 3,
       &definition) != FAILED)
     return FAILED;
   loop_join.entry_edge = -1;
@@ -5773,6 +5814,16 @@ static int test_loop_join_schedule_planning(void) {
     return FAILED;
 
   initialize_loop_schedule(assignments, &schedule);
+  if (register_allocator_plan_loop_join_schedule("coreLoopScheduleResult", 12,
+      2, -1, &loop_join, 2, 5, 9, 5, 4, 0, 5, 5,
+      assignments, 3, &schedule) == FAILED ||
+      schedule.status != RA_JOIN_SCHEDULE_READY ||
+      schedule.assignment_count != 3 ||
+      assignments[2].role != RA_JOIN_ASSIGNMENT_CONSUMER ||
+      assignments[2].operand != 0)
+    return FAILED;
+
+  initialize_loop_schedule(assignments, &schedule);
   if (register_allocator_plan_loop_join_schedule(
       "coreLoopScheduleUnassigned", 12, 2, -1, &loop_join, 2, -1, 9, -1,
       4, 1, -1, 5, assignments, 3, &schedule) == FAILED ||
@@ -5854,7 +5905,7 @@ static int test_loop_join_schedule_planning(void) {
       2, -1, &loop_join, 2, 5, 9, 5, 12, 1, 5, 5,
       assignments, 3, &schedule) != FAILED ||
       register_allocator_plan_loop_join_schedule("coreLoopScheduleOperand", 12,
-      2, -1, &loop_join, 2, 5, 9, 5, 4, 0, 5, 5,
+      2, -1, &loop_join, 2, 5, 9, 5, 4, 3, 5, 5,
       assignments, 3, &schedule) != FAILED ||
       register_allocator_plan_loop_join_schedule("coreLoopScheduleCapacityValue",
       12, 2, -1, &loop_join, 2, 5, 9, 5, 4, 1, 5, 5,
@@ -6555,10 +6606,16 @@ static int test_loop_retention_register_selection(void) {
       assignments, 3, evaluations, 3, &selection) != FAILED)
     return FAILED;
   assignments[1].operand = 0;
-  assignments[2].operand = 0;
+  assignments[2].operand = 3;
   if (register_allocator_select_loop_retention_register(
       "coreLoopRegisterConsumer", 1, 2, -1, 5, candidates, 3,
       assignments, 3, evaluations, 3, &selection) != FAILED)
+    return FAILED;
+  assignments[2].operand = 0;
+  if (register_allocator_select_loop_retention_register(
+      "coreLoopRegisterConsumerResult", 1, 2, -1, 5, candidates, 3,
+      assignments, 3, evaluations, 3, &selection) == FAILED ||
+      selection.status != RA_LOOP_REGISTER_SELECTION_READY)
     return FAILED;
   assignments[2].operand = 1;
   assignments[2].physical_register = -2;

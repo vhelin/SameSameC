@@ -7,6 +7,28 @@
 #include "register_allocator.h"
 
 
+static int _block_end_falls_through(int end_reason) {
+
+  if (end_reason == RA_BLOCK_END_LABEL ||
+      end_reason == RA_BLOCK_END_FUNCTION_CALL ||
+      end_reason == RA_BLOCK_END_INLINE_ASM ||
+      end_reason == RA_BLOCK_END_UNMIGRATED)
+    return YES;
+
+  return NO;
+}
+
+
+static int _is_valid_tac_use_operand(int operand) {
+
+  if (operand == TAC_USE_RESULT || operand == TAC_USE_ARG1 ||
+      operand == TAC_USE_ARG2)
+    return YES;
+
+  return NO;
+}
+
+
 static char *_get_missing_target_policy_hook(struct register_allocator_target_policy *policy) {
 
   if (policy->get_physical_register_units == NULL)
@@ -418,7 +440,7 @@ int register_allocator_build_cfg(char *function_name, struct register_allocator_
       return FAILED;
     }
 
-    if (blocks[block_index].end_reason == RA_BLOCK_END_LABEL) {
+    if (_block_end_falls_through(blocks[block_index].end_reason) == YES) {
       if (block_index + 1 < block_count && _add_cfg_edge(edges, max_edges, edge_count, block_index, block_index + 1, RA_CFG_EDGE_FALLTHROUGH, NULL) == FAILED) {
         fprintf(stderr, "register_allocator_core: cfg_build function=%s blocks=%d edges=%d status=capacity_exceeded\n", function_name, block_count, *edge_count);
         return FAILED;
@@ -1681,7 +1703,7 @@ int register_allocator_plan_join_spill_sites(char *function_name,
         predecessor->end_tac >= instruction_count ||
         (edges[edge_index].kind == RA_CFG_EDGE_FALLTHROUGH &&
         (edges[edge_index].from_block + 1 != join_block_index ||
-        predecessor->end_reason != RA_BLOCK_END_LABEL)) ||
+        _block_end_falls_through(predecessor->end_reason) == NO)) ||
         ((edges[edge_index].kind == RA_CFG_EDGE_JUMP ||
         edges[edge_index].kind == RA_CFG_EDGE_BRANCH_TRUE ||
         edges[edge_index].kind == RA_CFG_EDGE_BRANCH_FALSE) &&
@@ -2649,7 +2671,8 @@ int register_allocator_plan_join_schedule(char *function_name,
       return SUCCEEDED;
     }
   if (consumer_instruction < 0 ||
-      consumer_instruction >= instruction_count || consumer_operand <= 0) {
+      consumer_instruction >= instruction_count ||
+      _is_valid_tac_use_operand(consumer_operand) == NO) {
     fprintf(stderr, "register_allocator_core: join_schedule function=%s temp=r%d instructions=%d paths=%d consumer=%d operand=%d selected=%d assignments=0 capacity=%d conflict=-1 status=invalid_input\n",
         function_name, temp_index, instruction_count, path_count,
         consumer_instruction, consumer_operand, selected_physical_register,
@@ -3070,12 +3093,13 @@ int register_allocator_select_loop_latch(char *function_name, int block_count,
     }
   }
   free(visited_latches);
-  if (selection->entry_edge_count == 1 && selection->back_edge_count > 0 &&
+  if (selection->entry_edge_count == 1 && selection->back_edge_count == 1 &&
       selection->defining_latch_count == 1) {
     selection->status = RA_LOOP_LATCH_SELECTION_READY;
     selection->loop_join.status = RA_LOOP_JOIN_READY;
   }
   else if (selection->entry_edge_count > 1 ||
+      selection->back_edge_count > 1 ||
       selection->defining_latch_count > 1) {
     selection->status = RA_LOOP_LATCH_SELECTION_AMBIGUOUS;
     selection->loop_join.status = RA_LOOP_JOIN_AMBIGUOUS;
@@ -4202,7 +4226,7 @@ int register_allocator_discover_loop_join_facts(char *function_name,
       facts->consumer_instruction = instruction_index;
       facts->consumer_operand = get_consumer_operand(context,
           instruction_index, temp_index);
-      if (facts->consumer_operand <= 0) {
+      if (_is_valid_tac_use_operand(facts->consumer_operand) == NO) {
         fprintf(stderr, "register_allocator_core: loop_join_fact_discovery_callback function=%s block=%d temp=r%d instruction=%d predicate=get_consumer_operand value=%d status=invalid_callback\n",
             function_name, join_block_index, temp_index, instruction_index,
             facts->consumer_operand);
@@ -4329,7 +4353,8 @@ int register_allocator_plan_loop_join_definition(char *function_name,
       consumer_instruction < blocks[join_block_index].start_tac ||
       consumer_instruction > blocks[join_block_index].end_tac ||
       entry_definition >= consumer_instruction ||
-      latch_definition <= consumer_instruction || consumer_operand <= 0) {
+      latch_definition <= consumer_instruction ||
+      _is_valid_tac_use_operand(consumer_operand) == NO) {
     fprintf(stderr, "register_allocator_core: loop_join_definition function=%s block=%d temp=r%d live_in=yes entry=%d latch=%d consumer=%d operand=%d definition=ineligible reason=none status=invalid_definition\n",
         function_name, join_block_index, temp_index, entry_definition,
         latch_definition, consumer_instruction, consumer_operand);
@@ -4366,7 +4391,8 @@ int register_allocator_plan_loop_join_schedule(char *function_name,
   }
   if (function_name == NULL || instruction_count <= 0 || temp_index < 0 ||
       loop_join == NULL || consumer_instruction < 0 ||
-      consumer_instruction >= instruction_count || consumer_operand <= 0 ||
+      consumer_instruction >= instruction_count ||
+      _is_valid_tac_use_operand(consumer_operand) == NO ||
       assignment_capacity < 0 || schedule == NULL ||
       (assignment_capacity > 0 && assignments == NULL)) {
     fprintf(stderr, "register_allocator_core: loop_join_schedule function=%s temp=r%d instructions=%d entry_definition=%d latch_definition=%d consumer=%d operand=%d selected=%d assignments=0 capacity=%d conflict=-1 status=invalid_input\n",
@@ -4575,7 +4601,7 @@ int register_allocator_plan_loop_join_path_reservations(char *function_name,
       assignments[0].role != RA_JOIN_ASSIGNMENT_PRODUCER || assignments[0].operand != 0 ||
       assignments[1].role != RA_JOIN_ASSIGNMENT_PRODUCER || assignments[1].operand != 0 ||
       assignments[producer_count].role != RA_JOIN_ASSIGNMENT_CONSUMER ||
-      assignments[producer_count].operand <= 0 ||
+      _is_valid_tac_use_operand(assignments[producer_count].operand) == NO ||
       assignments[0].instruction < 0 || assignments[0].instruction >= instruction_count ||
       assignments[1].instruction < 0 || assignments[1].instruction >= instruction_count ||
       assignments[producer_count].instruction < 0 ||
@@ -4607,7 +4633,7 @@ int register_allocator_plan_loop_join_path_reservations(char *function_name,
         (block_index < producer_count &&
         assignments[block_index].operand != 0) ||
         (block_index >= producer_count &&
-        assignments[block_index].operand <= 0) ||
+        _is_valid_tac_use_operand(assignments[block_index].operand) == NO) ||
         assignments[block_index].physical_register !=
         assignments[0].physical_register ||
         instruction_blocks[assignments[block_index].instruction] < 0) {
@@ -4858,7 +4884,7 @@ int register_allocator_apply_join_assignments(char *function_name,
         assignment->operand != 0)) ||
         (assignment_index + 1 == schedule->assignment_count &&
         (assignment->role != RA_JOIN_ASSIGNMENT_CONSUMER ||
-        assignment->operand <= 0))) {
+        _is_valid_tac_use_operand(assignment->operand) == NO))) {
       fprintf(stderr, "register_allocator_core: join_assignment_apply function=%s temp=r%d assignment=%d role=%d instruction=%d operand=%d phy=%d status=invalid_assignment\n",
           function_name, temp_index, assignment_index, assignment->role,
           assignment->instruction, assignment->operand,
@@ -4956,7 +4982,7 @@ int register_allocator_plan_join_reservation(char *function_name,
         (assignment->role == RA_JOIN_ASSIGNMENT_PRODUCER &&
         assignment->operand != 0) ||
         (assignment->role == RA_JOIN_ASSIGNMENT_CONSUMER &&
-        assignment->operand <= 0) ||
+        _is_valid_tac_use_operand(assignment->operand) == NO) ||
         (assignment_index + 1 < schedule->assignment_count &&
         assignment->role != RA_JOIN_ASSIGNMENT_PRODUCER) ||
         (assignment_index + 1 == schedule->assignment_count &&
@@ -5168,7 +5194,7 @@ int register_allocator_plan_join_path_reservations(char *function_name,
         (assignment->role == RA_JOIN_ASSIGNMENT_PRODUCER &&
         assignment->operand != 0) ||
         (assignment->role == RA_JOIN_ASSIGNMENT_CONSUMER &&
-        assignment->operand <= 0)) {
+        _is_valid_tac_use_operand(assignment->operand) == NO)) {
       fprintf(stderr, "register_allocator_core: join_path_reservation_assignment function=%s temp=r%d assignment=%d role=%d instruction=%d operand=%d phy=%d status=invalid_assignment\n",
           function_name, temp_index, assignment_index, assignment->role,
           assignment->instruction, assignment->operand,
@@ -8744,7 +8770,7 @@ static int _register_allocator_select_loop_retention_register(
         (assignments[assignment_index].role == RA_JOIN_ASSIGNMENT_PRODUCER &&
         assignments[assignment_index].operand != 0) ||
         (assignments[assignment_index].role == RA_JOIN_ASSIGNMENT_CONSUMER &&
-        assignments[assignment_index].operand <= 0) ||
+        _is_valid_tac_use_operand(assignments[assignment_index].operand) == NO) ||
         (assignments[assignment_index].physical_register < 0 &&
         assignments[assignment_index].physical_register !=
         no_physical_register)) {
@@ -9046,7 +9072,7 @@ int register_allocator_plan_multi_latch_retention(char *function_name,
     if (supplemental->role != RA_JOIN_ASSIGNMENT_CONSUMER ||
         supplemental->instruction < 0 ||
         supplemental->instruction >= instruction_count ||
-        supplemental->operand <= 0 ||
+        _is_valid_tac_use_operand(supplemental->operand) == NO ||
         (supplemental->physical_register != no_physical_register &&
         supplemental->physical_register != selected_physical_register)) {
       free(staged_assignments);
@@ -9216,7 +9242,7 @@ int register_allocator_apply_loop_retention(char *function_name,
       (expected_role == RA_JOIN_ASSIGNMENT_PRODUCER &&
       assignments[assignment_index].operand != 0) ||
       (expected_role == RA_JOIN_ASSIGNMENT_CONSUMER &&
-      assignments[assignment_index].operand <= 0) ||
+      _is_valid_tac_use_operand(assignments[assignment_index].operand) == NO) ||
         assignments[assignment_index].physical_register < 0 ||
         (assignment_index > 0 &&
         assignments[assignment_index].physical_register !=
@@ -9330,7 +9356,7 @@ int register_allocator_commit_loop_retention_transaction(char *function_name,
         (expected_role == RA_JOIN_ASSIGNMENT_PRODUCER &&
         assignments[assignment_index].operand != 0) ||
         (expected_role == RA_JOIN_ASSIGNMENT_CONSUMER &&
-        assignments[assignment_index].operand <= 0) ||
+        _is_valid_tac_use_operand(assignments[assignment_index].operand) == NO) ||
         assignments[assignment_index].physical_register < 0 ||
         (assignment_index > 0 &&
         assignments[assignment_index].physical_register !=
