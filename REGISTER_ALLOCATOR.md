@@ -8997,6 +8997,147 @@ Full integration suites, Valgrind, and emulator timing were not rerun.
 
 ---
 
+## Suggested Next Batches
+
+These are optional improvements, not requirements for the bounded Z80 allocator.
+Completed work is checked below. Work in order, revising priorities
+from measured results. Keep `-ra` opt-in and calls/inline asm as hard barriers.
+Reuse existing helpers, target policy, CFG/liveness data, mutation plans, and
+fixtures; do not add wrapper functions or callback layers just to extract code.
+
+### Batch 286-288: Measure And Reduce Cost
+
+- [x] **286. Establish a repeatable quality baseline.** Use `calculations-1`,
+      `calculations-2`, and existing pointer/loop fixtures in all four modes.
+      Record ROM bytes, frame sizes, spill/reload and register-copy counts,
+      compile time, and allocator memory. Keep estimated instruction cycles
+      separate from emulator measurements. Reuse the existing test harness.
+- [x] **287. Consolidate remaining duplicated decisions and transfers.**
+      Audit existing candidate/split plans and emitter materialization before
+      introducing abstractions. Add a source-reachable BC word-complement
+      fixture before changing that uncovered path. Require identical assembly
+      and traces for refactors, and track net production lines/helper counts.
+- [ ] **288. Introduce conservative target-aware cost preferences.** Start
+      with the existing equal-next-use preference hook and candidate ordering.
+      Compare transfer, spill, reload, and address-setup costs; use existing CFG
+      loop information where available. Keep legality ahead of profitability
+      and expand arbitration only after the baseline demonstrates a benefit.
+
+Batch results:
+
+- Run `bash ci/measure_register_allocator.sh` with freshly staged compiler,
+      linker, and WLA tools on PATH. `RA_BENCHMARK_DIR` selects the output directory;
+      positional fixture names override the seven-fixture default corpus. The
+      driver reuses existing makefiles, preserves logs, assembly and ROM snapshots,
+      and writes four-mode measurements to `summary.tsv`. It builds `linked.sms`
+      rather than running mode-specific exact-byte expectations in other modes.
+- Initial Cygwin GCC baseline (used ROM bytes; total/max static frame bytes):
+
+| Fixture | Default / `-no-ra` ROM | All-Spill ROM | `-ra` ROM | Default Frame | `-ra` Frame |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| calculations-1 | 24468 | 25404 | 23829 | 283 / 101 | 277 / 101 |
+| calculations-2 | 17510 | 17510 | 16381 | 259 / 98 | 255 / 98 |
+| allocator_ra_array_read_reload | 1703 | 1721 | 1467 | 129 / 14 | 120 / 14 |
+| allocator_ra_array_write_pointer_bases | 233 | 233 | 215 | 25 / 13 | 22 / 11 |
+| allocator_ra_shift_loop_results | 452 | 452 | 379 | 26 / 9 | 27 / 10 |
+| allocator_ra_core_liveness_extraction | 1861 | 1861 | 1549 | 124 / 12 | 131 / 15 |
+| allocator_ra_core_equal_next_use_policy | 357 | 357 | 313 | 34 / 17 | 34 / 17 |
+
+- Frame totals/maxima are static function-frame measurements, not dynamic
+      call-stack depth. Spill/reload counts cover inserted markers, not all memory
+      accesses; register-copy counts are a proxy, not instruction-cycle costs.
+      Compile seconds are wall times from comparable debug-output-enabled builds,
+      summed over translation units. `workspace_plan_bytes` sums reported storage
+      plans, including repeated plans; it is not allocator peak memory or RSS.
+      Peak-memory and emulator-cycle measurements remain unimplemented.
+- Phase 287 shares A/HL/B/C index transfer and extension within the existing
+      materializer, keeping supported widths, sign extension, A preservation, and
+      trace text. The BC word-complement path remains untouched without a dedicated
+      source-reachable fixture. Original/current emitters produced identical ROMs
+      in 24 corpus builds and identical assembly in 40 translation units after
+      normalizing only randomized static-symbol suffixes.
+- Phase 288 evaluation retains the existing ARRAY_WRITE value-in-A preference. An
+      isolated compiler with that rule disabled grows the dedicated policy fixture
+      from 313 to 314 ROM bytes and from six to seven register copies; frame and
+      planned-storage sizes stay unchanged. The corpus has no queried ties, and
+      exploratory array-base/word-index and byte-shift probes produced no relevant
+      tied conflicts. No new preference was enabled; richer cost arbitration is
+      deferred until a source-reachable case demonstrates a benefit. Existing
+      unequal-next-use and invalid-policy tests remain unchanged. The introduction
+      step stays unchecked because this batch adds no new profitability rule.
+- Production source shrinks by 33 lines with no new helpers or policy APIs.
+      The new measurement driver is separate from compiler production code.
+- Validation: both full integration suites passed on 2026-10-11, each reporting
+      `DONE (173 tests)`, with freshly staged Cygwin GCC/native MSVC binaries.
+      All 28 native/Cygwin corpus ROM pairs match byte-for-byte. Strict C90,
+      focused exact-byte/trace tests, editor diagnostics, benchmark assertions,
+      and binary hash checks passed. Valgrind, sanitizers, peak-memory profiling,
+      and emulator execution/timing were not run in this batch.
+
+### Batch 289-291: Remove Avoidable Moves And Reloads
+
+- [ ] **289. Coalesce compatible copies.** Prefer the same physical register
+      for producer/consumer copies when liveness, width, overlapping units,
+      and instruction constraints permit it. Reuse candidate selection and
+      assignment plans; do not merge temp identities without dataflow proof.
+      Pin removed moves and conflicting-copy fallback in existing fixtures.
+- [ ] **290. Rematerialize cheap pure values.** Begin with constants and
+      stable addresses when reconstructing them costs less than spill/reload.
+      Check flags, scratch clobbers, frame lifetime, and every use; never treat
+      mutable memory loads as pure. Reuse location materialization and preserve
+      backing storage whenever any consumer still needs it.
+- [ ] **291. Broaden profitable split/reload endpoints incrementally.**
+      Choose one source-reachable operand/register combination at a time,
+      extending the existing target-approved reload-chain machinery. Account
+      for all uses and total emitted cost, avoid redundant reloads, and retain
+      whole-plan rollback and stack fallback for unsupported schedules.
+
+### Batch 292-294: Improve Register And CFG Coverage
+
+- [ ] **292. Close useful B/C producer and consumer gaps.** Prioritize
+      source-reachable call-result, arithmetic, and nonconstant assignment
+      cases identified by the baseline. Validate B/C versus BC overlap and
+      destructive operand ordering. Extend existing emitters rather than
+      cloning them; receiving a call result must not weaken the call barrier.
+- [ ] **293. Improve edge-specific join reconciliation.** Build on current
+      branch retention and atomic reservation plans, not a second CFG engine.
+      Permit transfers only on the required edges; handle critical edges before
+      placing edge-only code in a predecessor shared by other successors.
+      Test diamonds, multiple exits, overlap conflicts, and rollback.
+- [ ] **294. Broaden profitable loop-carried producer forms.** Extend beyond
+      the currently enabled assignment/shift shapes using existing multi-latch
+      and continue-path analysis. Start with one arithmetic-produced value;
+      qualify multiple live values, nested loops, and early exits separately.
+      Keep memory-dependent values conservative around writes and aliasing,
+      and reject retention when its transfers/spills outweigh saved accesses.
+
+### Batch 295-297: Strengthen Correctness And Qualification
+
+- [ ] **295. Add a reusable debug allocation verifier.** Validate assigned
+      reads against reaching definitions, overlapping live register units,
+      spill/reload widths and offsets, and target clobbers. Run it after TAC
+      mutation/reanalysis and exercise failure/rollback paths. Reuse existing
+      descriptors and validation APIs instead of duplicating their rules.
+- [ ] **296. Add execution-based differential regressions.** Generate bounded,
+      deterministic arithmetic/branch/loop/pointer cases and compare observable
+      results for `-ra` versus all-spill/default modes in a proven Z80 emulator.
+      Keep failing seeds and minimize cases into existing fixtures. Exact-ROM
+      tests remain valuable but do not replace execution-based correctness.
+- [ ] **297. Qualify real-program gains and stop unprofitable expansion.**
+      Reuse the baseline corpus and add supported pointer-heavy workloads only
+      where coverage is missing. Run both full integration suites and relevant
+      sanitizer checks with freshly staged binaries. Report ROM/frame/cycle
+      gains alongside compile-time and source-size costs; reject unexplained
+      regressions and keep default/`-no-ra` compatibility intact.
+
+For each implementation batch, commit its code, focused regressions, and results
+together without pushing. Prefer net consolidation; any new helper or API must
+remove real duplication or enable a demonstrated optimization. Keep C90 and
+target-policy validation gates. Leave a separate 6502 backend and explicit
+inline-asm constraints postponed until Z80 quality gains justify broader scope.
+
+---
+
 ## Remaining Work To 100%
 
 The current completion target is the bounded first working Z80 allocator, not

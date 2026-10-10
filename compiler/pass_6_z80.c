@@ -2085,61 +2085,31 @@ static int _materialize_array_index_to_bc(struct z80_location *location, int var
     if (location->value != 0)
       _load_value_to_bc(location->value, file_out);
   }
-  else if (location->kind == LOC_PHY_A) {
-    fprintf(file_out, "      LD  C,A\n");
+  else if (location->kind == LOC_PHY_A || location->kind == LOC_PHY_HL ||
+           location->kind == LOC_PHY_B || location->kind == LOC_PHY_C) {
+    if (location->kind == LOC_PHY_HL)
+      fprintf(file_out, "      LD  C,L\n");
+    else if (location->kind != LOC_PHY_C)
+      fprintf(file_out, "      LD  C,%s\n", _get_z80_physical_register_name(location->phy));
+
     if (var_type == VARIABLE_TYPE_INT8)
       _sign_extend_c_to_bc_preserving_a(file_out);
     else if (var_type == VARIABLE_TYPE_UINT8)
       _load_value_to_b(0, file_out);
-    else {
-      fprintf(stderr, "_materialize_array_index_to_bc(): Cannot read a 16-bit index from A! Please submit a bug report!\n");
-      return FAILED;
-    }
-    fprintf(file_out, "      ; retained arg2 in A\n");
-  }
-  else if (location->kind == LOC_PHY_HL) {
-    fprintf(file_out, "      LD  C,L\n");
-    if (var_type == VARIABLE_TYPE_INT8)
-      _sign_extend_c_to_bc_preserving_a(file_out);
-    else if (var_type == VARIABLE_TYPE_UINT8)
-      _load_value_to_b(0, file_out);
-    else if (var_type == VARIABLE_TYPE_INT16 || var_type == VARIABLE_TYPE_UINT16)
+    else if (location->kind == LOC_PHY_HL && (var_type == VARIABLE_TYPE_INT16 || var_type == VARIABLE_TYPE_UINT16))
       fprintf(file_out, "      LD  B,H\n");
     else {
-      fprintf(stderr, "_materialize_array_index_to_bc(): Unknown retained HL index type %d! Please submit a bug report!\n", var_type);
+      if (location->kind == LOC_PHY_HL)
+        fprintf(stderr, "_materialize_array_index_to_bc(): Unknown retained HL index type %d! Please submit a bug report!\n", var_type);
+      else
+        fprintf(stderr, "_materialize_array_index_to_bc(): Cannot read a 16-bit index from %s! Please submit a bug report!\n",
+                _get_z80_physical_register_name(location->phy));
       return FAILED;
     }
-    fprintf(file_out, "      ; retained arg2 in HL\n");
+    fprintf(file_out, "      ; retained arg2 in %s\n", _get_z80_physical_register_name(location->phy));
   }
   else if (location->kind == LOC_PHY_BC) {
     fprintf(file_out, "      ; retained arg2 in BC\n");
-  }
-  else if (location->kind == LOC_PHY_B) {
-    fprintf(file_out, "      LD  C,B\n");
-    if (var_type == VARIABLE_TYPE_INT8) {
-      _sign_extend_c_to_bc_preserving_a(file_out);
-    }
-    else if (var_type == VARIABLE_TYPE_UINT8) {
-      _load_value_to_b(0, file_out);
-    }
-    else {
-      fprintf(stderr, "_materialize_array_index_to_bc(): Cannot read a 16-bit index from B! Please submit a bug report!\n");
-      return FAILED;
-    }
-    fprintf(file_out, "      ; retained arg2 in B\n");
-  }
-  else if (location->kind == LOC_PHY_C) {
-    if (var_type == VARIABLE_TYPE_INT8) {
-      _sign_extend_c_to_bc_preserving_a(file_out);
-    }
-    else if (var_type == VARIABLE_TYPE_UINT8) {
-      _load_value_to_b(0, file_out);
-    }
-    else {
-      fprintf(stderr, "_materialize_array_index_to_bc(): Cannot read a 16-bit index from C! Please submit a bug report!\n");
-      return FAILED;
-    }
-    fprintf(file_out, "      ; retained arg2 in C\n");
   }
   else if (location->kind == LOC_GLOBAL || location->kind == LOC_STACK_LOCAL || location->kind == LOC_STACK_SPILL) {
     if (var_type == VARIABLE_TYPE_INT16 || var_type == VARIABLE_TYPE_UINT16) {

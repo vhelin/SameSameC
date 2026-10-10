@@ -4174,11 +4174,8 @@ static int _can_z80_register_allocator_fallback_candidate(int size, int reason) 
 static int _prefer_z80_register_allocator_candidate_on_equal_next_use(int consumer_op,
     int candidate_operand, int active_operand, int physical_register) {
 
-  if (consumer_op == TAC_OP_ARRAY_WRITE && candidate_operand == TAC_USE_ARG1 &&
-      active_operand == TAC_USE_ARG2 && physical_register == Z80_PHY_A)
-    return YES;
-
-  return NO;
+  return consumer_op == TAC_OP_ARRAY_WRITE && candidate_operand == TAC_USE_ARG1 &&
+    active_operand == TAC_USE_ARG2 && physical_register == Z80_PHY_A ? YES : NO;
 }
 
 
