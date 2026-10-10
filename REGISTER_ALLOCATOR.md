@@ -9076,21 +9076,83 @@ Batch results:
 
 ### Batch 289-291: Remove Avoidable Moves And Reloads
 
-- [ ] **289. Coalesce compatible copies.** Prefer the same physical register
+- [x] **289. Coalesce compatible copies.** Prefer the same physical register
       for producer/consumer copies when liveness, width, overlapping units,
       and instruction constraints permit it. Reuse candidate selection and
       assignment plans; do not merge temp identities without dataflow proof.
       Pin removed moves and conflicting-copy fallback in existing fixtures.
-- [ ] **290. Rematerialize cheap pure values.** Begin with constants and
+- [x] **290. Rematerialize cheap pure values.** Begin with constants and
       stable addresses when reconstructing them costs less than spill/reload.
       Check flags, scratch clobbers, frame lifetime, and every use; never treat
       mutable memory loads as pure. Reuse location materialization and preserve
       backing storage whenever any consumer still needs it.
-- [ ] **291. Broaden profitable split/reload endpoints incrementally.**
+- [x] **291. Broaden profitable split/reload endpoints incrementally.**
       Choose one source-reachable operand/register combination at a time,
       extending the existing target-approved reload-chain machinery. Account
       for all uses and total emitted cost, avoid redundant reloads, and retain
       whole-plan rollback and stack fallback for unsupported schedules.
+
+Batch results (bounded implementations):
+
+- Reuse the pointer-local promotion walk as `_promote_register_allocator_local_values`
+      rather than adding a separate scalar analysis. Its new scalar case is limited
+      to a nonstatic `u8` local defined by adding two `u8` parameters, with exactly
+      one subsequent ADD use in the same block. Existing escape, reassignment,
+      call, inline-asm, and control-flow checks remain fail-closed. Preserve the
+      declared byte type when replacing the local with a temp; operand types have
+      not yet been propagated at this stage, so eligibility uses parameter nodes.
+- The existing candidate/path/overlap machinery retains the promoted right
+      value in C across a left-hand byte ADD, then consumes it directly. The focused
+      source case removes a stack store/load and a local frame byte. The final
+      fixture including negative cases shrinks from 346 to 342 ROM bytes and
+      34 to 33 total frame bytes versus the unmodified compiler under `-ra`,
+      with one additional register copy (3 to 4); maximum frame size stays 14.
+      Default, `-no-ra`, and all-spill assembly and ROM are byte-identical.
+- Extend the existing byte assignment-chain fixture with exact bytes for the
+      improvement and address-escape, inline-asm barrier, multiple-use, and
+      reassignment fallbacks. The original chain and word/extension fixtures remain
+      unchanged. Scalar promotion alone adds 23 net production lines.
+- Phase 289 additionally removes the A round trip from full-width memory-to-BC
+      assignments using existing IY byte-load helpers, saving two instructions.
+      Retained HL-to-HL assignments reuse the existing word store helper and emit
+      no copy, saving four instructions. Existing allocation decisions and width,
+      overlap, extension, and stack-copy fallbacks remain unchanged. Existing
+      pointer and split/reload fixtures pin these source-reachable reductions.
+- Phase 290 reconstructs a zero-index global-array address with one immediate
+      HL/BC load at a target-approved reload site instead of two spill-slot loads.
+      The existing transfer emitter validates the reload and retains its original
+      spill stores/backing slot. Its local backward definition check stops at a
+      definition, label, jump, return, call, or asm barrier; computed indices and
+      memory-loaded pointers keep the stack path. No mutable memory is treated
+      as pure, and no new address materializer or persistent metadata is added.
+- Phase 291 enables a word ASSIGNMENT arg1 reload into HL through the existing
+      atomic reload-graph transaction. Pointer promotion accepts only a copy into
+      a temp immediately feeding indexed address-taking, not arbitrary base copies.
+      The existing assignment emitter consumes the reloaded source before any
+      later use; all remaining uses keep their spill backing and approved reloads.
+      Unsupported array-read base copies still fail closed in the original fixture.
+- The final expanded pointer fixture shrinks from 699 to 660 ROM bytes and from
+      22 to 18 register copies under `-ra`; total/max static frame sizes remain
+      66/17. Both new fixtures have byte-identical default, `-no-ra`, and all-spill
+      assembly and ROM versus the original compiler. The seven-fixture corpus
+      has no ROM/frame regressions: six fixtures are unchanged, while the array-read
+      reload fixture shrinks from 1467 to 1465 ROM bytes and from 22 to 20 copies.
+- Production code grows by 71 net lines across the two existing passes. No new
+      functions, policy APIs, or test files are added; shared emitters, helpers,
+      proof/rewrite walks, and atomic plans are reused. This batch reduces emitted
+      ROM/copy traffic, not compiler source size. General copy scheduling, temp
+      identity merging, constants, nonzero/local-address rematerialization, and
+      additional split endpoints are not claimed as implemented.
+- Phase 288 remains pending: the byte-compare probe reached no tied conflict
+      under current discovery/clobber rules and was removed. No cost preference
+      or broader allocation policy is enabled by this batch.
+- Strict C90, focused exact-byte/trace checks, editor diagnostics, staged-binary
+      hash checks, and the four-mode corpus measurements passed. All eight native
+      MSVC/Cygwin GCC ROM pairs for the two expanded fixtures match byte-for-byte.
+      The full Cygwin GCC suite reported `DONE (173 tests)` on 2026-10-11.
+      The broader native MSVC suite is running; its completion is not yet verified.
+      Valgrind, sanitizers, peak-memory profiling, and emulator execution/timing
+      were not run.
 
 ### Batch 292-294: Improve Register And CFG Coverage
 

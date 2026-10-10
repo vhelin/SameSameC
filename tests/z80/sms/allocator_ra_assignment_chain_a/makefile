@@ -11,17 +11,20 @@ OFILES = main.asm
 
 all: linked.sms
 	$(BT) -s main.ssc
+	grep -q "scalar_copy_promotion function=allocatorRaScalarCopyA .*reads=1 uses=1 scope=single_block status=complete" compiler.log
+	grep -q "linear_scan retain function=allocatorRaScalarCopyA.*8-bit in C.*ADD arg2" compiler.log
+	: && ! grep -q "scalar_copy_promotion function=allocatorRaScalarCopyFallback " compiler.log
 
 
 linked.sms: $(OFILES) makefile
 	$(LD) $(LDFLAGS) linked.sms $(OFILES)
 
 main.asm: main.ssc
-	$(CC) $(CFLAGS) main.asm main.ssc
+	$(CC) $(CFLAGS) main.asm main.ssc > compiler.log 2>&1 || (cat compiler.log && false)
 
 
 $(OFILES): $(HFILES)
 
 
 clean:
-	rm -f $(OFILES) *~ linked.sms
+	rm -f $(OFILES) *~ linked.sms compiler.log

@@ -10,6 +10,11 @@ OFILES = main.asm
 
 
 all: linked.sms
+	grep -q "target_split_reload function=allocatorRaAddressReload .*op=ASSIGNMENT operand=arg1 size=16 target=z80 phy=HL" compiler.log
+	grep -q "reload_insert_emit function=allocatorRaAddressReload op=ASSIGNMENT operand=arg1" compiler.log
+	grep -q "rematerialize arg1 from stable global address into HL" main.asm
+	: && ! sed -n '/allocatorRaAddressReload:/,/^  .ENDS/p' main.asm | grep -q '; rematerialize '
+	: && ! sed -n '/allocatorRaRematerializedFallback:/,/^  .ENDS/p' main.asm | grep -q '; rematerialize '
 	: && ! grep -q "array_read_pointer_base_temp function=allocatorRaArrayReadPointerBaseA" compiler.log
 	grep -q "array_read_pointer_base_temp function=allocatorRaArrayReadPointerBaseHl" compiler.log
 	grep -q "linear_scan retain.*function=allocatorRaArrayReadPointerBaseA.*producer_tac=.*ADD.*consumer_tac=.*ARRAY_READ.*arg2" compiler.log

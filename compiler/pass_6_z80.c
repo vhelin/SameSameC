@@ -2292,6 +2292,9 @@ static int _store_constant_to_location(struct z80_location *location, int value,
 }
 
 
+static int _transfer_array_base_spill(struct tac *t, struct tree_node *function_node, struct z80_location *base_location, int is_reload, FILE *file_out);
+
+
 static int _generate_asm_assignment_z80(struct tac *t, FILE *file_out, struct tree_node *function_node) {
 
   struct z80_location result_location;
@@ -2350,6 +2353,8 @@ static int _generate_asm_assignment_z80(struct tac *t, FILE *file_out, struct tr
     _trace_z80_specialized_address_materialization(function_node, "assignment_arg1_address", "arg1",
                                                     &arg1_location, RA_ADDRESS_TARGET_IY, 0);
 #endif
+  if (_transfer_array_base_spill(t, function_node, &arg1_location, YES, file_out) == FAILED)
+    return FAILED;
 
   /******************************************************************************************************/
   /* copy data -> ix */
@@ -2364,15 +2369,23 @@ static int _generate_asm_assignment_z80(struct tac *t, FILE *file_out, struct tr
     if (t->result_var_type == VARIABLE_TYPE_INT16 || t->result_var_type == VARIABLE_TYPE_UINT16) {
       /* 16-bit */
       if (t->arg1_var_type == VARIABLE_TYPE_INT16 || t->arg1_var_type == VARIABLE_TYPE_UINT16) {
-        if (_materialize_to_a(&arg1_location, 0, file_out) == FAILED)
-          return FAILED;
-        if (_store_from_a(&result_location, 0, ix_offset, file_out) == FAILED)
-          return FAILED;
-
-        if (_materialize_to_a(&arg1_location, 1, file_out) == FAILED)
-          return FAILED;
-        if (_store_from_a(&result_location, 1, ix_offset, file_out) == FAILED)
-          return FAILED;
+        if (result_location.kind == LOC_PHY_HL && arg1_location.kind == LOC_PHY_HL) {
+          if (_store_from_hl(&result_location, ix_offset, file_out) == FAILED)
+            return FAILED;
+        }
+        else if (result_location.kind == LOC_PHY_BC &&
+            (arg1_location.kind == LOC_GLOBAL || arg1_location.kind == LOC_STACK_LOCAL || arg1_location.kind == LOC_STACK_SPILL)) {
+          _load_from_iy_to_c(0, file_out);
+          _load_from_iy_to_b(1, file_out);
+          fprintf(file_out, "      ; retained result in BC\n");
+        }
+        else {
+          if (_materialize_to_a(&arg1_location, 0, file_out) == FAILED ||
+              _store_from_a(&result_location, 0, ix_offset, file_out) == FAILED ||
+              _materialize_to_a(&arg1_location, 1, file_out) == FAILED ||
+              _store_from_a(&result_location, 1, ix_offset, file_out) == FAILED)
+            return FAILED;
+        }
       }
       else {
         /* sign extend 8-bit -> 16-bit? */
@@ -3762,13 +3775,13 @@ static int _transfer_array_base_spill(struct tac *t, struct tree_node *function_
   if (function_node != NULL && function_node->children[1] != NULL)
     function_name = function_node->children[1]->label;
   operand = is_reload == YES ? t->reload_spill_to_physical_operand : TAC_USE_ARG1;
-  if (t->op == TAC_OP_ARRAY_READ && operand == TAC_USE_ARG1 &&
+  if ((t->op == TAC_OP_ARRAY_READ || (is_reload == YES && t->op == TAC_OP_ASSIGNMENT)) && operand == TAC_USE_ARG1 &&
       t->arg1_type == TAC_ARG_TYPE_TEMP && base_location->kind == LOC_PHY_HL &&
       t->arg1_physical_register == Z80_PHY_HL) {
     temp = (int)t->arg1_d;
     physical_register = Z80_PHY_HL;
     operand_name = "arg1";
-    op_name = "ARRAY_READ";
+    op_name = t->op == TAC_OP_ARRAY_READ ? "ARRAY_READ" : "ASSIGNMENT";
   }
   else if (is_reload == YES && t->op == TAC_OP_ARRAY_WRITE && operand == TAC_USE_RESULT &&
       t->result_type == TAC_ARG_TYPE_TEMP && base_location->kind == LOC_PHY_BC &&
@@ -3801,6 +3814,34 @@ static int _transfer_array_base_spill(struct tac *t, struct tree_node *function_
       temp, Z80_PHY_NONE, physical_register, YES, spill_location.offset, 2, &spill) == FAILED ||
       spill.emit != YES || spill.physical_register != physical_register || spill.byte_count != 2)
     return FAILED;
+  if (is_reload == YES) {
+    int definition_index;
+
+    for (definition_index = (int)(t - g_tacs) - 1; definition_index >= 0; definition_index--) {
+      struct tac *definition;
+
+      definition = &g_tacs[definition_index];
+      if (definition->function_node != function_node || definition->op == TAC_OP_LABEL ||
+          definition->op == TAC_OP_ASM || definition->op == TAC_OP_FUNCTION_CALL ||
+          definition->op == TAC_OP_FUNCTION_CALL_USE_RETURN_VALUE ||
+          (definition->op >= TAC_OP_JUMP && definition->op <= TAC_OP_JUMP_GTE) ||
+          definition->op == TAC_OP_RETURN || definition->op == TAC_OP_RETURN_VALUE)
+        break;
+      if (definition->op == TAC_OP_DEAD || definition->result_type != TAC_ARG_TYPE_TEMP ||
+          (int)definition->result_d != temp)
+        continue;
+      if (definition->op == TAC_OP_GET_ADDRESS_ARRAY && definition->arg1_type == TAC_ARG_TYPE_LABEL &&
+          definition->arg1_node != NULL && definition->arg1_node->type == TREE_NODE_TYPE_CREATE_VARIABLE &&
+          (definition->arg1_node->flags & TREE_NODE_FLAG_GLOBAL) != 0 && definition->arg1_node->value > 0 &&
+          definition->arg2_type == TAC_ARG_TYPE_CONSTANT && definition->arg2_d == 0.0) {
+        fprintf(file_out, "      LD  %s,%s\n", _get_z80_physical_register_name(physical_register), definition->arg1_s);
+        fprintf(file_out, "      ; rematerialize %s from stable global address into %s\n",
+            operand_name, _get_z80_physical_register_name(physical_register));
+        return SUCCEEDED;
+      }
+      break;
+    }
+  }
   if (_load_location_address_to_ix(&spill_location, &ix_offset, file_out) == FAILED)
     return FAILED;
   if (is_reload == NO) {

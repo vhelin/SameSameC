@@ -48,7 +48,7 @@ int *g_register_reads = NULL, *g_register_writes = NULL;
 static struct label *g_removed_jump_destinations_first = NULL, *g_removed_jump_destinations_last = NULL;
 static int g_register_reads_and_writes_count = 0, g_local_variable_running_index = 1;
 
-static int _promote_register_allocator_pointer_bases(void);
+static int _promote_register_allocator_local_values(void);
 static int _is_register_allocator_jump_op(int op);
 
 #if defined(DEBUG_PASS_5)
@@ -73,7 +73,7 @@ int pass_5(void) {
     return FAILED;
   if (g_allocator_enabled == YES && g_allocator_force_all_spill == NO &&
       g_backend == BACKEND_Z80 &&
-      _promote_register_allocator_pointer_bases() == FAILED)
+      _promote_register_allocator_local_values() == FAILED)
     return FAILED;
   /* make life easier for reuse_registers() */
 #if defined(DEBUG_PASS_5)
@@ -120,7 +120,7 @@ int pass_5(void) {
 }
 
 
-static int _promote_register_allocator_pointer_bases(void) {
+static int _promote_register_allocator_local_values(void) {
 
   int producer_index, instruction_index, next_temp = 0;
   int function_start = 0, function_end = 0;
@@ -149,7 +149,7 @@ static int _promote_register_allocator_pointer_bases(void) {
   for (producer_index = 0; producer_index < g_tacs_count; producer_index++) {
     struct tac *producer;
     struct tree_node *variable;
-    int reads = 0, uses = 0, crossed_barrier = NO, eligible = YES;
+    int reads = 0, uses = 0, crossed_barrier = NO, eligible = YES, pointer_base;
 
     producer = &g_tacs[producer_index];
     if (producer->op == TAC_OP_LABEL && producer->is_function == YES) {
@@ -160,15 +160,25 @@ static int _promote_register_allocator_pointer_bases(void) {
           break;
       }
     }
-    if ((producer->op != TAC_OP_GET_ADDRESS && producer->op != TAC_OP_GET_ADDRESS_ARRAY) ||
+    pointer_base = producer->op == TAC_OP_GET_ADDRESS || producer->op == TAC_OP_GET_ADDRESS_ARRAY;
+    if ((pointer_base == NO && producer->op != TAC_OP_ADD) ||
         producer->result_type != TAC_ARG_TYPE_LABEL || function_node == NULL ||
         (function_node->flags & TREE_NODE_FLAG_PUREASM) != 0 ||
         strcmp(function_node->children[1]->label, "mainmain") == 0)
       continue;
     variable = producer->result_node;
     if (variable == NULL || variable->type != TREE_NODE_TYPE_CREATE_VARIABLE ||
-        (variable->flags & TREE_NODE_FLAG_GLOBAL) != 0 || variable->value != 0 ||
-        variable->children[0]->value_double != 1.0)
+      (variable->flags & TREE_NODE_FLAG_GLOBAL) != 0 || variable->value != 0 ||
+        (pointer_base == YES ? variable->children[0]->value_double != 1.0 :
+      ((variable->flags & TREE_NODE_FLAG_STATIC) != 0 || variable->children[0]->value_double != 0.0 ||
+        variable->children[0]->value != VARIABLE_TYPE_UINT8 ||
+        producer->arg1_node == NULL || producer->arg2_node == NULL ||
+        producer->arg1_node->type != TREE_NODE_TYPE_CREATE_VARIABLE_FUNCTION_ARGUMENT ||
+        producer->arg2_node->type != TREE_NODE_TYPE_CREATE_VARIABLE_FUNCTION_ARGUMENT ||
+        producer->arg1_node->children[0]->value != VARIABLE_TYPE_UINT8 ||
+        producer->arg2_node->children[0]->value != VARIABLE_TYPE_UINT8 ||
+        producer->arg1_node->children[0]->value_double != 0.0 ||
+        producer->arg2_node->children[0]->value_double != 0.0)))
       continue;
 
     for (instruction_index = function_start; instruction_index < function_end; instruction_index++) {
@@ -200,10 +210,17 @@ static int _promote_register_allocator_pointer_bases(void) {
             eligible = NO;
         }
       }
-      if (instruction->arg2_type == TAC_ARG_TYPE_LABEL && instruction->arg2_node == variable)
+      if (pointer_base == YES && instruction->arg2_type == TAC_ARG_TYPE_LABEL && instruction->arg2_node == variable)
         eligible = NO;
-      if (instruction->arg1_type == TAC_ARG_TYPE_LABEL && instruction->arg1_node == variable) {
-        if (instruction->op != TAC_OP_ARRAY_READ || instruction_index <= producer_index || crossed_barrier == YES)
+      if ((instruction->arg1_type == TAC_ARG_TYPE_LABEL && instruction->arg1_node == variable) ||
+          (pointer_base == NO && instruction->arg2_type == TAC_ARG_TYPE_LABEL && instruction->arg2_node == variable)) {
+        if ((pointer_base == YES ? (instruction->op != TAC_OP_ARRAY_READ &&
+            (instruction->op != TAC_OP_ASSIGNMENT || instruction->result_type != TAC_ARG_TYPE_TEMP ||
+            instruction_index + 1 >= function_end || g_tacs[instruction_index + 1].op != TAC_OP_GET_ADDRESS_ARRAY ||
+            g_tacs[instruction_index + 1].arg1_type != TAC_ARG_TYPE_TEMP ||
+            g_tacs[instruction_index + 1].arg1_d != instruction->result_d)) : instruction->op != TAC_OP_ADD) ||
+            instruction_index <= producer_index || crossed_barrier == YES ||
+            (pointer_base == NO && instruction->arg1_node == variable && instruction->arg2_node == variable))
           eligible = NO;
         else {
           reads++;
@@ -212,7 +229,7 @@ static int _promote_register_allocator_pointer_bases(void) {
       }
       if (instruction->result_type == TAC_ARG_TYPE_LABEL && instruction->result_node == variable &&
           instruction != producer && instruction->op != TAC_OP_CREATE_VARIABLE) {
-        if (instruction->op != TAC_OP_ARRAY_WRITE || instruction_index <= producer_index || crossed_barrier == YES)
+        if (pointer_base == NO || instruction->op != TAC_OP_ARRAY_WRITE || instruction_index <= producer_index || crossed_barrier == YES)
           eligible = NO;
         else
           uses++;
@@ -220,13 +237,15 @@ static int _promote_register_allocator_pointer_bases(void) {
       if (eligible == NO)
         break;
     }
-    if (eligible == NO || reads < 2)
+    if (eligible == NO || (pointer_base == YES ? reads < 2 : reads != 1))
       continue;
     if (next_temp == INT_MAX)
       return FAILED;
 
-    fprintf(stderr, "register_allocator: pointer_base_promotion function=%s variable=%s temp=r%d reads=%d uses=%d scope=single_block status=complete\n",
-      function_node->children[1]->label, producer->result_s, next_temp, reads, uses);
+    fprintf(stderr, "register_allocator: %s_promotion function=%s variable=%s temp=r%d reads=%d uses=%d scope=single_block status=complete\n",
+      pointer_base == YES ? "pointer_base" : "scalar_copy", function_node->children[1]->label, producer->result_s, next_temp, reads, uses);
+    if (pointer_base == NO)
+      producer->result_var_type = variable->children[0]->value;
     for (instruction_index = function_start; instruction_index < function_end; instruction_index++) {
       struct tac *instruction;
 
@@ -241,6 +260,14 @@ static int _promote_register_allocator_pointer_bases(void) {
         free(instruction->arg1_s);
         instruction->arg1_s = NULL;
         tac_set_arg1(instruction, TAC_ARG_TYPE_TEMP, (double)next_temp, NULL);
+        if (pointer_base == NO)
+          instruction->arg1_node = NULL;
+      }
+      if (pointer_base == NO && instruction->arg2_type == TAC_ARG_TYPE_LABEL && instruction->arg2_node == variable) {
+        free(instruction->arg2_s);
+        instruction->arg2_s = NULL;
+        tac_set_arg2(instruction, TAC_ARG_TYPE_TEMP, (double)next_temp, NULL);
+        instruction->arg2_node = NULL;
       }
       if (instruction->result_type == TAC_ARG_TYPE_LABEL && instruction->result_node == variable) {
         free(instruction->result_s);
@@ -4368,6 +4395,9 @@ static int _get_z80_register_allocator_split_reload_physical_register(struct tac
 
   if (consumer == NULL)
     return Z80_PHY_NONE;
+  if (consumer->op == TAC_OP_ASSIGNMENT && consumer_arg == TAC_USE_ARG1 && size == 16 &&
+      (consumer->result_var_type == VARIABLE_TYPE_UINT16 || consumer->result_var_type == VARIABLE_TYPE_INT16))
+    return Z80_PHY_HL;
   return z80_get_split_reload_physical_register(consumer->op, consumer_arg,
       size);
 }
