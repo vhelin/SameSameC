@@ -3104,7 +3104,6 @@ static int _generate_asm_complement_z80_8bit(struct tac *t, FILE *file_out, stru
   struct z80_location result_location;
   struct z80_location arg1_location;
   int ix_offset = 0;
-  int result_in_a = NO, result_in_b = NO, result_in_c = NO;
 
   /* result */
 
@@ -3115,10 +3114,6 @@ static int _generate_asm_complement_z80_8bit(struct tac *t, FILE *file_out, stru
 
   if (_resolve_tac_location(t, TAC_USE_ARG1, function_node, &arg1_location) == FAILED)
     return FAILED;
-
-  result_in_a = result_location.kind == LOC_PHY_A ? YES : NO;
-  result_in_b = result_location.kind == LOC_PHY_B ? YES : NO;
-  result_in_c = result_location.kind == LOC_PHY_C ? YES : NO;
 
 #if defined(DEBUG_PASS_6_REGISTER_ALLOCATOR)
   if (g_allocator_enabled == YES) {
@@ -3148,11 +3143,9 @@ static int _generate_asm_complement_z80_8bit(struct tac *t, FILE *file_out, stru
   /* copy data (arg1) -> a */
   /******************************************************************************************************/
 
-  if (arg1_location.kind == LOC_CONST) {
-    /* 8-bit */
-    _load_value_to_a(arg1_location.value & 0xff, file_out);
-  }
-  else if (arg1_location.kind == LOC_PHY_A) {
+  if (arg1_location.kind == LOC_CONST || arg1_location.kind == LOC_PHY_A) {
+    if (_materialize_to_a(&arg1_location, 0, file_out) == FAILED)
+      return FAILED;
   }
   else {
     /* 8-bit */
@@ -3170,7 +3163,7 @@ static int _generate_asm_complement_z80_8bit(struct tac *t, FILE *file_out, stru
   /* target address -> ix */
   /******************************************************************************************************/
 
-  if (result_in_a == YES || result_in_b == YES || result_in_c == YES) {
+  if (result_location.kind == LOC_PHY_A || result_location.kind == LOC_PHY_B || result_location.kind == LOC_PHY_C) {
     if (_store_from_a(&result_location, 0, 0, file_out) == FAILED)
       return FAILED;
     fprintf(file_out, "      ; retained result in %s\n", _get_z80_physical_register_name(result_location.phy));
@@ -3188,13 +3181,10 @@ static int _generate_asm_complement_z80_8bit(struct tac *t, FILE *file_out, stru
   /* copy data a -> (ix) */
   /******************************************************************************************************/
 
+  if (_store_from_a(&result_location, 0, ix_offset, file_out) == FAILED)
+    return FAILED;
+
   if (t->result_var_type == VARIABLE_TYPE_INT16 || t->result_var_type == VARIABLE_TYPE_UINT16) {
-    /* 16-bit */
-
-    /* lower byte */
-    if (_store_from_a(&result_location, 0, ix_offset, file_out) == FAILED)
-      return FAILED;
-
     /* sign extend 8-bit -> 16-bit? */
     if (t->result_var_type == VARIABLE_TYPE_INT16 && (t->arg1_var_type == VARIABLE_TYPE_INT8 ||
                                                       t->arg2_var_type == VARIABLE_TYPE_INT8)) {
@@ -3205,11 +3195,6 @@ static int _generate_asm_complement_z80_8bit(struct tac *t, FILE *file_out, stru
       /* upper byte = 0 */
       _load_value_into_ix(0, ix_offset + 1, file_out);
     }
-  }
-  else {
-    /* 8-bit */
-    if (_store_from_a(&result_location, 0, ix_offset, file_out) == FAILED)
-      return FAILED;
   }
 
   return SUCCEEDED;
@@ -3766,15 +3751,16 @@ static int _materialize_array_base_to_iy(struct tac *tac, struct z80_location *b
   operand_name = _get_z80_tac_operand_name(is_write == YES ? TAC_USE_RESULT : TAC_USE_ARG1);
 
 #if defined(DEBUG_PASS_6_REGISTER_ALLOCATOR)
-  if (g_allocator_enabled == YES && is_write == YES) {
+  if (g_allocator_enabled == YES) {
     char *function_name;
 
     function_name = "<unknown>";
     if (function_node != NULL && function_node->children[1] != NULL)
       function_name = function_node->children[1]->label;
 
-    fprintf(stderr, "register_allocator: array_write_base function=%s kind=%s memory_pointer_load=%s offset=%d phy=%s\n",
-            function_name, _get_z80_location_kind_name(base_location->kind), base_memory_pointer_load == YES ? "yes" : "no",
+    fprintf(stderr, "register_allocator: array_%s_base function=%s kind=%s memory_pointer_load=%s offset=%d phy=%s\n",
+            is_write == YES ? "write" : "read", function_name,
+            _get_z80_location_kind_name(base_location->kind), base_memory_pointer_load == YES ? "yes" : "no",
             base_location->offset, _get_z80_physical_register_name(base_location->phy));
   }
 #endif
@@ -3952,20 +3938,6 @@ static int _generate_asm_array_read_z80(struct tac *t, FILE *file_out, struct tr
   }
 
   if (arg1_location.kind == LOC_PHY_BC && arg2_is_zero == NO) {
-#if defined(DEBUG_PASS_6_REGISTER_ALLOCATOR)
-    if (g_allocator_enabled == YES) {
-      char *function_name;
-
-      function_name = "<unknown>";
-      if (function_node != NULL && function_node->children[1] != NULL)
-        function_name = function_node->children[1]->label;
-
-      fprintf(stderr, "register_allocator: array_read_base function=%s kind=%s memory_pointer_load=%s offset=%d phy=%s\n",
-              function_name, _get_z80_location_kind_name(arg1_location.kind), base_memory_pointer_load == YES ? "yes" : "no",
-              arg1_location.offset, _get_z80_physical_register_name(arg1_location.phy));
-    }
-#endif
-
     if (_materialize_array_base_to_iy(t, &arg1_location, base_memory_pointer_load, arg2_is_zero, function_node, file_out) == FAILED)
       return FAILED;
     base_materialized = YES;
@@ -4011,20 +3983,6 @@ static int _generate_asm_array_read_z80(struct tac *t, FILE *file_out, struct tr
   /******************************************************************************************************/
   /* source address (arg1) -> iy */
   /******************************************************************************************************/
-
-#if defined(DEBUG_PASS_6_REGISTER_ALLOCATOR)
-  if (g_allocator_enabled == YES && base_materialized == NO) {
-    char *function_name;
-
-    function_name = "<unknown>";
-    if (function_node != NULL && function_node->children[1] != NULL)
-      function_name = function_node->children[1]->label;
-
-    fprintf(stderr, "register_allocator: array_read_base function=%s kind=%s memory_pointer_load=%s offset=%d phy=%s\n",
-            function_name, _get_z80_location_kind_name(arg1_location.kind), base_memory_pointer_load == YES ? "yes" : "no",
-            arg1_location.offset, _get_z80_physical_register_name(arg1_location.phy));
-  }
-#endif
 
   if (base_materialized == NO && _materialize_array_base_to_iy(t, &arg1_location, base_memory_pointer_load, arg2_is_zero, function_node, file_out) == FAILED)
     return FAILED;
@@ -4104,53 +4062,30 @@ static int _generate_asm_array_read_z80(struct tac *t, FILE *file_out, struct tr
   /* target address -> ix */
   /******************************************************************************************************/
 
-  if (result_location.kind == LOC_PHY_A) {
+  if (result_location.kind == LOC_PHY_A || result_location.kind == LOC_PHY_B || result_location.kind == LOC_PHY_C) {
     if (result_needs_16_bit) {
-      fprintf(stderr, "_generate_asm_array_read_z80(): Cannot retain a 16-bit array read result in A! Please submit a bug report!\n");
+      fprintf(stderr, "_generate_asm_array_read_z80(): Cannot retain a 16-bit array read result in %s! Please submit a bug report!\n",
+              _get_z80_physical_register_name(result_location.phy));
       return FAILED;
     }
-    fprintf(file_out, "      LD  A,L\n");
-    fprintf(file_out, "      ; retained result in A\n");
-    return SUCCEEDED;
-  }
-  if (result_location.kind == LOC_PHY_HL) {
-    if (!result_needs_16_bit) {
-      fprintf(stderr, "_generate_asm_array_read_z80(): Cannot retain an 8-bit array read result in HL! Please submit a bug report!\n");
-      return FAILED;
-    }
-    fprintf(file_out, "      ; retained result in HL\n");
-    return SUCCEEDED;
-  }
-  if (result_location.kind == LOC_PHY_BC) {
-    if (result_needs_16_bit) {
-      _load_hl_to_bc(file_out);
-      fprintf(file_out, "      ; retained result in BC\n");
-      return SUCCEEDED;
-    }
-    fprintf(stderr, "_generate_asm_array_read_z80(): Cannot retain an 8-bit array read result in BC! Please submit a bug report!\n");
-    return FAILED;
-  }
-  if (result_location.kind == LOC_PHY_C) {
-    if (result_needs_16_bit) {
-      fprintf(stderr, "_generate_asm_array_read_z80(): Cannot retain a 16-bit array read result in C! Please submit a bug report!\n");
-      return FAILED;
-    }
-    fprintf(file_out, "      LD  C,L\n");
-    fprintf(file_out, "      ; retained result in C\n");
-    return SUCCEEDED;
-  }
-  if (result_location.kind == LOC_PHY_B) {
-    if (result_needs_16_bit) {
-      fprintf(stderr, "_generate_asm_array_read_z80(): Cannot retain a 16-bit array read result in B! Please submit a bug report!\n");
-      return FAILED;
-    }
-    fprintf(file_out, "      LD  B,L\n");
-    fprintf(file_out, "      ; retained result in B\n");
+    fprintf(file_out, "      LD  %s,L\n", _get_z80_physical_register_name(result_location.phy));
+    fprintf(file_out, "      ; retained result in %s\n", _get_z80_physical_register_name(result_location.phy));
 #if defined(DEBUG_PASS_6_REGISTER_ALLOCATOR)
-    if (g_allocator_enabled == YES)
+    if (g_allocator_enabled == YES && result_location.kind == LOC_PHY_B)
       fprintf(stderr, "register_allocator: array_read_physical_result function=%s result_phy=B value_bytes=1 via=L store=B status=complete\n",
               function_node->children[1]->label);
 #endif
+    return SUCCEEDED;
+  }
+  if (result_location.kind == LOC_PHY_HL || result_location.kind == LOC_PHY_BC) {
+    if (!result_needs_16_bit) {
+      fprintf(stderr, "_generate_asm_array_read_z80(): Cannot retain an 8-bit array read result in %s! Please submit a bug report!\n",
+              _get_z80_physical_register_name(result_location.phy));
+      return FAILED;
+    }
+    if (_store_from_hl(&result_location, ix_offset, file_out) == FAILED)
+      return FAILED;
+    fprintf(file_out, "      ; retained result in %s\n", _get_z80_physical_register_name(result_location.phy));
     return SUCCEEDED;
   }
 

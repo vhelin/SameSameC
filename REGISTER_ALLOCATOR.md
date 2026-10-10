@@ -8922,6 +8922,43 @@ both full 173-test suites. No emulator timing or Valgrind claim is made.
 
 ---
 
+## 280. Consolidate Retained Array-Read Results
+
+- [x] Share A/B/C byte-result transfers and reuse `_store_from_hl` for HL/BC
+      word results without broadening the supported register/width combinations.
+- [x] Preserve retained-result comments and the B-specific completion trace.
+- [x] Pass existing result, pointer-base, BC-base/index, and reload fixtures.
+
+---
+
+## 281. Reuse Complement Byte Transfers
+
+- [x] Use `_materialize_to_a` for constant/A complement sources, keeping IX
+      memory loads and the existing supported source kinds.
+- [x] Remove redundant result-location flags and share the low-byte store;
+      preserve signed/unsigned high-byte extension and retained A/B/C stores.
+- [x] Pass six existing complement chain, location, and target-policy fixtures.
+
+---
+
+## 282. Consolidate Array-Base Tracing And Qualify Reuse
+
+- [x] Reuse the base-to-IY helper's trace block for reads and writes, removing
+      two read-side duplicates without changing materialization/trace order.
+- [x] Pass thirteen focused fixtures across the batch on Cygwin and native
+      builds, including B-result, exact-ROM, reload, and trace checks.
+- [x] Match all 88 before/after assembly hashes across eleven sources, both
+      compilers, and default, `-no-ra`, `-ra-all-spill`, and `-ra` modes.
+- [x] Pass strict C90 compilation, clean editor diagnostics, native MSVC
+      Release build, and staged binary hash checks.
+
+This batch removes 65 production-code lines with no new helpers or test files.
+Allocation capabilities, assembly bytes, and frame sizes remain unchanged.
+Verification is focused on the touched emitters; full integration suites,
+Valgrind, and emulator timing were not rerun for this consolidation batch.
+
+---
+
 ## Remaining Work To 100%
 
 The current completion target is the bounded first working Z80 allocator, not
