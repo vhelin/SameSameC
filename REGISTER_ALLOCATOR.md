@@ -8816,6 +8816,43 @@ pass. `-ra` remains opt-in.
 
 ---
 
+## 271. Consolidate Array-Base Reload Emission
+
+- [x] Reuse one reload path for `ARRAY_READ arg1 -> HL` and
+      `ARRAY_WRITE result -> BC`, removing the duplicate write helper.
+- [x] Preserve endpoint restrictions, operand-specific traces, byte order,
+      and index-before-read-reload ordering; existing exact-ROM tests pass.
+
+---
+
+## 272. Reuse Spill Resolution And Preservation
+
+- [x] Fold retained read-base preservation into the same transfer helper,
+      removing another duplicate helper without adding production functions.
+- [x] Reuse `_resolve_tac_location` on a local TAC copy with retention cleared
+      to resolve spill backing without mutating the original operand metadata.
+- [x] Keep canonical spill/reload planning and existing IX load/store helpers;
+      legacy split-spill and mixed read/write exact-ROM tests pass.
+
+---
+
+## 273. Compact Promotion Walks And Qualify Consolidation
+
+- [x] Track crossed barriers during the existing eligibility walk and remove
+      dead pointer declarations during rewriting, eliminating two extra loops.
+- [x] Preserve all four positive and eight negative source cases, forced
+      all-spill behavior, default/`-no-ra` identity, and existing ROM bytes.
+- [x] Compile both changed sources with `-ansi -pedantic -Wall -Werror`.
+- [x] Pass the full plain integration suite: `DONE (173 tests)`.
+- [x] Build native MSVC Release binaries and hash-match their staged copies.
+- [x] Pass the full native Windows integration suite: `DONE (173 tests)`.
+
+Production code is 77 lines smaller, with two fewer helpers and no new
+production functions. Supported source scope and ROM bytes are unchanged;
+the previous 37-byte optimization and unchanged frame survive.
+
+---
+
 ## Remaining Work To 100%
 
 The current completion target is the bounded first working Z80 allocator, not

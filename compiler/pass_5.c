@@ -149,7 +149,7 @@ static int _promote_register_allocator_pointer_bases(void) {
   for (producer_index = 0; producer_index < g_tacs_count; producer_index++) {
     struct tac *producer;
     struct tree_node *variable;
-    int reads = 0, uses = 0, last_use = -1, eligible = YES;
+    int reads = 0, uses = 0, crossed_barrier = NO, eligible = YES;
 
     producer = &g_tacs[producer_index];
     if (producer->op == TAC_OP_LABEL && producer->is_function == YES) {
@@ -177,6 +177,11 @@ static int _promote_register_allocator_pointer_bases(void) {
       instruction = &g_tacs[instruction_index];
       if (instruction->op == TAC_OP_DEAD)
         continue;
+      if (instruction_index > producer_index &&
+          (instruction->op == TAC_OP_LABEL || instruction->op == TAC_OP_ASM ||
+          _is_register_allocator_jump_op(instruction->op) == YES ||
+          instruction->op == TAC_OP_RETURN || instruction->op == TAC_OP_RETURN_VALUE))
+        crossed_barrier = YES;
       if (instruction->op == TAC_OP_FUNCTION_CALL || instruction->op == TAC_OP_FUNCTION_CALL_USE_RETURN_VALUE) {
         eligible = NO;
         break;
@@ -198,50 +203,40 @@ static int _promote_register_allocator_pointer_bases(void) {
       if (instruction->arg2_type == TAC_ARG_TYPE_LABEL && instruction->arg2_node == variable)
         eligible = NO;
       if (instruction->arg1_type == TAC_ARG_TYPE_LABEL && instruction->arg1_node == variable) {
-        if (instruction->op != TAC_OP_ARRAY_READ || instruction_index <= producer_index)
+        if (instruction->op != TAC_OP_ARRAY_READ || instruction_index <= producer_index || crossed_barrier == YES)
           eligible = NO;
         else {
           reads++;
           uses++;
-          last_use = instruction_index;
         }
       }
       if (instruction->result_type == TAC_ARG_TYPE_LABEL && instruction->result_node == variable &&
           instruction != producer && instruction->op != TAC_OP_CREATE_VARIABLE) {
-        if (instruction->op != TAC_OP_ARRAY_WRITE || instruction_index <= producer_index)
+        if (instruction->op != TAC_OP_ARRAY_WRITE || instruction_index <= producer_index || crossed_barrier == YES)
           eligible = NO;
-        else {
+        else
           uses++;
-          last_use = instruction_index;
-        }
       }
       if (eligible == NO)
         break;
     }
     if (eligible == NO || reads < 2)
       continue;
-    for (instruction_index = producer_index + 1; instruction_index <= last_use; instruction_index++) {
-      int op;
-
-      op = g_tacs[instruction_index].op;
-      if (op == TAC_OP_LABEL || op == TAC_OP_ASM || _is_register_allocator_jump_op(op) == YES ||
-          op == TAC_OP_FUNCTION_CALL || op == TAC_OP_FUNCTION_CALL_USE_RETURN_VALUE ||
-          op == TAC_OP_RETURN || op == TAC_OP_RETURN_VALUE)
-        eligible = NO;
-    }
-    if (eligible == NO)
-      continue;
     if (next_temp == INT_MAX)
       return FAILED;
 
     fprintf(stderr, "register_allocator: pointer_base_promotion function=%s variable=%s temp=r%d reads=%d uses=%d scope=single_block status=complete\n",
       function_node->children[1]->label, producer->result_s, next_temp, reads, uses);
-    for (instruction_index = producer_index; instruction_index <= last_use; instruction_index++) {
+    for (instruction_index = function_start; instruction_index < function_end; instruction_index++) {
       struct tac *instruction;
 
       instruction = &g_tacs[instruction_index];
       if (instruction->op == TAC_OP_DEAD)
         continue;
+      if (instruction->op == TAC_OP_CREATE_VARIABLE && instruction->result_node == variable) {
+        instruction->op = TAC_OP_DEAD;
+        continue;
+      }
       if (instruction->arg1_type == TAC_ARG_TYPE_LABEL && instruction->arg1_node == variable) {
         free(instruction->arg1_s);
         instruction->arg1_s = NULL;
@@ -253,10 +248,6 @@ static int _promote_register_allocator_pointer_bases(void) {
         tac_set_result(instruction, TAC_ARG_TYPE_TEMP, (double)next_temp, NULL);
         instruction->result_node = NULL;
       }
-    }
-    for (instruction_index = function_start; instruction_index < function_end; instruction_index++) {
-      if (g_tacs[instruction_index].op == TAC_OP_CREATE_VARIABLE && g_tacs[instruction_index].result_node == variable)
-        g_tacs[instruction_index].op = TAC_OP_DEAD;
     }
     next_temp++;
   }

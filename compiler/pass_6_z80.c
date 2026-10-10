@@ -3860,100 +3860,91 @@ static int _materialize_array_read_arg1_to_iy(struct tac *tac, struct z80_locati
 }
 
 
-static int _spill_retained_array_read_arg1(struct tac *t, struct tree_node *function_node, struct z80_location *arg1_location, FILE *file_out) {
+static int _transfer_array_base_spill(struct tac *t, struct tree_node *function_node, struct z80_location *base_location, int is_reload, FILE *file_out) {
 
+  struct tac spill_tac;
   struct z80_location spill_location;
-  struct register_allocator_spill_emission emission;
-  char *function_name;
-  int ix_offset;
+  struct register_allocator_reload_emission reload;
+  struct register_allocator_spill_emission spill;
+  char *function_name, *operand_name, *op_name;
+  int ix_offset, operand, physical_register, temp;
 
-  if (t->store_retained_to_spill_operand != TAC_USE_ARG1)
+  if ((is_reload == YES && t->reload_spill_to_physical_operand == -1) ||
+      (is_reload == NO && t->store_retained_to_spill_operand != TAC_USE_ARG1))
     return SUCCEEDED;
-
   function_name = "<unknown>";
   if (function_node != NULL && function_node->children[1] != NULL)
     function_name = function_node->children[1]->label;
-
-  if (t->arg1_type != TAC_ARG_TYPE_TEMP) {
-    fprintf(stderr, "_spill_retained_array_read_arg1(): Expected a retained HL temp! Please submit a bug report!\n");
+  operand = is_reload == YES ? t->reload_spill_to_physical_operand : TAC_USE_ARG1;
+  if (t->op == TAC_OP_ARRAY_READ && operand == TAC_USE_ARG1 &&
+      t->arg1_type == TAC_ARG_TYPE_TEMP && base_location->kind == LOC_PHY_HL &&
+      t->arg1_physical_register == Z80_PHY_HL) {
+    temp = (int)t->arg1_d;
+    physical_register = Z80_PHY_HL;
+    operand_name = "arg1";
+    op_name = "ARRAY_READ";
+  }
+  else if (is_reload == YES && t->op == TAC_OP_ARRAY_WRITE && operand == TAC_USE_RESULT &&
+      t->result_type == TAC_ARG_TYPE_TEMP && base_location->kind == LOC_PHY_BC &&
+      t->result_physical_register == Z80_PHY_BC) {
+    if (z80_validate_array_write_reload_operand(function_name, operand) == FAILED)
+      return FAILED;
+    temp = (int)t->result_d;
+    physical_register = Z80_PHY_BC;
+    operand_name = "result";
+    op_name = "ARRAY_WRITE";
+  }
+  else {
+    fprintf(stderr, "register_allocator_z80: array_base_spill function=%s operand=%d reload=%s status=unsupported_operand\n",
+        function_name, operand, is_reload == YES ? "yes" : "no");
     return FAILED;
   }
-
-  if (_resolve_z80_location(t->arg1_type, t->arg1_s, (int)t->arg1_d, t->arg1_node, t->arg1_var_type,
-                            function_node, &spill_location, "arg1_spill", Z80_PHY_NONE) == FAILED)
+  spill_tac = *t;
+  spill_tac.arg1_physical_register = spill_tac.result_physical_register = Z80_PHY_NONE;
+  if (_resolve_tac_location(&spill_tac, operand, function_node, &spill_location) == FAILED ||
+      spill_location.kind != LOC_STACK_SPILL)
     return FAILED;
-  if (spill_location.kind != LOC_STACK_SPILL) {
-    fprintf(stderr, "_spill_retained_array_read_arg1(): Retained multi-read temp has no spill slot! Please submit a bug report!\n");
-    return FAILED;
+  if (is_reload == YES) {
+    if (register_allocator_prepare_reload_operand_emission(function_name, YES,
+      temp, operand, Z80_PHY_NONE, physical_register, YES,
+        spill_location.offset, 2, &reload) == FAILED || reload.emit != YES ||
+        reload.operand != operand || reload.physical_register != physical_register || reload.byte_count != 2)
+      return FAILED;
   }
-
-  if (register_allocator_prepare_spill_emission(function_name, YES,
-      (int)t->arg1_d, Z80_PHY_NONE, t->arg1_physical_register, YES, spill_location.offset, 2,
-      &emission) == FAILED)
+  else if (register_allocator_prepare_spill_emission(function_name, YES,
+      temp, Z80_PHY_NONE, physical_register, YES, spill_location.offset, 2, &spill) == FAILED ||
+      spill.emit != YES || spill.physical_register != physical_register || spill.byte_count != 2)
     return FAILED;
-  if (emission.emit != YES || emission.physical_register != Z80_PHY_HL ||
-      emission.byte_count != 2 || arg1_location->kind != LOC_PHY_HL) {
-    fprintf(stderr, "_spill_retained_array_read_arg1(): Expected a retained HL temp! Please submit a bug report!\n");
-    return FAILED;
-  }
-
   if (_load_location_address_to_ix(&spill_location, &ix_offset, file_out) == FAILED)
     return FAILED;
-  if (_store_from_hl(&spill_location, ix_offset, file_out) == FAILED)
-    return FAILED;
+  if (is_reload == NO) {
+    if (_store_from_hl(&spill_location, ix_offset, file_out) == FAILED)
+      return FAILED;
+  }
+  else if (physical_register == Z80_PHY_HL) {
+    _load_from_ix_to_l(ix_offset, file_out);
+    _load_from_ix_to_h(ix_offset + 1, file_out);
+  }
+  else {
+    _load_from_ix_to_c(ix_offset, file_out);
+    _load_from_ix_to_b(ix_offset + 1, file_out);
+  }
 
 #if defined(DEBUG_PASS_6_REGISTER_ALLOCATOR)
   if (g_allocator_enabled == YES) {
-    fprintf(stderr, "register_allocator: spill_insert_emit function=%s op=ARRAY_READ operand=arg1 phy=HL spill_offset=%d bytes=2\n",
-            function_name, emission.destination_offset);
+    if (is_reload == YES)
+      fprintf(stderr, "register_allocator: reload_insert_emit function=%s op=%s operand=%s source_offset=%d bytes=2 phy=%s operand_id=%d\n",
+          function_name, op_name, operand_name, reload.source_offset,
+          _get_z80_physical_register_name(physical_register), reload.operand);
+    else
+      fprintf(stderr, "register_allocator: spill_insert_emit function=%s op=ARRAY_READ operand=arg1 phy=HL spill_offset=%d bytes=2\n",
+          function_name, spill.destination_offset);
   }
 #endif
-
-  fprintf(file_out, "      ; preserve retained arg1 in spill slot\n");
-
-  return SUCCEEDED;
-}
-
-
-static int _reload_array_read_arg1_from_spill(struct tac *t, struct tree_node *function_node, struct z80_location *arg1_location, FILE *file_out) {
-
-  struct z80_location spill_location;
-  struct register_allocator_reload_emission emission;
-  char *function_name;
-  int ix_offset;
-
-  if (t->reload_spill_to_physical_operand == -1)
-    return SUCCEEDED;
-  function_name = function_node->children[1]->label;
-  if (t->reload_spill_to_physical_operand != TAC_USE_ARG1 ||
-      t->arg1_type != TAC_ARG_TYPE_TEMP || arg1_location->kind != LOC_PHY_HL ||
-      t->arg1_physical_register != Z80_PHY_HL) {
-    fprintf(stderr, "register_allocator_z80: array_read_reload function=%s operand=%d status=unsupported_operand\n",
-        function_name, t->reload_spill_to_physical_operand);
-    return FAILED;
-  }
-  if (_resolve_z80_location(t->arg1_type, t->arg1_s, (int)t->arg1_d, t->arg1_node, t->arg1_var_type,
-      function_node, &spill_location, "arg1_reload", Z80_PHY_NONE) == FAILED)
-    return FAILED;
-  if (spill_location.kind != LOC_STACK_SPILL ||
-      register_allocator_prepare_reload_operand_emission(function_name, YES,
-      (int)t->arg1_d, t->reload_spill_to_physical_operand, Z80_PHY_NONE,
-      t->arg1_physical_register, YES, spill_location.offset, 2, &emission) == FAILED)
-    return FAILED;
-  if (emission.emit != YES || emission.operand != TAC_USE_ARG1 ||
-      emission.physical_register != Z80_PHY_HL || emission.byte_count != 2)
-    return FAILED;
-  if (_load_location_address_to_ix(&spill_location, &ix_offset, file_out) == FAILED)
-    return FAILED;
-  _load_from_ix_to_l(ix_offset, file_out);
-  _load_from_ix_to_h(ix_offset + 1, file_out);
-
-#if defined(DEBUG_PASS_6_REGISTER_ALLOCATOR)
-  if (g_allocator_enabled == YES)
-    fprintf(stderr, "register_allocator: reload_insert_emit function=%s op=ARRAY_READ operand=arg1 source_offset=%d bytes=2 phy=HL operand_id=%d\n",
-        function_name, emission.source_offset, emission.operand);
-#endif
-  fprintf(file_out, "      ; reload arg1 from spill slot into HL\n");
+  if (is_reload == YES)
+    fprintf(file_out, "      ; reload %s from spill slot into %s\n", operand_name, _get_z80_physical_register_name(physical_register));
+  else
+    fprintf(file_out, "      ; preserve retained arg1 in spill slot\n");
   return SUCCEEDED;
 }
 
@@ -3992,7 +3983,7 @@ static int _generate_asm_array_read_z80(struct tac *t, FILE *file_out, struct tr
   if (_resolve_tac_location(t, TAC_USE_ARG2, function_node, &arg2_location) == FAILED)
     return FAILED;
 
-  if (_spill_retained_array_read_arg1(t, function_node, &arg1_location, file_out) == FAILED)
+  if (_transfer_array_base_spill(t, function_node, &arg1_location, NO, file_out) == FAILED)
     return FAILED;
 
   if (arg2_location.kind == LOC_CONST && arg2_location.value == 0)
@@ -4043,7 +4034,7 @@ static int _generate_asm_array_read_z80(struct tac *t, FILE *file_out, struct tr
     return FAILED;
   }
 
-  if (_reload_array_read_arg1_from_spill(t, function_node, &arg1_location, file_out) == FAILED)
+  if (_transfer_array_base_spill(t, function_node, &arg1_location, YES, file_out) == FAILED)
     return FAILED;
 
 #if defined(DEBUG_PASS_6_REGISTER_ALLOCATOR)
@@ -4412,65 +4403,6 @@ static int _materialize_array_write_result_to_iy(struct tac *tac, struct z80_loc
 }
 
 
-static int _reload_array_write_result_from_spill(struct tac *t, struct tree_node *function_node, struct z80_location *result_location, FILE *file_out) {
-
-  struct z80_location spill_location;
-  struct register_allocator_reload_emission emission;
-  char *function_name;
-  int ix_offset;
-
-  if (t->reload_spill_to_physical_operand == -1)
-    return SUCCEEDED;
-  function_name = "<unknown>";
-  if (function_node != NULL && function_node->children[1] != NULL)
-    function_name = function_node->children[1]->label;
-  if (z80_validate_array_write_reload_operand(function_name,
-      t->reload_spill_to_physical_operand) == FAILED)
-    return FAILED;
-
-  if (t->result_type != TAC_ARG_TYPE_TEMP) {
-    fprintf(stderr, "_reload_array_write_result_from_spill(): Expected a retained BC temp! Please submit a bug report!\n");
-    return FAILED;
-  }
-
-  if (_resolve_z80_location(t->result_type, t->result_s, (int)t->result_d, t->result_node, t->result_var_type,
-                            function_node, &spill_location, "result_reload", Z80_PHY_NONE) == FAILED)
-    return FAILED;
-  if (spill_location.kind != LOC_STACK_SPILL) {
-    fprintf(stderr, "_reload_array_write_result_from_spill(): Reload temp has no spill slot! Please submit a bug report!\n");
-    return FAILED;
-  }
-
-  if (register_allocator_prepare_reload_operand_emission(function_name, YES,
-      (int)t->result_d, t->reload_spill_to_physical_operand,
-      Z80_PHY_NONE, t->result_physical_register, YES,
-      spill_location.offset, 2, &emission) == FAILED)
-    return FAILED;
-  if (emission.emit != YES || emission.operand != TAC_USE_RESULT ||
-      emission.physical_register != Z80_PHY_BC ||
-      emission.byte_count != 2 || result_location->kind != LOC_PHY_BC) {
-    fprintf(stderr, "_reload_array_write_result_from_spill(): Expected a retained BC temp! Please submit a bug report!\n");
-    return FAILED;
-  }
-
-  if (_load_location_address_to_ix(&spill_location, &ix_offset, file_out) == FAILED)
-    return FAILED;
-  _load_from_ix_to_c(ix_offset, file_out);
-  _load_from_ix_to_b(ix_offset + 1, file_out);
-
-#if defined(DEBUG_PASS_6_REGISTER_ALLOCATOR)
-  if (g_allocator_enabled == YES) {
-            fprintf(stderr, "register_allocator: reload_insert_emit function=%s op=ARRAY_WRITE operand=result source_offset=%d bytes=2 phy=BC operand_id=%d\n",
-              function_name, emission.source_offset, emission.operand);
-  }
-#endif
-
-  fprintf(file_out, "      ; reload result from spill slot into BC\n");
-
-  return SUCCEEDED;
-}
-
-
 static int _is_z80_16_bit_variable_type(int var_type) {
 
   if (var_type == VARIABLE_TYPE_INT16 || var_type == VARIABLE_TYPE_UINT16)
@@ -4642,7 +4574,7 @@ static int _generate_asm_array_write_z80(struct tac *t, FILE *file_out, struct t
   preserve_a_for_arg1 = arg1_location.kind == LOC_PHY_A ? YES : NO;
 
   if (arg2_is_zero == NO &&
-      _reload_array_write_result_from_spill(t, function_node, &result_location, file_out) == FAILED)
+      _transfer_array_base_spill(t, function_node, &result_location, YES, file_out) == FAILED)
     return FAILED;
 
   if (result_location.kind == LOC_PHY_BC && arg2_location.kind == LOC_PHY_BC) {
@@ -4691,7 +4623,7 @@ static int _generate_asm_array_write_z80(struct tac *t, FILE *file_out, struct t
   }
 
   if (arg2_is_zero == YES &&
-      _reload_array_write_result_from_spill(t, function_node, &result_location, file_out) == FAILED)
+      _transfer_array_base_spill(t, function_node, &result_location, YES, file_out) == FAILED)
     return FAILED;
 
 #if defined(DEBUG_PASS_6_REGISTER_ALLOCATOR)
