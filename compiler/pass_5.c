@@ -4201,8 +4201,20 @@ static int _can_z80_register_allocator_fallback_candidate(int size, int reason) 
 static int _prefer_z80_register_allocator_candidate_on_equal_next_use(int consumer_op,
     int candidate_operand, int active_operand, int physical_register) {
 
-  return consumer_op == TAC_OP_ARRAY_WRITE && candidate_operand == TAC_USE_ARG1 &&
-    active_operand == TAC_USE_ARG2 && physical_register == Z80_PHY_A ? YES : NO;
+  int candidate_transfer_bytes, active_transfer_bytes;
+
+  if (consumer_op != TAC_OP_ARRAY_WRITE || physical_register != Z80_PHY_A ||
+      (candidate_operand != TAC_USE_ARG1 && candidate_operand != TAC_USE_ARG2) ||
+      (active_operand != TAC_USE_ARG1 && active_operand != TAC_USE_ARG2))
+    return NO;
+  candidate_transfer_bytes = candidate_operand == TAC_USE_ARG1 ? 0 : 1;
+  active_transfer_bytes = active_operand == TAC_USE_ARG1 ? 0 : 1;
+#if defined(DEBUG_PASS_5)
+  fprintf(stderr, "register_allocator: target_equal_cost op=ARRAY_WRITE phy=A candidate_operand=%d active_operand=%d candidate_transfer_bytes=%d active_transfer_bytes=%d prefer=%s scope=consumer_transfer\n",
+      candidate_operand, active_operand, candidate_transfer_bytes, active_transfer_bytes,
+      candidate_transfer_bytes < active_transfer_bytes ? "yes" : "no");
+#endif
+  return candidate_transfer_bytes < active_transfer_bytes ? YES : NO;
 }
 
 

@@ -9017,7 +9017,7 @@ fixtures; do not add wrapper functions or callback layers just to extract code.
       introducing abstractions. Add a source-reachable BC word-complement
       fixture before changing that uncovered path. Require identical assembly
       and traces for refactors, and track net production lines/helper counts.
-- [ ] **288. Introduce conservative target-aware cost preferences.** Start
+- [x] **288. Introduce conservative target-aware cost preferences.** Start
       with the existing equal-next-use preference hook and candidate ordering.
       Compare transfer, spill, reload, and address-setup costs; use existing CFG
       loop information where available. Keep legality ahead of profitability
@@ -9056,15 +9056,33 @@ Batch results:
       source-reachable fixture. Original/current emitters produced identical ROMs
       in 24 corpus builds and identical assembly in 40 translation units after
       normalizing only randomized static-symbol suffixes.
-- Phase 288 evaluation retains the existing ARRAY_WRITE value-in-A preference. An
-      isolated compiler with that rule disabled grows the dedicated policy fixture
-      from 313 to 314 ROM bytes and from six to seven register copies; frame and
-      planned-storage sizes stay unchanged. The corpus has no queried ties, and
-      exploratory array-base/word-index and byte-shift probes produced no relevant
-      tied conflicts. No new preference was enabled; richer cost arbitration is
-      deferred until a source-reachable case demonstrates a benefit. Existing
-      unequal-next-use and invalid-policy tests remain unchanged. The introduction
-      step stays unchecked because this batch adds no new profitability rule.
+- Initial Phase 288 evaluation found a profitable ARRAY_WRITE value-in-A tie,
+      but no qualifying new ties in exploratory array-base/word-index, byte-shift,
+      or byte-compare probes. The completion therefore qualifies that existing
+      source-reachable case rather than enabling an unmeasured operand preference.
+- Phase 288 completion replaces the role predicate in the existing equal-next-use
+      hook with an explicit target transfer-byte comparison. For ARRAY_WRITE in A,
+      retaining the value (arg1) costs zero consumer transfers; retaining the index
+      (arg2) requires the one-byte `LD C,A` transfer. Prefer only strictly lower
+      cost; equal costs and other operations/registers retain the existing order.
+      Generic legality, unequal-next-use handling, and mutation plans remain ahead
+      of this cost check. No new helper, callback, or candidate order is added.
+- A current-code control compiler with the preference disabled uses 314 ROM bytes
+      and seven register copies versus 313 bytes and six copies with it enabled.
+      Total/max frame sizes stay 34/17 and planned storage stays 17160 bytes;
+      inserted spill/reload counts are zero in both builds. The cost comparison
+      therefore models the measured transfer difference, not hypothetical savings
+      in spill, reload, or address setup. No loop-weighted or global cost model is
+      claimed: those contexts are not available in this bounded callback.
+- The original and cost-based predicates produce identical ROMs in all 28 builds
+      of the seven-fixture/four-mode corpus. This is an explicit cost model for an
+      already profitable choice, not an additional size improvement over the
+      preceding compiler. Richer arbitration remains gated on source-reachable
+      measurements. Default, `-no-ra`, and all-spill behavior is unchanged.
+- Strict C90, GCC/MSVC builds and staged hashes, target-cost trace assertions,
+      exact-byte checks, and existing unequal/invalid-policy tests passed on both
+      compilers. Full suites were not rerun for this output-preserving cost-only
+      change. Production grows by 12 net lines with no new functions or test files.
 - Production source shrinks by 33 lines with no new helpers or policy APIs.
       The new measurement driver is separate from compiler production code.
 - Validation: both full integration suites passed on 2026-10-11, each reporting
@@ -9143,14 +9161,15 @@ Batch results (bounded implementations):
       ROM/copy traffic, not compiler source size. General copy scheduling, temp
       identity merging, constants, nonzero/local-address rematerialization, and
       additional split endpoints are not claimed as implemented.
-- Phase 288 remains pending: the byte-compare probe reached no tied conflict
-      under current discovery/clobber rules and was removed. No cost preference
-      or broader allocation policy is enabled by this batch.
+- Phase 288 was not expanded during this batch: the byte-compare probe reached
+      no tied conflict and was removed. Its later bounded cost-model qualification
+      is recorded above; no broader allocation policy is enabled.
 - Strict C90, focused exact-byte/trace checks, editor diagnostics, staged-binary
       hash checks, and the four-mode corpus measurements passed. All eight native
       MSVC/Cygwin GCC ROM pairs for the two expanded fixtures match byte-for-byte.
       The full Cygwin GCC suite reported `DONE (173 tests)` on 2026-10-11.
-      The broader native MSVC suite is running; its completion is not yet verified.
+      The native MSVC suite subsequently reported `DONE (173 tests)` and
+      `PASS:native_full_suite` on 2026-10-11 with the verified native compiler.
       Valgrind, sanitizers, peak-memory profiling, and emulator execution/timing
       were not run.
 
