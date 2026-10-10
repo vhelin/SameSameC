@@ -8853,6 +8853,38 @@ the previous 37-byte optimization and unchanged frame survive.
 
 ---
 
+## 274. Share Pointer-Base Load Decisions
+
+- [x] Reuse the address-base predicate for array reads and writes, removing
+      two duplicates while preserving plain address-of and retained-base rules.
+- [x] Preserve pointer-base and repeated-read exact-ROM fixtures.
+
+---
+
+## 275. Unify Array-Base Materialization
+
+- [x] Reuse one base-to-IY path for reads and writes, removing the write helper
+      while preserving constant-base rules, BC index handling, and trace names.
+- [x] Preserve pointer, BC-base/HL-index, and mixed reload exact-ROM fixtures.
+
+---
+
+## 276. Reuse Type Sizes And Qualify Consolidation
+
+- [x] Remove four width-only wrappers and use existing scalar type sizes at
+      the write-value call site; retain non-scalar location-width fallback.
+- [x] Preserve scalar, pointer, struct/union, and signed exact-ROM cases using
+      existing tests, including all-spill and default/`-no-ra` identity checks.
+- [x] Pass strict C90 compilation and native MSVC Release builds; hash-match
+      both compilers and the native linker with their staged copies.
+- [x] Pass the full plain integration suite: `DONE (173 tests)`.
+- [x] Pass the full native Windows integration suite: `DONE (173 tests)`.
+
+This batch removes 103 production-code lines and seven helpers without adding
+files or allocation capabilities. Existing ROM bytes and frame sizes remain.
+
+---
+
 ## Remaining Work To 100%
 
 The current completion target is the bounded first working Z80 allocator, not
