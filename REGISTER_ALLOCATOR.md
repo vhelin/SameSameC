@@ -8885,6 +8885,43 @@ files or allocation capabilities. Existing ROM bytes and frame sizes remain.
 
 ---
 
+## 277. Reuse Address-Index Materialization
+
+- [x] Replace duplicate nonconstant get-address index loads and extension with
+      `_materialize_array_index_to_bc`; keep explicit constant-zero BC loading.
+- [x] Preserve early retained-index handling and the BC-base/HL-index path.
+- [x] Pass six existing address fixtures with both compiler builds.
+
+---
+
+## 278. Reuse Port-Output Value Materialization
+
+- [x] Use `_materialize_to_a` for constant and retained A/HL/BC output values,
+      preserving trace comments and the BC/nonconstant-port restriction.
+- [x] Keep IX memory loads and the existing supported register set unchanged.
+- [x] Pass existing value, port-conflict, and target-policy fixtures with both
+      compiler builds.
+
+---
+
+## 279. Reuse Port-Input Stores And Qualify Consolidation
+
+- [x] Use `_store_from_a` for port-input results; preserve A/HL/BC/C support,
+      H/B zero extension, and declared-width memory-result handling.
+- [x] Pass eleven existing focused address/port fixtures across the batch on
+      Cygwin and native builds, including exact-ROM and trace checks.
+- [x] Match all 88 before/after assembly hashes: eleven sources, two compilers,
+      and default, `-no-ra`, `-ra-all-spill`, and `-ra` modes.
+- [x] Pass strict `-ansi -pedantic -Wall -Werror` compilation, clean editor
+      diagnostics, native MSVC Release build, and staged binary hash checks.
+
+This batch removes 57 production-code lines with no new helpers or test files.
+Assembly, allocation capabilities, ROM bytes, and frame sizes are unchanged.
+Qualification is scoped to the touched emitters; the preceding batch passed
+both full 173-test suites. No emulator timing or Valgrind claim is made.
+
+---
+
 ## Remaining Work To 100%
 
 The current completion target is the bounded first working Z80 allocator, not

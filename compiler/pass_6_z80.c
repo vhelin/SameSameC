@@ -3552,11 +3552,7 @@ static int _generate_asm_get_address_z80(struct tac *t, FILE *file_out, struct t
     /* index address (arg2) -> ix */
     /******************************************************************************************************/
 
-    if (index_materialized == YES) {
-    }
-    else if (arg2_location.kind == LOC_CONST) {
-    }
-    else {
+    if (index_materialized == NO && arg2_location.kind != LOC_CONST) {
       if (_load_location_address_to_ix(&arg2_location, &ix_offset, file_out) == FAILED)
         return FAILED;
 #if defined(DEBUG_PASS_6_REGISTER_ALLOCATOR)
@@ -3569,43 +3565,12 @@ static int _generate_asm_get_address_z80(struct tac *t, FILE *file_out, struct t
     /* copy data (ix) -> bc */
     /******************************************************************************************************/
 
-    if (index_materialized == YES) {
-    }
-    else if (arg2_location.kind == LOC_CONST) {
-      /* 16-bit */
-      _load_value_to_bc(arg2_location.value, file_out);
-    }
-    else if (arg2_location.kind == LOC_PHY_A) {
-      if (_materialize_array_index_to_bc(&arg2_location, t->arg2_var_type, ix_offset, NO, file_out) == FAILED) {
+    if (index_materialized == NO) {
+      if (arg2_location.kind == LOC_CONST)
+        _load_value_to_bc(arg2_location.value, file_out);
+      else if (_materialize_array_index_to_bc(&arg2_location, t->arg2_var_type, ix_offset, NO, file_out) == FAILED) {
         print_tac(t, NO, stderr);
         return FAILED;
-      }
-      index_materialized = YES;
-    }
-    else {
-      if (t->arg2_var_type == VARIABLE_TYPE_INT16 || t->arg2_var_type == VARIABLE_TYPE_UINT16) {
-        /* 16-bit */
-        _load_from_ix_to_c(ix_offset, file_out);
-        _load_from_ix_to_b(ix_offset + 1, file_out);
-      }
-      else {
-        /* 8-bit */
-        _load_from_ix_to_c(ix_offset, file_out);
-
-        /* sign extend 8-bit -> 16-bit? */
-        if (t->arg2_var_type == VARIABLE_TYPE_INT8) {
-          /* yes */
-          _sign_extend_c_to_bc(file_out);
-        }
-        else if (t->arg2_var_type == VARIABLE_TYPE_UINT8) {
-          /* upper byte -> 0 */
-          _load_value_to_b(0, file_out);
-        }
-        else {
-          fprintf(stderr, "_generate_asm_get_address_z80(): Unhandled 8-bit ARG2! Please submit a bug report!\n");
-          print_tac(t, NO, stderr);
-          return FAILED;
-        }
       }
     }
 
@@ -3758,25 +3723,15 @@ static int _generate_asm_z80_in_read_z80(struct tac *t, FILE *file_out, struct t
   /* target address -> ix */
   /******************************************************************************************************/
 
-  if (result_location.kind == LOC_PHY_A) {
-    fprintf(file_out, "      ; retained result in A\n");
-    return SUCCEEDED;
-  }
-  if (result_location.kind == LOC_PHY_HL) {
-    fprintf(file_out, "      LD  L,A\n");
-    _load_value_to_h(0, file_out);
-    fprintf(file_out, "      ; retained result in HL\n");
-    return SUCCEEDED;
-  }
-  if (result_location.kind == LOC_PHY_BC) {
-    fprintf(file_out, "      LD  C,A\n");
-    _load_value_to_b(0, file_out);
-    fprintf(file_out, "      ; retained result in BC\n");
-    return SUCCEEDED;
-  }
-  if (result_location.kind == LOC_PHY_C) {
-    fprintf(file_out, "      LD  C,A\n");
-    fprintf(file_out, "      ; retained result in C\n");
+  if (result_location.kind == LOC_PHY_A || result_location.kind == LOC_PHY_HL ||
+      result_location.kind == LOC_PHY_BC || result_location.kind == LOC_PHY_C) {
+    if (_store_from_a(&result_location, 0, ix_offset, file_out) == FAILED)
+      return FAILED;
+    if (result_location.kind == LOC_PHY_HL)
+      _load_value_to_h(0, file_out);
+    else if (result_location.kind == LOC_PHY_BC)
+      _load_value_to_b(0, file_out);
+    fprintf(file_out, "      ; retained result in %s\n", _get_z80_physical_register_name(result_location.phy));
     return SUCCEEDED;
   }
 
@@ -3789,15 +3744,10 @@ static int _generate_asm_z80_in_read_z80(struct tac *t, FILE *file_out, struct t
   /* copy data a -> (ix) */
   /******************************************************************************************************/
 
-  if (t->result_var_type == VARIABLE_TYPE_INT16 || t->result_var_type == VARIABLE_TYPE_UINT16) {
-    /* 16-bit */
-    _load_a_into_ix(ix_offset, file_out);
+  if (_store_from_a(&result_location, 0, ix_offset, file_out) == FAILED)
+    return FAILED;
+  if (t->result_var_type == VARIABLE_TYPE_INT16 || t->result_var_type == VARIABLE_TYPE_UINT16)
     _load_value_into_ix(0, ix_offset + 1, file_out);
-  }
-  else {
-    /* 8-bit */
-    _load_a_into_ix(ix_offset, file_out);
-  }
 
   return SUCCEEDED;
 }
@@ -4284,19 +4234,12 @@ static int _generate_asm_z80_out_write_z80(struct tac *t, FILE *file_out, struct
   /* source value (arg1) -> a */
   /******************************************************************************************************/
 
-  if (arg1_location.kind == LOC_CONST) {
-    _load_value_to_a(arg1_location.value & 0xff, file_out);
-  }
-  else if (arg1_location.kind == LOC_PHY_A) {
-    fprintf(file_out, "      ; retained arg1 in A\n");
-  }
-  else if (arg1_location.kind == LOC_PHY_HL) {
-    fprintf(file_out, "      LD  A,L\n");
-    fprintf(file_out, "      ; retained arg1 in HL\n");
-  }
-  else if (arg1_location.kind == LOC_PHY_BC) {
-    fprintf(file_out, "      LD  A,C\n");
-    fprintf(file_out, "      ; retained arg1 in BC\n");
+  if (arg1_location.kind == LOC_CONST || arg1_location.kind == LOC_PHY_A ||
+      arg1_location.kind == LOC_PHY_HL || arg1_location.kind == LOC_PHY_BC) {
+    if (_materialize_to_a(&arg1_location, 0, file_out) == FAILED)
+      return FAILED;
+    if (arg1_location.kind != LOC_CONST)
+      fprintf(file_out, "      ; retained arg1 in %s\n", _get_z80_physical_register_name(arg1_location.phy));
   }
   else {
     if (_load_location_address_to_ix(&arg1_location, &arg1_ix_offset, file_out) == FAILED)
