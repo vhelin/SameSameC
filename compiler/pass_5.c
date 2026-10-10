@@ -19,6 +19,7 @@
 #include "symbol_table.h"
 #include "il.h"
 #include "tac.h"
+#include "inline_asm.h"
 #include "struct_item.h"
 #include "register_allocator.h"
 #include "z80_register_spill.h"
@@ -47,6 +48,9 @@ int *g_register_reads = NULL, *g_register_writes = NULL;
 static struct label *g_removed_jump_destinations_first = NULL, *g_removed_jump_destinations_last = NULL;
 static int g_register_reads_and_writes_count = 0, g_local_variable_running_index = 1;
 
+static int _promote_register_allocator_pointer_bases(void);
+static int _is_register_allocator_jump_op(int op);
+
 #if defined(DEBUG_PASS_5)
 static void _debug_register_allocator_temp_compaction_stage(char *stage);
 #endif
@@ -66,6 +70,10 @@ int pass_5(void) {
   if (turn_some_muls_and_divs_into_shifts() == FAILED)
     return FAILED;
   if (optimize_il() == FAILED)
+    return FAILED;
+  if (g_allocator_enabled == YES && g_allocator_force_all_spill == NO &&
+      g_backend == BACKEND_Z80 &&
+      _promote_register_allocator_pointer_bases() == FAILED)
     return FAILED;
   /* make life easier for reuse_registers() */
 #if defined(DEBUG_PASS_5)
@@ -107,6 +115,151 @@ int pass_5(void) {
 #if defined(DEBUG_PASS_5)
   print_tacs();
 #endif
+
+  return SUCCEEDED;
+}
+
+
+static int _promote_register_allocator_pointer_bases(void) {
+
+  int producer_index, instruction_index, next_temp = 0;
+  int function_start = 0, function_end = 0;
+  struct tree_node *function_node = NULL;
+
+  for (instruction_index = 0; instruction_index < g_tacs_count; instruction_index++) {
+    struct tac *instruction;
+    int highest_temp;
+
+    instruction = &g_tacs[instruction_index];
+    if (instruction->op == TAC_OP_DEAD)
+      continue;
+    highest_temp = -1;
+    if (instruction->arg1_type == TAC_ARG_TYPE_TEMP)
+      highest_temp = (int)instruction->arg1_d;
+    if (instruction->arg2_type == TAC_ARG_TYPE_TEMP && (int)instruction->arg2_d > highest_temp)
+      highest_temp = (int)instruction->arg2_d;
+    if (instruction->result_type == TAC_ARG_TYPE_TEMP && (int)instruction->result_d > highest_temp)
+      highest_temp = (int)instruction->result_d;
+    if (highest_temp == INT_MAX)
+      return FAILED;
+    if (highest_temp >= next_temp)
+      next_temp = highest_temp + 1;
+  }
+
+  for (producer_index = 0; producer_index < g_tacs_count; producer_index++) {
+    struct tac *producer;
+    struct tree_node *variable;
+    int reads = 0, uses = 0, last_use = -1, eligible = YES;
+
+    producer = &g_tacs[producer_index];
+    if (producer->op == TAC_OP_LABEL && producer->is_function == YES) {
+      function_node = producer->function_node;
+      function_start = producer_index + 1;
+      for (function_end = function_start; function_end < g_tacs_count; function_end++) {
+        if (g_tacs[function_end].op == TAC_OP_LABEL && g_tacs[function_end].is_function == YES)
+          break;
+      }
+    }
+    if ((producer->op != TAC_OP_GET_ADDRESS && producer->op != TAC_OP_GET_ADDRESS_ARRAY) ||
+        producer->result_type != TAC_ARG_TYPE_LABEL || function_node == NULL ||
+        (function_node->flags & TREE_NODE_FLAG_PUREASM) != 0 ||
+        strcmp(function_node->children[1]->label, "mainmain") == 0)
+      continue;
+    variable = producer->result_node;
+    if (variable == NULL || variable->type != TREE_NODE_TYPE_CREATE_VARIABLE ||
+        (variable->flags & TREE_NODE_FLAG_GLOBAL) != 0 || variable->value != 0 ||
+        variable->children[0]->value_double != 1.0)
+      continue;
+
+    for (instruction_index = function_start; instruction_index < function_end; instruction_index++) {
+      struct tac *instruction;
+
+      instruction = &g_tacs[instruction_index];
+      if (instruction->op == TAC_OP_DEAD)
+        continue;
+      if (instruction->op == TAC_OP_FUNCTION_CALL || instruction->op == TAC_OP_FUNCTION_CALL_USE_RETURN_VALUE) {
+        eligible = NO;
+        break;
+      }
+      if (instruction->op == TAC_OP_ASM) {
+        struct inline_asm *assembly;
+        struct asm_line *line;
+
+        assembly = inline_asm_find((int)instruction->result_d);
+        if (assembly == NULL) {
+          eligible = NO;
+          break;
+        }
+        for (line = assembly->asm_line_first; line != NULL; line = line->next) {
+          if (line->variable == variable)
+            eligible = NO;
+        }
+      }
+      if (instruction->arg2_type == TAC_ARG_TYPE_LABEL && instruction->arg2_node == variable)
+        eligible = NO;
+      if (instruction->arg1_type == TAC_ARG_TYPE_LABEL && instruction->arg1_node == variable) {
+        if (instruction->op != TAC_OP_ARRAY_READ || instruction_index <= producer_index)
+          eligible = NO;
+        else {
+          reads++;
+          uses++;
+          last_use = instruction_index;
+        }
+      }
+      if (instruction->result_type == TAC_ARG_TYPE_LABEL && instruction->result_node == variable &&
+          instruction != producer && instruction->op != TAC_OP_CREATE_VARIABLE) {
+        if (instruction->op != TAC_OP_ARRAY_WRITE || instruction_index <= producer_index)
+          eligible = NO;
+        else {
+          uses++;
+          last_use = instruction_index;
+        }
+      }
+      if (eligible == NO)
+        break;
+    }
+    if (eligible == NO || reads < 2)
+      continue;
+    for (instruction_index = producer_index + 1; instruction_index <= last_use; instruction_index++) {
+      int op;
+
+      op = g_tacs[instruction_index].op;
+      if (op == TAC_OP_LABEL || op == TAC_OP_ASM || _is_register_allocator_jump_op(op) == YES ||
+          op == TAC_OP_FUNCTION_CALL || op == TAC_OP_FUNCTION_CALL_USE_RETURN_VALUE ||
+          op == TAC_OP_RETURN || op == TAC_OP_RETURN_VALUE)
+        eligible = NO;
+    }
+    if (eligible == NO)
+      continue;
+    if (next_temp == INT_MAX)
+      return FAILED;
+
+    fprintf(stderr, "register_allocator: pointer_base_promotion function=%s variable=%s temp=r%d reads=%d uses=%d scope=single_block status=complete\n",
+      function_node->children[1]->label, producer->result_s, next_temp, reads, uses);
+    for (instruction_index = producer_index; instruction_index <= last_use; instruction_index++) {
+      struct tac *instruction;
+
+      instruction = &g_tacs[instruction_index];
+      if (instruction->op == TAC_OP_DEAD)
+        continue;
+      if (instruction->arg1_type == TAC_ARG_TYPE_LABEL && instruction->arg1_node == variable) {
+        free(instruction->arg1_s);
+        instruction->arg1_s = NULL;
+        tac_set_arg1(instruction, TAC_ARG_TYPE_TEMP, (double)next_temp, NULL);
+      }
+      if (instruction->result_type == TAC_ARG_TYPE_LABEL && instruction->result_node == variable) {
+        free(instruction->result_s);
+        instruction->result_s = NULL;
+        tac_set_result(instruction, TAC_ARG_TYPE_TEMP, (double)next_temp, NULL);
+        instruction->result_node = NULL;
+      }
+    }
+    for (instruction_index = function_start; instruction_index < function_end; instruction_index++) {
+      if (g_tacs[instruction_index].op == TAC_OP_CREATE_VARIABLE && g_tacs[instruction_index].result_node == variable)
+        g_tacs[instruction_index].op = TAC_OP_DEAD;
+    }
+    next_temp++;
+  }
 
   return SUCCEEDED;
 }
@@ -9695,11 +9848,13 @@ static int _place_split_spill_reloads(struct tree_node *function_node,
           continue;
 
 #if defined(DEBUG_PASS_5)
-        fprintf(stderr, "register_allocator: target_split_reload function=%s tac=%d op=%s operand=result size=%d target=%s phy=%s\n",
-            function_node->children[1]->label, reload_tac, _get_first_allocator_op_name(reload_consumer->op), temp_register->size,
+        fprintf(stderr, "register_allocator: target_split_reload function=%s tac=%d op=%s operand=%s size=%d target=%s phy=%s\n",
+          function_node->children[1]->label, reload_tac, _get_first_allocator_op_name(reload_consumer->op),
+          _get_register_allocator_consumer_arg_name(reload_executions[reload_index].mutation.operand), temp_register->size,
             _get_register_allocator_target_policy()->name, _get_first_allocator_physical_register_name(reload_physical_register));
-        fprintf(stderr, "register_allocator: linear_scan reload_insert function=%s block=%d r%d consumer_tac=%d operand=result source=existing_spill_slot phy=%s\n",
+        fprintf(stderr, "register_allocator: linear_scan reload_insert function=%s block=%d r%d consumer_tac=%d operand=%s source=existing_spill_slot phy=%s\n",
             function_node->children[1]->label, block_index, register_index, reload_tac,
+          _get_register_allocator_consumer_arg_name(reload_executions[reload_index].mutation.operand),
             _get_first_allocator_physical_register_name(reload_physical_register));
 #endif
       }

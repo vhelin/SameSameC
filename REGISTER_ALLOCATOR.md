@@ -8739,6 +8739,83 @@ behavior remains opt-in behind `-ra`.
 
 ---
 
+## 268. Make Repeated Pointer-Base Reads Source-Reachable
+
+- [x] Prove that ordinary repeated reads through a pointer local remain
+      label-backed after existing IL optimization, rather than assuming a
+      generic reload-core test proves source reachability.
+- [x] Promote a single-definition, non-escaping pointer local to a temp before
+      temp compaction when at least two direct array-base reads occur within
+      one basic block.
+- [x] Reject calls, branch/loop spans, inline-asm barriers and tracked asm
+      references, address-taking, additional definitions, non-base uses, and
+      computed 16-bit-index forms that introduce a separate base-copy TAC.
+- [x] Preserve pointer declaration metadata on temp read bases so element
+      signedness, index scaling, and promoted result widths remain distinct
+      from the 16-bit base container.
+- [x] Remove the unused pointer declaration TAC so promotion does not allocate
+      both a dead local slot and a new base spill slot.
+
+Promotion uses function-label ranges because TAC function ownership is not yet
+populated at this early pass-5 stage. It is disabled under default/`-no-ra` and
+forced all-spill modes. This is bounded direct-base promotion, not general
+local-variable promotion or alias analysis. `-ra` remains opt-in.
+
+---
+
+## 269. Enable ARRAY_READ Arg1 Reloads Into HL
+
+- [x] Authorize exactly 16-bit `ARRAY_READ arg1 -> HL` alongside the existing
+      16-bit `ARRAY_WRITE result -> BC` split-reload endpoint.
+- [x] Reload the read base after index materialization into `BC`, before
+      copying the base to `IY`, without destroying a pending index value.
+- [x] Validate operand, temp, retained location, spill backing, and canonical
+      emission metadata before emitting the reload instructions.
+- [x] Carry the actual operand name into pass-5 reload diagnostics rather than
+      printing `result` for every endpoint.
+- [x] Exercise mixed read/write reloads through one atomic CFG transaction.
+
+The target-policy split-spill fixture now has a source-reachable two-mutation
+chain: a later read reloads `arg1` into `HL`, then an indexed write reloads its
+`result` base into `BC`. Other operands, widths, and target forms remain
+fail-closed. No additional registers or relaxed call/asm contracts are added.
+
+---
+
+## 270. Qualify Read Reloads And Measure Their Benefit
+
+- [x] Add four exact-ROM SMS cases for repeated zero-index byte reads,
+      computed byte indexes, repeated word reads, and signed-byte-to-word
+      promotion, including complete two-site reload chains.
+- [x] Add eight unsafe-source rejection cases for branches, loops, computed
+      16-bit-index base copies, asm barriers, tracked asm operands outside the
+      live span, escaped addresses, reassignment, and calls.
+- [x] Extend strict C90 endpoint coverage to two supported, ten unsupported,
+      and four malformed requests; retain the atomic CFG rejection tests.
+- [x] Preserve forced all-spill behavior and default/`-no-ra` assembly identity
+      using the same output filename for both compilations.
+- [x] Preserve the original split-spill exact-ROM fixtures and pin the new
+      mixed read/write source sequence.
+- [x] Rebuild the Cygwin compiler without warnings and hash-match its staged
+      test binary.
+- [x] Run the full plain integration suite: `DONE (173 tests)`, including
+      `calculations-1` and `calculations-2`, which both compile under `-ra`.
+- [x] Build the native MSVC Release compiler/linker with installed toolset and
+      SDK overrides, then hash-match the per-project staged binaries.
+- [x] Run the native Windows-mode integration suite: `DONE (173 tests)`,
+      including both allocator-enabled calculations fixtures.
+
+The mixed read/write probe's body shrinks from 111 bytes with the pre-batch
+allocator to 74 bytes, saving 37 bytes without increasing its 8-byte frame.
+Its base-transport instruction sequences save an estimated 179 Z80 T-states
+without wait states; this is an instruction-cost estimate, not emulator timing.
+The four new positive ROM spans contain 49, 84, 107, and 71 bytes respectively.
+The signed case pins byte loads and sign extension, not a widened word read.
+Both full integration suites and their allocator-enabled real-project gates
+pass. `-ra` remains opt-in.
+
+---
+
 ## Remaining Work To 100%
 
 The current completion target is the bounded first working Z80 allocator, not

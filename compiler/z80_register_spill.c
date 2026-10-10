@@ -126,6 +126,11 @@ int z80_get_split_reload_physical_register(int consumer_op, int operand,
     physical_register = Z80_PHY_BC;
     status = "supported";
   }
+  else if (consumer_op == TAC_OP_ARRAY_READ && operand == TAC_USE_ARG1 &&
+      size == 16) {
+    physical_register = Z80_PHY_HL;
+    status = "supported";
+  }
   else {
     status = "unsupported";
   }

@@ -20,7 +20,7 @@ all: linked.sms
 	grep -q "linear_scan reload_insert function=allocatorRaPolicySplitByte.*source=existing_spill_slot phy=BC" compiler.log
 	grep -q "linear_scan spill_insert function=allocatorRaPolicySplitWord.*destination=existing_spill_slot" compiler.log
 	grep -q "linear_scan reload_insert function=allocatorRaPolicySplitWord.*source=existing_spill_slot phy=BC" compiler.log
-	test `grep -c "reload_mutation function=allocatorRaPolicySplit.*operand=0 action=insert.*apply=yes status=complete" compiler.log` -eq 2
+	test `grep -c "reload_mutation function=allocatorRaPolicySplit.*operand=0 action=insert.*apply=yes status=complete" compiler.log` -eq 3
 	grep -q "spill_insert_emit function=allocatorRaPolicySplitByte.*phy=HL.*bytes=2" compiler.log
 	grep -q "reload_insert_emit function=allocatorRaPolicySplitByte.*bytes=2 phy=BC" compiler.log
 	grep -q "spill_insert_emit function=allocatorRaPolicySplitWord.*phy=HL.*bytes=2" compiler.log
@@ -31,9 +31,13 @@ all: linked.sms
 	grep -q "reload_insert_emit function=allocatorRaPolicySplitWord.*operand=result.*phy=BC operand_id=0" compiler.log
 	grep -q "reload_graph_preflight function=allocatorRaPolicySplitByte.*reloads=1 truncated=no mode=cfg_graph status=complete" compiler.log
 	grep -q "reload_graph_preflight function=allocatorRaPolicySplitWord.*reloads=1 truncated=no mode=cfg_graph status=complete" compiler.log
-	test `grep -c "reload_graph_transaction_stage function=allocatorRaPolicySplit.*operand=0 phy=3 apply=yes transaction=staged status=complete" compiler.log` -eq 2
+	test `grep -c "reload_graph_transaction_stage function=allocatorRaPolicySplit.*operand=0 phy=3 apply=yes transaction=staged status=complete" compiler.log` -eq 3
 	test `grep -c "reload_graph_transaction function=allocatorRaPolicySplit.*mutations=1 transaction=committed atomic=yes status=complete" compiler.log` -eq 2
 	test `grep -c "reload_transaction_apply function=allocatorRaPolicySplit.*mutations=1 transaction=committed atomic=yes status=complete" compiler.log` -eq 2
+	grep -q "pointer_base_promotion function=allocatorRaPolicySplitRead.*reads=2 uses=3 scope=single_block status=complete" compiler.log
+	grep -q "reload_graph_transaction function=allocatorRaPolicySplitRead.*mutations=2 transaction=committed atomic=yes status=complete" compiler.log
+	grep -q "reload_insert_emit function=allocatorRaPolicySplitRead op=ARRAY_READ operand=arg1.*phy=HL operand_id=1" compiler.log
+	grep -q "reload_insert_emit function=allocatorRaPolicySplitRead op=ARRAY_WRITE operand=result.*phy=BC operand_id=0" compiler.log
 	: && ! grep -q "reload_graph_preflight function=allocatorRaPolicySplitNonzero" compiler.log
 	: && ! grep -q "target_split_.*function=allocatorRaPolicySplitNonzero" compiler.log
 	grep -q "preserve retained arg1 in spill slot" main.asm

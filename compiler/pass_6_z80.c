@@ -3915,6 +3915,49 @@ static int _spill_retained_array_read_arg1(struct tac *t, struct tree_node *func
 }
 
 
+static int _reload_array_read_arg1_from_spill(struct tac *t, struct tree_node *function_node, struct z80_location *arg1_location, FILE *file_out) {
+
+  struct z80_location spill_location;
+  struct register_allocator_reload_emission emission;
+  char *function_name;
+  int ix_offset;
+
+  if (t->reload_spill_to_physical_operand == -1)
+    return SUCCEEDED;
+  function_name = function_node->children[1]->label;
+  if (t->reload_spill_to_physical_operand != TAC_USE_ARG1 ||
+      t->arg1_type != TAC_ARG_TYPE_TEMP || arg1_location->kind != LOC_PHY_HL ||
+      t->arg1_physical_register != Z80_PHY_HL) {
+    fprintf(stderr, "register_allocator_z80: array_read_reload function=%s operand=%d status=unsupported_operand\n",
+        function_name, t->reload_spill_to_physical_operand);
+    return FAILED;
+  }
+  if (_resolve_z80_location(t->arg1_type, t->arg1_s, (int)t->arg1_d, t->arg1_node, t->arg1_var_type,
+      function_node, &spill_location, "arg1_reload", Z80_PHY_NONE) == FAILED)
+    return FAILED;
+  if (spill_location.kind != LOC_STACK_SPILL ||
+      register_allocator_prepare_reload_operand_emission(function_name, YES,
+      (int)t->arg1_d, t->reload_spill_to_physical_operand, Z80_PHY_NONE,
+      t->arg1_physical_register, YES, spill_location.offset, 2, &emission) == FAILED)
+    return FAILED;
+  if (emission.emit != YES || emission.operand != TAC_USE_ARG1 ||
+      emission.physical_register != Z80_PHY_HL || emission.byte_count != 2)
+    return FAILED;
+  if (_load_location_address_to_ix(&spill_location, &ix_offset, file_out) == FAILED)
+    return FAILED;
+  _load_from_ix_to_l(ix_offset, file_out);
+  _load_from_ix_to_h(ix_offset + 1, file_out);
+
+#if defined(DEBUG_PASS_6_REGISTER_ALLOCATOR)
+  if (g_allocator_enabled == YES)
+    fprintf(stderr, "register_allocator: reload_insert_emit function=%s op=ARRAY_READ operand=arg1 source_offset=%d bytes=2 phy=HL operand_id=%d\n",
+        function_name, emission.source_offset, emission.operand);
+#endif
+  fprintf(file_out, "      ; reload arg1 from spill slot into HL\n");
+  return SUCCEEDED;
+}
+
+
 static int _generate_asm_array_read_z80(struct tac *t, FILE *file_out, struct tree_node *function_node) {
 
   struct z80_location result_location;
@@ -3999,6 +4042,9 @@ static int _generate_asm_array_read_z80(struct tac *t, FILE *file_out, struct tr
     print_tac(t, NO, stderr);
     return FAILED;
   }
+
+  if (_reload_array_read_arg1_from_spill(t, function_node, &arg1_location, file_out) == FAILED)
+    return FAILED;
 
 #if defined(DEBUG_PASS_6_REGISTER_ALLOCATOR)
   if (g_allocator_enabled == YES) {

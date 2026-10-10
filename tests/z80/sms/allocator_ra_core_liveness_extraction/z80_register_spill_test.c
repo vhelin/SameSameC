@@ -95,12 +95,15 @@ int main(void) {
   if (z80_get_split_reload_physical_register(TAC_OP_ARRAY_WRITE,
       TAC_USE_RESULT, 16) != Z80_PHY_BC)
     return 29;
+  if (z80_get_split_reload_physical_register(TAC_OP_ARRAY_READ,
+      TAC_USE_ARG1, 16) != Z80_PHY_HL)
+    return 32;
   if (z80_get_split_reload_physical_register(TAC_OP_ARRAY_WRITE,
       TAC_USE_ARG1, 16) != Z80_PHY_NONE ||
       z80_get_split_reload_physical_register(TAC_OP_ARRAY_WRITE,
       TAC_USE_ARG2, 16) != Z80_PHY_NONE ||
       z80_get_split_reload_physical_register(TAC_OP_ARRAY_READ,
-      TAC_USE_ARG1, 16) != Z80_PHY_NONE ||
+      TAC_USE_RESULT, 16) != Z80_PHY_NONE ||
       z80_get_split_reload_physical_register(TAC_OP_ARRAY_READ,
       TAC_USE_ARG2, 16) != Z80_PHY_NONE ||
       z80_get_split_reload_physical_register(TAC_OP_GET_ADDRESS_ARRAY,
@@ -110,7 +113,11 @@ int main(void) {
       z80_get_split_reload_physical_register(TAC_OP_ARRAY_WRITE,
       TAC_USE_RESULT, 8) != Z80_PHY_NONE ||
       z80_get_split_reload_physical_register(TAC_OP_ARRAY_WRITE,
-      TAC_USE_RESULT, 32) != Z80_PHY_NONE)
+      TAC_USE_RESULT, 32) != Z80_PHY_NONE ||
+      z80_get_split_reload_physical_register(TAC_OP_ARRAY_READ,
+      TAC_USE_ARG1, 8) != Z80_PHY_NONE ||
+      z80_get_split_reload_physical_register(TAC_OP_ARRAY_READ,
+      TAC_USE_ARG1, 32) != Z80_PHY_NONE)
     return 30;
   if (z80_get_split_reload_physical_register(-1, TAC_USE_RESULT, 16) != Z80_PHY_NONE ||
       z80_get_split_reload_physical_register(TAC_OP_ARRAY_WRITE, -1, 16) != Z80_PHY_NONE ||
@@ -215,7 +222,7 @@ int main(void) {
 
   fprintf(stderr, "z80_register_spill_test: invalid_cases=21 output_bytes=0 status=complete\n");
   fprintf(stderr, "z80_register_spill_test: reload_operands supported=1 unsupported=2 invalid=3 status=complete\n");
-  fprintf(stderr, "z80_register_spill_test: split_reload_endpoints supported=1 unsupported=8 invalid=4 status=complete\n");
+  fprintf(stderr, "z80_register_spill_test: split_reload_endpoints supported=2 unsupported=10 invalid=4 status=complete\n");
   fclose(invalid_output);
   fclose(valid_output);
   return 0;

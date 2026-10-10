@@ -36,9 +36,11 @@ all: linked.sms core_liveness_storage_test tac_insert_test z80_register_spill_te
 	test "$$(grep -c "reload_operand .*status=invalid_input" z80_register_spill_test.log)" -eq 3
 	grep -q "z80_register_spill_test: reload_operands supported=1 unsupported=2 invalid=3 status=complete" z80_register_spill_test.log
 	grep -q "split_reload_endpoint op=.*operand=0 size=16 phy=3 status=supported" z80_register_spill_test.log
-	test "$$(grep -c "split_reload_endpoint .*status=unsupported" z80_register_spill_test.log)" -eq 8
+	grep -q "split_reload_endpoint op=.*operand=1 size=16 phy=2 status=supported" z80_register_spill_test.log
+	test "$$(grep -c "split_reload_endpoint .*status=supported" z80_register_spill_test.log)" -eq 2
+	test "$$(grep -c "split_reload_endpoint .*status=unsupported" z80_register_spill_test.log)" -eq 10
 	test "$$(grep -c "split_reload_endpoint .*status=invalid_input" z80_register_spill_test.log)" -eq 4
-	grep -q "z80_register_spill_test: split_reload_endpoints supported=1 unsupported=8 invalid=4 status=complete" z80_register_spill_test.log
+	grep -q "z80_register_spill_test: split_reload_endpoints supported=2 unsupported=10 invalid=4 status=complete" z80_register_spill_test.log
 	for function in allocatorRaCoreLivenessDiamond allocatorRaCoreLivenessLoop; do test "$$(grep -c "register_allocator_core: liveness_storage function=$$function .*status=complete" compiler.log)" -eq 2 || exit 1; done
 	: && ! grep -q "register_allocator_core: liveness_storage function=allocatorRaCoreLiveness.*status=invalid_input" compiler.log
 	test "$$(grep -c "register_allocator_core: liveness_solve function=allocatorRaCoreLivenessDiamond blocks=9 edges=10 temps=1 iterations=2 algorithm=backward_fixed_point status=converged" compiler.log)" -eq 2
