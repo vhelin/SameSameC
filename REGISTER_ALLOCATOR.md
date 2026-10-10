@@ -8959,6 +8959,44 @@ Valgrind, and emulator timing were not rerun for this consolidation batch.
 
 ---
 
+## 283. Consolidate Word Complement Loading
+
+- [x] Reuse `_materialize_to_hl` for constant/HL sources and share A/memory
+      low-byte promotion logic, preserving signedness and promoted-type gates.
+- [x] Remove redundant result flags while keeping IX memory addressing and
+      BC-result operand handling unchanged.
+- [x] Pass six existing complement chain, location, and target-policy fixtures.
+
+---
+
+## 284. Reuse Word Shift Result Transfers
+
+- [x] Reuse `_store_from_hl` for retained HL/BC and word memory results;
+      remove redundant HL/BC result flags and repeated retained-source comments.
+- [x] Preserve byte B/C result transfers, trace text, source promotion, count
+      handling, and both shift loops.
+- [x] Pass all seven existing shift fixtures.
+
+---
+
+## 285. Reuse Byte Shift Transfers And Qualify Consolidation
+
+- [x] Reuse `_materialize_to_a` for constant/A counts, keep IX memory loads,
+      remove redundant result flags, and share the memory low-byte store.
+- [x] Preserve retained-result rules, B/C traces, and signed high-byte extension.
+- [x] Pass thirteen focused complement/shift fixtures on Cygwin and native
+      builds, including exact-ROM and trace checks.
+- [x] Match all 104 before/after assembly hashes across thirteen sources, both
+      compilers, and default, `-no-ra`, `-ra-all-spill`, and `-ra` modes.
+- [x] Pass strict C90 compilation, clean editor diagnostics, native MSVC
+      Release build, and staged binary hash checks.
+
+This batch removes 62 production-code lines with no new helpers or test files.
+Allocation capabilities, assembly bytes, and frame sizes remain unchanged.
+Full integration suites, Valgrind, and emulator timing were not rerun.
+
+---
+
 ## Remaining Work To 100%
 
 The current completion target is the bounded first working Z80 allocator, not

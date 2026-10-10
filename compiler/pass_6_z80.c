@@ -3206,8 +3206,6 @@ static int _generate_asm_complement_z80_16bit(struct tac *t, FILE *file_out, str
   struct z80_location result_location;
   struct z80_location arg1_location;
   int ix_offset = 0;
-  int result_in_hl = NO;
-  int result_in_bc = NO;
 
   /* result */
 
@@ -3218,9 +3216,6 @@ static int _generate_asm_complement_z80_16bit(struct tac *t, FILE *file_out, str
 
   if (_resolve_tac_location(t, TAC_USE_ARG1, function_node, &arg1_location) == FAILED)
     return FAILED;
-
-  result_in_hl = result_location.kind == LOC_PHY_HL ? YES : NO;
-  result_in_bc = result_location.kind == LOC_PHY_BC ? YES : NO;
 
 #if defined(DEBUG_PASS_6_REGISTER_ALLOCATOR)
   if (g_allocator_enabled == YES) {
@@ -3233,7 +3228,7 @@ static int _generate_asm_complement_z80_16bit(struct tac *t, FILE *file_out, str
 
   /* generate asm */
 
-  if (result_in_bc == YES) {
+  if (result_location.kind == LOC_PHY_BC) {
     if (arg1_location.kind == LOC_CONST) {
       _load_value_to_bc(arg1_location.value, file_out);
     }
@@ -3310,17 +3305,22 @@ static int _generate_asm_complement_z80_16bit(struct tac *t, FILE *file_out, str
   /* copy data (arg1) -> hl */
   /******************************************************************************************************/
 
-  if (arg1_location.kind == LOC_CONST) {
-    /* 16-bit */
-    _load_value_to_hl(arg1_location.value, file_out);
+  if (arg1_location.kind == LOC_CONST || arg1_location.kind == LOC_PHY_HL) {
+    if (_materialize_to_hl(&arg1_location, file_out) == FAILED)
+      return FAILED;
   }
-  else if (arg1_location.kind == LOC_PHY_HL) {
-  }
-  else if (arg1_location.kind == LOC_PHY_A) {
-    fprintf(file_out, "      LD  L,A\n");
+  else {
+    if (arg1_location.kind == LOC_PHY_A)
+      fprintf(file_out, "      LD  L,A\n");
+    else
+      _load_from_ix_to_l(ix_offset, file_out);
 
-    if (t->arg1_var_type == VARIABLE_TYPE_INT8 && (t->arg1_var_type_promoted == VARIABLE_TYPE_INT16 ||
-                                                   t->arg1_var_type_promoted == VARIABLE_TYPE_UINT16)) {
+    if (arg1_location.kind != LOC_PHY_A &&
+        (t->arg1_var_type == VARIABLE_TYPE_INT16 || t->arg1_var_type == VARIABLE_TYPE_UINT16)) {
+      _load_from_ix_to_h(ix_offset + 1, file_out);
+    }
+    else if (t->arg1_var_type == VARIABLE_TYPE_INT8 && (t->arg1_var_type_promoted == VARIABLE_TYPE_INT16 ||
+                                                       t->arg1_var_type_promoted == VARIABLE_TYPE_UINT16)) {
       _sign_extend_l_to_hl(file_out);
     }
     else if (t->arg1_var_type == VARIABLE_TYPE_UINT8 && (t->arg1_var_type_promoted == VARIABLE_TYPE_INT16 ||
@@ -3328,37 +3328,10 @@ static int _generate_asm_complement_z80_16bit(struct tac *t, FILE *file_out, str
       _load_value_to_h(0, file_out);
     }
     else {
-      fprintf(stderr, "_generate_asm_complement_z80_16bit(): Unhandled A ARG1! Please submit a bug report!\n");
+      fprintf(stderr, "_generate_asm_complement_z80_16bit(): Unhandled %s ARG1! Please submit a bug report!\n",
+              arg1_location.kind == LOC_PHY_A ? "A" : "8-bit");
       print_tac(t, NO, stderr);
       return FAILED;
-    }
-  }
-  else {
-    if (t->arg1_var_type == VARIABLE_TYPE_INT16 || t->arg1_var_type == VARIABLE_TYPE_UINT16) {
-      /* 16-bit */
-      _load_from_ix_to_l(ix_offset, file_out);
-      _load_from_ix_to_h(ix_offset + 1, file_out);
-    }
-    else {
-      /* 8-bit */
-      _load_from_ix_to_l(ix_offset, file_out);
-
-      /* sign extend 8-bit -> 16-bit? */
-      if (t->arg1_var_type == VARIABLE_TYPE_INT8 && (t->arg1_var_type_promoted == VARIABLE_TYPE_INT16 ||
-                                                     t->arg1_var_type_promoted == VARIABLE_TYPE_UINT16)) {
-        /* yes */
-        _sign_extend_l_to_hl(file_out);
-      }
-      else if (t->arg1_var_type == VARIABLE_TYPE_UINT8 && (t->arg1_var_type_promoted == VARIABLE_TYPE_INT16 ||
-                                                           t->arg1_var_type_promoted == VARIABLE_TYPE_UINT16)) {
-        /* upper byte -> 0 */
-        _load_value_to_h(0, file_out);
-      }
-      else {
-        fprintf(stderr, "_generate_asm_complement_z80_16bit(): Unhandled 8-bit ARG1! Please submit a bug report!\n");
-        print_tac(t, NO, stderr);
-        return FAILED;
-      }
     }
   }
 
@@ -3372,7 +3345,7 @@ static int _generate_asm_complement_z80_16bit(struct tac *t, FILE *file_out, str
   /* target address -> ix */
   /******************************************************************************************************/
 
-  if (result_in_hl == YES) {
+  if (result_location.kind == LOC_PHY_HL) {
     fprintf(file_out, "      ; retained result in HL\n");
     return SUCCEEDED;
   }
@@ -4464,7 +4437,7 @@ static int _aaa_generate_asm_shift_left_right_z80_16bit(struct tac *t, FILE *fil
   struct z80_location arg2_location;
   int ix_offset = 0;
   int arg1_in_hl = NO, arg1_in_bc = NO, arg1_in_a = NO, arg1_in_b = NO, arg1_in_c = NO;
-  int arg2_in_bc = NO, arg2_in_a = NO, result_in_hl = NO, result_in_bc = NO, result_in_b = NO, result_in_c = NO;
+  int arg2_in_bc = NO, arg2_in_a = NO, result_in_b = NO, result_in_c = NO;
 
   /* result */
 
@@ -4488,8 +4461,6 @@ static int _aaa_generate_asm_shift_left_right_z80_16bit(struct tac *t, FILE *fil
   arg1_in_c = arg1_location.kind == LOC_PHY_C ? YES : NO;
   arg2_in_bc = arg2_location.kind == LOC_PHY_BC ? YES : NO;
   arg2_in_a = arg2_location.kind == LOC_PHY_A ? YES : NO;
-  result_in_hl = result_location.kind == LOC_PHY_HL ? YES : NO;
-  result_in_bc = result_location.kind == LOC_PHY_BC ? YES : NO;
   result_in_b = result_location.kind == LOC_PHY_B ? YES : NO;
   result_in_c = result_location.kind == LOC_PHY_C ? YES : NO;
 
@@ -4512,20 +4483,8 @@ static int _aaa_generate_asm_shift_left_right_z80_16bit(struct tac *t, FILE *fil
   /* source address (arg1) -> ix */
   /******************************************************************************************************/
 
-  if (arg1_in_hl == YES) {
-    fprintf(file_out, "      ; retained arg1 in HL\n");
-  }
-  else if (arg1_in_bc == YES) {
-    fprintf(file_out, "      ; retained arg1 in BC\n");
-  }
-  else if (arg1_in_a == YES) {
-    fprintf(file_out, "      ; retained arg1 in A\n");
-  }
-  else if (arg1_in_b == YES) {
-    fprintf(file_out, "      ; retained arg1 in B\n");
-  }
-  else if (arg1_in_c == YES) {
-    fprintf(file_out, "      ; retained arg1 in C\n");
+  if (arg1_in_hl == YES || arg1_in_bc == YES || arg1_in_a == YES || arg1_in_b == YES || arg1_in_c == YES) {
+    fprintf(file_out, "      ; retained arg1 in %s\n", _get_z80_physical_register_name(arg1_location.phy));
   }
   else if (arg1_location.kind == LOC_CONST) {
   }
@@ -4708,13 +4667,10 @@ static int _aaa_generate_asm_shift_left_right_z80_16bit(struct tac *t, FILE *fil
   /* target address -> ix */
   /******************************************************************************************************/
 
-  if (result_in_hl == YES) {
-    fprintf(file_out, "      ; retained result in HL\n");
-    return SUCCEEDED;
-  }
-  if (result_in_bc == YES) {
-    _load_hl_to_bc(file_out);
-    fprintf(file_out, "      ; retained result in BC\n");
+  if (result_location.kind == LOC_PHY_HL || result_location.kind == LOC_PHY_BC) {
+    if (_store_from_hl(&result_location, ix_offset, file_out) == FAILED)
+      return FAILED;
+    fprintf(file_out, "      ; retained result in %s\n", _get_z80_physical_register_name(result_location.phy));
     return SUCCEEDED;
   }
   if (result_in_b == YES || result_in_c == YES) {
@@ -4751,9 +4707,8 @@ static int _aaa_generate_asm_shift_left_right_z80_16bit(struct tac *t, FILE *fil
   /******************************************************************************************************/
 
   if (t->result_var_type == VARIABLE_TYPE_INT16 || t->result_var_type == VARIABLE_TYPE_UINT16) {
-    /* 16-bit */
-    _load_l_into_ix(ix_offset, file_out);
-    _load_h_into_ix(ix_offset + 1, file_out);
+    if (_store_from_hl(&result_location, ix_offset, file_out) == FAILED)
+      return FAILED;
   }
   else {
     /* 8-bit */
@@ -4770,7 +4725,7 @@ static int _bbb_generate_asm_shift_left_right_z80_8bit(struct tac *t, FILE *file
   struct z80_location arg1_location;
   struct z80_location arg2_location;
   int ix_offset = 0;
-  int arg1_in_a = NO, arg1_in_c = NO, arg2_in_a = NO, result_in_a = NO, result_in_hl = NO, result_in_bc = NO, result_in_b = NO, result_in_c = NO;
+  int arg1_in_a = NO, arg1_in_c = NO, arg2_in_a = NO;
 
   /* result */
 
@@ -4790,11 +4745,6 @@ static int _bbb_generate_asm_shift_left_right_z80_8bit(struct tac *t, FILE *file
   arg1_in_a = arg1_location.kind == LOC_PHY_A ? YES : NO;
   arg1_in_c = arg1_location.kind == LOC_PHY_C ? YES : NO;
   arg2_in_a = arg2_location.kind == LOC_PHY_A ? YES : NO;
-  result_in_a = result_location.kind == LOC_PHY_A ? YES : NO;
-  result_in_hl = result_location.kind == LOC_PHY_HL ? YES : NO;
-  result_in_bc = result_location.kind == LOC_PHY_BC ? YES : NO;
-  result_in_b = result_location.kind == LOC_PHY_B ? YES : NO;
-  result_in_c = result_location.kind == LOC_PHY_C ? YES : NO;
 
 #if defined(DEBUG_PASS_6_REGISTER_ALLOCATOR)
   if (g_allocator_enabled == YES) {
@@ -4819,10 +4769,7 @@ static int _bbb_generate_asm_shift_left_right_z80_8bit(struct tac *t, FILE *file
   /******************************************************************************************************/
 
   if (arg1_in_a == YES || arg1_in_c == YES) {
-    if (arg1_in_a == YES)
-      fprintf(file_out, "      ; retained arg1 in A\n");
-    else
-      fprintf(file_out, "      ; retained arg1 in C\n");
+    fprintf(file_out, "      ; retained arg1 in %s\n", _get_z80_physical_register_name(arg1_location.phy));
   }
   else if (arg1_location.kind == LOC_CONST) {
   }
@@ -4870,11 +4817,9 @@ static int _bbb_generate_asm_shift_left_right_z80_8bit(struct tac *t, FILE *file
   /* copy data (arg2) -> a */
   /******************************************************************************************************/
 
-  if (arg2_in_a == YES) {
-  }
-  else if (arg2_location.kind == LOC_CONST) {
-    /* 8-bit */
-    _load_value_to_a(arg2_location.value & 0xff, file_out);
+  if (arg2_in_a == YES || arg2_location.kind == LOC_CONST) {
+    if (_materialize_to_a(&arg2_location, 0, file_out) == FAILED)
+      return FAILED;
   }
   else {
     /* 8-bit */
@@ -4918,12 +4863,12 @@ static int _bbb_generate_asm_shift_left_right_z80_8bit(struct tac *t, FILE *file
   /* target address -> ix */
   /******************************************************************************************************/
 
-  if (result_in_a == YES) {
+  if (result_location.kind == LOC_PHY_A) {
     fprintf(file_out, "      LD  A,B\n");
     fprintf(file_out, "      ; retained result in A\n");
     return SUCCEEDED;
   }
-  if (result_in_hl == YES) {
+  if (result_location.kind == LOC_PHY_HL) {
     fprintf(file_out, "      LD  L,B\n");
     if (t->result_var_type == VARIABLE_TYPE_INT16 && (t->arg1_var_type == VARIABLE_TYPE_INT8 ||
                                                       t->arg2_var_type == VARIABLE_TYPE_INT8))
@@ -4933,13 +4878,13 @@ static int _bbb_generate_asm_shift_left_right_z80_8bit(struct tac *t, FILE *file
     fprintf(file_out, "      ; retained result in HL\n");
     return SUCCEEDED;
   }
-  if (result_in_bc == YES) {
+  if (result_location.kind == LOC_PHY_BC) {
     fprintf(file_out, "      LD  C,B\n");
     _load_value_to_b(0, file_out);
     fprintf(file_out, "      ; retained result in BC\n");
     return SUCCEEDED;
   }
-  if (result_in_b == YES) {
+  if (result_location.kind == LOC_PHY_B) {
     fprintf(file_out, "      ; retained result in B\n");
 #if defined(DEBUG_PASS_6_REGISTER_ALLOCATOR)
     if (g_allocator_enabled == YES)
@@ -4948,7 +4893,7 @@ static int _bbb_generate_asm_shift_left_right_z80_8bit(struct tac *t, FILE *file
 #endif
     return SUCCEEDED;
   }
-  if (result_in_c == YES) {
+  if (result_location.kind == LOC_PHY_C) {
     fprintf(file_out, "      LD  C,B\n");
     fprintf(file_out, "      ; retained result in C\n");
 #if defined(DEBUG_PASS_6_REGISTER_ALLOCATOR)
@@ -4978,12 +4923,9 @@ static int _bbb_generate_asm_shift_left_right_z80_8bit(struct tac *t, FILE *file
   /* copy data b -> (ix) */
   /******************************************************************************************************/
 
+  _load_b_into_ix(ix_offset, file_out);
+
   if (t->result_var_type == VARIABLE_TYPE_INT16 || t->result_var_type == VARIABLE_TYPE_UINT16) {
-    /* 16-bit */
-
-    /* lower byte */
-    _load_b_into_ix(ix_offset, file_out);
-
     /* sign extend 8-bit -> 16-bit? */
     if (t->result_var_type == VARIABLE_TYPE_INT16 && (t->arg1_var_type == VARIABLE_TYPE_INT8 ||
                                                       t->arg2_var_type == VARIABLE_TYPE_INT8)) {
@@ -4994,10 +4936,6 @@ static int _bbb_generate_asm_shift_left_right_z80_8bit(struct tac *t, FILE *file
       /* upper byte = 0 */
       _load_value_into_ix(0, ix_offset + 1, file_out);
     }
-  }
-  else {
-    /* 8-bit */
-    _load_b_into_ix(ix_offset, file_out);
   }
 
   return SUCCEEDED;
