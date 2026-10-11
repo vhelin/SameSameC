@@ -3113,24 +3113,15 @@ static int _generate_asm_complement_z80_8bit(struct tac *t, FILE *file_out, stru
   /* source address (arg1) -> ix */
   /******************************************************************************************************/
 
-  if (arg1_location.kind == LOC_CONST || arg1_location.kind == LOC_PHY_A) {
+  if (arg1_location.kind == LOC_CONST || arg1_location.kind == LOC_PHY_A || arg1_location.kind == LOC_PHY_C) {
+    if (_materialize_to_a(&arg1_location, 0, file_out) == FAILED)
+      return FAILED;
   }
   else {
     if (_load_location_address_to_ix(&arg1_location, &ix_offset, file_out) == FAILED)
       return FAILED;
     _trace_z80_specialized_address_materialization(function_node, "complement_8bit_arg1_address", "arg1",
                                                     &arg1_location, RA_ADDRESS_TARGET_IX, ix_offset);
-  }
-
-  /******************************************************************************************************/
-  /* copy data (arg1) -> a */
-  /******************************************************************************************************/
-
-  if (arg1_location.kind == LOC_CONST || arg1_location.kind == LOC_PHY_A) {
-    if (_materialize_to_a(&arg1_location, 0, file_out) == FAILED)
-      return FAILED;
-  }
-  else {
     /* 8-bit */
     _load_from_ix_to_a(ix_offset, file_out);
   }

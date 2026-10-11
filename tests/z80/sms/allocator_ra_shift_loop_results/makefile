@@ -10,6 +10,12 @@ OFILES = main.asm
 
 
 all: linked.sms
+	grep -q "loop_retention_transaction function=allocatorRaComplementArithmeticLoop .*transaction=applied atomic=yes ownership=function_scan" compiler.log
+	grep -q "loop_retention_transaction function=allocatorRaComplementProducedLoop .*transaction=applied atomic=yes ownership=function_scan" compiler.log
+	grep -q "complement_8bit function=allocatorRaComplementArithmeticLoop arg1_kind=PHY_C arg1_phy=C result_kind=PHY_A result_phy=A" compiler.log
+	grep -q "complement_8bit function=allocatorRaComplementProducedLoop arg1_kind=PHY_C arg1_phy=C result_kind=PHY_C result_phy=C" compiler.log
+	: && ! grep -q "loop_retention_transaction function=allocatorRaComplementContinueLoop" compiler.log
+	sed -n '/allocatorRaComplementContinueLoop:/,/\.ENDS/p' main.asm | grep -q "IX-6"
 	grep -q "loop_retention_transaction function=allocatorRaArithmeticLoop .*transaction=applied atomic=yes ownership=function_scan" compiler.log
 	grep -q "loop_register_selection_preflight function=allocatorRaArithmeticLoopCompareConflict.*selected=NONE.*action=preserve_stack" compiler.log
 	grep -q "loop_register_path_reservation_preflight function=allocatorRaArithmeticLoopCompareConflict.*candidate=B.*transparent=no" compiler.log

@@ -4674,7 +4674,7 @@ static int _is_register_allocator_c_candidate(struct tac *producer, struct tac *
     return NO;
   if ((consumer->op == TAC_OP_ARRAY_WRITE || consumer->op == TAC_OP_ARRAY_READ || consumer->op == TAC_OP_GET_ADDRESS_ARRAY) && consumer_arg == TAC_USE_ARG2)
     return YES;
-  if ((consumer->op == TAC_OP_SHIFT_LEFT || consumer->op == TAC_OP_SHIFT_RIGHT) && consumer_arg == TAC_USE_ARG1)
+  if ((consumer->op == TAC_OP_SHIFT_LEFT || consumer->op == TAC_OP_SHIFT_RIGHT || consumer->op == TAC_OP_COMPLEMENT) && consumer_arg == TAC_USE_ARG1)
     return YES;
   if (consumer->op == TAC_OP_JUMP_EQ || consumer->op == TAC_OP_JUMP_NEQ ||
       consumer->op == TAC_OP_JUMP_LT || consumer->op == TAC_OP_JUMP_GT ||
@@ -4804,7 +4804,7 @@ static int _is_register_allocator_candidate_allowed_for_physical_register(struct
 
 static int _get_register_allocator_consumer_arg(struct tac *consumer, int register_index) {
 
-  if (consumer->op == TAC_OP_ASSIGNMENT) {
+  if (consumer->op == TAC_OP_ASSIGNMENT || consumer->op == TAC_OP_COMPLEMENT) {
     if (consumer->arg1_type == TAC_ARG_TYPE_TEMP && (int)consumer->arg1_d == register_index)
       return TAC_USE_ARG1;
   }

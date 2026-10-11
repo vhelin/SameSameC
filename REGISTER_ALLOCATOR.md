@@ -9185,7 +9185,7 @@ Batch results (bounded implementations):
       Permit transfers only on the required edges; handle critical edges before
       placing edge-only code in a predecessor shared by other successors.
       Test diamonds, multiple exits, overlap conflicts, and rollback.
-- [ ] **294. Broaden profitable loop-carried producer forms.** Extend beyond
+- [x] **294. Broaden profitable loop-carried producer forms.** Extend beyond
       the currently enabled assignment/shift shapes using existing multi-latch
       and continue-path analysis. Start with one arithmetic-produced value;
       qualify multiple live values, nested loops, and early exits separately.
@@ -9226,9 +9226,10 @@ Batch results (bounded implementations):
       overlapping destinations, calls, and memory-dependent paths stay
       conservative. Production code is eleven lines smaller with one fewer helper;
       no new test files or production APIs are added.
-- Step 294 remains unchecked: broader profitable loop producer coverage was not
-      demonstrated. Unproven B consumer/emitter extensions were removed rather
-      than counted as an optimization.
+- Step 294 remained unchecked at the end of commit `854ec01`: broader profitable
+      loop producer coverage was not demonstrated. Unproven B consumer/emitter
+      extensions were removed rather than counted as an optimization. The
+      subsequent bounded completion is recorded below.
 - Identical pre-batch corpus sources were measured with isolated preceding and
       final Cygwin compilers across default, `-no-ra`, `-ra-all-spill`, and `-ra`.
       All seven fixtures retain their ROM sizes, frame sizes, spill/reload counts,
@@ -9245,6 +9246,39 @@ Batch results (bounded implementations):
       `DONE (173 tests)` on 2026-10-11. Valgrind, sanitizers, peak-memory profiling,
       and emulator execution/timing were not run; compile timing samples are not
       evidence of a performance gain.
+
+#### Step 294 Completion: Complement And Arithmetic Loops
+
+- Recognize `COMPLEMENT` arg1 reads in the existing consumer adapter and admit
+      byte C operands in its target predicate. The byte complement emitter uses
+      the existing `_materialize_to_a` helper; its duplicated source dispatch is
+      merged without changing memory loads or traces. No new production helpers,
+      APIs, or test files are added; production code is nine lines smaller.
+- The existing loop fixture now pins a complement-produced byte latch and a
+      subtraction-produced latch consumed by a complement header. Both retain
+      C using the existing atomic loop transaction and exact linked-byte tests.
+      The preceding compiler rejects the complement-header source during loop
+      fact discovery because the consumer adapter returns an invalid operand.
+      Plain ADD and subtraction loops were already supported and are not new
+      optimization gains.
+- Against the safe `-ra-all-spill` control, the two new tagged regions shrink
+      from 69 to 41 and 76 to 48 bytes respectively, saving 28 bytes each. Both
+      function frames stay at 7 bytes, with no inserted spill or reload. These
+      measurements qualify the enabled forms, not a general loop cost model.
+- Mixed complement/subtraction continue paths remain conservatively stack-backed
+      by the existing topology analysis. Multiple-value, nested-loop, early-exit,
+      alias/write, B/C-versus-BC overlap, call, and inline-assembly policies are
+      not widened. Existing core regressions retain their rejection/rollback
+      checks; this completion does not enable arbitrary multi-latch producers.
+- Eight focused fixtures pass, including the complement-location/chain/BC tests
+      and the core loop/CFG harness. Identical preceding/current corpus sources
+      produce all 28 byte-identical ROM pairs across seven fixtures/four modes;
+      the expanded loop fixture also preserves all three non-RA ROMs. The real
+      calculations projects have no new size gain or regression.
+- Strict ANSI C90 checks, editor diagnostics, and native MSVC build/staged hash
+      checks pass. Final sequential GCC and native MSVC suites both reported
+      `DONE (173 tests)` on 2026-10-11. Valgrind, sanitizers, peak-memory profiling,
+      and emulator execution/timing were not run.
 
 ### Batch 295-297: Strengthen Correctness And Qualification
 
