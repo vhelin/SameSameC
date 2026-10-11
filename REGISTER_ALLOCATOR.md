@@ -9175,12 +9175,12 @@ Batch results (bounded implementations):
 
 ### Batch 292-294: Improve Register And CFG Coverage
 
-- [ ] **292. Close useful B/C producer and consumer gaps.** Prioritize
+- [x] **292. Close useful B/C producer and consumer gaps.** Prioritize
       source-reachable call-result, arithmetic, and nonconstant assignment
       cases identified by the baseline. Validate B/C versus BC overlap and
       destructive operand ordering. Extend existing emitters rather than
       cloning them; receiving a call result must not weaken the call barrier.
-- [ ] **293. Improve edge-specific join reconciliation.** Build on current
+- [x] **293. Improve edge-specific join reconciliation.** Build on current
       branch retention and atomic reservation plans, not a second CFG engine.
       Permit transfers only on the required edges; handle critical edges before
       placing edge-only code in a predecessor shared by other successors.
@@ -9191,6 +9191,60 @@ Batch results (bounded implementations):
       qualify multiple live values, nested loops, and early exits separately.
       Keep memory-dependent values conservative around writes and aliasing,
       and reject retention when its transfers/spills outweigh saved accesses.
+
+#### Batch 292-294 Results
+
+- Phase 292 admits nonconstant byte assignment producers through the existing
+      C consumer predicate and assignment emitter. Constant assignment policy,
+      calls, width checks, destructive operand order, and B/C-versus-BC overlap
+      gates remain unchanged. The existing B/C conflict fixture now pins a
+      parameter assignment into C and its atomic loop transaction with exact
+      linked bytes. No new emitter or production function is added.
+- Phase 293 places false-branch reconciliation spills after the conditional,
+      so the unrelated taken successor does not execute them. Existing insertion
+      and approval callbacks are reused. Taken-edge spills retain their shared
+      backing-store behavior; no new taken-edge-only transfer or critical-edge
+      splitting is claimed. The core harness tests a shared predecessor, diamond,
+      post-consumer cycle, overlap rejection, and transactional rollback.
+- Ordinary forward-join schedules now reject backward definitions and stop
+      route traversal at the consumer. A newly reachable comparison loop exposed
+      invalid reservations beyond that consumer; its source regression now
+      compiles without weakening the dedicated loop transaction rules. Routes
+      that execute before the consumer remain reserved regardless of source
+      order; the core harness separately pins a later-block detour and a
+      post-consumer cycle.
+- Phase 294 qualification found that an ordinary ADD-carried byte was already
+      retained in C by the preceding compiler. This batch adds exact-byte and
+      atomic-transaction coverage, not a new gain for that shape. A proposed
+      second B-carried value was unsafe: header comparison materialization writes
+      B, while the loop path check previously skipped reservation endpoints.
+      Checking all unassigned endpoint TACs now rejects that retention and keeps
+      the second value stack-backed. Existing multiple-value, nested-loop,
+      continue, and exit regressions remain the qualification surface.
+- B/C byte arithmetic transparency is consolidated into one existing helper,
+      also covering nonoverlapping byte assignments through A. Word assignments,
+      overlapping destinations, calls, and memory-dependent paths stay
+      conservative. Production code is eleven lines smaller with one fewer helper;
+      no new test files or production APIs are added.
+- Step 294 remains unchecked: broader profitable loop producer coverage was not
+      demonstrated. Unproven B consumer/emitter extensions were removed rather
+      than counted as an optimization.
+- Identical pre-batch corpus sources were measured with isolated preceding and
+      final Cygwin compilers across default, `-no-ra`, `-ra-all-spill`, and `-ra`.
+      All seven fixtures retain their ROM sizes, frame sizes, spill/reload counts,
+      register-copy counts, and cumulative planned workspace sizes. All 21
+      non-RA ROM pairs and six of seven RA ROM pairs are byte-identical. The core
+      liveness RA ROM changes its unsafe B retention to stack access and gains
+      safe C assignment retention elsewhere, with no net size growth (1549 bytes).
+      Real projects calculations-1 and calculations-2 remain byte-identical in
+      all modes; their RA ROM sizes remain 23829 and 16381 bytes respectively.
+- The final source passes strict ANSI C90 warning-as-error syntax checks,
+      editor diagnostics, four focused exact-byte/trace fixtures (including the
+      BC complement contract), and native MSVC Release build/staged hash checks.
+      Sequential final GCC and native MSVC full suites both reported
+      `DONE (173 tests)` on 2026-10-11. Valgrind, sanitizers, peak-memory profiling,
+      and emulator execution/timing were not run; compile timing samples are not
+      evidence of a performance gain.
 
 ### Batch 295-297: Strengthen Correctness And Qualification
 

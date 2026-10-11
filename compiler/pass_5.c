@@ -4670,7 +4670,7 @@ static int _is_register_allocator_c_candidate(struct tac *producer, struct tac *
 
   if (temp_register->size != 8)
     return NO;
-  if (producer->op != TAC_OP_ADD && producer->op != TAC_OP_SUB && producer->op != TAC_OP_AND && producer->op != TAC_OP_OR && producer->op != TAC_OP_XOR && producer->op != TAC_OP_COMPLEMENT && producer->op != TAC_OP_ARRAY_READ && producer->op != TAC_OP_FUNCTION_CALL_USE_RETURN_VALUE && producer->op != TAC_OP_SHIFT_LEFT && producer->op != TAC_OP_SHIFT_RIGHT && producer->op != TAC_OP_MUL && producer->op != TAC_OP_DIV && producer->op != TAC_OP_MOD)
+  if (producer->op != TAC_OP_ASSIGNMENT && producer->op != TAC_OP_ADD && producer->op != TAC_OP_SUB && producer->op != TAC_OP_AND && producer->op != TAC_OP_OR && producer->op != TAC_OP_XOR && producer->op != TAC_OP_COMPLEMENT && producer->op != TAC_OP_ARRAY_READ && producer->op != TAC_OP_FUNCTION_CALL_USE_RETURN_VALUE && producer->op != TAC_OP_SHIFT_LEFT && producer->op != TAC_OP_SHIFT_RIGHT && producer->op != TAC_OP_MUL && producer->op != TAC_OP_DIV && producer->op != TAC_OP_MOD)
     return NO;
   if ((consumer->op == TAC_OP_ARRAY_WRITE || consumer->op == TAC_OP_ARRAY_READ || consumer->op == TAC_OP_GET_ADDRESS_ARRAY) && consumer_arg == TAC_USE_ARG2)
     return YES;
@@ -4706,34 +4706,17 @@ static int _is_register_allocator_b_candidate(struct tac *producer, struct tac *
 }
 
 
-static int _is_register_allocator_c_transparent_arithmetic_tac(struct tac *t) {
+static int _is_register_allocator_byte_transparent_tac(struct tac *t, int physical_register) {
 
-  if (t->op != TAC_OP_ADD && t->op != TAC_OP_SUB && t->op != TAC_OP_AND && t->op != TAC_OP_OR && t->op != TAC_OP_XOR)
+  if (t->op != TAC_OP_ASSIGNMENT && t->op != TAC_OP_ADD && t->op != TAC_OP_SUB && t->op != TAC_OP_AND && t->op != TAC_OP_OR && t->op != TAC_OP_XOR)
     return NO;
   if (t->result_var_type == VARIABLE_TYPE_INT16 || t->result_var_type == VARIABLE_TYPE_UINT16)
     return NO;
-  if (t->arg1_physical_register == Z80_PHY_C || t->arg1_physical_register == Z80_PHY_BC)
+  if (t->arg1_physical_register == physical_register || t->arg1_physical_register == Z80_PHY_BC)
     return NO;
-  if (t->arg2_physical_register == Z80_PHY_C || t->arg2_physical_register == Z80_PHY_BC)
+  if (t->arg2_physical_register == physical_register || t->arg2_physical_register == Z80_PHY_BC)
     return NO;
-  if (t->result_physical_register == Z80_PHY_C || t->result_physical_register == Z80_PHY_BC)
-    return NO;
-
-  return YES;
-}
-
-
-static int _is_register_allocator_b_transparent_arithmetic_tac(struct tac *t) {
-
-  if (t->op != TAC_OP_ADD && t->op != TAC_OP_SUB && t->op != TAC_OP_AND && t->op != TAC_OP_OR && t->op != TAC_OP_XOR)
-    return NO;
-  if (t->result_var_type == VARIABLE_TYPE_INT16 || t->result_var_type == VARIABLE_TYPE_UINT16)
-    return NO;
-  if (t->arg1_physical_register == Z80_PHY_B || t->arg1_physical_register == Z80_PHY_BC)
-    return NO;
-  if (t->arg2_physical_register == Z80_PHY_B || t->arg2_physical_register == Z80_PHY_BC)
-    return NO;
-  if (t->result_physical_register == Z80_PHY_B || t->result_physical_register == Z80_PHY_BC)
+  if (t->result_physical_register == physical_register || t->result_physical_register == Z80_PHY_BC)
     return NO;
 
   return YES;
@@ -4767,6 +4750,9 @@ static int _is_z80_register_allocator_candidate_allowed_for_physical_register(st
       return YES;
     if (physical_register == Z80_PHY_B)
       return _is_register_allocator_b_candidate(producer, consumer,
+          temp_register, consumer_arg);
+    if (physical_register == Z80_PHY_C && producer->arg1_type != TAC_ARG_TYPE_CONSTANT)
+      return _is_register_allocator_c_candidate(producer, consumer,
           temp_register, consumer_arg);
 
     return NO;
@@ -5271,7 +5257,7 @@ static int _is_z80_basic_block_transparent_tac_for_physical_register(struct tac 
     return YES;
 
   if (physical_register == Z80_PHY_C) {
-    if (_is_register_allocator_c_transparent_arithmetic_tac(t) == YES)
+    if (_is_register_allocator_byte_transparent_tac(t, physical_register) == YES)
       return YES;
     if ((t->op == TAC_OP_JUMP_EQ || t->op == TAC_OP_JUMP_NEQ ||
         t->op == TAC_OP_JUMP_LT || t->op == TAC_OP_JUMP_GT ||
@@ -5287,7 +5273,7 @@ static int _is_z80_basic_block_transparent_tac_for_physical_register(struct tac 
   }
 
   if (physical_register == Z80_PHY_B) {
-    if (_is_register_allocator_b_transparent_arithmetic_tac(t) == YES)
+    if (_is_register_allocator_byte_transparent_tac(t, physical_register) == YES)
       return YES;
     if (_z80_tac_may_clobber_bc(t->op) == NO)
       return YES;
@@ -5410,8 +5396,8 @@ static int _is_loop_register_path_safe(void *context, int physical_register) {
     blocking_instruction = -1;
     transparent = YES;
     for (instruction_index =
-        path_context->reservations[reservation_index].start_instruction + 1;
-        instruction_index <
+        path_context->reservations[reservation_index].start_instruction;
+        instruction_index <=
         path_context->reservations[reservation_index].end_instruction;
         instruction_index++) {
       int assignment_index;
@@ -6281,7 +6267,8 @@ static int _register_allocator_approve_join_spill_site(void *context,
       _is_register_allocator_jump_op(anchor->op) == NO)
     approved = NO;
   if (approved == YES && site->placement == RA_JOIN_SPILL_AFTER_ANCHOR &&
-      _is_register_allocator_jump_op(anchor->op) == YES)
+      _is_register_allocator_jump_op(anchor->op) == YES &&
+      (site->edge_kind != RA_CFG_EDGE_BRANCH_FALSE || anchor->op == TAC_OP_JUMP))
     approved = NO;
   fprintf(stderr, "register_allocator: target_join_spill_site function=%s block=%d predecessor=%d edge=%d anchor=%d(%s) placement=%s target=z80 approved=%s\n",
       function_node->children[1]->label, join_block_index,
@@ -7319,7 +7306,7 @@ static int _debug_register_allocator_join_retention_preflight(
     paths[path_index].path_transparent = NO;
     if (definition_index < 0)
       continue;
-    if (consumer_supported == YES &&
+    if (consumer_supported == YES && definition_index < consumer_index &&
         _is_register_allocator_candidate_allowed_for_physical_register(
         &g_tacs[definition_index], consumer, temp_register,
         physical_register, consumer_arg) == YES)

@@ -10,6 +10,8 @@ OFILES = main.asm
 
 
 all: linked.sms
+	grep -q "assignment function=allocatorRaAssignmentC arg1_kind=STACK_LOCAL.*result_kind=PHY_C" compiler.log
+	grep -q "loop_retention_transaction function=allocatorRaAssignmentC.*transaction=applied atomic=yes" compiler.log
 	grep -q "linear_scan overlap_check function=allocatorRaBRetentionCConflict.*candidate=C.*active_C=yes.*conflict=yes" compiler.log
 	grep -q "linear_scan overlap_check function=allocatorRaBRetentionCConflict.*candidate=B.*candidate_units=B.*active_C=yes.*conflict=no" compiler.log
 	grep -q "linear_scan alternate function=allocatorRaBRetentionCConflict.*primary=A alternate=B reason=clobber_between" compiler.log

@@ -747,10 +747,13 @@ static int test_join_spill_site_planning(void) {
   edges[0].from_block = 1;
   edges[0].to_block = 2;
   edges[0].kind = RA_CFG_EDGE_BRANCH_FALSE;
+  edges[1].from_block = 1;
+  edges[1].to_block = 3;
+  edges[1].kind = RA_CFG_EDGE_BRANCH_TRUE;
   if (register_allocator_plan_join_spill_sites("coreJoinSpillBranchFalse", 4,
-      12, blocks, 2, edges, 1, sites, 3, &site_count) == FAILED ||
+      12, blocks, 2, edges, 2, sites, 3, &site_count) == FAILED ||
       site_count != 1 || sites[0].anchor_instruction != 5 ||
-      sites[0].placement != RA_JOIN_SPILL_BEFORE_ANCHOR)
+      sites[0].placement != RA_JOIN_SPILL_AFTER_ANCHOR)
     return FAILED;
 
   edges[0].from_block = 0;
@@ -2183,7 +2186,7 @@ static int expect_failed_join_path_reservation(char *function_name,
 static int test_join_path_reservation_planning(void) {
 
   struct register_allocator_basic_block blocks[6];
-  struct register_allocator_cfg_edge edges[5];
+  struct register_allocator_cfg_edge edges[7];
   struct register_allocator_join_assignment assignments[3];
   struct register_allocator_join_schedule schedule;
   struct register_allocator_join_reservation reservation;
@@ -2219,6 +2222,34 @@ static int test_join_path_reservation_planning(void) {
       &path_reservation) == FAILED || path_reservation.block_count != 5 ||
       block_reservations[0].block_index != 0 ||
       block_reservations[4].block_index != 5)
+    return FAILED;
+
+  edges[5].from_block = 5;
+  edges[5].to_block = 4;
+  edges[5].kind = RA_CFG_EDGE_BRANCH_TRUE;
+  edges[6].from_block = 4;
+  edges[6].to_block = 5;
+  edges[6].kind = RA_CFG_EDGE_JUMP;
+  if (register_allocator_plan_join_path_reservations(
+      "coreJoinPathReservationConsumerCycle", 6, 12, blocks, edges, 7, 2,
+      assignments, 3, &schedule, &reservation, block_reservations, 6,
+      &path_reservation) == FAILED || path_reservation.block_count != 5 ||
+      block_reservations[3].block_index != 3 ||
+      block_reservations[4].block_index != 5)
+    return FAILED;
+
+  assignments[1].instruction = 6;
+  reservation.live_end = 6;
+  edges[2].to_block = 3;
+  edges[3].to_block = 4;
+  edges[4].from_block = 4;
+  edges[4].to_block = 3;
+  if (register_allocator_plan_join_path_reservations(
+      "coreJoinPathReservationBeforeConsumerDetour", 6, 12, blocks, edges,
+      5, 2, assignments, 3, &schedule, &reservation, block_reservations, 6,
+      &path_reservation) == FAILED || path_reservation.block_count != 5 ||
+      block_reservations[4].block_index != 4 ||
+      block_reservations[4].end_instruction != 9)
     return FAILED;
 
   initialize_join_path_reservation_graph(blocks, edges, assignments,

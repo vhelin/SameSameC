@@ -1738,7 +1738,8 @@ int register_allocator_plan_join_spill_sites(char *function_name,
     if (edges[edge_index].to_block != join_block_index)
       continue;
     predecessor = &blocks[edges[edge_index].from_block];
-    placement = edges[edge_index].kind == RA_CFG_EDGE_FALLTHROUGH ?
+    placement = (edges[edge_index].kind == RA_CFG_EDGE_FALLTHROUGH ||
+      edges[edge_index].kind == RA_CFG_EDGE_BRANCH_FALSE) ?
         RA_JOIN_SPILL_AFTER_ANCHOR : RA_JOIN_SPILL_BEFORE_ANCHOR;
     if (sites != NULL) {
       sites[output_index].predecessor_block = edges[edge_index].from_block;
@@ -5227,6 +5228,7 @@ int register_allocator_plan_join_path_reservations(char *function_name,
       changed = NO;
       for (edge_index = 0; edge_index < edge_count; edge_index++) {
         if (forward_blocks[edges[edge_index].from_block] == YES &&
+            edges[edge_index].from_block != consumer_block &&
             forward_blocks[edges[edge_index].to_block] == NO) {
           forward_blocks[edges[edge_index].to_block] = YES;
           changed = YES;

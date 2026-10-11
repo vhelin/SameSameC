@@ -10,6 +10,9 @@ OFILES = main.asm
 
 
 all: linked.sms
+	grep -q "loop_retention_transaction function=allocatorRaArithmeticLoop .*transaction=applied atomic=yes ownership=function_scan" compiler.log
+	grep -q "loop_register_selection_preflight function=allocatorRaArithmeticLoopCompareConflict.*selected=NONE.*action=preserve_stack" compiler.log
+	grep -q "loop_register_path_reservation_preflight function=allocatorRaArithmeticLoopCompareConflict.*candidate=B.*transparent=no" compiler.log
 	grep -q "loop_register_selection function=allocatorRaShiftLeftLoop.*assignments=5.*selected=1 phy=5 selection=ready status=complete" compiler.log
 	grep -q "loop_register_selection function=allocatorRaShiftRightLoop.*assignments=5.*selected=1 phy=5 selection=ready status=complete" compiler.log
 	grep -q "loop_retention_transaction function=allocatorRaShiftLeftLoop.*assignments=5 reservations=4.*transaction=applied atomic=yes ownership=function_scan status=complete" compiler.log
@@ -34,9 +37,9 @@ all: linked.sms
 	: && ! sed -n '/allocatorRaShiftLeftLoop:/,/\.ENDS/p' main.asm | grep -q "SRL H"
 	sed -n '/allocatorRaShiftRightLoop:/,/\.ENDS/p' main.asm | grep -q "SRL H"
 	: && ! sed -n '/allocatorRaShiftRightLoop:/,/\.ENDS/p' main.asm | grep -q "ADD HL,HL"
-	test "$$(grep -c "LD  C,L" main.asm)" -eq 2
-	test "$$(grep -c "retained result in C" main.asm)" -eq 2
-	test "$$(grep -c "retained arg2 in C" main.asm)" -eq 2
+	test "$$(sed -n '/allocatorRaShiftLeftLoop:/,/\.ENDS/p; /allocatorRaShiftRightLoop:/,/\.ENDS/p' main.asm | grep -c "LD  C,L")" -eq 2
+	test "$$(sed -n '/allocatorRaShiftLeftLoop:/,/\.ENDS/p; /allocatorRaShiftRightLoop:/,/\.ENDS/p' main.asm | grep -c "retained result in C")" -eq 2
+	test "$$(sed -n '/allocatorRaShiftLeftLoop:/,/\.ENDS/p; /allocatorRaShiftRightLoop:/,/\.ENDS/p' main.asm | grep -c "retained arg2 in C")" -eq 2
 	: && ! sed -n '/allocatorRaShiftLeftLoop:/,/\.ENDS/p' main.asm | grep -q "(IX-7)\|(IY-7)"
 	: && ! sed -n '/allocatorRaShiftRightLoop:/,/\.ENDS/p' main.asm | grep -q "(IX-7)\|(IY-7)"
 	sed -n '/allocatorRaShiftLoopConflict:/,/\.ENDS/p' main.asm | grep -q "LD  (IX-10),L"
