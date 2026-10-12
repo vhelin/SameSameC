@@ -10,7 +10,7 @@ OFILES = main.asm
 
 
 all: linked.sms
-	grep -q "linear_scan prefer_array_write_value function=allocatorRaSplitReloadNonzeroByte.*phy=A.*displaced_operand=arg2 retained_operand=arg1 reason=shared_next_use" compiler.log
+	grep -q "allocation_verify function=allocatorRaSplitReloadNonzeroByte .*status=complete" compiler.log
 	grep -q "linear_scan retain_interval function=allocatorRaSplitReloadNonzeroByte.*ADD.*ARRAY_WRITE arg1" compiler.log
 	grep -q "resolve function=allocatorRaSplitReloadNonzeroByte operand=arg1 kind=PHY_A.*phy=A" compiler.log
 	grep -q "resolve function=allocatorRaSplitReloadNonzeroByte operand=arg2 kind=STACK_SPILL offset=-13" compiler.log

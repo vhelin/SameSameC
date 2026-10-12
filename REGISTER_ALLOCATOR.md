@@ -9282,22 +9282,136 @@ Batch results (bounded implementations):
 
 ### Batch 295-297: Strengthen Correctness And Qualification
 
-- [ ] **295. Add a reusable debug allocation verifier.** Validate assigned
+- [x] **295. Add a reusable debug allocation verifier.** Validate assigned
       reads against reaching definitions, overlapping live register units,
       spill/reload widths and offsets, and target clobbers. Run it after TAC
       mutation/reanalysis and exercise failure/rollback paths. Reuse existing
       descriptors and validation APIs instead of duplicating their rules.
-- [ ] **296. Add execution-based differential regressions.** Generate bounded,
+- [x] **296. Add execution-based differential regressions.** Generate bounded,
       deterministic arithmetic/branch/loop/pointer cases and compare observable
       results for `-ra` versus all-spill/default modes in a proven Z80 emulator.
       Keep failing seeds and minimize cases into existing fixtures. Exact-ROM
       tests remain valuable but do not replace execution-based correctness.
-- [ ] **297. Qualify real-program gains and stop unprofitable expansion.**
+- [x] **297. Qualify real-program gains and stop unprofitable expansion.**
       Reuse the baseline corpus and add supported pointer-heavy workloads only
       where coverage is missing. Run both full integration suites and relevant
       sanitizer checks with freshly staged binaries. Report ROM/frame/cycle
       gains alongside compile-time and source-size costs; reject unexplained
       regressions and keep default/`-no-ra` compatibility intact.
+
+### Step 295 Completed: Verifier Integration And Byte-Clobber Repairs
+
+- Final debug verification rebuilds control flow and reuses liveness storage
+      to replay reaching register owners. Reload/spill preflight uses the
+      existing emission planners; assigned BC producers reuse the existing
+      HL-preservation proof. Mutation-only diagnostics remain at the mutation
+      call site rather than counting final verification as a mutation.
+- Verification exposed unsafe nearer-candidate shortcuts: nested arithmetic
+      overwrote an outer sum retained in A, and an intervening array read
+      overwrote a retained BC byte. Byte-register shortcuts now require target
+      transparency at both the intervening producer and its consumer. The
+      existing regressions assert safe C/A arithmetic or stack-backed array
+      values instead of preserving the corrupting instruction sequences.
+- Strict ANSI C90 compilation, editor diagnostics, staged-binary comparisons,
+      and both sequential full suites pass on 2026-10-11: GCC and native MSVC
+      each report `DONE (173 tests)`. The verifier adds 194 production lines
+      within existing functions; no new production helper or API was added.
+- A scratch `z80-emulator@2.3.0` execution check runs the exact tagged fixture
+      bytes with a fixed frame pointer and a 500-instruction limit. All 4,096
+      arithmetic and 1,024 array-read seeds match their mathematical results;
+      the preceding corrupting byte sequences fail all corresponding seeds.
+      This checks those regions, not complete ROM execution or differential
+      default/all-spill/RA programs. The deprecated package is installed only
+      in scratch space, not added as a repository dependency.
+- The completed verifier rejects negative, fractional, overflowing, or
+      nonfinite temp indexes before converting them to integers. It checks
+      byte/word widths and signed-frame spill/reload ranges before liveness
+      reads metadata. Owner propagation has a checked, monotone bit-count
+      convergence limit. Writes and reloads invalidate overlapping physical
+      units through the existing target descriptors.
+- `allocation_verify_test.c` in the existing liveness fixture invokes the
+      actual static verifier, not an extracted implementation. Its five valid
+      and fourteen invalid cases cover reaching definitions, BC/C overlap,
+      inline-asm clobbers, malformed indexes/storage, transfer metadata, joins,
+      and loops. Each call checks that TACs and temp metadata remain unchanged,
+      including failure. Existing transaction rejection/rollback harnesses
+      remain part of the full suite; verification itself does not mutate TACs.
+- The completed production diff is 263 added / 21 removed lines, net 242,
+      rather than the initial net 194 above. Existing liveness storage and
+      target/transfer planners are reused; there is no new production function,
+      API, or parallel allocator implementation. This correctness work adds
+      code rather than claiming a net source-size improvement.
+
+### Step 296 Completed: Reproducible Differential Execution
+
+- `ci/check_register_allocator.mjs` builds the verifier harness and generates
+      eight deterministic variants each of byte/word arithmetic, branches,
+      bounded loops, nested array reads, pointer updates, and calls. It compiles
+      and links actual default, `-no-ra`, all-spill, and RA ROMs, resolves linker
+      symbols, and executes complete functions with `z80-emulator@2.3.0`.
+- Default/all-spill/RA results and updated buffer contents must match independent
+      mathematical expectations. Default/`-no-ra` ROMs must match byte-for-byte.
+      Execution also checks allowed memory writes, DE/SP restoration, and an
+      instruction limit. A failure retains generated source, mode logs/ROMs,
+      function, seed, parameters, and expected values in the output directory.
+      The demonstrated byte-clobber cases are pinned in existing fixtures;
+      no further compiler failing seed was found in this generated workload.
+- The emulator stays an external, pinned test dependency. Its npm package is
+      deprecated, so no application dependency or vendored emulator was added.
+      `RA_Z80_EMULATOR` names its `dist/index.js`; `SAMESAMECC`, `SAMESAMECL`,
+      and `CC` optionally select tools. `RA_VERIFIER` reuses a prebuilt harness,
+      including one built with native ASan. `RA_EXECUTION_DIR` selects retained
+      artifacts and `RA_CASES` selects 1..4096 seeds per generated function
+      (default 64). For the local Cygwin tools in PowerShell:
+
+```powershell
+$env:PATH = "C:\cygwin64\bin;$PWD\binaries;$PWD\wla-dx\binaries;$env:PATH"
+$env:RA_Z80_EMULATOR = "C:\cygwin64\tmp\ra295-emulator\node_modules\z80-emulator\dist\index.js"
+$env:RA_CASES = "512"
+node ci/check_register_allocator.mjs
+```
+
+- Cygwin GCC and the isolated native ASan compiler each pass 28,672 executions
+      per mode (56 functions x 512 seeds), with identical instruction/cycle
+      totals. Default/all-spill use 1,361,400 instructions / 19,696,232 cycles;
+      RA uses 1,164,792 / 14,854,856, about 24.6% fewer cycles. This is the
+      generated workload's RA-versus-all-spill result, not a new batch gain or
+      a measurement of real-project runtime. The earlier 5,120 tagged-region
+      controls are separate evidence and are not included in these counts.
+
+### Step 297 Completed: Local Qualification And Costs
+
+- The existing seven-fixture/four-mode corpus compares the current compiler
+      with HEAD's pass 5 linked against identical surrounding compiler objects.
+      All 21 non-RA ROM pairs and six RA pairs are identical. Only the repaired
+      equal-next-use RA fixture changes: 313 to 312 used ROM bytes, six to five
+      register copies, with frame sizes 34 total / 17 maximum unchanged.
+      All seven default/`-no-ra` pairs are identical.
+- Both calculations programs keep their RA ROM/frame totals: 23,829/277 and
+      16,381/255 bytes. Relative to their all-spill builds, the existing gains
+      are 1,575 and 1,129 ROM bytes and six and four total frame bytes. This
+      batch does not claim a new real-program size or runtime improvement;
+      pointer-heavy coverage already exists in the corpus and execution runner.
+- Single-run aggregate RA compile time is 2.758 to 2.891 seconds (about +4.8%,
+      noisy). Cumulative workspace-plan trace bytes are 7,243,804 to 13,532,108
+      because final debug reanalysis plans storage again. This is cumulative
+      allocation planning, not peak or retained memory. No wider candidate
+      expansion is justified by these qualification results.
+- Fresh Cygwin GCC passes strict C90 compilation and `DONE (173 tests)` on
+      2026-10-12; staged compiler hash is `cc1c5152f42b9e4c...`. The sequential
+      native MSVC suite also passes `DONE (173 tests)`, with staged compiler
+      `147d1fb3ed54fa18...` and linker `c328e6a365ca39c2...` hashes matching
+      their release outputs. Editor diagnostics and the owned diff check pass.
+- Local Cygwin cannot link ASan/UBSan (`-lasan`/`-lubsan` unavailable). The
+      installed native MSVC ASan compiler and verifier are built only in scratch
+      directories without changing pinned project settings or normal binaries.
+      Its compiler passes the generated four-mode builds/execution check, and
+      its verifier passes all nineteen cases without an ASan report. UBSan,
+      leak checking, peak-memory profiling, and real-project cycle measurement
+      were not available or performed. No WSL tooling is used for these gates.
+- This completes bounded local qualification, not exhaustive certification.
+      Keep broader sanitizer/fuzz coverage and real-project runtime measurement
+      as explicit follow-up work; do not claim new gains from unchanged ROMs.
 
 For each implementation batch, commit its code, focused regressions, and results
 together without pushing. Prefer net consolidation; any new helper or API must

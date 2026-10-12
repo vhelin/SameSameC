@@ -12,14 +12,14 @@ OFILES = main.asm
 all: linked.sms core_cfg_storage_test
 	./core_cfg_storage_test > core_cfg_storage_test.log 2>&1
 	$(BT) -s main.ssc
-	for function in allocatorRaCoreCfgSink allocatorRaCoreCfgDiamond allocatorRaCoreCfgLoop allocatorRaCoreCfgBoundaries; do test "$$(grep -c "register_allocator_core: control_flow_storage function=$$function instructions=80 blocks=80 edges=160 instruction_bytes=[1-9][0-9]* block_bytes=[1-9][0-9]* edge_bytes=[1-9][0-9]* status=complete" compiler.log)" -eq 1 || exit 1; done
+	for function in allocatorRaCoreCfgSink allocatorRaCoreCfgDiamond allocatorRaCoreCfgLoop allocatorRaCoreCfgBoundaries; do test "$$(grep -c "register_allocator_core: control_flow_storage function=$$function instructions=80 blocks=80 edges=160 instruction_bytes=[1-9][0-9]* block_bytes=[1-9][0-9]* edge_bytes=[1-9][0-9]* status=complete" compiler.log)" -eq 2 || exit 1; done
 	: && ! grep -q "register_allocator_core: control_flow_storage function=allocatorRaCoreCfg.*status=invalid_input" compiler.log
-	test "$$(grep -c "register_allocator_core: block_build function=allocatorRaCoreCfgDiamond instructions=80 blocks=9 algorithm=leader_partition status=complete" compiler.log)" -eq 1
-	test "$$(grep -c "register_allocator_core: block_build function=allocatorRaCoreCfgLoop instructions=80 blocks=5 algorithm=leader_partition status=complete" compiler.log)" -eq 1
-	test "$$(grep -c "register_allocator_core: block_build function=allocatorRaCoreCfgBoundaries instructions=80 blocks=5 algorithm=leader_partition status=complete" compiler.log)" -eq 1
-	test "$$(grep -c "register_allocator_core: cfg_build function=allocatorRaCoreCfgDiamond blocks=9 edges=10 algorithm=label_resolved status=complete" compiler.log)" -eq 1
-	test "$$(grep -c "register_allocator_core: cfg_build function=allocatorRaCoreCfgLoop blocks=5 edges=5 algorithm=label_resolved status=complete" compiler.log)" -eq 1
-	test "$$(grep -c "register_allocator_core: cfg_build function=allocatorRaCoreCfgBoundaries blocks=5 edges=4 algorithm=label_resolved status=complete" compiler.log)" -eq 1
+	test "$$(grep -c "register_allocator_core: block_build function=allocatorRaCoreCfgDiamond instructions=80 blocks=9 algorithm=leader_partition status=complete" compiler.log)" -eq 2
+	test "$$(grep -c "register_allocator_core: block_build function=allocatorRaCoreCfgLoop instructions=80 blocks=5 algorithm=leader_partition status=complete" compiler.log)" -eq 2
+	test "$$(grep -c "register_allocator_core: block_build function=allocatorRaCoreCfgBoundaries instructions=80 blocks=5 algorithm=leader_partition status=complete" compiler.log)" -eq 2
+	test "$$(grep -c "register_allocator_core: cfg_build function=allocatorRaCoreCfgDiamond blocks=9 edges=10 algorithm=label_resolved status=complete" compiler.log)" -eq 2
+	test "$$(grep -c "register_allocator_core: cfg_build function=allocatorRaCoreCfgLoop blocks=5 edges=5 algorithm=label_resolved status=complete" compiler.log)" -eq 2
+	test "$$(grep -c "register_allocator_core: cfg_build function=allocatorRaCoreCfgBoundaries blocks=5 edges=4 algorithm=label_resolved status=complete" compiler.log)" -eq 2
 	grep -q "join_path_reservation_commit function=allocatorRaCoreCfgDiamond temp=r0 .*reservations=4 .*committed=4 .*commit=committed status=complete" compiler.log
 	test "$$(grep -c "join_assignment_apply_entry function=allocatorRaCoreCfgDiamond temp=r0 .*phy=C status=complete" compiler.log)" -eq 3
 	test "$$(grep -c "block_exit_spill_decision function=allocatorRaCoreCfgDiamond .*temp=r0 .*spill=exempt" compiler.log)" -eq 3

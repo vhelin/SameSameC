@@ -5524,9 +5524,17 @@ static int _is_nearer_competing_candidate(struct tree_node *function_node, int t
 
   struct register_allocator_candidate_probe probe;
 
+  if ((physical_register == Z80_PHY_A || physical_register == Z80_PHY_B || physical_register == Z80_PHY_C) &&
+      _get_register_allocator_target_policy()->is_tac_transparent_for_physical_register(
+      &g_tacs[tac_index], physical_register) == NO)
+    return NO;
   if (_probe_competing_candidate(function_node, tac_index, end_tac,
       RA_CANDIDATE_RANGE_BEFORE_DECISION, physical_register, &probe) == FAILED ||
       probe.qualification.eligible == NO)
+    return NO;
+  if ((physical_register == Z80_PHY_A || physical_register == Z80_PHY_B || physical_register == Z80_PHY_C) &&
+      _get_register_allocator_target_policy()->is_tac_transparent_for_physical_register(
+      &g_tacs[probe.candidate.consumer_instruction], physical_register) == NO)
     return NO;
 
 #if defined(DEBUG_PASS_5)
@@ -6141,7 +6149,7 @@ static void _debug_print_register_allocator_temp_set(struct tree_node *function_
 }
 
 
-static int _debug_register_allocator_liveness(struct tree_node *function_node, struct register_allocator_basic_block *blocks, int block_count, struct register_allocator_cfg_edge *edges, int edge_count) {
+static int _debug_register_allocator_liveness(struct tree_node *function_node, struct register_allocator_basic_block *blocks, int block_count, struct register_allocator_cfg_edge *edges, int edge_count, int verify) {
 
   struct register_allocator_liveness_storage storage;
   char *live_use;
@@ -6151,11 +6159,56 @@ static int _debug_register_allocator_liveness(struct tree_node *function_node, s
   int temp_count;
   int iterations;
   int block_index;
+  int status;
 
   temp_count = function_node->local_variables->temp_registers_count;
 
   if (block_count <= 0 || temp_count <= 0)
     return SUCCEEDED;
+  if (verify == YES) {
+    int instruction_index;
+
+    for (instruction_index = blocks[0].start_tac;
+        instruction_index <= blocks[block_count - 1].end_tac; instruction_index++) {
+      struct tac *instruction;
+      double values[3];
+      int types[3];
+      int operand;
+
+      if (_register_allocator_instruction_is_active(function_node, instruction_index, -1) == NO)
+        continue;
+      instruction = &g_tacs[instruction_index];
+      values[0] = instruction->result_d;
+      values[1] = instruction->arg1_d;
+      values[2] = instruction->arg2_d;
+      types[0] = instruction->result_type;
+      types[1] = instruction->arg1_type;
+      types[2] = instruction->arg2_type;
+      for (operand = 0; operand < 3; operand++) {
+        struct temp_register *temp;
+
+        if (types[operand] != TAC_ARG_TYPE_TEMP)
+          continue;
+        if (!(values[operand] >= 0 && values[operand] < temp_count) ||
+            values[operand] != (int)values[operand]) {
+          fprintf(stderr, "register_allocator: allocation_verify function=%s tac=%d operand=%d status=invalid_temp\n",
+              function_node->children[1]->label, instruction_index, operand);
+          return FAILED;
+        }
+        temp = &function_node->local_variables->temp_registers[(int)values[operand]];
+        if ((temp->size != 8 && temp->size != 16) ||
+            ((instruction->reload_spill_to_physical_operand == operand ||
+            instruction->store_retained_to_spill_operand == operand ||
+            (instruction->op == TAC_OP_REGISTER_SPILL && operand == TAC_USE_ARG1)) &&
+            (temp->spill_required != YES || temp->offset_to_fp < -32768 ||
+            temp->offset_to_fp > 32768 - temp->size / 8))) {
+          fprintf(stderr, "register_allocator: allocation_verify function=%s tac=%d operand=%d status=invalid_storage\n",
+              function_node->children[1]->label, instruction_index, operand);
+          return FAILED;
+        }
+      }
+    }
+  }
   if (register_allocator_plan_liveness_storage(function_node->children[1]->label,
       block_count, temp_count, &storage) == FAILED)
     return FAILED;
@@ -6173,13 +6226,9 @@ static int _debug_register_allocator_liveness(struct tree_node *function_node, s
     return FAILED;
   }
 
-  if (_compute_register_allocator_live_sets(function_node, blocks, block_count, edges, edge_count, live_use, live_def, live_in, live_out, &storage, &iterations) == FAILED) {
-    free(live_use);
-    free(live_def);
-    free(live_in);
-    free(live_out);
-    return FAILED;
-  }
+  status = FAILED;
+  if (_compute_register_allocator_live_sets(function_node, blocks, block_count, edges, edge_count, live_use, live_def, live_in, live_out, &storage, &iterations) == FAILED)
+    goto verified;
 
   fprintf(stderr, "register_allocator: liveness_iterations function=%s iterations=%d\n", function_node->children[1]->label, iterations);
   for (block_index = 0; block_index < block_count; block_index++) {
@@ -6187,13 +6236,8 @@ static int _debug_register_allocator_liveness(struct tree_node *function_node, s
 
     if (register_allocator_resolve_liveness_index(
         function_node->children[1]->label, block_count, temp_count, &storage,
-        block_index, 0, &set_index) == FAILED) {
-      free(live_use);
-      free(live_def);
-      free(live_in);
-      free(live_out);
-      return FAILED;
-    }
+        block_index, 0, &set_index) == FAILED)
+      goto verified;
     fprintf(stderr, "register_allocator: liveness function=%s block=%d use=", function_node->children[1]->label, block_index);
     _debug_print_register_allocator_temp_set(function_node, live_use + set_index);
     fprintf(stderr, " def=");
@@ -6205,12 +6249,203 @@ static int _debug_register_allocator_liveness(struct tree_node *function_node, s
     fprintf(stderr, "\n");
   }
 
+  status = SUCCEEDED;
+  if (verify == YES) {
+    int changed;
+    int checking;
+    int slot_count;
+    int registers[5];
+    int slot_index;
+    size_t remaining;
+
+    slot_count = _get_register_allocator_active_slot_count();
+    if (slot_count > 5 || slot_count <= 0) {
+      status = FAILED;
+      goto verified;
+    }
+    registers[0] = Z80_PHY_A;
+    registers[1] = Z80_PHY_HL;
+    registers[2] = Z80_PHY_BC;
+    registers[3] = Z80_PHY_B;
+    registers[4] = Z80_PHY_C;
+    remaining = (size_t)storage.buffer_bytes;
+    if (remaining > ((size_t)-1 - 2) / (size_t)slot_count) {
+      status = FAILED;
+      goto verified;
+    }
+    remaining = remaining * (size_t)slot_count + 2;
+    memset(live_def, (1 << slot_count) - 1, storage.buffer_bytes);
+    checking = NO;
+    do {
+      if (remaining-- == 0) {
+        fprintf(stderr, "register_allocator: allocation_verify function=%s status=iteration_limit\n",
+            function_node->children[1]->label);
+        status = FAILED;
+        goto verified;
+      }
+      changed = NO;
+      for (block_index = 0; block_index < block_count; block_index++) {
+        char *owners;
+        int edge_index;
+        int predecessor_count;
+        int instruction_index;
+        int temp_index;
+
+        owners = live_use + block_index * temp_count;
+        memset(owners, (1 << slot_count) - 1, (size_t)temp_count);
+        predecessor_count = 0;
+        for (edge_index = 0; edge_index < edge_count; edge_index++) {
+          if (edges[edge_index].to_block != block_index)
+            continue;
+          predecessor_count++;
+          for (temp_index = 0; temp_index < temp_count; temp_index++)
+            owners[temp_index] &= live_def[edges[edge_index].from_block * temp_count + temp_index];
+        }
+        if (predecessor_count == 0 || block_index == 0)
+          memset(owners, 0, (size_t)temp_count);
+        for (instruction_index = blocks[block_index].start_tac;
+            instruction_index <= blocks[block_index].end_tac; instruction_index++) {
+          struct tac *instruction;
+          struct tac clobber;
+          int operand;
+          int operand_temps[3];
+          int operand_registers[3];
+          int operand_types[3];
+
+          instruction = &g_tacs[instruction_index];
+          if (_register_allocator_instruction_is_active(function_node, instruction_index, -1) == NO)
+            continue;
+          operand_temps[0] = instruction->result_type == TAC_ARG_TYPE_TEMP ? (int)instruction->result_d : -1;
+          operand_temps[1] = instruction->arg1_type == TAC_ARG_TYPE_TEMP ? (int)instruction->arg1_d : -1;
+          operand_temps[2] = instruction->arg2_type == TAC_ARG_TYPE_TEMP ? (int)instruction->arg2_d : -1;
+          operand_types[0] = instruction->result_type;
+          operand_types[1] = instruction->arg1_type;
+          operand_types[2] = instruction->arg2_type;
+          operand_registers[0] = instruction->result_physical_register;
+          operand_registers[1] = instruction->arg1_physical_register;
+          operand_registers[2] = instruction->arg2_physical_register;
+          for (operand = 0; operand < 3; operand++) {
+            struct temp_register *temp;
+            int physical_register;
+            int bit;
+
+            if (operand_types[operand] != TAC_ARG_TYPE_TEMP)
+              continue;
+            temp_index = operand_temps[operand];
+            if (temp_index < 0 || temp_index >= temp_count) {
+              status = FAILED;
+              goto verified;
+            }
+            temp = &function_node->local_variables->temp_registers[temp_index];
+            physical_register = operand_registers[operand];
+            if (physical_register == Z80_PHY_NONE)
+              physical_register = temp->physical_register;
+            operand_registers[operand] = physical_register;
+            if (physical_register == Z80_PHY_NONE)
+              continue;
+            slot_index = _get_register_allocator_target_policy()->get_active_slot_index(physical_register);
+            if (slot_index < 0 || slot_index >= slot_count ||
+                (temp->size == 8 && physical_register != Z80_PHY_A && physical_register != Z80_PHY_B && physical_register != Z80_PHY_C) ||
+                (temp->size == 16 && physical_register != Z80_PHY_HL && physical_register != Z80_PHY_BC)) {
+              status = FAILED;
+              goto verified;
+            }
+            bit = 1 << slot_index;
+            if (checking == YES && (instruction->store_retained_to_spill_operand == operand ||
+                (instruction->op == TAC_OP_REGISTER_SPILL && operand == TAC_USE_ARG1))) {
+              struct register_allocator_spill_emission emission;
+
+              if (register_allocator_prepare_spill_emission(function_node->children[1]->label,
+                  YES, temp_index, Z80_PHY_NONE, physical_register, temp->spill_required,
+                  temp->offset_to_fp, temp->size / 8, &emission) == FAILED ||
+                  (instruction->op == TAC_OP_REGISTER_SPILL &&
+                  (instruction->arg2_d != emission.byte_count || instruction->result_d != emission.destination_offset))) {
+                fprintf(stderr, "register_allocator: allocation_verify function=%s tac=%d status=invalid_spill\n",
+                    function_node->children[1]->label, instruction_index);
+                status = FAILED;
+                goto verified;
+              }
+            }
+            if (instruction->reload_spill_to_physical_operand == operand) {
+              struct register_allocator_reload_emission emission;
+
+              if (checking == YES && register_allocator_prepare_reload_operand_emission(
+                  function_node->children[1]->label, YES, temp_index, operand,
+                  Z80_PHY_NONE, physical_register, temp->spill_required,
+                  temp->offset_to_fp, temp->size / 8, &emission) == FAILED) {
+                status = FAILED;
+                goto verified;
+              }
+              for (edge_index = 0; edge_index < slot_count; edge_index++) {
+                if (_register_allocator_physical_registers_overlap(function_node->children[1]->label,
+                    physical_register, registers[edge_index]) == YES) {
+                  for (predecessor_count = 0; predecessor_count < temp_count; predecessor_count++)
+                    owners[predecessor_count] &= ~(1 << edge_index);
+                }
+              }
+              owners[temp_index] |= bit;
+            }
+            if (checking == YES && (operand != TAC_USE_RESULT || instruction->op == TAC_OP_ARRAY_WRITE) &&
+                (owners[temp_index] & bit) == 0) {
+              fprintf(stderr, "register_allocator: allocation_verify function=%s tac=%d temp=r%d operand=%d phy=%s status=missing_or_clobbered_definition\n",
+                  function_node->children[1]->label, instruction_index, temp_index,
+                  operand, _get_first_allocator_physical_register_name(physical_register));
+              status = FAILED;
+              goto verified;
+            }
+          }
+          clobber = *instruction;
+          clobber.result_physical_register = Z80_PHY_NONE;
+          clobber.arg1_physical_register = Z80_PHY_NONE;
+          clobber.arg2_physical_register = Z80_PHY_NONE;
+          for (slot_index = 0; slot_index < slot_count; slot_index++) {
+            if (registers[slot_index] == Z80_PHY_HL &&
+                operand_registers[TAC_USE_RESULT] == Z80_PHY_BC &&
+                _is_intervening_bc_candidate_transparent_for_hl(function_node,
+                instruction_index, blocks[block_index].end_tac) == YES)
+              continue;
+            if (_get_register_allocator_target_policy()->is_tac_transparent_for_physical_register(&clobber, registers[slot_index]) == NO) {
+              for (temp_index = 0; temp_index < temp_count; temp_index++)
+                owners[temp_index] &= ~(1 << slot_index);
+            }
+          }
+          if (instruction->result_type == TAC_ARG_TYPE_TEMP && instruction->op != TAC_OP_ARRAY_WRITE) {
+            temp_index = operand_temps[TAC_USE_RESULT];
+            owners[temp_index] = 0;
+            slot_index = _get_register_allocator_target_policy()->get_active_slot_index(operand_registers[TAC_USE_RESULT]);
+            if (slot_index >= 0) {
+              for (edge_index = 0; edge_index < slot_count; edge_index++) {
+                if (_register_allocator_physical_registers_overlap(function_node->children[1]->label,
+                    registers[slot_index], registers[edge_index]) == YES) {
+                  for (predecessor_count = 0; predecessor_count < temp_count; predecessor_count++)
+                    owners[predecessor_count] &= ~(1 << edge_index);
+                }
+              }
+              owners[temp_index] = 1 << slot_index;
+            }
+          }
+        }
+        if (memcmp(live_def + block_index * temp_count, owners, (size_t)temp_count) != 0) {
+          memcpy(live_def + block_index * temp_count, owners, (size_t)temp_count);
+          changed = YES;
+        }
+      }
+      if (changed == NO && checking == NO) {
+        checking = YES;
+        changed = YES;
+      }
+    } while (changed == YES);
+    fprintf(stderr, "register_allocator: allocation_verify function=%s blocks=%d reads=reaching_owners units=target_policy clobbers=target_policy status=complete\n",
+        function_node->children[1]->label, block_count);
+  }
+
+verified:
   free(live_use);
   free(live_def);
   free(live_in);
   free(live_out);
 
-  return SUCCEEDED;
+  return status;
 }
 
 
@@ -9248,9 +9483,6 @@ static int _rebuild_register_allocator_control_flow(
   free(*edges);
   *blocks = new_blocks;
   *edges = new_edges;
-  fprintf(stderr, "register_allocator: post_mutation_control_flow function=%s instructions=%d blocks=%d edges=%d status=complete\n",
-      function_node->children[1]->label, g_tacs_count, *block_count,
-      *edge_count);
   return SUCCEEDED;
 }
 
@@ -10008,7 +10240,7 @@ static int _scan_register_allocator_basic_blocks(struct tree_node *function_node
     _debug_register_allocator_basic_block_next_uses(function_node, &blocks[i], i);
   }
   _debug_register_allocator_cfg_edges(function_node, edges, edge_count);
-  if (_debug_register_allocator_liveness(function_node, blocks, block_count, edges, edge_count) == FAILED) {
+  if (_debug_register_allocator_liveness(function_node, blocks, block_count, edges, edge_count, NO) == FAILED) {
     goto cleanup;
   }
   reconciliation_pass = 0;
@@ -10060,9 +10292,11 @@ static int _scan_register_allocator_basic_blocks(struct tree_node *function_node
     if (_rebuild_register_allocator_control_flow(function_node, &blocks,
         &edges, &block_count, &edge_count) == FAILED ||
         _debug_register_allocator_liveness(function_node, blocks, block_count,
-        edges, edge_count) == FAILED) {
+        edges, edge_count, NO) == FAILED) {
       goto cleanup;
     }
+    fprintf(stderr, "register_allocator: post_mutation_control_flow function=%s instructions=%d blocks=%d edges=%d status=complete\n",
+        function_node->children[1]->label, g_tacs_count, block_count, edge_count);
     fprintf(stderr, "register_allocator: post_mutation_validation function=%s inserted=%d rewritten=%d added_temps=%d blocks=%d edges=%d liveness=recomputed status=complete\n",
       function_node->children[1]->label, inserted_instruction_count,
       rewritten_operand_count, added_temp_count, block_count, edge_count);
@@ -10123,6 +10357,14 @@ static int _scan_register_allocator_basic_blocks(struct tree_node *function_node
       edges, edge_count) == FAILED) {
     goto cleanup;
   }
+
+#if defined(DEBUG_PASS_5)
+  if (_rebuild_register_allocator_control_flow(function_node, &blocks,
+      &edges, &block_count, &edge_count) == FAILED ||
+      _debug_register_allocator_liveness(function_node, blocks, block_count,
+      edges, edge_count, YES) == FAILED)
+    goto cleanup;
+#endif
 
   status = SUCCEEDED;
 

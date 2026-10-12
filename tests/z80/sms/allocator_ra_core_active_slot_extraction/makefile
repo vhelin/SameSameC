@@ -16,8 +16,9 @@ all: linked.sms core_active_slot_test
 	grep -q "target_active_slots function=allocatorRaCoreActiveSlotByte target=z80 slots=5 status=complete bytes=100 storage=policy_sized" compiler.log
 	grep -q "target_active_slots_release function=allocatorRaCoreActiveSlotByte target=z80 slots=5 bytes=100 status=complete" compiler.log
 	grep -q "active_slots_reset function=allocatorRaCoreActiveSlotByte block=1 slots=5 status=complete" compiler.log
-	grep -q "active_slot_assign function=allocatorRaCoreActiveSlotByte block=1 slot=0 temp=r0 producer=6 next=9.*status=complete" compiler.log
-	grep -q "active_slot_assign function=allocatorRaCoreActiveSlotByte block=1 slot=4 temp=r1 producer=7 next=8.*status=complete" compiler.log
+	grep -q "active_slot_assign function=allocatorRaCoreActiveSlotByte block=1 slot=4 temp=r0 producer=6 next=9.*status=complete" compiler.log
+	grep -q "active_slot_assign function=allocatorRaCoreActiveSlotByte block=1 slot=0 temp=r1 producer=7 next=8.*status=complete" compiler.log
+	grep -q "allocation_verify function=allocatorRaCoreActiveSlotByte .*status=complete" compiler.log
 	grep -q "active_slots_expire function=allocatorRaCoreActiveSlotByte block=1 instruction=9 slots=5 expired=2 status=complete" compiler.log
 	grep -q "active_slot_assign function=allocatorRaCoreActiveSlotWord block=1 slot=1 temp=r1 producer=22 next=23.*status=complete" compiler.log
 	grep -q "active_slot_expire function=allocatorRaCoreActiveSlotWord block=1 instruction=23 slot=1 temp=r1 next=23 status=expired" compiler.log

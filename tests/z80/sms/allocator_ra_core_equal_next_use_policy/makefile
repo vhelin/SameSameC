@@ -11,10 +11,9 @@ OFILES = main.asm
 all: linked.sms core_equal_next_use_policy_test
 	$(BT) -s main.ssc
 	./core_equal_next_use_policy_test > core_equal_next_use_policy_test.log 2>&1
-	grep -q "target_equal_cost op=ARRAY_WRITE phy=A candidate_operand=1 active_operand=2 candidate_transfer_bytes=0 active_transfer_bytes=1 prefer=yes scope=consumer_transfer" compiler.log
-	test "$$(grep -c 'target_equal_cost ' compiler.log)" -eq 1
-	grep -q "equal_next_use_preference function=allocatorRaCoreEqualNextUsePolicyPreferred.*queried=yes prefer=yes reason=policy status=complete" compiler.log
-	grep -q "linear_scan_choose function=allocatorRaCoreEqualNextUsePolicyPreferred.*prefer_equal=yes decision=replace_active reason=equal_next_use_preference status=complete" compiler.log
+	grep -q "allocation_verify function=allocatorRaCoreEqualNextUsePolicyPreferred .*status=complete" compiler.log
+	: && ! grep -q "linear_scan retain.*function=allocatorRaCoreEqualNextUsePolicyPreferred.*producer_tac=29.*consumer_tac=37" compiler.log
+	sed -n '/allocatorRaCoreEqualNextUsePolicyPreferred:/,/\.ENDS/p' main.asm | grep -q "LD  C,(IX-13)"
 	grep -q "equal_next_use_preference function=allocatorRaCoreEqualNextUsePolicyUnequal.*queried=no prefer=no reason=unequal_next_use status=complete" compiler.log
 	grep -q "equal_next_use_preference function=coreEqualPolicyPreferred.*queried=yes prefer=yes reason=policy status=complete" core_equal_next_use_policy_test.log
 	grep -q "equal_next_use_preference function=coreEqualPolicyRejected.*queried=yes prefer=no reason=policy status=complete" core_equal_next_use_policy_test.log

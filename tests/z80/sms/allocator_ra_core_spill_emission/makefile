@@ -14,7 +14,7 @@ all: linked.sms core_spill_emission_test
 	./core_spill_emission_test > core_spill_emission_test.log 2>&1
 	grep -q "spill_emission function=allocatorRaCoreSpillEmissionByte requested=yes temp=r0 phy=2 spill=yes destination_offset=-8 bytes=2 emit=yes status=complete" compiler.log
 	grep -q "spill_emission function=allocatorRaCoreSpillEmissionWord requested=yes temp=r0 phy=2 spill=yes destination_offset=-9 bytes=2 emit=yes status=complete" compiler.log
-	test $$(grep -c "spill_emission function=allocatorRaCoreSpillEmission.*emit=yes status=complete" compiler.log) -eq 2
+	test $$(grep -c "spill_emission function=allocatorRaCoreSpillEmission.*emit=yes status=complete" compiler.log) -eq 4
 	grep -q "spill_insert_emit function=allocatorRaCoreSpillEmissionByte.*phy=HL spill_offset=-8 bytes=2" compiler.log
 	grep -q "spill_insert_emit function=allocatorRaCoreSpillEmissionWord.*phy=HL spill_offset=-9 bytes=2" compiler.log
 	grep -q "spill_emission function=coreSpillEmissionWord requested=yes temp=r7 phy=2 spill=yes destination_offset=-12 bytes=2 emit=yes status=complete" core_spill_emission_test.log

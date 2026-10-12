@@ -14,7 +14,7 @@ all: linked.sms core_reload_emission_test
 	./core_reload_emission_test > core_reload_emission_test.log 2>&1
 	grep -q "reload_emission function=allocatorRaCoreReloadEmissionByte requested=yes.*phy=3 spill=yes.*bytes=2 emit=yes status=complete" compiler.log
 	grep -q "reload_emission function=allocatorRaCoreReloadEmissionWord requested=yes.*phy=3 spill=yes.*bytes=2 emit=yes status=complete" compiler.log
-	test $$(grep -c "reload_emission function=allocatorRaCoreReloadEmission.*emit=yes status=complete" compiler.log) -eq 2
+	test $$(grep -c "reload_emission function=allocatorRaCoreReloadEmission.*emit=yes status=complete" compiler.log) -eq 4
 	grep -q "reload_insert_emit function=allocatorRaCoreReloadEmissionByte.*bytes=2 phy=BC" compiler.log
 	grep -q "reload_insert_emit function=allocatorRaCoreReloadEmissionWord.*bytes=2 phy=BC" compiler.log
 	grep -q "reload_emission function=coreReloadEmissionWord requested=yes temp=r7 operand=0 phy=3 spill=yes source_offset=-12 bytes=2 emit=yes status=complete" core_reload_emission_test.log

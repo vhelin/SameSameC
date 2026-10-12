@@ -12,7 +12,7 @@ OFILES = main.asm
 all: linked.sms core_next_use_test
 	$(BT) -s main.ssc
 	./core_next_use_test > core_next_use_test.log 2>&1
-	test "$$(grep -c "register_allocator_core: next_use function=allocatorRaCoreNextUseByte" compiler.log)" -eq 7
+	test "$$(grep -c "register_allocator_core: next_use function=allocatorRaCoreNextUseByte" compiler.log)" -eq 8
 	test "$$(grep -c "register_allocator_core: next_use function=allocatorRaCoreNextUseWord" compiler.log)" -eq 7
 	test "$$(grep -c "register_allocator_core: next_use function=allocatorRaCoreNextUseReused" compiler.log)" -eq 4
 	test "$$(grep -c "next_use function=allocatorRaCoreNextUseByte temp=r0 range=7..12 next=9 stop=read status=found" compiler.log)" -eq 2

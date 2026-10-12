@@ -14,8 +14,8 @@ all: linked.sms core_linear_scan_test
 	./core_linear_scan_test > core_linear_scan_test.log 2>&1
 	grep -q "linear_scan_choose function=allocatorRaCoreLinearScanNearer.*slot=HL.*decision=replace_active reason=nearer_next_use status=complete" compiler.log
 	grep -q "linear_scan spill function=allocatorRaCoreLinearScanNearer.*reason=farther_next_use" compiler.log
-	grep -q "linear_scan_choose function=allocatorRaCoreLinearScanEqual.*slot=A.*prefer_equal=yes decision=replace_active reason=equal_next_use_preference status=complete" compiler.log
-	grep -q "linear_scan prefer_array_write_value function=allocatorRaCoreLinearScanEqual.*reason=shared_next_use" compiler.log
+	grep -q "allocation_verify function=allocatorRaCoreLinearScanEqual .*status=complete" compiler.log
+	sed -n '/allocatorRaCoreLinearScanEqual:/,/\.ENDS/p' main.asm | grep -q "LD  C,(IX-13)"
 	grep -q "linear_scan_choose function=coreEmpty.*decision=assign reason=empty_slot status=complete" core_linear_scan_test.log
 	grep -q "linear_scan_choose function=coreExpired.*decision=assign reason=active_expired status=complete" core_linear_scan_test.log
 	grep -q "linear_scan_choose function=coreNearer.*decision=replace_active reason=nearer_next_use status=complete" core_linear_scan_test.log

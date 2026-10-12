@@ -41,10 +41,11 @@ all: linked.sms core_liveness_storage_test tac_insert_test z80_register_spill_te
 	test "$$(grep -c "split_reload_endpoint .*status=unsupported" z80_register_spill_test.log)" -eq 10
 	test "$$(grep -c "split_reload_endpoint .*status=invalid_input" z80_register_spill_test.log)" -eq 4
 	grep -q "z80_register_spill_test: split_reload_endpoints supported=2 unsupported=10 invalid=4 status=complete" z80_register_spill_test.log
-	for function in allocatorRaCoreLivenessDiamond allocatorRaCoreLivenessLoop; do test "$$(grep -c "register_allocator_core: liveness_storage function=$$function .*status=complete" compiler.log)" -eq 2 || exit 1; done
+	for function in allocatorRaCoreLivenessDiamond allocatorRaCoreLivenessLoop; do test "$$(grep -c "register_allocator_core: liveness_storage function=$$function .*status=complete" compiler.log)" -eq 3 || exit 1; done
+	grep -q "allocation_verify function=allocatorRaCoreLivenessMultiValue .*status=complete" compiler.log
 	: && ! grep -q "register_allocator_core: liveness_storage function=allocatorRaCoreLiveness.*status=invalid_input" compiler.log
-	test "$$(grep -c "register_allocator_core: liveness_solve function=allocatorRaCoreLivenessDiamond blocks=9 edges=10 temps=1 iterations=2 algorithm=backward_fixed_point status=converged" compiler.log)" -eq 2
-	test "$$(grep -c "register_allocator_core: liveness_solve function=allocatorRaCoreLivenessLoop blocks=5 edges=5 temps=1 iterations=1 algorithm=backward_fixed_point status=converged" compiler.log)" -eq 2
+	test "$$(grep -c "register_allocator_core: liveness_solve function=allocatorRaCoreLivenessDiamond blocks=9 edges=10 temps=1 iterations=2 algorithm=backward_fixed_point status=converged" compiler.log)" -eq 3
+	test "$$(grep -c "register_allocator_core: liveness_solve function=allocatorRaCoreLivenessLoop blocks=5 edges=5 temps=1 iterations=1 algorithm=backward_fixed_point status=converged" compiler.log)" -eq 3
 	grep -q "liveness_iterations function=allocatorRaCoreLivenessDiamond iterations=2" compiler.log
 	grep -q "cfg_edge function=allocatorRaCoreLivenessDiamond from_block=1 to_block=3 kind=branch_true" compiler.log
 	grep -q "cfg_edge function=allocatorRaCoreLivenessDiamond from_block=1 to_block=2 kind=branch_false" compiler.log
@@ -54,8 +55,8 @@ all: linked.sms core_liveness_storage_test tac_insert_test z80_register_spill_te
 	grep -q "liveness function=allocatorRaCoreLivenessDiamond block=2 use={} def={} live_in={r0} live_out={r0}" compiler.log
 	grep -q "liveness function=allocatorRaCoreLivenessDiamond block=3 use={} def={r0} live_in={} live_out={r0}" compiler.log
 	grep -q "liveness function=allocatorRaCoreLivenessDiamond block=4 use={r0} def={} live_in={r0} live_out={}" compiler.log
-	test "$$(grep -c "liveness_use_def function=allocatorRaCoreLivenessDiamond .*status=complete" compiler.log)" -eq 18
-	test "$$(grep -c "liveness_use_def function=allocatorRaCoreLivenessLoop .*status=complete" compiler.log)" -eq 10
+	test "$$(grep -c "liveness_use_def function=allocatorRaCoreLivenessDiamond .*status=complete" compiler.log)" -eq 27
+	test "$$(grep -c "liveness_use_def function=allocatorRaCoreLivenessLoop .*status=complete" compiler.log)" -eq 15
 	grep -q "liveness_use_def function=allocatorRaCoreLivenessDiamond block=1 start=5 end=8 instructions=441 temps=1 uses=0 defs=1 order=read_before_write status=complete" compiler.log
 	grep -q "liveness_use_def function=allocatorRaCoreLivenessDiamond block=4 start=13 end=16 instructions=441 temps=1 uses=1 defs=0 order=read_before_write status=complete" compiler.log
 	: && ! grep -q "liveness_use_def function=allocatorRaCoreLiveness.*status=invalid_input" compiler.log
@@ -733,8 +734,8 @@ all: linked.sms core_liveness_storage_test tac_insert_test z80_register_spill_te
 	grep -q "liveness_iterations function=allocatorRaCoreLivenessLoop iterations=1" compiler.log
 	grep -q "cfg_edge function=allocatorRaCoreLivenessLoop from_block=0 to_block=1 kind=fallthrough" compiler.log
 	grep -q "cfg_edge function=allocatorRaCoreLivenessLoop from_block=2 to_block=1 kind=jump" compiler.log
-	test "$$(grep -c "liveness_index function=allocatorRaCoreLivenessDiamond .*status=complete" compiler.log)" -eq 29
-	test "$$(grep -c "liveness_index function=allocatorRaCoreLivenessLoop .*status=complete" compiler.log)" -eq 16
+	test "$$(grep -c "liveness_index function=allocatorRaCoreLivenessDiamond .*status=complete" compiler.log)" -eq 47
+	test "$$(grep -c "liveness_index function=allocatorRaCoreLivenessLoop .*status=complete" compiler.log)" -eq 26
 	grep -q "liveness_index function=allocatorRaCoreLivenessDiamond blocks=9 temps=1 block=8 temp=0 cells=9 index=8 status=complete" compiler.log
 	: && ! grep -q "liveness_index function=allocatorRaCoreLiveness.*status=invalid_input" compiler.log
 	: && ! grep -q "register_allocator_core: liveness_solve.*status=failed_to_converge" compiler.log
