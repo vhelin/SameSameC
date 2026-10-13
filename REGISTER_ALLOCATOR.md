@@ -9413,6 +9413,118 @@ node ci/check_register_allocator.mjs
       Keep broader sanitizer/fuzz coverage and real-project runtime measurement
       as explicit follow-up work; do not claim new gains from unchanged ROMs.
 
+### Batch 298-300: Consolidation, Structural Coverage, And Measurements
+
+- [x] **298. Reduce final-verifier overhead without weakening verification.**
+      Reuse the stable CFG and owner buffers, avoid a second liveness solve,
+      and retain target-policy, malformed-input, and immutable-state checks.
+- [x] **299. Expand execution coverage with structural workloads.** Add live
+      values across calls, bounded pointer walks, nested array loops, and
+      branch-dependent writes to the existing differential runner. Minimize
+      demonstrated failures into existing exact-byte fixtures.
+- [x] **300. Measure actual-program cycles and compiler resource costs.**
+      Execute bounded pure routines from both calculations ROMs and extend
+      the existing corpus script with repeated timing and actual peak RSS.
+- [x] Final integration gate: freshly staged Cygwin GCC and native MSVC each
+      report `DONE (173 tests)` on 2026-10-13. Staged outputs match their
+      builds; compiler hashes are `f03aaeac2505acb9...` and `87e90d44a3f16cc3...`.
+
+### Step 298 Completed: Reuse Final Analysis
+
+- The final owner replay uses two existing buffers instead of four and skips
+      the ordinary liveness fixed point and its duplicate debug traversal.
+      Initial and post-mutation liveness solves remain unchanged. Redundant
+      operand-type storage is removed in favor of normalized temp indexes.
+- The final verifier reuses the last stable CFG when the subsequent allocation
+      stages change only operand/register metadata. A changed TAC count still
+      triggers reconstruction. This is a property of the current final stages,
+      not a general guarantee that arbitrary same-count CFG rewrites are safe;
+      a future structural rewrite must explicitly invalidate that analysis.
+- All nineteen actual-verifier cases still accept/reject as expected and leave
+      TACs and temp metadata unchanged. Existing CFG, liveness, rollback, and
+      mutation tests retain their semantic assertions; only measured redundant
+      analysis counts are reduced. This consolidation removes four net lines
+      from pass 5 and adds no production helper or API.
+
+### Step 299 Completed: Structural Execution And Compare Repair
+
+- The existing runner now generates 88 functions: eight variants across eleven
+      families. The four added families exercise several live values across a
+      call, strided pointer read/modify/write loops, nested bounded array loops,
+      and branch joins around a call and pointer writes. The buffer grows from
+      32 to 128 bytes; every case still checks its entire contents, allowed
+      writes, return value, frame/stack restoration, and instruction bounds.
+- The independent mixed-width oracle follows verified compiler semantics:
+      two byte operands wrap before assignment to a word local. A retained
+      failing join/call seed then exposed a real backend bug: a byte condition
+      held in a reused word temp resolved to HL but the eight-bit compare read
+      `(IX+0)`. Comparisons now consume retained HL/BC low bytes, reusing the
+      existing materializer rather than adding another helper.
+- The existing `allocator_ra_compare_c_relational` fixture gains a minimized
+      mixed-width case and exact bytes requiring `LD A,L`. In the liveness
+      fixture, only six linked jump-address bytes change because another
+      repaired compare shortens an untagged function by two bytes. No byte
+      controls or verifier checks are removed.
+- Current Cygwin GCC and native MSVC ASan each pass 45,056 generated executions
+      per mode (88 functions x 512 seeds), with identical totals. Default and
+      all-spill use 6,835,704 instructions / 97,395,368 cycles; RA uses
+      6,299,640 / 82,408,712. The 15.4% cycle difference describes this expanded
+      workload, not a new optimization gain or an exhaustive fuzz campaign.
+      Default/`-no-ra` ROMs remain identical. Artifacts and failing seeds use
+      the existing output directory and failure-report mechanism.
+
+### Step 300 Completed: Real Routines, Repeated Timing, And Peak RSS
+
+- The same runner compiles all five source units of each calculations project
+      in all four modes, then executes seven actual bank-zero pure routines:
+      add, multiply/add, XOR round trip, quotient/remainder round trip, product
+      restore, shift restore, and partition restore. Inputs keep divisors
+      nonzero and restoration cases within their nonoverflow bounds. Expected
+      results are independent arithmetic, not results copied from another mode.
+- Both current toolchains pass 3,584 real-routine executions per mode (seven
+      routines x 512 seeds), with identical results, instructions, and cycles.
+      Default/all-spill total 7,970,542 cycles and RA totals 7,503,598, about
+      5.9% fewer cycles for these routines. This measures existing RA benefits,
+      not a new batch speedup. It does not execute the whole programs, bank
+      switching, interrupts, graphics, or SMS hardware.
+- `RA_REAL_PROJECTS=0` skips only the real-project extension during a focused
+      generated-workload check. By default it runs; the per-routine results
+      are retained in `real-execution-summary.json`. Existing emulator/tool
+      selectors and `RA_CASES` apply to both workloads.
+- `ci/measure_register_allocator.sh` accepts `RA_BENCHMARK_REPEATS=1..31`
+      (default one). `compile_seconds` is the median of per-build compiler-time
+      sums; minimum, maximum, sample count, and per-invocation peak RSS are
+      separate columns. Repeated linked ROMs must be identical. Set `RA_TIME`
+      to GNU time to measure actual maximum resident memory; without it the
+      peak column explicitly says `unavailable`, never workspace-plan bytes.
+- Five samples per fixture/mode were collected against HEAD's pass 5/backend
+      with identical surrounding sources, and against the current compiler.
+      Local aggregate RA medians are 3.140 to 2.800 seconds (about -10.8%).
+      Disabled-mode timings also improve, so ordering, host load, and process
+      startup noise prevent attributing that entire difference to verification.
+      Maximum observed RA peak RSS is 13,440 to 13,460 KiB, essentially flat.
+      Cumulative planned workspace is 13,532,108 to 7,246,724 bytes (-46.4%);
+      this last counter still is not peak or retained memory.
+- The calculations RA ROM/frame totals remain 23,829/277 and 16,381/255 bytes.
+      The liveness RA fixture changes from 1,549 to 1,547 used ROM bytes with
+      frame sizes unchanged, due to the compare repair. Production source is
+      one net line smaller across pass 5 and the backend; no new production
+      function, API, allocator, or project dependency is introduced.
+- Native ASan compiler and actual verifier are freshly rebuilt in scratch
+      space. They pass all nineteen verifier cases, generated workloads, and
+      real-project builds/execution without an ASan report. Strict C90 and
+      editor diagnostics pass. Local GNU time 1.9 is also unpacked only in
+      scratch space; no system installation or permission changes are required.
+      UBSan, Valgrind, leak checking, upstream emulator tests, whole-program
+      execution, and broader random-program certification remain unverified.
+
+For repeated local corpus measurements with an available GNU time executable:
+
+```bash
+RA_TIME=/path/to/time RA_BENCHMARK_REPEATS=5 \
+  RA_BENCHMARK_DIR=/tmp/ra-corpus ./ci/measure_register_allocator.sh
+```
+
 For each implementation batch, commit its code, focused regressions, and results
 together without pushing. Prefer net consolidation; any new helper or API must
 remove real duplication or enable a demonstrated optimization. Keep C90 and

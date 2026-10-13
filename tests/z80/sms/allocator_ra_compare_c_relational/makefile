@@ -18,6 +18,7 @@ all: linked.sms
 	test $$(grep -c "retained arg1 in C" main.asm) -eq 8
 	: && ! grep -q "retained arg1 in B" main.asm
 	test $$(grep -c "SUB A,B" main.asm) -ge 4
+	grep -q "compare_8bit function=allocatorRaCompareWordLowByte.*arg1_kind=PHY_HL.*arg2_kind=CONST" compiler.log
 	: && ! grep -q "stack offset requested for retained" compiler.log
 	$(BT) -s main.ssc
 

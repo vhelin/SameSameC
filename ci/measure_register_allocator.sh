@@ -8,12 +8,20 @@ mkdir -p "$output"
 output=$(cd "$output" && pwd)
 export LC_ALL=C
 export TIMEFORMAT='RA_COMPILE_SECONDS=%R'
+repeats=${RA_BENCHMARK_REPEATS:-1}
+case "$repeats" in ''|*[!0-9]*) echo 'RA_BENCHMARK_REPEATS must be 1..31' >&2; exit 1 ;; esac
+test "$repeats" -ge 1 && test "$repeats" -le 31
+timing_cc='time samesamecc'
+if [ -n "${RA_TIME:-}" ]; then
+  test -x "$RA_TIME"
+  timing_cc="$RA_TIME -f 'RA_COMPILE_SECONDS=%e RA_PEAK_RSS_KIB=%M' samesamecc"
+fi
 
 if [ "$#" -eq 0 ]; then
   set -- calculations-1 calculations-2 allocator_ra_array_read_reload allocator_ra_array_write_pointer_bases allocator_ra_shift_loop_results allocator_ra_core_liveness_extraction allocator_ra_core_equal_next_use_policy
 fi
 
-printf 'fixture\tmode\trom_bytes\tframe_total_bytes\tframe_max_bytes\tinserted_spills\tinserted_reloads\tregister_copies\tcompile_seconds\tworkspace_plan_bytes\n' > "$output/summary.tsv"
+printf 'fixture\tmode\trom_bytes\tframe_total_bytes\tframe_max_bytes\tinserted_spills\tinserted_reloads\tregister_copies\tcompile_seconds\tworkspace_plan_bytes\tcompile_min_seconds\tcompile_max_seconds\tcompile_samples\tpeak_rss_kib\n' > "$output/summary.tsv"
 for fixture in "$@"; do
   directory="$root/tests/z80/sms/$fixture"
   test -f "$directory/makefile"
@@ -30,20 +38,47 @@ for fixture in "$@"; do
       all_spill) flags='-ra-all-spill' ;;
       ra) flags='-ra' ;;
     esac
-    log="$output/$fixture.$mode.log"
-    make -s -C "$directory" clean linked.sms SHELL=/bin/bash CC='time samesamecc' CFLAGS="$flags -mz80 -rs 3 -o" > "$log" 2>&1 || {
-      cat "$log" >&2
-      exit 1
-    }
-    for compiler_log in "$directory"/compiler.log "$directory"/*.compiler.log; do
-      if [ -f "$compiler_log" ]; then
-        cat "$compiler_log" >> "$log"
+    samples="$output/$fixture.$mode.samples.tsv"
+    : > "$samples"
+    mkdir -p "$output/$fixture.$mode"
+    for ((sample = 1; sample <= repeats; sample++)); do
+      log="$output/$fixture.$mode.$sample.log"
+      make -s -C "$directory" clean linked.sms SHELL=/bin/bash CC="$timing_cc" CFLAGS="$flags -mz80 -rs 3 -o" > "$log" 2>&1 || {
+        cat "$log" >&2
+        exit 1
+      }
+      for compiler_log in "$directory"/compiler.log "$directory"/*.compiler.log; do
+        if [ -f "$compiler_log" ]; then
+          cat "$compiler_log" >> "$log"
+        fi
+      done
+      awk -v sample="$sample" -v require_peak="${RA_TIME:-}" '
+        /^RA_COMPILE_SECONDS=/ { split($1, timing, "="); seconds += timing[2]; timings++ }
+        /RA_PEAK_RSS_KIB=/ { split($2, memory, "="); if (memory[2] > peak) peak = memory[2] }
+        END { if (!timings || (require_peak != "" && peak <= 0)) exit 1;
+          printf "%d\t%.3f\t%.0f\n", sample, seconds, peak }
+      ' "$log" >> "$samples"
+      if [ "$sample" -eq 1 ]; then
+        cp "${asm_files[@]}" "$directory/linked.sms" "$output/$fixture.$mode/"
+      else
+        cmp "$directory/linked.sms" "$output/$fixture.$mode/linked.sms"
       fi
     done
+    metrics=$(awk '
+      { values[NR] = $2; if ($3 > peak) peak = $3 }
+      END {
+        for (sample_index = 2; sample_index <= NR; sample_index++) {
+          value = values[sample_index]; previous = sample_index - 1;
+          while (previous > 0 && values[previous] > value) { values[previous + 1] = values[previous]; previous-- }
+          values[previous + 1] = value
+        }
+        median = (values[int((NR + 1) / 2)] + values[int((NR + 2) / 2)]) / 2;
+        printf "%.3f %.3f %.3f %s", values[1], median, values[NR], (peak > 0 ? peak : "unavailable")
+      }
+    ' "$samples")
+    read -r minimum median maximum peak <<< "$metrics"
     sha256sum "${asm_files[@]}" > "$output/$fixture.$mode.sha256"
-    mkdir -p "$output/$fixture.$mode"
-    cp "${asm_files[@]}" "$directory/linked.sms" "$output/$fixture.$mode/"
-    awk -v fixture="$fixture" -v mode="$mode" '
+    awk -v fixture="$fixture" -v mode="$mode" -v median="$median" -v minimum="$minimum" -v maximum="$maximum" -v repeats="$repeats" -v peak="$peak" '
       FILENAME ~ /\.asm$/ {
         if (/allocate space for the stack frame/) frame = 1
         else if (frame && /LD[[:space:]]+HL,-[0-9]+/) {
@@ -58,7 +93,7 @@ for fixture in "$@"; do
         next
       }
       /^ROM: .* free of total / { rom = $8 - $2; rom_found = 1 }
-      /^RA_COMPILE_SECONDS=/ { seconds = $0; sub(/.*=/, "", seconds); compile_seconds += seconds; timings++ }
+      /^RA_COMPILE_SECONDS=/ { timings++ }
       /register_allocator_core: .*_storage .*status=complete/ {
         for (field = 1; field <= NF; field++) {
           split($field, pair, "=")
@@ -69,8 +104,8 @@ for fixture in "$@"; do
       }
       END {
         if (!rom_found || rom < 0 || !timings) exit 1
-        printf "%s\t%s\t%d\t%d\t%d\t%d\t%d\t%d\t%.3f\t%.0f\n", fixture, mode, rom,
-          frame_total, frame_max, spills, reloads, copies, compile_seconds, workspace
+        printf "%s\t%s\t%d\t%d\t%d\t%d\t%d\t%d\t%.3f\t%.0f\t%.3f\t%.3f\t%d\t%s\n", fixture, mode, rom,
+          frame_total, frame_max, spills, reloads, copies, median, workspace, minimum, maximum, repeats, peak
       }
     ' "${asm_files[@]}" "$log" >> "$output/summary.tsv"
   done

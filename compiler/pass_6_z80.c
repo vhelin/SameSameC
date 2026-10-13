@@ -5938,7 +5938,7 @@ static int _bbb_generate_asm_jump_eq_lt_gt_neq_lte_gte_z80_8bit(struct tac *t, F
   struct z80_location arg1_location;
   struct z80_location arg2_location;
   int ix_offset = 0;
-  int arg1_in_a = NO, arg1_in_c = NO;
+  int arg1_in_a = NO, arg1_in_register = NO;
   int arg2_in_a = NO;
 
   /* arg1 */
@@ -5952,7 +5952,8 @@ static int _bbb_generate_asm_jump_eq_lt_gt_neq_lte_gte_z80_8bit(struct tac *t, F
     return FAILED;
 
   arg1_in_a = arg1_location.kind == LOC_PHY_A ? YES : NO;
-  arg1_in_c = arg1_location.kind == LOC_PHY_C ? YES : NO;
+  arg1_in_register = arg1_location.kind == LOC_PHY_C || arg1_location.kind == LOC_PHY_HL ||
+    arg1_location.kind == LOC_PHY_BC ? YES : NO;
   arg2_in_a = arg2_location.kind == LOC_PHY_A ? YES : NO;
 
 #if defined(DEBUG_PASS_6_REGISTER_ALLOCATOR)
@@ -5970,11 +5971,8 @@ static int _bbb_generate_asm_jump_eq_lt_gt_neq_lte_gte_z80_8bit(struct tac *t, F
   /* source address (arg1) -> ix */
   /******************************************************************************************************/
 
-  if (arg1_in_a == YES || arg1_in_c == YES) {
-    if (arg1_in_a == YES)
-      fprintf(file_out, "      ; retained arg1 in A\n");
-    else
-      fprintf(file_out, "      ; retained arg1 in C\n");
+  if (arg1_in_a == YES || arg1_in_register == YES) {
+    fprintf(file_out, "      ; retained arg1 in %s\n", _get_z80_physical_register_name(arg1_location.phy));
   }
   else if (arg1_location.kind == LOC_CONST) {
   }
@@ -5991,8 +5989,10 @@ static int _bbb_generate_asm_jump_eq_lt_gt_neq_lte_gte_z80_8bit(struct tac *t, F
     if (arg2_in_a == YES)
       _load_a_to_b(file_out);
 
-    if (arg1_in_c == YES)
-      fprintf(file_out, "      LD  A,C\n");
+    if (arg1_in_register == YES) {
+      if (_materialize_to_a(&arg1_location, 0, file_out) == FAILED)
+        return FAILED;
+    }
     else if (arg1_location.kind == LOC_CONST) {
     /* 8-bit */
       _load_value_to_a(arg1_location.value & 0xff, file_out);
@@ -6013,7 +6013,7 @@ static int _bbb_generate_asm_jump_eq_lt_gt_neq_lte_gte_z80_8bit(struct tac *t, F
   else {
     ix_offset = 0;
 
-    if (arg2_location.kind == LOC_CONST) {
+    if (arg2_location.kind == LOC_CONST || arg2_location.kind == LOC_PHY_HL || arg2_location.kind == LOC_PHY_BC) {
     }
     else if (_load_location_address_to_ix(&arg2_location, &ix_offset, file_out) == FAILED)
       return FAILED;
@@ -6024,6 +6024,9 @@ static int _bbb_generate_asm_jump_eq_lt_gt_neq_lte_gte_z80_8bit(struct tac *t, F
   /******************************************************************************************************/
 
   if (arg2_in_a == YES) {
+  }
+  else if (arg2_location.kind == LOC_PHY_HL || arg2_location.kind == LOC_PHY_BC) {
+    fprintf(file_out, "      LD  B,%s\n", arg2_location.kind == LOC_PHY_HL ? "L" : "C");
   }
   else if (arg2_location.kind == LOC_CONST) {
     /* 8-bit */

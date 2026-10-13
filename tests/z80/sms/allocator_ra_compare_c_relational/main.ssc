@@ -27,6 +27,10 @@
 // @BT 06 00 90 CA C3 01 DD 21 00 C0 DD 7E 00 3C DD 21
 // @BT 00 C0 DD 77 00
 // @BT END
+// @BT TEST-05 05 START
+// @BT DD 21 00 00 DD 19 DD 7E FA E6 01 6F 7D 06 00 90
+// @BT CA 2E 00 DD 6E F8 DD 66 F9 23 DD 75 F8 DD 74 F9
+// @BT END
 
 u8 g_allocator_compare_c_relational_target;
 
@@ -57,6 +61,16 @@ u8 allocatorRaCompareCRelational(u8 a, u8 b, u8 c, u8 d, u8 e, u8 f) {
   __asm(".DB \"<04\"");
 
   return g_allocator_compare_c_relational_target;
+}
+
+u16 allocatorRaCompareWordLowByte(u8 selector, u16 value) {
+
+  __asm(".DB \"05>\"");
+  if (selector & 1)
+    value = value + 1;
+  __asm(".DB \"<05\"");
+
+  return (value + value) + (value ^ selector);
 }
 
 void main(void) {

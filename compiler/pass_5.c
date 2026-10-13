@@ -6215,9 +6215,10 @@ static int _debug_register_allocator_liveness(struct tree_node *function_node, s
 
   live_use = (char *)calloc(1, storage.buffer_bytes);
   live_def = (char *)calloc(1, storage.buffer_bytes);
-  live_in = (char *)calloc(1, storage.buffer_bytes);
-  live_out = (char *)calloc(1, storage.buffer_bytes);
-  if (live_use == NULL || live_def == NULL || live_in == NULL || live_out == NULL) {
+  live_in = verify == YES ? NULL : (char *)calloc(1, storage.buffer_bytes);
+  live_out = verify == YES ? NULL : (char *)calloc(1, storage.buffer_bytes);
+  if (live_use == NULL || live_def == NULL ||
+      (verify == NO && (live_in == NULL || live_out == NULL))) {
     free(live_use);
     free(live_def);
     free(live_in);
@@ -6227,26 +6228,28 @@ static int _debug_register_allocator_liveness(struct tree_node *function_node, s
   }
 
   status = FAILED;
-  if (_compute_register_allocator_live_sets(function_node, blocks, block_count, edges, edge_count, live_use, live_def, live_in, live_out, &storage, &iterations) == FAILED)
-    goto verified;
-
-  fprintf(stderr, "register_allocator: liveness_iterations function=%s iterations=%d\n", function_node->children[1]->label, iterations);
-  for (block_index = 0; block_index < block_count; block_index++) {
-    int set_index;
-
-    if (register_allocator_resolve_liveness_index(
-        function_node->children[1]->label, block_count, temp_count, &storage,
-        block_index, 0, &set_index) == FAILED)
+  if (verify == NO) {
+    if (_compute_register_allocator_live_sets(function_node, blocks, block_count, edges, edge_count, live_use, live_def, live_in, live_out, &storage, &iterations) == FAILED)
       goto verified;
-    fprintf(stderr, "register_allocator: liveness function=%s block=%d use=", function_node->children[1]->label, block_index);
-    _debug_print_register_allocator_temp_set(function_node, live_use + set_index);
-    fprintf(stderr, " def=");
-    _debug_print_register_allocator_temp_set(function_node, live_def + set_index);
-    fprintf(stderr, " live_in=");
-    _debug_print_register_allocator_temp_set(function_node, live_in + set_index);
-    fprintf(stderr, " live_out=");
-    _debug_print_register_allocator_temp_set(function_node, live_out + set_index);
-    fprintf(stderr, "\n");
+
+    fprintf(stderr, "register_allocator: liveness_iterations function=%s iterations=%d\n", function_node->children[1]->label, iterations);
+    for (block_index = 0; block_index < block_count; block_index++) {
+      int set_index;
+
+      if (register_allocator_resolve_liveness_index(
+          function_node->children[1]->label, block_count, temp_count, &storage,
+          block_index, 0, &set_index) == FAILED)
+        goto verified;
+      fprintf(stderr, "register_allocator: liveness function=%s block=%d use=", function_node->children[1]->label, block_index);
+      _debug_print_register_allocator_temp_set(function_node, live_use + set_index);
+      fprintf(stderr, " def=");
+      _debug_print_register_allocator_temp_set(function_node, live_def + set_index);
+      fprintf(stderr, " live_in=");
+      _debug_print_register_allocator_temp_set(function_node, live_in + set_index);
+      fprintf(stderr, " live_out=");
+      _debug_print_register_allocator_temp_set(function_node, live_out + set_index);
+      fprintf(stderr, "\n");
+    }
   }
 
   status = SUCCEEDED;
@@ -6254,7 +6257,7 @@ static int _debug_register_allocator_liveness(struct tree_node *function_node, s
     int changed;
     int checking;
     int slot_count;
-    int registers[5];
+    int registers[5] = { Z80_PHY_A, Z80_PHY_HL, Z80_PHY_BC, Z80_PHY_B, Z80_PHY_C };
     int slot_index;
     size_t remaining;
 
@@ -6263,11 +6266,6 @@ static int _debug_register_allocator_liveness(struct tree_node *function_node, s
       status = FAILED;
       goto verified;
     }
-    registers[0] = Z80_PHY_A;
-    registers[1] = Z80_PHY_HL;
-    registers[2] = Z80_PHY_BC;
-    registers[3] = Z80_PHY_B;
-    registers[4] = Z80_PHY_C;
     remaining = (size_t)storage.buffer_bytes;
     if (remaining > ((size_t)-1 - 2) / (size_t)slot_count) {
       status = FAILED;
@@ -6310,7 +6308,6 @@ static int _debug_register_allocator_liveness(struct tree_node *function_node, s
           int operand;
           int operand_temps[3];
           int operand_registers[3];
-          int operand_types[3];
 
           instruction = &g_tacs[instruction_index];
           if (_register_allocator_instruction_is_active(function_node, instruction_index, -1) == NO)
@@ -6318,9 +6315,6 @@ static int _debug_register_allocator_liveness(struct tree_node *function_node, s
           operand_temps[0] = instruction->result_type == TAC_ARG_TYPE_TEMP ? (int)instruction->result_d : -1;
           operand_temps[1] = instruction->arg1_type == TAC_ARG_TYPE_TEMP ? (int)instruction->arg1_d : -1;
           operand_temps[2] = instruction->arg2_type == TAC_ARG_TYPE_TEMP ? (int)instruction->arg2_d : -1;
-          operand_types[0] = instruction->result_type;
-          operand_types[1] = instruction->arg1_type;
-          operand_types[2] = instruction->arg2_type;
           operand_registers[0] = instruction->result_physical_register;
           operand_registers[1] = instruction->arg1_physical_register;
           operand_registers[2] = instruction->arg2_physical_register;
@@ -6329,10 +6323,10 @@ static int _debug_register_allocator_liveness(struct tree_node *function_node, s
             int physical_register;
             int bit;
 
-            if (operand_types[operand] != TAC_ARG_TYPE_TEMP)
-              continue;
             temp_index = operand_temps[operand];
-            if (temp_index < 0 || temp_index >= temp_count) {
+            if (temp_index < 0)
+              continue;
+            if (temp_index >= temp_count) {
               status = FAILED;
               goto verified;
             }
@@ -10341,6 +10335,7 @@ static int _scan_register_allocator_basic_blocks(struct tree_node *function_node
   if (reconciliation_pass > 1)
     fprintf(stderr, "register_allocator: post_promotion_reconciliation function=%s inserted=0 rewritten=0 added_temps=0 state_count=%d status=complete\n",
         function_node->children[1]->label, path_state_count);
+  reconciliation_start_instruction_count = g_tacs_count;
 #endif
 
   if (_force_spill_at_basic_block_exits(function_node, blocks, block_count,
@@ -10359,8 +10354,9 @@ static int _scan_register_allocator_basic_blocks(struct tree_node *function_node
   }
 
 #if defined(DEBUG_PASS_5)
-  if (_rebuild_register_allocator_control_flow(function_node, &blocks,
-      &edges, &block_count, &edge_count) == FAILED ||
+  if ((g_tacs_count != reconciliation_start_instruction_count &&
+      _rebuild_register_allocator_control_flow(function_node, &blocks,
+      &edges, &block_count, &edge_count) == FAILED) ||
       _debug_register_allocator_liveness(function_node, blocks, block_count,
       edges, edge_count, YES) == FAILED)
     goto cleanup;
