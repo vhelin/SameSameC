@@ -47,7 +47,7 @@ static int check_verification(struct tree_node *function, struct tac *instructio
   return SUCCEEDED;
 }
 
-int main(void) {
+int main(int argc, char **argv) {
 
   struct tree_node function, name, *children[2];
   struct local_variables locals;
@@ -55,6 +55,7 @@ int main(void) {
   struct tac instructions[4];
   int index;
 
+  g_register_allocator_trace = !(argc > 1 && strcmp(argv[1], "-q") == 0);
   memset(&function, 0, sizeof(function));
   memset(&name, 0, sizeof(name));
   memset(&locals, 0, sizeof(locals));

@@ -9531,6 +9531,278 @@ remove real duplication or enable a demonstrated optimization. Keep C90 and
 target-policy validation gates. Leave a separate 6502 backend and explicit
 inline-asm constraints postponed until Z80 quality gains justify broader scope.
 
+### Next Quality Roadmap: Steps 301-315
+
+These are optional quality improvements beyond the completed bounded allocator,
+not a new definition of 100%. Checked items have completion evidence below;
+remaining items are plans, not implemented capabilities. Work in the order
+below, revising later scope when measurements disagree with the hypotheses.
+The immediate goal is to make more useful values and operand combinations
+allocatable, not to add another allocator framework. Preserve opt-in `-ra`,
+default/`-no-ra` behavior, the existing ABI, and conservative unknown clobbers.
+
+The pre-301 evidence favored eligibility work: retained calculations scans had
+160 `unsupported_physical_register` skips versus 15 `clobber_between` skips.
+These are diagnostic attempts, not unique missed values or runtime frequencies.
+That baseline scan was block-local with narrowly patterned scalar promotion,
+specialized multi-use preservation, and next-use arbitration with only a
+bounded array-write transfer-cost preference. Do not infer expected speedups
+from these counts or treat further policy extraction as an optimization gain.
+
+### Batch 301-303: Expose And Remove Immediate Eligibility Limits
+
+- [x] **301. Separate allocation, verification, and tracing.** Move semantic
+      join/loop reconciliation out of diagnostic-only conditional compilation.
+      Keep required validation independent of logging and provide a quiet path
+      without simply disabling `DEBUG_PASS_5`. Reuse existing controls where
+      practical. Add compact per-function summaries of skipped candidates by
+      producer/consumer op, operand, width, register, and reason; distinguish
+      repeated probes from unique opportunities. Quiet and traced builds must
+      produce identical allocation decisions and ROMs, and verification must
+      still reject the existing malformed cases. Measure trace bytes and
+      compile time separately from generated-code quality.
+- [x] **302. Broaden safe scalar-local promotion.** Extend the existing local
+      promotion walk beyond byte additions of two byte arguments followed by
+      one addition use. Start with single-definition, single-use byte/word
+      locals in straight-line code, using supported arithmetic, bitwise, and
+      copy producers/consumers. Preserve operand widths and extension rules.
+      Exclude address-taken, escaping, static/global, inline-asm-visible, or
+      otherwise externally observable storage and unsupported alias effects.
+      Prove safety over the relevant lifetime rather than rejecting a function
+      merely because it contains an unrelated call. Add positive and negative
+      cases to existing fixtures and independent execution oracles; demonstrate
+      removed memory traffic and a measured ROM or cycle benefit.
+- [x] **303. Expand the highest-value operand/register combinations.** Use
+      step 301 summaries to choose a common unsupported shape, checking the
+      emitter as well as candidate policy. Prioritize useful HL/BC word paths
+      and existing materializers before adding register classes. Consider
+      commutative operand placement only where evaluation effects and clobbers
+      permit it; do not commute subtraction or shifts. Keep width, overlap,
+      producer/consumer clobber, and mixed-width low-byte checks explicit.
+      Require both rejection tests and an execution-tested improvement over
+      the preceding compiler; broad allowlist relaxation alone is not done.
+
+**Implementation and results (2026-10-14):**
+
+- Reconciliation, liveness, owner verification, and their shared helpers no
+      longer depend on `DEBUG_PASS_5`. Existing `-q` suppresses routine allocator
+      traces through one C90 tuple-argument macro, not a new printing function.
+      Errors remain unconditional. Earlier compiler passes and compact final
+      rejection summaries still produce output; this is not a silent compiler.
+      Summaries group producer/consumer/operand/width/primary register/reason and
+      count final producer/next-use scan decisions, not repeated register probes
+      or dynamic frequencies. Missing candidates never reaching selection are not
+      represented as unique optimization opportunities.
+- Extended the existing scalar/pointer promotion walk, not a second pass, to
+      supported single-definition/single-use byte/word arithmetic, bitwise, and
+      copy forms. Calls outside a scalar's relevant lifetime no longer reject the
+      whole function; direct call-argument references and lifetime crossings remain
+      excluded, as do address-taken, repeated/redefined, static/global, and
+      asm-observed values. Byte source widths are checked from declaration nodes
+      before operand-type propagation. Word-to-byte and unproven byte-temp source
+      shapes stay stack-backed after an execution control exposed lost truncation.
+- Summaries identified the dominant word assignment/post-increment array-index
+      shape, but its real intervening clobbers prevented a demonstrated gain; the
+      trial allowance was removed. Instead, extended existing `SUB arg2` discovery
+      and the BC predicate only for word `COMPLEMENT` producers, reusing the
+      already-supported emitter. Non-complement/other-register cases remain
+      rejected. Operand order is unchanged. Existing BC overlap/path checks keep
+      the left operand in HL while producing the complemented right operand in BC.
+- Reused two existing fixtures and the differential runner. It now runs the
+      original 88-function cohort and a separate 42-function scalar/word cohort
+      automatically, rather than overflowing bank zero with one large program.
+      New controls cover signed byte/word values, widening, narrowing, call
+      positions/arguments, and subtraction order. Per-function dynamic metrics
+      distinguish eligibility gains from repeated test inputs. The original
+      target-transparency golden required only changed frame displacements after
+      promoting its single-use `held` local; opcode sequence and policy assertions
+      are unchanged.
+- Matched pre-batch compiler versus current compiler, same surrounding sources:
+      scalar cohort RA cycles **9,062,912 -> 8,752,640** across 21,504 executions
+      (3.4% fewer), instructions **698,368 -> 689,152**. Byte XOR-local examples
+      use **230 -> 200 cycles/invocation**; the complemented-word subtraction uses
+      **457 -> 305**, independently executed with full return/buffer/ABI checks.
+      These are targeted workload gains, not whole-program speedups. The original
+      generated cohort and seven existing real-routine totals are unchanged.
+- Nine-fixture matched corpus: **33/36 raw ROM pairs identical**, including
+      all 27 default/`-no-ra`/all-spill controls. RA changes: calculations-1
+      **23,829 -> 23,805 ROM bytes**, aggregate frames **277 -> 273**; expanded
+      scalar fixture **1,041 -> 1,029**, frames **134 -> 131**; expanded BC fixture
+      **440 -> 416**, frames **50 -> 46**. Other corpus ROMs/frames unchanged.
+      Three build samples per mode with actual GNU-time RSS: aggregate traced-RA
+      median compile-time sums **2.900 -> 3.140 s**, flags-off **0.990 -> 0.990 s**;
+      maximum peak RSS **13,436 -> 13,456 KiB**. Timing runs were baseline-first
+      and overlapped qualification, so this is a cost observation, not a precise
+      performance estimate. Do not hide the traced compile-time increase.
+- Alternating three current-compiler traced/quiet samples on the original
+      generated source: median **1.460 -> 0.185 s**, logs **7,265,370 -> 783,243
+      bytes**, with matching generated assembly/ROMs and mandatory verification.
+      Traced range **1.454-1.499 s**, quiet **0.183-0.191 s**. This measures logging
+      cost separately from allocation quality, not a default-mode optimization.
+- No new production functions or files. Consolidation removes duplicate
+      declarations, debug compilation guards, and an unreachable path-state copy.
+      Four touched production files are **net -3 nonblank lines**, **net +60 total
+      lines** including spacing; the trace macro/flag are the only new shared
+      surface. Preserve the existing header's unrelated line-ending change outside
+      this batch's staged declarations. `-ra` remains opt-in.
+- Strict C90, focused fixtures, actual immutable verifier (5 accepted and 14
+      rejected cases in both trace modes), quiet/traced generated assembly/ROM
+      identity, and independent execution passed. Both Cygwin and native-ASan
+      compilers completed **70,144 executions per executed mode**: 45,056 original
+      generated, 21,504 scalar/word, and 3,584 real-routine executions. Toolchain
+      summaries match exactly; instrumented compiler/verifier runtime dependencies
+      were checked and no ASan report occurred. Counts include repeated input
+      patterns and do not claim unique shapes or exhaustive coverage. The full
+      Cygwin and native Windows suites passed **173 tests each**, run sequentially.
+- UBSan, Valgrind/leak checking, upstream emulator tests, and full SMS/hardware
+      execution were not run. Arbitrary multi-use retention, narrowing promotion,
+      graph-wide lifetimes, and profitable post-increment indexes remain future
+      work; steps 304-315 remain unchecked.
+
+### Batch 304-306: Retain Reused Values And Price Allocation Decisions
+
+- [ ] **304. Support general same-block multi-use retention.** Extend existing
+      candidate discovery and interval state so a value can remain resident
+      through several reads until its last read, redefinition, or actual
+      clobber. Start with stable-width, unambiguous definitions and straight-line
+      locals/temps; do not confuse a read-modify-write with another read of the
+      old value. Keep all consumers and overlapping physical units consistent.
+      Remove the need for immediate spill backing when no later path needs it,
+      while retaining fail-closed handling for unsupported cases. Test repeated
+      arithmetic, array-base use, pressure, and intervening clobbers against
+      independent results and memory-access counts.
+- [ ] **305. Generalize preservation and reload placement only where needed.**
+      Reuse the existing split-spill/reload planners and atomic application for
+      more than the specialized word-HL array-base case. Track whether backing
+      storage already holds the current value; avoid duplicate stores/reloads,
+      store before a destructive use when necessary, and reload at the first
+      actual demand. Cover byte/word widths, BC/B/C overlap, redefinitions,
+      joins, and failed-plan rollback. Do not enable arbitrary cross-block
+      retention before all-path safety is proven. Show reduced executed
+      transfers, not just additional retained-value diagnostics.
+- [ ] **306. Add a bounded target-aware profitability model.** Extend existing
+      arbitration rather than building a second selector. Compare avoided
+      stack traffic with producer/consumer transfers, spill/reload costs, and
+      rematerialization in both encoded bytes and Z80 cycles. State the chosen
+      objective and use conservative loop weights where known; label estimated
+      frequency separately from measured execution. Keep legality independent
+      of profitability, retain deterministic ties, and use next use as a
+      fallback when costs are unknown. Validate both beneficial and deliberately
+      rejected choices, including pressure and cases where nearer use is more
+      expensive; retain only measured improvements without unexplained corpus
+      regressions.
+
+### Batch 307-309: Separate Values From Storage And Remove Redundant Traffic
+
+- [ ] **307. Preserve definition-specific identity through allocation.**
+      Separate logical value/live-range identity from compacted temp names and
+      eventual stack slots. Reuse existing instruction/definition metadata
+      where sound; examine the placement of `reuse_registers()` rather than
+      adding parallel lifetime bookkeeping. Preserve byte/word semantics when
+      the same compacted name has differently typed definitions, and keep
+      mutation identities valid when TAC indexes move. Full SSA is not required.
+      First require output-preserving behavior on supported paths and verifier
+      coverage for redefinitions, width changes, joins, loops, and stale plans
+      before enabling broader optimization based on the new identity.
+- [ ] **308. Coalesce copies and broaden safe rematerialization.** Use actual
+      value lifetimes and register constraints to remove avoidable copies and
+      reloads. Extend existing constant/address rematerialization rather than
+      duplicating it; compare recomputation with transport using step 306.
+      Recompute only side-effect-free values whose inputs remain valid, never
+      an aliased memory load or volatile/observable access. Preserve signed
+      extension, partial-register overlap, and parallel-move ordering. Add
+      controls where coalescing increases pressure or rematerialization costs
+      more, and qualify net bytes/cycles rather than counting deleted moves.
+- [ ] **309. Reuse actual spill backing by proven lifetimes.** Assign/share
+      spill slots after physical allocation using the lifetimes of values that
+      truly need memory, including CFG live segments and reload demands.
+      Existing virtual-temp reuse is not absent; improve or replace its storage
+      role rather than layering another unrelated compactor over it. Keep
+      escaping/address-taken/asm-visible locals separate, respect widths and
+      frame-offset limits, and preserve all planned transfer offsets. Require
+      verifier and execution coverage for branches, loops, calls, and overlapping
+      byte/word spills, with a demonstrated frame-size reduction and no
+      unexplained instruction-cost increase.
+
+### Batch 310-312: Extend Allocation Across Useful Regions
+
+- [ ] **310. Use function-level live segments for region decisions.** Build on
+      existing CFG/liveness and definition identity to represent lifetime holes
+      and values crossing ordinary block boundaries. Start with unambiguous
+      straight-line regions, then joins where all incoming states can be
+      reconciled. Reuse current reservations and transaction machinery; do not
+      retain across a boundary based only on linear TAC position or an
+      unchanged instruction count. Explicitly invalidate analysis after
+      structural mutations. Test edge-specific transfers, critical-edge
+      placement, incompatible incoming locations, and all-path rollback before
+      replacing conservative stack-backed decisions.
+- [ ] **311. Retain profitable loop-carried values under pressure.** Extend
+      current loop support to multiple simultaneously live values and useful
+      nested-loop regions, using estimated or measured hotness and actual
+      register-unit conflicts. Account for entry, backedge, and exit transfers
+      and resolve any parallel-copy cycles safely. Keep break, continue,
+      multiple-latch, redefinition, and conflicting-inner-loop negatives.
+      Require execution-tested removal of repeated loop-body memory traffic
+      and report total dynamic cycles including setup/exit costs; an additional
+      recognized loop shape alone is not an optimization result.
+- [ ] **312. Limit call-related spills to the values and regions needing them.**
+      Preserve the existing ABI and caller-clobber rules. Split live ranges
+      around calls and choose saves/reloads or rematerialization using proven
+      value liveness and cost, rather than keeping an entire lifetime in memory.
+      Only use narrower clobber summaries for callees with validated transitive
+      effects; unknown/external calls and unconstrained inline asm remain hard
+      barriers. Do not silently introduce callee-saved registers or change
+      argument/return conventions. Test live values across nested calls,
+      recursion where supported, pointer writes, and mixed-width returns, with
+      frame/stack restoration and observable-memory checks.
+
+### Batch 313-315: Close Coverage Gaps And Qualify The Result
+
+- [ ] **313. Systematically check policy/emitter/verifier agreement.** Extend
+      existing tests to enumerate supported operation/operand/width/register
+      combinations, physical-unit overlap, and implicit clobbers. Verify actual
+      emitted behavior independently, not only descriptor agreement; a reaching
+      owner proof cannot detect an emitter reading the wrong location. Track
+      definition identity through transfers and mutations. Include signed
+      extension, low-byte uses of word locations, and rejection of unsupported
+      combinations. This is broader coverage, not permission to postpone such
+      checks for combinations introduced in earlier batches.
+- [ ] **314. Expand structural differential generation and failure reduction.**
+      Reuse `ci/check_register_allocator.mjs` and its independent oracles. Vary
+      program structure, live-value pressure, aliasing within valid buffers,
+      signed/mixed widths, branch paths, nested loops, and call placement rather
+      than merely increasing seeds or constants. Avoid undefined inputs and
+      report unique shapes/input tuples separately from execution counts.
+      Retain and minimize failing sources/seeds into existing fixtures. Include
+      representative pointer/loop routines from real projects and state hardware
+      or emulator limits explicitly; preserve pinned/reproducible tooling.
+- [ ] **315. Requalify gains, costs, and remaining limits.** Reuse the existing
+      corpus and real-routine execution tools with matched surrounding sources
+      and freshly staged Cygwin/MSVC binaries. Interleave or alternate baseline
+      and candidate timing runs, report dispersion and actual peak RSS, and
+      retain disabled-mode negative controls. Report ROM, frames, executed
+      transfers, dynamic cycles, compile time, and net production source/API
+      changes. Run both full suites, the allocation verifier, differential
+      execution, strict C90, and available sanitizers; name unrun checks.
+      Keep only explained tradeoffs and demonstrated benefits. Record which
+      original eligibility limits remain and decide the next work from that
+      evidence, without making `-ra` unconditional or claiming exhaustive
+      certification.
+
+**Shared completion gates:** Each three-step batch gets its own local commit,
+with no push and no unrelated worktree changes included. Reuse existing
+functions, planners, fixtures, and scripts; new production helpers/APIs must
+remove real duplication or enable a demonstrated capability. For optimization
+changes, include a before/after control showing actual benefit and independent
+execution correctness. For output-preserving consolidation, require matching
+ROMs and allocation decisions. Keep default/`-no-ra` compatibility, full-width
+and partial-register safety, immutable verifier failure cases, and atomic
+mutation rejection/rollback. Run focused checks after each edit and both full
+suites plus available sanitizer/execution gates before closing a batch; report
+the actual test count rather than freezing today's count in new assertions.
+An unprofitable or unproven item remains unchecked or is explicitly revised,
+not marked complete because supporting infrastructure was added.
+
 ---
 
 ## Remaining Work To 100%

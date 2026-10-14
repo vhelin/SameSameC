@@ -22,6 +22,9 @@ all: linked.sms
 	grep -q "register 1 size 2 spill no phy BC" main.asm
 	grep -q "retained result in BC" main.asm
 	grep -q "retained arg2 in BC" main.asm
+	grep -q "linear_scan retain function=allocatorRaBcRetentionSubtract.*16-bit in BC.*SUB arg2" compiler.log
+	grep -q "rejection_summary function=allocatorRaBcRetentionRejected.*consumer=SUB.*operand=arg2.*reason=unsupported_physical_register.*unique_decisions=1" compiler.log
+	: && ! grep -q "linear_scan retain.*function=allocatorRaBcRetentionRejected.*in BC" compiler.log
 
 
 linked.sms: $(OFILES) makefile

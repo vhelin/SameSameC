@@ -208,9 +208,9 @@ static void _trace_z80_specialized_address_materialization(struct tree_node *fun
     function_name = function_node->children[1]->label;
   address_mode = get_register_allocator_address_materialization_mode(location->kind, address_target, location->offset);
 
-    fprintf(stderr, "register_allocator: target_specialized_address_materialization function=%s emitter=%s operand=%s kind=%s offset=%d mode=%s folded_offset=%d address_target=%s target=z80\n",
+    RA_TRACE((stderr, "register_allocator: target_specialized_address_materialization function=%s emitter=%s operand=%s kind=%s offset=%d mode=%s folded_offset=%d address_target=%s target=z80\n",
       function_name, emitter, operand, _get_z80_location_kind_name(location->kind), location->offset,
-      _get_z80_address_mode_name(address_mode), folded_offset, _get_z80_address_target_name(address_target));
+      _get_z80_address_mode_name(address_mode), folded_offset, _get_z80_address_target_name(address_target)));
 }
 #endif
 
@@ -300,7 +300,7 @@ int find_stack_offset(int type, char *name, int value, struct tree_node *node, i
 
     if (temp_register != NULL) {
       if (g_allocator_enabled == YES && temp_register->physical_register != Z80_PHY_NONE) {
-        fprintf(stderr, "register_allocator: stack offset requested for retained r%d in %s; emitter must use %s directly.\n", value, function_node->children[1]->label, _get_z80_physical_register_name(temp_register->physical_register));
+        RA_TRACE((stderr, "register_allocator: stack offset requested for retained r%d in %s; emitter must use %s directly.\n", value, function_node->children[1]->label, _get_z80_physical_register_name(temp_register->physical_register)));
         return FAILED;
       }
 
@@ -1705,13 +1705,13 @@ static int _resolve_z80_location(int type, char *name, int value, struct tree_no
     if (function_node != NULL && function_node->children[1] != NULL)
       function_name = function_node->children[1]->label;
 
-    fprintf(stderr, "register_allocator: resolve function=%s operand=%s kind=%s offset=%d size=%d phy=%s\n",
+    RA_TRACE((stderr, "register_allocator: resolve function=%s operand=%s kind=%s offset=%d size=%d phy=%s\n",
             function_name, operand_name, _get_z80_location_kind_name(location->kind),
-            location->offset, location->size, _get_z80_physical_register_name(location->phy));
-        fprintf(stderr, "register_allocator: target_location_materialization function=%s operand=%s source=%s kind=%s offset=%d size=%d phy=%s target=z80\n",
+            location->offset, location->size, _get_z80_physical_register_name(location->phy)));
+        RA_TRACE((stderr, "register_allocator: target_location_materialization function=%s operand=%s source=%s kind=%s offset=%d size=%d phy=%s target=z80\n",
           function_name, operand_name, _get_register_allocator_location_source_name(source_kind),
           _get_z80_location_kind_name(location->kind), location->offset, location->size,
-          _get_z80_physical_register_name(location->phy));
+          _get_z80_physical_register_name(location->phy)));
   }
 #endif
 
@@ -1781,9 +1781,9 @@ static int _load_location_address_to_ix(struct z80_location *location, int *ix_o
 
 #if defined(DEBUG_PASS_6_REGISTER_ALLOCATOR)
   if (g_allocator_enabled == YES)
-    fprintf(stderr, "register_allocator: target_address_materialization target=%s kind=%s offset=%d mode=%s folded_offset=%d target_policy=z80\n",
+    RA_TRACE((stderr, "register_allocator: target_address_materialization target=%s kind=%s offset=%d mode=%s folded_offset=%d target_policy=z80\n",
             _get_z80_address_target_name(RA_ADDRESS_TARGET_IX), _get_z80_location_kind_name(location->kind), location->offset,
-            _get_z80_address_mode_name(address_mode), address_mode == RA_ADDRESS_MODE_FRAME_DISPLACEMENT ? location->offset : 0);
+            _get_z80_address_mode_name(address_mode), address_mode == RA_ADDRESS_MODE_FRAME_DISPLACEMENT ? location->offset : 0));
 #endif
 
   if (address_mode == RA_ADDRESS_MODE_NONE) {
@@ -1821,9 +1821,9 @@ static int _load_location_address_to_ix_uncached(struct z80_location *location, 
 
 #if defined(DEBUG_PASS_6_REGISTER_ALLOCATOR)
   if (g_allocator_enabled == YES)
-    fprintf(stderr, "register_allocator: target_address_materialization target=%s kind=%s offset=%d mode=%s folded_offset=%d target_policy=z80\n",
+    RA_TRACE((stderr, "register_allocator: target_address_materialization target=%s kind=%s offset=%d mode=%s folded_offset=%d target_policy=z80\n",
             _get_z80_address_target_name(RA_ADDRESS_TARGET_IX_UNCACHED), _get_z80_location_kind_name(location->kind), location->offset,
-            _get_z80_address_mode_name(address_mode), address_mode == RA_ADDRESS_MODE_FRAME_DISPLACEMENT ? location->offset : 0);
+            _get_z80_address_mode_name(address_mode), address_mode == RA_ADDRESS_MODE_FRAME_DISPLACEMENT ? location->offset : 0));
 #endif
 
   if (address_mode == RA_ADDRESS_MODE_NONE) {
@@ -1867,10 +1867,10 @@ static int _load_call_argument_address_to_iy(struct z80_location *location, int 
 
 #if defined(DEBUG_PASS_6_REGISTER_ALLOCATOR)
   if (g_allocator_enabled == YES)
-    fprintf(stderr, "register_allocator: target_address_materialization target=IY_OLD_FRAME kind=%s offset=%d mode=%s folded_offset=%d target_policy=z80\n",
+    RA_TRACE((stderr, "register_allocator: target_address_materialization target=IY_OLD_FRAME kind=%s offset=%d mode=%s folded_offset=%d target_policy=z80\n",
             _get_z80_location_kind_name(location->kind), location->offset,
             _get_z80_address_mode_name(address_mode),
-            address_mode == RA_ADDRESS_MODE_FRAME_DISPLACEMENT ? location->offset : 0);
+            address_mode == RA_ADDRESS_MODE_FRAME_DISPLACEMENT ? location->offset : 0));
 #endif
 
   if (address_mode == RA_ADDRESS_MODE_FRAME_DISPLACEMENT) {
@@ -1910,11 +1910,11 @@ static int _load_call_argument_address_to_iy(struct z80_location *location, int 
     if (function_node != NULL && function_node->children[1] != NULL)
       function_name = function_node->children[1]->label;
 
-    fprintf(stderr, "register_allocator: target_call_old_frame_address function=%s callee=%s argument=%d kind=%s offset=%d mode=%s folded_offset=%d cache_before=%s cache_action=%s cache_after=%s address_target=IY_OLD_FRAME target=z80\n",
+    RA_TRACE((stderr, "register_allocator: target_call_old_frame_address function=%s callee=%s argument=%d kind=%s offset=%d mode=%s folded_offset=%d cache_before=%s cache_action=%s cache_after=%s address_target=IY_OLD_FRAME target=z80\n",
             function_name, callee_name, argument, _get_z80_location_kind_name(location->kind),
             location->offset, _get_z80_address_mode_name(address_mode), *source_offset,
             cache_was_reset == YES ? "reset" : "ready", cache_action,
-            *reset_iy == YES ? "reset" : "ready");
+            *reset_iy == YES ? "reset" : "ready"));
   }
 #endif
 
@@ -1930,9 +1930,9 @@ static int _load_location_address_to_iy(struct z80_location *location, FILE *fil
 
 #if defined(DEBUG_PASS_6_REGISTER_ALLOCATOR)
   if (g_allocator_enabled == YES)
-    fprintf(stderr, "register_allocator: target_address_materialization target=%s kind=%s offset=%d mode=%s folded_offset=0 target_policy=z80\n",
+    RA_TRACE((stderr, "register_allocator: target_address_materialization target=%s kind=%s offset=%d mode=%s folded_offset=0 target_policy=z80\n",
             _get_z80_address_target_name(RA_ADDRESS_TARGET_IY), _get_z80_location_kind_name(location->kind), location->offset,
-            _get_z80_address_mode_name(address_mode));
+            _get_z80_address_mode_name(address_mode)));
 #endif
 
   if (address_mode == RA_ADDRESS_MODE_NONE) {
@@ -1962,9 +1962,9 @@ static int _load_location_address_to_hl(struct z80_location *location, FILE *fil
 
 #if defined(DEBUG_PASS_6_REGISTER_ALLOCATOR)
   if (g_allocator_enabled == YES)
-    fprintf(stderr, "register_allocator: target_address_materialization target=%s kind=%s offset=%d mode=%s folded_offset=0 target_policy=z80\n",
+    RA_TRACE((stderr, "register_allocator: target_address_materialization target=%s kind=%s offset=%d mode=%s folded_offset=0 target_policy=z80\n",
             _get_z80_address_target_name(RA_ADDRESS_TARGET_HL), _get_z80_location_kind_name(location->kind), location->offset,
-            _get_z80_address_mode_name(address_mode));
+            _get_z80_address_mode_name(address_mode)));
 #endif
 
   if (address_mode == RA_ADDRESS_MODE_GLOBAL_LABEL) {
@@ -2314,10 +2314,10 @@ static int _generate_asm_assignment_z80(struct tac *t, FILE *file_out, struct tr
 
 #if defined(DEBUG_PASS_6_REGISTER_ALLOCATOR)
   if (g_allocator_enabled == YES) {
-    fprintf(stderr, "register_allocator: assignment function=%s arg1_kind=%s arg1_phy=%s arg1_size=%d result_kind=%s result_phy=%s result_size=%d\n",
+    RA_TRACE((stderr, "register_allocator: assignment function=%s arg1_kind=%s arg1_phy=%s arg1_size=%d result_kind=%s result_phy=%s result_size=%d\n",
             function_node->children[1]->label,
             _get_z80_location_kind_name(arg1_location.kind), _get_z80_physical_register_name(arg1_location.phy), arg1_location.size,
-            _get_z80_location_kind_name(result_location.kind), _get_z80_physical_register_name(result_location.phy), result_location.size);
+            _get_z80_location_kind_name(result_location.kind), _get_z80_physical_register_name(result_location.phy), result_location.size));
   }
 #endif
 
@@ -2419,9 +2419,9 @@ static int _generate_asm_assignment_z80(struct tac *t, FILE *file_out, struct tr
 
 #if defined(DEBUG_PASS_6_REGISTER_ALLOCATOR)
   if (g_allocator_enabled == YES && result_location.kind == LOC_PHY_B)
-    fprintf(stderr, "register_allocator: assignment_physical_result function=%s source_kind=%s source_size=%d result_phy=B result_size=%d via=A store=B status=complete\n",
+    RA_TRACE((stderr, "register_allocator: assignment_physical_result function=%s source_kind=%s source_size=%d result_phy=B result_size=%d via=A store=B status=complete\n",
             function_node->children[1]->label, _get_z80_location_kind_name(arg1_location.kind),
-            arg1_location.size, result_location.size);
+            arg1_location.size, result_location.size));
 #endif
 
   return SUCCEEDED;
@@ -3100,10 +3100,10 @@ static int _generate_asm_complement_z80_8bit(struct tac *t, FILE *file_out, stru
 
 #if defined(DEBUG_PASS_6_REGISTER_ALLOCATOR)
   if (g_allocator_enabled == YES) {
-    fprintf(stderr, "register_allocator: complement_8bit function=%s arg1_kind=%s arg1_phy=%s result_kind=%s result_phy=%s\n",
+    RA_TRACE((stderr, "register_allocator: complement_8bit function=%s arg1_kind=%s arg1_phy=%s result_kind=%s result_phy=%s\n",
             function_node->children[1]->label,
             _get_z80_location_kind_name(arg1_location.kind), _get_z80_physical_register_name(arg1_location.phy),
-            _get_z80_location_kind_name(result_location.kind), _get_z80_physical_register_name(result_location.phy));
+            _get_z80_location_kind_name(result_location.kind), _get_z80_physical_register_name(result_location.phy)));
   }
 #endif
 
@@ -3193,10 +3193,10 @@ static int _generate_asm_complement_z80_16bit(struct tac *t, FILE *file_out, str
 
 #if defined(DEBUG_PASS_6_REGISTER_ALLOCATOR)
   if (g_allocator_enabled == YES) {
-    fprintf(stderr, "register_allocator: complement_16bit function=%s arg1_kind=%s arg1_phy=%s result_kind=%s result_phy=%s\n",
+    RA_TRACE((stderr, "register_allocator: complement_16bit function=%s arg1_kind=%s arg1_phy=%s result_kind=%s result_phy=%s\n",
             function_node->children[1]->label,
             _get_z80_location_kind_name(arg1_location.kind), _get_z80_physical_register_name(arg1_location.phy),
-            _get_z80_location_kind_name(result_location.kind), _get_z80_physical_register_name(result_location.phy));
+            _get_z80_location_kind_name(result_location.kind), _get_z80_physical_register_name(result_location.phy)));
   }
 #endif
 
@@ -3445,9 +3445,9 @@ static int _generate_asm_get_address_z80(struct tac *t, FILE *file_out, struct t
     if (function_node != NULL && function_node->children[1] != NULL)
       function_name = function_node->children[1]->label;
 
-    fprintf(stderr, "register_allocator: get_address_base function=%s kind=%s memory_pointer_load=%s offset=%d phy=%s\n",
+    RA_TRACE((stderr, "register_allocator: get_address_base function=%s kind=%s memory_pointer_load=%s offset=%d phy=%s\n",
             function_name, _get_z80_location_kind_name(arg1_location.kind), base_memory_pointer_load == YES ? "yes" : "no",
-            arg1_location.offset, _get_z80_physical_register_name(arg1_location.phy));
+            arg1_location.offset, _get_z80_physical_register_name(arg1_location.phy)));
   }
 #endif
 
@@ -3514,9 +3514,9 @@ static int _generate_asm_get_address_z80(struct tac *t, FILE *file_out, struct t
       if (function_node != NULL && function_node->children[1] != NULL)
         function_name = function_node->children[1]->label;
 
-      fprintf(stderr, "register_allocator: get_address_index function=%s kind=%s size=%d phy=%s\n",
+      RA_TRACE((stderr, "register_allocator: get_address_index function=%s kind=%s size=%d phy=%s\n",
               function_name, _get_z80_location_kind_name(arg2_location.kind),
-              arg2_location.size, _get_z80_physical_register_name(arg2_location.phy));
+              arg2_location.size, _get_z80_physical_register_name(arg2_location.phy)));
     }
 #endif
 
@@ -3628,9 +3628,9 @@ static int _generate_asm_z80_in_read_z80(struct tac *t, FILE *file_out, struct t
     if (function_node != NULL && function_node->children[1] != NULL)
       function_name = function_node->children[1]->label;
 
-    fprintf(stderr, "register_allocator: z80_in_port function=%s kind=%s size=%d phy=%s\n",
+    RA_TRACE((stderr, "register_allocator: z80_in_port function=%s kind=%s size=%d phy=%s\n",
             function_name, _get_z80_location_kind_name(arg2_location.kind),
-            arg2_location.size, _get_z80_physical_register_name(arg2_location.phy));
+            arg2_location.size, _get_z80_physical_register_name(arg2_location.phy)));
   }
 #endif
 
@@ -3645,9 +3645,9 @@ static int _generate_asm_z80_in_read_z80(struct tac *t, FILE *file_out, struct t
 
 #if defined(DEBUG_PASS_6_REGISTER_ALLOCATOR)
   if (g_allocator_enabled == YES) {
-    fprintf(stderr, "register_allocator: z80_in_result function=%s kind=%s size=%d phy=%s\n",
+    RA_TRACE((stderr, "register_allocator: z80_in_result function=%s kind=%s size=%d phy=%s\n",
             function_node->children[1]->label, _get_z80_location_kind_name(result_location.kind),
-            result_location.size, _get_z80_physical_register_name(result_location.phy));
+            result_location.size, _get_z80_physical_register_name(result_location.phy)));
   }
 #endif
 
@@ -3705,10 +3705,10 @@ static int _materialize_array_base_to_iy(struct tac *tac, struct z80_location *b
     if (function_node != NULL && function_node->children[1] != NULL)
       function_name = function_node->children[1]->label;
 
-    fprintf(stderr, "register_allocator: array_%s_base function=%s kind=%s memory_pointer_load=%s offset=%d phy=%s\n",
+    RA_TRACE((stderr, "register_allocator: array_%s_base function=%s kind=%s memory_pointer_load=%s offset=%d phy=%s\n",
             is_write == YES ? "write" : "read", function_name,
             _get_z80_location_kind_name(base_location->kind), base_memory_pointer_load == YES ? "yes" : "no",
-            base_location->offset, _get_z80_physical_register_name(base_location->phy));
+            base_location->offset, _get_z80_physical_register_name(base_location->phy)));
   }
 #endif
 
@@ -3851,12 +3851,12 @@ static int _transfer_array_base_spill(struct tac *t, struct tree_node *function_
 #if defined(DEBUG_PASS_6_REGISTER_ALLOCATOR)
   if (g_allocator_enabled == YES) {
     if (is_reload == YES)
-      fprintf(stderr, "register_allocator: reload_insert_emit function=%s op=%s operand=%s source_offset=%d bytes=2 phy=%s operand_id=%d\n",
+      RA_TRACE((stderr, "register_allocator: reload_insert_emit function=%s op=%s operand=%s source_offset=%d bytes=2 phy=%s operand_id=%d\n",
           function_name, op_name, operand_name, reload.source_offset,
-          _get_z80_physical_register_name(physical_register), reload.operand);
+          _get_z80_physical_register_name(physical_register), reload.operand));
     else
-      fprintf(stderr, "register_allocator: spill_insert_emit function=%s op=ARRAY_READ operand=arg1 phy=HL spill_offset=%d bytes=2\n",
-          function_name, spill.destination_offset);
+      RA_TRACE((stderr, "register_allocator: spill_insert_emit function=%s op=ARRAY_READ operand=arg1 phy=HL spill_offset=%d bytes=2\n",
+          function_name, spill.destination_offset));
   }
 #endif
   if (is_reload == YES)
@@ -3949,9 +3949,9 @@ static int _generate_asm_array_read_z80(struct tac *t, FILE *file_out, struct tr
     if (function_node != NULL && function_node->children[1] != NULL)
       function_name = function_node->children[1]->label;
 
-    fprintf(stderr, "register_allocator: array_read_index function=%s kind=%s size=%d phy=%s\n",
+    RA_TRACE((stderr, "register_allocator: array_read_index function=%s kind=%s size=%d phy=%s\n",
             function_name, _get_z80_location_kind_name(arg2_location.kind),
-            arg2_location.size, _get_z80_physical_register_name(arg2_location.phy));
+            arg2_location.size, _get_z80_physical_register_name(arg2_location.phy)));
   }
 #endif
 
@@ -4027,9 +4027,9 @@ static int _generate_asm_array_read_z80(struct tac *t, FILE *file_out, struct tr
 
 #if defined(DEBUG_PASS_6_REGISTER_ALLOCATOR)
   if (g_allocator_enabled == YES) {
-    fprintf(stderr, "register_allocator: array_read_result function=%s kind=%s size=%d phy=%s value_bytes=%d\n",
+    RA_TRACE((stderr, "register_allocator: array_read_result function=%s kind=%s size=%d phy=%s value_bytes=%d\n",
             function_node->children[1]->label, _get_z80_location_kind_name(result_location.kind),
-            result_location.size, _get_z80_physical_register_name(result_location.phy), result_needs_16_bit == YES ? 2 : 1);
+            result_location.size, _get_z80_physical_register_name(result_location.phy), result_needs_16_bit == YES ? 2 : 1));
   }
 #endif
 
@@ -4047,8 +4047,8 @@ static int _generate_asm_array_read_z80(struct tac *t, FILE *file_out, struct tr
     fprintf(file_out, "      ; retained result in %s\n", _get_z80_physical_register_name(result_location.phy));
 #if defined(DEBUG_PASS_6_REGISTER_ALLOCATOR)
     if (g_allocator_enabled == YES && result_location.kind == LOC_PHY_B)
-      fprintf(stderr, "register_allocator: array_read_physical_result function=%s result_phy=B value_bytes=1 via=L store=B status=complete\n",
-              function_node->children[1]->label);
+      RA_TRACE((stderr, "register_allocator: array_read_physical_result function=%s result_phy=B value_bytes=1 via=L store=B status=complete\n",
+              function_node->children[1]->label));
 #endif
     return SUCCEEDED;
   }
@@ -4131,12 +4131,12 @@ static int _generate_asm_z80_out_write_z80(struct tac *t, FILE *file_out, struct
     if (function_node != NULL && function_node->children[1] != NULL)
       function_name = function_node->children[1]->label;
 
-    fprintf(stderr, "register_allocator: z80_out_port function=%s kind=%s size=%d phy=%s\n",
+    RA_TRACE((stderr, "register_allocator: z80_out_port function=%s kind=%s size=%d phy=%s\n",
             function_name, _get_z80_location_kind_name(arg2_location.kind),
-            arg2_location.size, _get_z80_physical_register_name(arg2_location.phy));
-    fprintf(stderr, "register_allocator: z80_out_value function=%s kind=%s size=%d phy=%s\n",
+            arg2_location.size, _get_z80_physical_register_name(arg2_location.phy)));
+    RA_TRACE((stderr, "register_allocator: z80_out_value function=%s kind=%s size=%d phy=%s\n",
             function_name, _get_z80_location_kind_name(arg1_location.kind),
-            arg1_location.size, _get_z80_physical_register_name(arg1_location.phy));
+            arg1_location.size, _get_z80_physical_register_name(arg1_location.phy)));
   }
 #endif
 
@@ -4210,9 +4210,9 @@ static int _materialize_array_write_value_to_iy(struct tac *tac, struct z80_loca
     if (function_node != NULL && function_node->children[1] != NULL)
       function_name = function_node->children[1]->label;
 
-    fprintf(stderr, "register_allocator: array_write_value function=%s kind=%s bytes=%d source_size=%d phy=%s\n",
+    RA_TRACE((stderr, "register_allocator: array_write_value function=%s kind=%s bytes=%d source_size=%d phy=%s\n",
             function_name, _get_z80_location_kind_name(arg1_location->kind), value_bytes,
-            arg1_location->size, _get_z80_physical_register_name(arg1_location->phy));
+            arg1_location->size, _get_z80_physical_register_name(arg1_location->phy)));
   }
 #endif
 
@@ -4340,9 +4340,9 @@ static int _generate_asm_array_write_z80(struct tac *t, FILE *file_out, struct t
       if (function_node != NULL && function_node->children[1] != NULL)
         function_name = function_node->children[1]->label;
 
-      fprintf(stderr, "register_allocator: array_write_base function=%s kind=%s memory_pointer_load=no offset=%d phy=%s\n",
+      RA_TRACE((stderr, "register_allocator: array_write_base function=%s kind=%s memory_pointer_load=no offset=%d phy=%s\n",
               function_name, _get_z80_location_kind_name(result_location.kind),
-              result_location.offset, _get_z80_physical_register_name(result_location.phy));
+              result_location.offset, _get_z80_physical_register_name(result_location.phy)));
     }
 #endif
 
@@ -4383,9 +4383,9 @@ static int _generate_asm_array_write_z80(struct tac *t, FILE *file_out, struct t
     if (function_node != NULL && function_node->children[1] != NULL)
       function_name = function_node->children[1]->label;
 
-        fprintf(stderr, "register_allocator: array_write_index function=%s kind=%s size=%d phy=%s var_type=%d\n",
+        RA_TRACE((stderr, "register_allocator: array_write_index function=%s kind=%s size=%d phy=%s var_type=%d\n",
             function_name, _get_z80_location_kind_name(arg2_location.kind),
-          arg2_location.size, _get_z80_physical_register_name(arg2_location.phy), t->arg2_var_type);
+          arg2_location.size, _get_z80_physical_register_name(arg2_location.phy), t->arg2_var_type));
   }
 #endif
 
@@ -4468,14 +4468,14 @@ static int _aaa_generate_asm_shift_left_right_z80_16bit(struct tac *t, FILE *fil
 
 #if defined(DEBUG_PASS_6_REGISTER_ALLOCATOR)
   if (g_allocator_enabled == YES) {
-    fprintf(stderr, "register_allocator: shift_count function=%s kind=%s size=%d phy=%s\n",
+    RA_TRACE((stderr, "register_allocator: shift_count function=%s kind=%s size=%d phy=%s\n",
             function_node->children[1]->label, _get_z80_location_kind_name(arg2_location.kind),
-            arg2_location.size, _get_z80_physical_register_name(arg2_location.phy));
-    fprintf(stderr, "register_allocator: shift_result function=%s op=%s kind=%s size=%d phy=%s var_type=%d promoted_type=%d\n",
+            arg2_location.size, _get_z80_physical_register_name(arg2_location.phy)));
+    RA_TRACE((stderr, "register_allocator: shift_result function=%s op=%s kind=%s size=%d phy=%s var_type=%d promoted_type=%d\n",
             function_node->children[1]->label, op == TAC_OP_SHIFT_LEFT ? "SHIFT_LEFT" : "SHIFT_RIGHT",
             _get_z80_location_kind_name(result_location.kind), result_location.size,
             _get_z80_physical_register_name(result_location.phy), t->result_var_type,
-            t->result_var_type_promoted);
+            t->result_var_type_promoted));
   }
 #endif
 
@@ -4682,9 +4682,9 @@ static int _aaa_generate_asm_shift_left_right_z80_16bit(struct tac *t, FILE *fil
     fprintf(file_out, "      ; retained result in %c\n", result_register);
 #if defined(DEBUG_PASS_6_REGISTER_ALLOCATOR)
     if (g_allocator_enabled == YES)
-      fprintf(stderr, "register_allocator: shift_physical_result function=%s op=%s result_phy=%c value_register=L transfer=LD_%c_L store=none status=complete\n",
+      RA_TRACE((stderr, "register_allocator: shift_physical_result function=%s op=%s result_phy=%c value_register=L transfer=LD_%c_L store=none status=complete\n",
               function_node->children[1]->label, op == TAC_OP_SHIFT_LEFT ? "SHIFT_LEFT" : "SHIFT_RIGHT",
-              result_register, result_register);
+              result_register, result_register));
 #endif
     return SUCCEEDED;
   }
@@ -4750,17 +4750,17 @@ static int _bbb_generate_asm_shift_left_right_z80_8bit(struct tac *t, FILE *file
 
 #if defined(DEBUG_PASS_6_REGISTER_ALLOCATOR)
   if (g_allocator_enabled == YES) {
-    fprintf(stderr, "register_allocator: shift_value function=%s kind=%s size=%d phy=%s\n",
+    RA_TRACE((stderr, "register_allocator: shift_value function=%s kind=%s size=%d phy=%s\n",
             function_node->children[1]->label, _get_z80_location_kind_name(arg1_location.kind),
-            arg1_location.size, _get_z80_physical_register_name(arg1_location.phy));
-    fprintf(stderr, "register_allocator: shift_count function=%s kind=%s size=%d phy=%s\n",
+            arg1_location.size, _get_z80_physical_register_name(arg1_location.phy)));
+    RA_TRACE((stderr, "register_allocator: shift_count function=%s kind=%s size=%d phy=%s\n",
             function_node->children[1]->label, _get_z80_location_kind_name(arg2_location.kind),
-            arg2_location.size, _get_z80_physical_register_name(arg2_location.phy));
-    fprintf(stderr, "register_allocator: shift_result function=%s op=%s kind=%s size=%d phy=%s var_type=%d promoted_type=%d\n",
+            arg2_location.size, _get_z80_physical_register_name(arg2_location.phy)));
+    RA_TRACE((stderr, "register_allocator: shift_result function=%s op=%s kind=%s size=%d phy=%s var_type=%d promoted_type=%d\n",
             function_node->children[1]->label, op == TAC_OP_SHIFT_LEFT ? "SHIFT_LEFT" : "SHIFT_RIGHT",
             _get_z80_location_kind_name(result_location.kind), result_location.size,
             _get_z80_physical_register_name(result_location.phy), t->result_var_type,
-            t->result_var_type_promoted);
+            t->result_var_type_promoted));
   }
 #endif
 
@@ -4890,8 +4890,8 @@ static int _bbb_generate_asm_shift_left_right_z80_8bit(struct tac *t, FILE *file
     fprintf(file_out, "      ; retained result in B\n");
 #if defined(DEBUG_PASS_6_REGISTER_ALLOCATOR)
     if (g_allocator_enabled == YES)
-      fprintf(stderr, "register_allocator: shift_physical_result function=%s op=%s result_phy=B value_register=B store=none status=complete\n",
-              function_node->children[1]->label, op == TAC_OP_SHIFT_LEFT ? "SHIFT_LEFT" : "SHIFT_RIGHT");
+      RA_TRACE((stderr, "register_allocator: shift_physical_result function=%s op=%s result_phy=B value_register=B store=none status=complete\n",
+              function_node->children[1]->label, op == TAC_OP_SHIFT_LEFT ? "SHIFT_LEFT" : "SHIFT_RIGHT"));
 #endif
     return SUCCEEDED;
   }
@@ -4900,8 +4900,8 @@ static int _bbb_generate_asm_shift_left_right_z80_8bit(struct tac *t, FILE *file
     fprintf(file_out, "      ; retained result in C\n");
 #if defined(DEBUG_PASS_6_REGISTER_ALLOCATOR)
     if (g_allocator_enabled == YES)
-      fprintf(stderr, "register_allocator: shift_physical_result function=%s op=%s result_phy=C value_register=B transfer=LD_C_B store=none status=complete\n",
-              function_node->children[1]->label, op == TAC_OP_SHIFT_LEFT ? "SHIFT_LEFT" : "SHIFT_RIGHT");
+      RA_TRACE((stderr, "register_allocator: shift_physical_result function=%s op=%s result_phy=C value_register=B transfer=LD_C_B store=none status=complete\n",
+              function_node->children[1]->label, op == TAC_OP_SHIFT_LEFT ? "SHIFT_LEFT" : "SHIFT_RIGHT"));
 #endif
     return SUCCEEDED;
   }
@@ -5018,9 +5018,9 @@ static int _generate_asm_mul_div_mod_z80_16bit(struct tac *t, FILE *file_out, st
     if (function_node != NULL && function_node->children[1] != NULL)
       function_name = function_node->children[1]->label;
 
-    fprintf(stderr, "register_allocator: mul_div_mod_arg1 function=%s op=%s kind=%s size=%d phy=%s\n",
+    RA_TRACE((stderr, "register_allocator: mul_div_mod_arg1 function=%s op=%s kind=%s size=%d phy=%s\n",
             function_name, _get_z80_mul_div_mod_op_name(op), _get_z80_location_kind_name(arg1_location.kind),
-            arg1_location.size, _get_z80_physical_register_name(arg1_location.phy));
+            arg1_location.size, _get_z80_physical_register_name(arg1_location.phy)));
   }
 #endif
 
@@ -5118,9 +5118,9 @@ static int _generate_asm_mul_div_mod_z80_16bit(struct tac *t, FILE *file_out, st
     if (function_node != NULL && function_node->children[1] != NULL)
       function_name = function_node->children[1]->label;
 
-    fprintf(stderr, "register_allocator: mul_div_mod_arg2 function=%s op=%s kind=%s size=%d phy=%s\n",
+    RA_TRACE((stderr, "register_allocator: mul_div_mod_arg2 function=%s op=%s kind=%s size=%d phy=%s\n",
             function_name, _get_z80_mul_div_mod_op_name(op), _get_z80_location_kind_name(arg2_location.kind),
-            arg2_location.size, _get_z80_physical_register_name(arg2_location.phy));
+            arg2_location.size, _get_z80_physical_register_name(arg2_location.phy)));
   }
 #endif
 
@@ -5282,10 +5282,10 @@ static int _generate_asm_mul_div_mod_z80_16bit(struct tac *t, FILE *file_out, st
     if (function_node != NULL && function_node->children[1] != NULL)
       function_name = function_node->children[1]->label;
 
-    fprintf(stderr, "register_allocator: mul_div_mod_result function=%s op=%s kind=%s size=%d phy=%s var_type=%d promoted_type=%d\n",
+    RA_TRACE((stderr, "register_allocator: mul_div_mod_result function=%s op=%s kind=%s size=%d phy=%s var_type=%d promoted_type=%d\n",
             function_name, _get_z80_mul_div_mod_op_name(op), _get_z80_location_kind_name(result_location.kind),
             result_location.size, _get_z80_physical_register_name(result_location.phy),
-            t->result_var_type, t->result_var_type_promoted);
+            t->result_var_type, t->result_var_type_promoted));
   }
 #endif
 
@@ -5408,9 +5408,9 @@ static int _generate_asm_mul_div_mod_z80_8bit(struct tac *t, FILE *file_out, str
     if (function_node != NULL && function_node->children[1] != NULL)
       function_name = function_node->children[1]->label;
 
-    fprintf(stderr, "register_allocator: mul_div_mod_arg1 function=%s op=%s kind=%s size=%d phy=%s\n",
+    RA_TRACE((stderr, "register_allocator: mul_div_mod_arg1 function=%s op=%s kind=%s size=%d phy=%s\n",
             function_name, _get_z80_mul_div_mod_op_name(op), _get_z80_location_kind_name(arg1_location.kind),
-            arg1_location.size, _get_z80_physical_register_name(arg1_location.phy));
+            arg1_location.size, _get_z80_physical_register_name(arg1_location.phy)));
   }
 #endif
 
@@ -5469,9 +5469,9 @@ static int _generate_asm_mul_div_mod_z80_8bit(struct tac *t, FILE *file_out, str
     if (function_node != NULL && function_node->children[1] != NULL)
       function_name = function_node->children[1]->label;
 
-    fprintf(stderr, "register_allocator: mul_div_mod_arg2 function=%s op=%s kind=%s size=%d phy=%s\n",
+    RA_TRACE((stderr, "register_allocator: mul_div_mod_arg2 function=%s op=%s kind=%s size=%d phy=%s\n",
             function_name, _get_z80_mul_div_mod_op_name(op), _get_z80_location_kind_name(arg2_location.kind),
-            arg2_location.size, _get_z80_physical_register_name(arg2_location.phy));
+            arg2_location.size, _get_z80_physical_register_name(arg2_location.phy)));
   }
 #endif
 
@@ -5566,10 +5566,10 @@ static int _generate_asm_mul_div_mod_z80_8bit(struct tac *t, FILE *file_out, str
     if (function_node != NULL && function_node->children[1] != NULL)
       function_name = function_node->children[1]->label;
 
-    fprintf(stderr, "register_allocator: mul_div_mod_result function=%s op=%s kind=%s size=%d phy=%s var_type=%d promoted_type=%d\n",
+    RA_TRACE((stderr, "register_allocator: mul_div_mod_result function=%s op=%s kind=%s size=%d phy=%s var_type=%d promoted_type=%d\n",
             function_name, _get_z80_mul_div_mod_op_name(op), _get_z80_location_kind_name(result_location.kind),
             result_location.size, _get_z80_physical_register_name(result_location.phy),
-            t->result_var_type, t->result_var_type_promoted);
+            t->result_var_type, t->result_var_type_promoted));
   }
 #endif
 
@@ -5958,10 +5958,10 @@ static int _bbb_generate_asm_jump_eq_lt_gt_neq_lte_gte_z80_8bit(struct tac *t, F
 
 #if defined(DEBUG_PASS_6_REGISTER_ALLOCATOR)
   if (g_allocator_enabled == YES) {
-    fprintf(stderr, "register_allocator: compare_8bit function=%s op=%d op_name=%s arg1_kind=%s arg1_phy=%s arg2_kind=%s arg2_phy=%s\n",
+    RA_TRACE((stderr, "register_allocator: compare_8bit function=%s op=%d op_name=%s arg1_kind=%s arg1_phy=%s arg2_kind=%s arg2_phy=%s\n",
             function_node->children[1]->label, op, _get_z80_compare_op_name(op),
             _get_z80_location_kind_name(arg1_location.kind), _get_z80_physical_register_name(arg1_location.phy),
-            _get_z80_location_kind_name(arg2_location.kind), _get_z80_physical_register_name(arg2_location.phy));
+            _get_z80_location_kind_name(arg2_location.kind), _get_z80_physical_register_name(arg2_location.phy)));
   }
 #endif
 
@@ -6095,8 +6095,8 @@ static int _generate_asm_return_z80(struct tac *t, FILE *file_out, struct tree_n
 
 #if defined(DEBUG_PASS_6_REGISTER_ALLOCATOR)
   if (g_allocator_enabled == YES)
-    fprintf(stderr, "register_allocator: target_call_frame_prefix function=%s role=callee_return target=z80 frame_end=%d return_sp=%d saved_fp_low=%d saved_fp_high=%d\n",
-            function_node->children[1]->label, frame_end, return_sp_offset, saved_fp_low_offset, saved_fp_high_offset);
+    RA_TRACE((stderr, "register_allocator: target_call_frame_prefix function=%s role=callee_return target=z80 frame_end=%d return_sp=%d saved_fp_low=%d saved_fp_high=%d\n",
+            function_node->children[1]->label, frame_end, return_sp_offset, saved_fp_low_offset, saved_fp_high_offset));
 #endif
 
   /* ret */
@@ -6139,11 +6139,11 @@ static int _generate_asm_return_value_z80(struct tac *t, FILE *file_out, struct 
 
 #if defined(DEBUG_PASS_6_REGISTER_ALLOCATOR)
   if (g_allocator_enabled == YES) {
-    fprintf(stderr, "register_allocator: target_return_slot_access function=%s role=callee_store size=%d target=z80 low_offset=%d high_offset=%d\n",
-            function_node->children[1]->label, return_value_size, return_low_offset, return_high_offset);
-    fprintf(stderr, "register_allocator: return_value_source function=%s kind=%s size=%d phy=%s arg_type=%d return_type=%d\n",
+    RA_TRACE((stderr, "register_allocator: target_return_slot_access function=%s role=callee_store size=%d target=z80 low_offset=%d high_offset=%d\n",
+            function_node->children[1]->label, return_value_size, return_low_offset, return_high_offset));
+    RA_TRACE((stderr, "register_allocator: return_value_source function=%s kind=%s size=%d phy=%s arg_type=%d return_type=%d\n",
             function_node->children[1]->label, _get_z80_location_kind_name(arg1_location.kind), arg1_location.size,
-            _get_z80_physical_register_name(arg1_location.phy), t->arg1_var_type, return_var_type);
+            _get_z80_physical_register_name(arg1_location.phy), t->arg1_var_type, return_var_type));
   }
 #endif
 
@@ -6320,9 +6320,9 @@ static int _generate_asm_function_call_z80(struct tac *t, FILE *file_out, struct
     if (function_node != NULL && function_node->children[1] != NULL)
       function_name = function_node->children[1]->label;
 
-    fprintf(stderr, "register_allocator: target_call_frame_prefix function=%s callee=%s role=caller_setup target=z80 frame_end=%d return_sp=%d saved_fp_low=%d saved_fp_high=%d\n",
+    RA_TRACE((stderr, "register_allocator: target_call_frame_prefix function=%s callee=%s role=caller_setup target=z80 frame_end=%d return_sp=%d saved_fp_low=%d saved_fp_high=%d\n",
             function_name, t->arg1_node->children[1]->label, frame_end, return_sp_offset,
-            saved_fp_low_offset, saved_fp_high_offset);
+            saved_fp_low_offset, saved_fp_high_offset));
   }
 #endif
 
@@ -6410,14 +6410,14 @@ static int _generate_asm_function_call_z80(struct tac *t, FILE *file_out, struct
         if (function_node != NULL && function_node->children[1] != NULL)
           function_name = function_node->children[1]->label;
 
-        fprintf(stderr, "register_allocator: target_argument_transport function=%s callee=%s argument=%d source_type=%d target_type=%d source_kind=%s transport=%s target=z80\n",
+        RA_TRACE((stderr, "register_allocator: target_argument_transport function=%s callee=%s argument=%d source_type=%d target_type=%d source_kind=%s transport=%s target=z80\n",
                 function_name, t->arg1_node->children[1]->label, argument + 1,
                 source_var_type, target_var_type, _get_z80_location_kind_name(source_location.kind),
-                _get_register_allocator_argument_transport_name(argument_transport));
-        fprintf(stderr, "register_allocator: target_argument_byte_access function=%s callee=%s argument=%d transport=%s source_low=%d source_high=%d target_low=%d target_high=%d target=z80\n",
+                _get_register_allocator_argument_transport_name(argument_transport)));
+        RA_TRACE((stderr, "register_allocator: target_argument_byte_access function=%s callee=%s argument=%d transport=%s source_low=%d source_high=%d target_low=%d target_high=%d target=z80\n",
           function_name, t->arg1_node->children[1]->label, argument + 1,
           _get_register_allocator_argument_transport_name(argument_transport), source_low_offset,
-          source_high_offset, target_low_offset, target_high_offset);
+          source_high_offset, target_low_offset, target_high_offset));
       }
 #endif
 
@@ -6588,9 +6588,9 @@ static int _generate_asm_function_call_z80(struct tac *t, FILE *file_out, struct
       if (function_node != NULL && function_node->children[1] != NULL)
         function_name = function_node->children[1]->label;
 
-      fprintf(stderr, "register_allocator: target_return_slot_access function=%s callee=%s role=caller_load size=%d target=z80 low_offset=%d high_offset=%d\n",
+      RA_TRACE((stderr, "register_allocator: target_return_slot_access function=%s callee=%s role=caller_load size=%d target=z80 low_offset=%d high_offset=%d\n",
               function_name, t->arg1_node->children[1]->label, return_value_size,
-              return_low_offset, return_high_offset);
+              return_low_offset, return_high_offset));
     }
 #endif
 
@@ -6638,9 +6638,9 @@ static int _generate_asm_function_call_z80(struct tac *t, FILE *file_out, struct
     if (function_node != NULL && function_node->children[1] != NULL)
       function_name = function_node->children[1]->label;
 
-    fprintf(stderr, "register_allocator: target_call_frame_prefix function=%s callee=%s role=caller_restore target=z80 frame_end=%d return_sp=%d saved_fp_low=%d saved_fp_high=%d\n",
+    RA_TRACE((stderr, "register_allocator: target_call_frame_prefix function=%s callee=%s role=caller_restore target=z80 frame_end=%d return_sp=%d saved_fp_low=%d saved_fp_high=%d\n",
             function_name, t->arg1_node->children[1]->label, frame_end, return_sp_offset,
-            saved_fp_low_offset, saved_fp_high_offset);
+            saved_fp_low_offset, saved_fp_high_offset));
   }
 #endif
 
@@ -6667,10 +6667,10 @@ static int _generate_asm_function_call_z80(struct tac *t, FILE *file_out, struct
       if (t->arg1_node != NULL && t->arg1_node->children[1] != NULL)
         callee_name = t->arg1_node->children[1]->label;
 
-            fprintf(stderr, "register_allocator: function_call_return function=%s callee=%s kind=%s size=%d phy=%s var_type=%d promoted_type=%d\n",
+            RA_TRACE((stderr, "register_allocator: function_call_return function=%s callee=%s kind=%s size=%d phy=%s var_type=%d promoted_type=%d\n",
               function_name, callee_name, _get_z80_location_kind_name(result_location.kind),
               result_location.size, _get_z80_physical_register_name(result_location.phy),
-              t->result_var_type, t->result_var_type_promoted);
+              t->result_var_type, t->result_var_type_promoted));
     }
 #endif
 
@@ -6754,9 +6754,9 @@ static int _resolve_inline_asm_variable_location(struct tree_node *function_node
     if (function_node != NULL && function_node->children[1] != NULL)
       function_name = function_node->children[1]->label;
 
-    fprintf(stderr, "register_allocator: inline_asm_operand function=%s access=%s variable=%s kind=%s offset=%d size=%d policy=stack_location\n",
+    RA_TRACE((stderr, "register_allocator: inline_asm_operand function=%s access=%s variable=%s kind=%s offset=%d size=%d policy=stack_location\n",
             function_name, access_name, al->variable->children[1]->label,
-            _get_z80_location_kind_name(location->kind), location->offset, location->size);
+            _get_z80_location_kind_name(location->kind), location->offset, location->size));
   }
 #endif
 
@@ -7066,9 +7066,9 @@ static int _copy_non_const_array_constants(struct tac *t, struct tree_node *node
     if (function_node != NULL && function_node->children[1] != NULL)
       function_name = function_node->children[1]->label;
 
-    fprintf(stderr, "register_allocator: array_init_copy function=%s variable=%s kind=%s offset=%d size=%d bytes=%d const_items=%d policy=location_address\n",
+    RA_TRACE((stderr, "register_allocator: array_init_copy function=%s variable=%s kind=%s offset=%d size=%d bytes=%d const_items=%d policy=location_address\n",
             function_name, node->children[1]->label, _get_z80_location_kind_name(target_location.kind),
-            target_location.offset, target_location.size, size, items);
+            target_location.offset, target_location.size, size, items));
   }
 #endif
 

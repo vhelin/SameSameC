@@ -3,6 +3,9 @@
 
 #include <stddef.h>
 
+extern int g_register_allocator_trace;
+#define RA_TRACE(arguments) do { if (g_register_allocator_trace) fprintf arguments; } while (0)
+
 #define RA_BLOCK_END_NONE              0
 #define RA_BLOCK_END_LABEL             1
 #define RA_BLOCK_END_JUMP              2

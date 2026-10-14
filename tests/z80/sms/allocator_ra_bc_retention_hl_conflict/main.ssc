@@ -17,3 +17,17 @@ u16 allocatorRaBcRetentionHlConflict(u16 a, u16 b, u16 c) {
 
 void main(void) {
 }
+
+u16 allocatorRaBcRetentionSubtract(u16 a, u16 b, u16 c) {
+  u16 out;
+  out = (a + b) - (~c);
+  g_bc_retention_target = out;
+  return g_bc_retention_target;
+}
+
+u16 allocatorRaBcRetentionRejected(u16 a, u16 b, u16 c) {
+  u16 out;
+  out = (a + b) - (c + c);
+  g_bc_retention_target = out;
+  return g_bc_retention_target;
+}

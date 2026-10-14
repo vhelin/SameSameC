@@ -37,6 +37,58 @@ u8 allocatorRaScalarCopyA(u8 left_first, u8 left_second, u8 right_first, u8 righ
   return out;
 }
 
+u8 allocatorRaScalarBit(u8 a, u8 b, u8 c) {
+  u8 saved = a ^ b;
+  return (c + c) + saved;
+}
+
+u16 allocatorRaScalarWord(u16 a, u16 b, u16 c) {
+  u16 saved = a ^ b;
+  return (c + c) + saved;
+}
+
+u16 allocatorRaScalarWordCopy(u16 a, u16 b, u16 c) {
+  u16 saved = a;
+  return (b + c) + saved;
+}
+
+u8 g_allocator_word_index[16];
+
+u16 allocatorRaScalarWordIndex(u16 a, u16 b, u8 c) {
+  u16 out = a + b;
+  g_allocator_word_index[1] = c;
+  return out + g_allocator_word_index[1];
+}
+
+u8 allocatorRaScalarBeforeCall(u8 a, u8 b, u8 c) {
+  u8 called = allocatorRaAssignmentChainA(a, b);
+  u8 saved = a ^ c;
+  return (called + called) + saved;
+}
+
+u8 allocatorRaScalarAfterCall(u8 a, u8 b, u8 c) {
+  u8 saved = a ^ b;
+  u8 out = (c + c) + saved;
+  allocatorRaAssignmentChainA(a, b);
+  return out;
+}
+
+u8 allocatorRaScalarCallArgument(u8 a, u8 b) {
+  u8 saved = a ^ b;
+  return allocatorRaAssignmentChainA(saved, b);
+}
+
+u8 allocatorRaScalarAcrossCall(u8 a, u8 b, u8 c) {
+  u8 saved = a ^ b;
+  u8 called = allocatorRaAssignmentChainA(a, c);
+  return (called + c) + saved;
+}
+
+u16 allocatorRaScalarNarrow(u16 a, u16 b, u16 c) {
+  u8 saved = a + b;
+  return (c + c) + saved;
+}
+
 u8 allocatorRaScalarCopyFallback(u8 first, u8 second) {
 
   u8 escaped;

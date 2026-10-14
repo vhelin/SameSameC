@@ -36,16 +36,34 @@ const harness = process.env.RA_VERIFIER || join(output,
 if (!process.env.RA_VERIFIER)
   run(process.env.CC || 'gcc', ['-ansi', '-pedantic', '-Wall', '-DNDEBUG', '-o', harness,
     join(fixture, 'allocation_verify_test.c'), ...sources, '-lm'], output, 'verifier-build.log');
-run(harness, [], output, 'verifier.log');
-const verifierLog = readFileSync(join(output, 'verifier.log'), 'utf8');
-if ((verifierLog.match(/result=rejected unchanged=yes status=complete/g) || []).length !== 14 ||
-  (verifierLog.match(/result=accepted unchanged=yes status=complete/g) || []).length !== 5)
-  throw new Error('Verifier coverage count mismatch');
+for (const flags of [[], ['-q']]) {
+  const log = flags.length ? 'verifier-quiet.log' : 'verifier.log';
+  run(harness, flags, output, log);
+  const verifierLog = readFileSync(join(output, log), 'utf8');
+  if ((verifierLog.match(/result=rejected unchanged=yes status=complete/g) || []).length !== 14 ||
+    (verifierLog.match(/result=accepted unchanged=yes status=complete/g) || []).length !== 5)
+    throw new Error('Verifier coverage count mismatch');
+}
 
 const programs = [];
 for (let variant = 0; variant < 8; variant++) {
   const constant = 1 + variant * 7;
+  const operator = ['+', '-', '&', '|', '^'][variant % 5];
   const functions = [
+    ['scalar_byte', 'u8 a, u8 b, u8 c', 'u8 saved = a^b; return (c+c)+saved;', [1, 1, 1], 1],
+    ['scalar_signed_byte', 's8 a, s8 b, s8 c', 's8 saved = a^b; return (c|7)^saved;', [1, 1, 1], 1],
+    ['scalar_signed_word', 's16 a, s16 b, s16 c', 's16 saved = a^b; return (c|7)^saved;', [2, 2, 2], 2],
+    ['scalar_widen', 'u8 a, u8 b, u8 c', 'u16 saved = a+b; return (c+c)+saved;', [1, 1, 1], 2],
+    ['scalar_word', 'u16 a, u16 b, u16 c', 'u16 saved = a^b; return (c+c)+saved;', [2, 2, 2], 2],
+    ['scalar_copy', 'u16 a, u16 b, u16 c', 'u16 saved = a; return (b+c)+saved;', [2, 2, 2], 2],
+    ['scalar_complement_sub', 'u16 a, u16 b, u16 c', 'return (a+b)-(~c);', [2, 2, 2], 2],
+    ['scalar_word_index', 'u16 a, u16 b, u8 c', `u16 out = a+b; ra_buffer[${constant}] = c; return out+ra_buffer[${constant}];`, [2, 2, 1], 2],
+    ['scalar_narrow', 'u16 a, u16 b, u16 c', 'u8 saved = a+b; return (c+c)+saved;', [2, 2, 2], 2],
+    ['scalar_before_call', 'u8 a, u8 b, u8 c', `u8 called = ra_arithmetic_${variant}(a,b,c); u8 saved = a^b; return (called+called)+saved;`, [1, 1, 1], 1],
+    ['scalar_after_call', 'u8 a, u8 b, u8 c', `u8 saved = a^b; u8 out = (c+c)+saved; ra_buffer[0] = ra_arithmetic_${variant}(a,b,c); return out;`, [1, 1, 1], 1],
+    ['scalar_call_argument', 'u8 a, u8 b, u8 c', `u8 saved = a^b; return ra_arithmetic_${variant}(saved,b,c);`, [1, 1, 1], 1],
+    ['scalar_across_call', 'u8 a, u8 b, u8 c', `u8 saved = a^b; u8 called = ra_arithmetic_${variant}(a,b,c); return (called+c)+saved;`, [1, 1, 1], 1],
+    ['word_bc', 'u16 a, u16 b, u16 c', `return (c+c)+(a${operator}b);`, [2, 2, 2], 2],
     ['arithmetic', `u8 a, u8 b, u8 c`, `return (a+b)+((c+${constant})+c);`, [1, 1, 1], 1],
     ['word', 'u16 a, u16 b, u16 c', `return (a+b)+((c+${constant})+c);`, [2, 2, 2], 2],
     ['branch', 'u8 a, u8 b, u8 c', `u8 out; if (a < b) { out = (a+c)^${constant}; } else { out = (b+c)^${constant}; } return out;`, [1, 1, 1], 1],
@@ -59,14 +77,18 @@ for (let variant = 0; variant < 8; variant++) {
     ['join_call', 'u8 *target, u8 index, u8 selector, u8 value', `u16 retained = target[index]+${constant}; u8 called = ra_arithmetic_${variant}(value,selector,target[index]); if (selector&${1 << (variant % 4)}) { target[index] = called+value; } else { target[index+1] = called^value; retained = retained+selector; } return retained+target[index]+target[index+1];`, [2, 1, 1, 1], 2]
   ];
   for (const [family, parameters, body, widths, returnWidth] of functions) {
+    const scalarFamily = family.startsWith('scalar_') || family === 'word_bc';
+    if (family !== 'arithmetic' && scalarFamily !== (process.env.RA_SCALAR_CASES === '1')) continue;
+    if (scalarFamily && family !== 'word_bc' && variant > 1) continue;
     const name = `ra_${family}_${variant}`;
     programs.push({name, family, variant, constant, widths, returnWidth,
-      source: `u${returnWidth * 8} ${name}(${parameters}) { ${body} }`});
+      source: `${family.startsWith('scalar_signed') ? 's' : 'u'}${returnWidth * 8} ${name}(${parameters}) { ${body} }`});
   }
 }
 const source = 'u8 ra_buffer[128];\n' + programs.map(program => program.source).join('\n') + '\nvoid main(void) {}\n';
 writeFileSync(join(output, 'generated.ssc'), source);
-const modes = [['default', []], ['no_ra', ['-no-ra']], ['all_spill', ['-ra-all-spill']], ['ra', ['-ra']]];
+const modes = [['default', []], ['no_ra', ['-no-ra']], ['all_spill', ['-ra-all-spill']],
+  ['ra', ['-ra']], ['ra_quiet', ['-ra', '-q']]];
 
 function readImage(directory) {
   const symbols = new Map();
@@ -95,6 +117,10 @@ for (const [mode, flags] of modes) {
 }
 if (!compiled.get('default').rom.equals(compiled.get('no_ra').rom))
   throw new Error('Default/-no-ra ROM mismatch');
+if (!compiled.get('ra').rom.equals(compiled.get('ra_quiet').rom))
+  throw new Error('Traced/quiet allocator ROM mismatch');
+if (!readFileSync(join(output, 'ra/main.asm')).equals(readFileSync(join(output, 'ra_quiet/main.asm'))))
+  throw new Error('Traced/quiet allocator assembly mismatch');
 
 function execute(code, entry, parameters, widths, buffer, bufferAddress, returnWidth) {
   const memory = new Uint8Array(65536).fill(0xa5);
@@ -139,7 +165,9 @@ function execute(code, entry, parameters, widths, buffer, bufferAddress, returnW
 }
 
 const totals = Object.fromEntries(['default', 'all_spill', 'ra'].map(mode => [mode, {cases: 0, instructions: 0, cycles: 0}]));
+const programTotals = {};
 for (const program of programs) {
+  programTotals[program.name] = Object.fromEntries(Object.keys(totals).map(mode => [mode, {cases: 0, instructions: 0, cycles: 0}]));
   for (let seed = 0; seed < cases; seed++) {
     const byte = (seed * 73 + program.variant * 19) & 255;
     const other = (seed * 29 + 17) & 255;
@@ -149,6 +177,44 @@ for (const program of programs) {
     let parameters = [byte, other, third];
     let expected;
     switch (program.family) {
+      case 'scalar_word_index':
+        parameters = [(seed * 7919 + program.variant * 1009) & 65535, (seed * 5113 + 65535) & 65535, third];
+        expectedBuffer[program.constant] = third;
+        expected = (parameters[0] + parameters[1] + third) & 65535;
+        break;
+      case 'scalar_word':
+      case 'scalar_signed_word':
+      case 'scalar_copy':
+      case 'scalar_complement_sub':
+      case 'scalar_narrow':
+      case 'word_bc': {
+        parameters = [(seed * 7919 + program.variant * 1009) & 65535, (seed * 5113 + 65535) & 65535, (seed * 3571 + 32767) & 65535];
+        const [first, second, thirdWord] = parameters;
+        if (program.family === 'scalar_signed_word') {
+          expected = (thirdWord | 7) ^ first ^ second;
+          break;
+        }
+        if (program.family === 'scalar_complement_sub') {
+          expected = (first + second - (thirdWord ^ 65535)) & 65535;
+          break;
+        }
+        const saved = program.family === 'scalar_narrow' ? (first + second) & 255 :
+          program.family === 'scalar_copy' ? first :
+          program.family === 'scalar_word' ? first ^ second :
+          [first + second, first - second, first & second, first | second, first ^ second][program.variant % 5];
+        expected = ((program.family === 'scalar_copy' ? second + thirdWord : 2 * thirdWord) + saved) & 65535;
+        break;
+      }
+      case 'scalar_byte': expected = (2 * third + (byte ^ other)) & 255; break;
+      case 'scalar_signed_byte': expected = ((third | 7) ^ byte ^ other) & 255; break;
+      case 'scalar_widen': expected = 2 * third + ((byte + other) & 255); break;
+      case 'scalar_before_call': expected = (2 * ((byte + other + 2 * third + program.constant) & 255) + (byte ^ other)) & 255; break;
+      case 'scalar_after_call':
+        expectedBuffer[0] = (byte + other + 2 * third + program.constant) & 255;
+        expected = (2 * third + (byte ^ other)) & 255;
+        break;
+      case 'scalar_call_argument': expected = ((byte ^ other) + other + 2 * third + program.constant) & 255; break;
+      case 'scalar_across_call': expected = (byte + other + 3 * third + program.constant + (byte ^ other)) & 255; break;
       case 'word':
         parameters = [(seed * 7919 + program.variant * 1009) & 65535, (seed * 5113 + 65535) & 65535, (seed * 3571 + 32767) & 65535];
         expected = (parameters[0] + parameters[1] + 2 * parameters[2] + program.constant) & 65535;
@@ -224,9 +290,11 @@ for (const program of programs) {
           buffer, image.symbols.get('ra_buffer'), program.returnWidth);
         if (result.value !== expected || !Buffer.from(result.buffer).equals(Buffer.from(expectedBuffer)))
           throw new Error(`Expected ${expected}, got ${result.value}; buffer_equal=${Buffer.from(result.buffer).equals(Buffer.from(expectedBuffer))}`);
-        totals[mode].cases++;
-        totals[mode].instructions += result.instructions;
-        totals[mode].cycles += result.cycles;
+        for (const counters of [totals[mode], programTotals[program.name][mode]]) {
+          counters.cases++;
+          counters.instructions += result.instructions;
+          counters.cycles += result.cycles;
+        }
       } catch (error) {
         writeFileSync(join(output, 'failure.json'), JSON.stringify({mode, seed, program, parameters: args,
           expected, buffer: Array.from(buffer), error: String(error)}, null, 2));
@@ -238,7 +306,8 @@ for (const program of programs) {
 for (const [mode, totalsForMode] of Object.entries(totals))
   console.log(JSON.stringify({mode, ...totalsForMode, compile_seconds: compiled.get(mode).compileSeconds}));
 writeFileSync(join(output, 'execution-summary.json'), JSON.stringify(totals, null, 2));
-console.log(`PASS:verifier_failures=14 immutable=yes differential_cases=${totals.ra.cases} families=11 variants=8 default_no_ra=identical artifacts=${output}`);
+writeFileSync(join(output, 'program-execution-summary.json'), JSON.stringify(programTotals, null, 2));
+console.log(`PASS:verifier_failures=14 immutable=yes differential_cases=${totals.ra.cases} families=${new Set(programs.map(program => program.family)).size} variants=8 default_no_ra=identical artifacts=${output}`);
 
 if (process.env.RA_REAL_PROJECTS !== '0') {
   const realTotals = {};
@@ -263,6 +332,7 @@ if (process.env.RA_REAL_PROJECTS !== '0') {
       images.set(mode, image);
     }
     if (!images.get('default').rom.equals(images.get('no_ra').rom)) throw new Error(`${project}: default/-no-ra ROM mismatch`);
+    if (!images.get('ra').rom.equals(images.get('ra_quiet').rom)) throw new Error(`${project}: traced/quiet allocator ROM mismatch`);
     realTotals[project] = {};
     for (const name of routines) {
       const routineTotals = Object.fromEntries(Object.keys(totals).map(mode => [mode, {cases: 0, instructions: 0, cycles: 0}]));
@@ -308,4 +378,11 @@ if (process.env.RA_REAL_PROJECTS !== '0') {
   }
   writeFileSync(join(output, 'real-execution-summary.json'), JSON.stringify(realTotals, null, 2));
   console.log(`PASS:real_routines=7 cases_per_routine=${cases} default_no_ra=identical artifacts=${output}`);
+}
+
+if (process.env.RA_SCALAR_CASES !== '1') {
+  Object.assign(process.env, {RA_SCALAR_CASES: '1', RA_REAL_PROJECTS: '0',
+    RA_EXECUTION_DIR: join(output, 'scalar'), RA_VERIFIER: harness});
+  run(process.execPath, [fileURLToPath(import.meta.url)], output, 'scalar-execution.log');
+  process.stdout.write(readFileSync(join(output, 'scalar-execution.log'), 'utf8'));
 }
