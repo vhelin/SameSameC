@@ -5664,6 +5664,8 @@ static int _is_intervening_bc_candidate_transparent_for_hl(struct tree_node *fun
 
   struct register_allocator_candidate_probe probe;
 
+  if (g_tacs[tac_index].op != TAC_OP_COMPLEMENT)
+    return NO;
   if (_probe_competing_candidate(function_node, tac_index, end_tac,
       RA_CANDIDATE_RANGE_WITHIN_BLOCK, Z80_PHY_BC, &probe) == FAILED ||
       probe.qualification.eligible == NO)

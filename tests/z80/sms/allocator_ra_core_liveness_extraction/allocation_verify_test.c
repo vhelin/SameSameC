@@ -69,6 +69,111 @@ int main(int argc, char **argv) {
   locals.temp_registers = temps;
   locals.temp_registers_count = 2;
   g_backend = BACKEND_Z80;
+  {
+    int physical_registers[5] = { Z80_PHY_A, Z80_PHY_HL, Z80_PHY_BC, Z80_PHY_B, Z80_PHY_C };
+    int units[5] = { 1, 2, 12, 4, 8 };
+    int first_index, second_index;
+    for (first_index = 0; first_index < 5; first_index++) {
+      for (second_index = 0; second_index < 5; second_index++) {
+        if (_register_allocator_physical_registers_overlap(name.label,
+            physical_registers[first_index], physical_registers[second_index]) !=
+            ((units[first_index] & units[second_index]) != 0 ? YES : NO))
+          return 1;
+      }
+    }
+    fprintf(stderr, "allocation_policy_test: register_pairs=25 independent_units=yes status=complete\n");
+    {
+      struct endpoint_case {
+        int op, operand, byte_mask, word_mask, copy_byte_mask, copy_word_mask, complement_bc;
+      } endpoints[] = {
+        { TAC_OP_ASSIGNMENT, TAC_USE_ARG1, 1, 2, 0, 0, YES },
+        { TAC_OP_ADD, TAC_USE_ARG1, 25, 2, 24, 0, NO },
+        { TAC_OP_ADD, TAC_USE_ARG2, 25, 2, 24, 0, YES },
+        { TAC_OP_SUB, TAC_USE_ARG1, 9, 2, 8, 0, NO },
+        { TAC_OP_SUB, TAC_USE_ARG2, 0, 0, 0, 0, YES },
+        { TAC_OP_AND, TAC_USE_ARG1, 25, 2, 24, 0, NO },
+        { TAC_OP_AND, TAC_USE_ARG2, 25, 2, 24, 0, YES },
+        { TAC_OP_OR, TAC_USE_ARG1, 25, 2, 24, 0, NO },
+        { TAC_OP_OR, TAC_USE_ARG2, 25, 2, 24, 0, YES },
+        { TAC_OP_XOR, TAC_USE_ARG1, 25, 2, 24, 0, NO },
+        { TAC_OP_XOR, TAC_USE_ARG2, 25, 2, 24, 0, YES },
+        { TAC_OP_COMPLEMENT, TAC_USE_ARG1, 17, 2, 16, 0, NO },
+        { TAC_OP_SHIFT_LEFT, TAC_USE_ARG1, 17, 2, 16, 0, NO },
+        { TAC_OP_SHIFT_LEFT, TAC_USE_ARG2, 1, 4, 0, 0, NO },
+        { TAC_OP_SHIFT_RIGHT, TAC_USE_ARG1, 17, 2, 16, 0, NO },
+        { TAC_OP_SHIFT_RIGHT, TAC_USE_ARG2, 1, 4, 0, 0, NO },
+        { TAC_OP_ARRAY_READ, TAC_USE_ARG1, 0, 2, 0, 2, NO },
+        { TAC_OP_ARRAY_READ, TAC_USE_ARG2, 25, 2, 24, 0, NO },
+        { TAC_OP_GET_ADDRESS_ARRAY, TAC_USE_ARG1, 0, 2, 0, 2, NO },
+        { TAC_OP_GET_ADDRESS_ARRAY, TAC_USE_ARG2, 25, 2, 24, 0, NO },
+        { TAC_OP_ARRAY_WRITE, TAC_USE_ARG1, 1, 2, 0, 0, NO },
+        { TAC_OP_ARRAY_WRITE, TAC_USE_ARG2, 25, 2, 24, 0, NO },
+        { TAC_OP_JUMP_EQ, TAC_USE_ARG1, 17, 2, 16, 0, NO },
+        { TAC_OP_JUMP_EQ, TAC_USE_ARG2, 9, 2, 8, 0, NO },
+        { TAC_OP_JUMP_NEQ, TAC_USE_ARG1, 17, 2, 16, 0, NO },
+        { TAC_OP_JUMP_NEQ, TAC_USE_ARG2, 9, 2, 8, 0, NO },
+        { TAC_OP_JUMP_LT, TAC_USE_ARG1, 17, 2, 16, 0, NO },
+        { TAC_OP_JUMP_LT, TAC_USE_ARG2, 9, 2, 8, 0, NO },
+        { TAC_OP_JUMP_GT, TAC_USE_ARG1, 17, 2, 16, 0, NO },
+        { TAC_OP_JUMP_GT, TAC_USE_ARG2, 9, 2, 8, 0, NO },
+        { TAC_OP_JUMP_LTE, TAC_USE_ARG1, 17, 2, 16, 0, NO },
+        { TAC_OP_JUMP_LTE, TAC_USE_ARG2, 9, 2, 8, 0, NO },
+        { TAC_OP_JUMP_GTE, TAC_USE_ARG1, 17, 2, 16, 0, NO },
+        { TAC_OP_JUMP_GTE, TAC_USE_ARG2, 9, 2, 8, 0, NO }
+      };
+      int producers[] = { TAC_OP_ASSIGNMENT, TAC_OP_ADD, TAC_OP_SUB, TAC_OP_AND,
+        TAC_OP_OR, TAC_OP_XOR, TAC_OP_COMPLEMENT, TAC_OP_ARRAY_READ,
+        TAC_OP_SHIFT_LEFT, TAC_OP_SHIFT_RIGHT, TAC_OP_MUL, TAC_OP_DIV,
+        TAC_OP_MOD, TAC_OP_FUNCTION_CALL_USE_RETURN_VALUE };
+      int types[] = { VARIABLE_TYPE_UINT8, VARIABLE_TYPE_INT8, VARIABLE_TYPE_UINT16, VARIABLE_TYPE_INT16 };
+      struct tac producer, consumer;
+      struct temp_register temp;
+      int endpoint_index, producer_index, type_index, constant_source, expected_mask;
+      int combinations = 0, supported = 0;
+      memset(&producer, 0, sizeof(producer));
+      memset(&consumer, 0, sizeof(consumer));
+      memset(&temp, 0, sizeof(temp));
+      for (endpoint_index = 0; endpoint_index < (int)(sizeof(endpoints) / sizeof(endpoints[0])); endpoint_index++) {
+        struct endpoint_case *endpoint = &endpoints[endpoint_index];
+        consumer.op = endpoint->op;
+        for (producer_index = 0; producer_index < 14; producer_index++) {
+          producer.op = producers[producer_index];
+          for (type_index = 0; type_index < 4; type_index++) {
+            temp.size = type_index < 2 ? 8 : 16;
+            consumer.arg1_var_type_promoted = consumer.arg2_var_type_promoted = types[type_index];
+            for (constant_source = 0; constant_source < (producer_index == 0 ? 2 : 1); constant_source++) {
+              producer.arg1_type = constant_source ? TAC_ARG_TYPE_CONSTANT : TAC_ARG_TYPE_TEMP;
+              expected_mask = temp.size == 8 ? endpoint->byte_mask : endpoint->word_mask;
+              if (producer_index == 0) {
+                expected_mask = temp.size == 8 ? endpoint->copy_byte_mask : endpoint->copy_word_mask;
+                if (constant_source && temp.size == 8 && endpoint->operand == TAC_USE_ARG1 && endpoint_index >= 22)
+                  expected_mask |= 16;
+                else if (constant_source)
+                  expected_mask &= ~16;
+              }
+              if (producer_index >= 10)
+                expected_mask &= ~8;
+              if (producer.op == TAC_OP_COMPLEMENT && temp.size == 16 && endpoint->complement_bc == YES)
+                expected_mask |= 4;
+              for (first_index = 0; first_index < 5; first_index++) {
+                int expected = (expected_mask & (1 << first_index)) != 0 ? YES : NO;
+                if (_is_register_allocator_candidate_allowed_for_physical_register(&producer, &consumer,
+                    &temp, physical_registers[first_index], endpoint->operand) != expected) {
+                  fprintf(stderr, "allocation_policy_test: endpoint=%d producer=%d type=%d constant=%d register=%d expected=%d status=failed\n",
+                      endpoint_index, producer_index, type_index, constant_source, first_index, expected);
+                  return 1;
+                }
+                combinations++;
+                supported += expected == YES;
+              }
+            }
+          }
+        }
+      }
+      fprintf(stderr, "allocation_policy_test: endpoints=%d supported=%d rejected=%d independent_table=yes status=complete\n",
+          combinations, supported, combinations - supported);
+    }
+  }
   for (index = 0; index < 2; index++) {
     temps[index].register_index = index;
     temps[index].size = 8;
@@ -394,5 +499,63 @@ int main(int argc, char **argv) {
       return 1;
   }
   fprintf(stderr, "spill_slot_test: cases=8 overlap_width_boundary_redefinition_controls=yes tacs_unchanged=yes status=complete\n");
+  {
+    int physical_registers[] = { Z80_PHY_A, Z80_PHY_HL, Z80_PHY_BC, Z80_PHY_B, Z80_PHY_C };
+    int barriers[] = { TAC_OP_FUNCTION_CALL, TAC_OP_FUNCTION_CALL_USE_RETURN_VALUE, TAC_OP_ASM };
+    int register_index, barrier_index, instruction_index;
+    memset(instructions, 0, sizeof(instructions));
+    temps[0].size = temps[1].size = 16;
+    for (instruction_index = 0; instruction_index < 3; instruction_index++) {
+      instructions[instruction_index].function_node = &function;
+      instructions[instruction_index].reload_spill_to_physical_operand = -1;
+      instructions[instruction_index].store_retained_to_spill_operand = -1;
+      instructions[instruction_index].arg1_type = TAC_ARG_TYPE_CONSTANT;
+      instructions[instruction_index].result_type = TAC_ARG_TYPE_TEMP;
+      instructions[instruction_index].arg1_var_type_promoted =
+        instructions[instruction_index].arg2_var_type_promoted =
+        instructions[instruction_index].result_var_type = VARIABLE_TYPE_UINT16;
+    }
+    instructions[0].op = TAC_OP_COMPLEMENT;
+    instructions[0].result_physical_register = Z80_PHY_HL;
+    instructions[1].op = TAC_OP_AND;
+    instructions[1].arg2_type = TAC_ARG_TYPE_CONSTANT;
+    instructions[1].result_d = 1;
+    instructions[1].result_physical_register = Z80_PHY_BC;
+    instructions[2].op = TAC_OP_SHIFT_LEFT;
+    instructions[2].arg1_type = instructions[2].arg2_type = TAC_ARG_TYPE_TEMP;
+    instructions[2].arg1_physical_register = instructions[2].result_physical_register = Z80_PHY_HL;
+    instructions[2].arg2_d = 1;
+    instructions[2].arg2_physical_register = Z80_PHY_BC;
+    if (check_verification(&function, instructions, 3, FAILED, "word_bc_scratch_clobber") == FAILED)
+      return 1;
+    for (barrier_index = 0; barrier_index < 3; barrier_index++) {
+      if (_get_register_allocator_tac_clobbers(barriers[barrier_index]) != 255)
+        return 1;
+      for (register_index = 0; register_index < 5; register_index++) {
+        char case_name[64];
+        memset(instructions, 0, sizeof(instructions));
+        for (instruction_index = 0; instruction_index < 3; instruction_index++) {
+          instructions[instruction_index].function_node = &function;
+          instructions[instruction_index].reload_spill_to_physical_operand = -1;
+          instructions[instruction_index].store_retained_to_spill_operand = -1;
+        }
+        temps[0].size = register_index == 1 || register_index == 2 ? 16 : 8;
+        instructions[0].op = TAC_OP_ASSIGNMENT;
+        instructions[0].arg1_type = TAC_ARG_TYPE_CONSTANT;
+        instructions[0].result_type = TAC_ARG_TYPE_TEMP;
+        instructions[0].result_physical_register = physical_registers[register_index];
+        instructions[1].op = barriers[barrier_index];
+        instructions[2].op = TAC_OP_XOR;
+        instructions[2].arg1_type = TAC_ARG_TYPE_TEMP;
+        instructions[2].arg1_physical_register = physical_registers[register_index];
+        instructions[2].arg2_type = TAC_ARG_TYPE_CONSTANT;
+        instructions[2].result_type = TAC_ARG_TYPE_TEMP;
+        instructions[2].result_d = 1;
+        sprintf(case_name, "matrix_clobber_%d_%d", barrier_index, register_index);
+        if (check_verification(&function, instructions, 3, FAILED, case_name) == FAILED)
+          return 1;
+      }
+    }
+  }
   return 0;
 }

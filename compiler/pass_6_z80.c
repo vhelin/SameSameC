@@ -2862,9 +2862,17 @@ static int _aaa_generate_asm_add_sub_or_xor_and_z80_16bit(struct tac *t, FILE *f
   }
   else if (arg2_in_hl == YES) {
   }
-  else if (arg1_location.kind == LOC_CONST) {
-    /* 16-bit */
-    _load_value_to_hl(arg1_location.value, file_out);
+  else if (arg1_location.kind == LOC_CONST || arg1_location.kind == LOC_PHY_A ||
+           arg1_location.kind == LOC_PHY_B || arg1_location.kind == LOC_PHY_C) {
+    if (_materialize_to_hl(&arg1_location, file_out) == FAILED)
+      return FAILED;
+    if (arg1_location.kind != LOC_CONST && t->arg1_var_type == VARIABLE_TYPE_INT8) {
+      if (arg2_location.kind == LOC_PHY_A)
+        fprintf(file_out, "      PUSH AF\n");
+      _sign_extend_l_to_hl(file_out);
+      if (arg2_location.kind == LOC_PHY_A)
+        fprintf(file_out, "      POP AF\n");
+    }
   }
   else {
     if (t->arg1_var_type == VARIABLE_TYPE_INT16 || t->arg1_var_type == VARIABLE_TYPE_UINT16) {

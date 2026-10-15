@@ -10025,7 +10025,7 @@ from these counts or treat further policy extraction as an optimization gain.
 
 ### Batch 313-315: Close Coverage Gaps And Qualify The Result
 
-- [ ] **313. Systematically check policy/emitter/verifier agreement.** Extend
+- [x] **313. Systematically check policy/emitter/verifier agreement.** Extend
       existing tests to enumerate supported operation/operand/width/register
       combinations, physical-unit overlap, and implicit clobbers. Verify actual
       emitted behavior independently, not only descriptor agreement; a reaching
@@ -10034,7 +10034,7 @@ from these counts or treat further policy extraction as an optimization gain.
       extension, low-byte uses of word locations, and rejection of unsupported
       combinations. This is broader coverage, not permission to postpone such
       checks for combinations introduced in earlier batches.
-- [ ] **314. Expand structural differential generation and failure reduction.**
+- [x] **314. Expand structural differential generation and failure reduction.**
       Reuse `ci/check_register_allocator.mjs` and its independent oracles. Vary
       program structure, live-value pressure, aliasing within valid buffers,
       signed/mixed widths, branch paths, nested loops, and call placement rather
@@ -10043,7 +10043,7 @@ from these counts or treat further policy extraction as an optimization gain.
       Retain and minimize failing sources/seeds into existing fixtures. Include
       representative pointer/loop routines from real projects and state hardware
       or emulator limits explicitly; preserve pinned/reproducible tooling.
-- [ ] **315. Requalify gains, costs, and remaining limits.** Reuse the existing
+- [x] **315. Requalify gains, costs, and remaining limits.** Reuse the existing
       corpus and real-routine execution tools with matched surrounding sources
       and freshly staged Cygwin/MSVC binaries. Interleave or alternate baseline
       and candidate timing runs, report dispersion and actual peak RSS, and
@@ -10055,6 +10055,113 @@ from these counts or treat further policy extraction as an optimization gain.
       original eligibility limits remain and decide the next work from that
       evidence, without making `-ra` unconditional or claiming exhaustive
       certification.
+
+                  Qualification for 313-315 (bounded, not exhaustive certification):
+
+                  - The existing actual-source verifier harness enumerates 10,200 endpoint
+                        combinations: 34 operation/operand forms, 14 producer kinds, signed and
+                        unsigned byte/word widths, constant versus temporary assignment sources,
+                        and A/HL/BC/B/C. An explicit expected table checks legal and rejected
+                        endpoints independently of the target callbacks. All 25 physical-unit
+                        pairs are checked against independent masks. Actual reaching-owner tests
+                        now include all 15 call/return-value-call/asm register clobbers and a
+                        word-ALU scratch-clobber rejection: seven accepted and 32 rejected cases
+                        remain immutable in traced and quiet modes, alongside eight spill-layout
+                        controls and the existing definition, mutation/rollback, and cost checks.
+                        Endpoint acceptance is not a proof that intervening instructions preserve
+                        a value, nor does this table independently execute every matrix cell.
+
+                  - Independent execution exposed and fixed two allocator-only failures.
+                        A retained signed-byte ALU left operand was read from IX+0 instead of its
+                        physical register; the existing HL materializer and sign-extension helper
+                        now handle it, preserving an A right operand when necessary. General
+                        BC-producing word operations were incorrectly treated as preserving HL;
+                        the shared allocator/verifier exception now permits only the existing
+                        direct-to-BC complement producer. The retained minimal generated cases
+                        are `matrix_extend` and `matrix_shift`, with the latter also checked by
+                        an immutable actual-source verifier rejection. The pre-fix reduced runs
+                        returned 32894 instead of 32784 for (0,17,32767), and 24 instead of 65528
+                        for the word shift. Production growth is ten net lines, with no new
+                        production functions, APIs, files, ABI changes, or weakened call/asm masks.
+
+                  - The existing runner adds a separate 68-function matrix cohort to avoid
+                        overflowing bank zero: both ALU operand orders, all six guarded unsigned
+                        comparison forms in both orders, signed equality and extension, low-byte
+                        word-result use, computed shift counts, and aliasing/nonaliasing pointer
+                        writes with branch, nested-loop, pressure, and call-placement variations.
+                        The original/scalar/matrix cohorts contain 88/74/68 functions and
+                        11/37/57 literal-normalized source shapes, respectively. At 512 seeds,
+                        they cover 26,624/25,600/24,576 distinct full shape/input tuples within
+                        each cohort, versus 45,056/37,888/34,816 executions per mode. Repeated
+                        arithmetic helper controls are intentional; these are not counts of
+                        globally distinct CFGs. All five retained register classes are exercised
+                        across the cohorts. Nine real bank-zero routines include both projects'
+                        actual pointer-writing number formatters, with an independent digit
+                        oracle checking the entire output buffer and index-pointer update.
+                        Software shift/division loops execute; hardware-facing source loops and
+                        bank switching are not qualified. Node 22.18.0 and pinned z80-emulator
+                        2.3.0 were used; the runner now rejects a different emulator version.
+
+                  - Failures retain their source, exact seed/input, assembly, ROM, and logs.
+                        The existing catch path dependency-slices generated functions and replays
+                        default and failing modes to establish whether the reduction reproduces
+                        the failure. The real widening failure reduced from 16 generated
+                        functions to one plus the shared preamble, with default passing and RA
+                        failing. This is function/dependency reduction, not a general statement
+                        reducer or input minimizer. Three separate default-mode limitations were
+                        retained rather than fixed or silently counted as passes: a word-to-byte
+                        copy chain loses truncation (expected 33021, got 32765); signed byte
+                        ordering for (184,75,97) returns 75 instead of 184; and unsigned `>`
+                        equality for (0,68,68) returns 0 instead of 68. Passing narrowing cases
+                        use an arithmetic result, signed comparisons cover equality/inequality,
+                        and generated unsigned ordering explicitly guards equality. These are
+                        deliberate qualification boundaries, not claims of general C correctness.
+
+                  - Fresh staged Cygwin GCC, native MSVC Release, and native MSVC ASan runs
+                        each passed 122,368 executions per mode over the three cohorts and nine
+                        real routines. Exact per-function counters and all 25 ROM controls agree
+                        across toolchains; traced/quiet ROM and assembly agree. The pre-batch
+                        compiler's previously passing cohorts and all nine real routines have
+                        identical outputs and counters; its new-matrix RA failures are not a
+                        valid performance baseline. Default, -no-ra, and forced-all-spill matrix
+                        ROMs also match the pre-batch compiler. Both sequential full suites
+                        passed all 173 tests, strict ANSI C90/-Wall/-Werror and editor checks
+                        passed, and ASan reported no compiler/verifier failures. Final artifacts
+                        are `/tmp/ra315-final-{baseline,cygwin,native-asan,native-release}`; saved
+                        pre-batch compilers are under `/tmp/ra315-baseline`.
+
+                  - Across the final expanded workload, default/RA dynamic cycles are
+                        206,226,888/161,671,072 (21.61% fewer with RA), frame reads
+                        4,378,892/3,226,322, and frame writes 2,800,242/1,665,216. These transfers
+                        include ABI and argument/result traffic, not just explicit allocation
+                        spills. The three generated ROM totals are 35,066/28,394 bytes, frames
+                        2,952/2,661 bytes, and static register copies 536/923. RA has 14 explicit
+                        preservation stores and 16 reloads versus zero in default mode. These
+                        are aggregate opt-in/default comparisons, not new speedups from this
+                        correctness batch. Previously passing generated ROMs and dynamic counts
+                        are unchanged. Both real pointer routines use 2,601,356 versus 2,864,764
+                        cycles per 512 calls. Real project RA ROMs remain 23,675/16,288 bytes,
+                        frame totals/maxima 291/105 and 254/97, and copies 689/595, with no
+                        explicit inserted spills/reloads. Default project ROMs are 24,468/17,510;
+                        the first project's default frame total/max is smaller (283/101).
+
+                  - Three alternating baseline/current two-project GNU-time rounds, isolated
+                        from the full suites' fixture directories, measured RA compiler seconds
+                        [2.27,2.11,2.10]/[2.01,2.16,2.22], medians 2.11/2.16, with actual peak
+                        RSS 13,260/13,264 KiB. Other validation was concurrent, so these noisy
+                        samples support no compile-time or memory improvement claim. Current
+                        default median was 0.75 seconds and peak RSS 13,004 KiB: RA still costs
+                        substantially more compiler time. Workspace-plan bytes are not peak RSS.
+
+                  - Original eligibility limits remain: opt-in RA only, nonescaping supported
+                        scalar definitions, single-block pointer promotion, stack ABI arguments,
+                        full call/asm barriers, conservative incompatible joins/critical edges,
+                        and profitable/proven atomic transfers only. No arbitrary SSA, exhaustive
+                        CFG/endpoint execution, or general cross-label reuse is claimed. UBSan,
+                        Valgrind/leaks, upstream emulator tests, and SMS hardware remain unrun.
+                        Evidence favors addressing the retained default-mode conversion and
+                        comparison failures in a separately scoped follow-up before widening
+                        eligibility or considering unconditional RA. No later batch is started.
 
 **Shared completion gates:** Each three-step batch gets its own local commit,
 with no push and no unrelated worktree changes included. Reuse existing

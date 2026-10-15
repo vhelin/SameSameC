@@ -8,6 +8,8 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const output = process.env.RA_EXECUTION_DIR || mkdtempSync(join(tmpdir(), 'ra-execution-'));
 const emulatorPath = process.env.RA_Z80_EMULATOR;
 if (!emulatorPath) throw new Error('Set RA_Z80_EMULATOR to z80-emulator@2.3.0/dist/index.js');
+const emulatorVersion = JSON.parse(readFileSync(resolve(dirname(emulatorPath), '../package.json'), 'utf8')).version;
+if (emulatorVersion !== '2.3.0') throw new Error('Expected pinned z80-emulator@2.3.0');
 const {Z80} = await import(pathToFileURL(resolve(emulatorPath)).href);
 const compiler = process.env.SAMESAMECC || 'samesamecc';
 const linker = process.env.SAMESAMECL || 'samesamecl';
@@ -36,14 +38,18 @@ const harness = process.env.RA_VERIFIER || join(output,
 if (!process.env.RA_VERIFIER)
   run(process.env.CC || 'gcc', ['-ansi', '-pedantic', '-Wall', '-DNDEBUG', '-o', harness,
     join(fixture, 'allocation_verify_test.c'), ...sources, '-lm'], output, 'verifier-build.log');
+let verifierFailures;
 for (const flags of [[], ['-q']]) {
   const log = flags.length ? 'verifier-quiet.log' : 'verifier.log';
   run(harness, flags, output, log);
   const verifierLog = readFileSync(join(output, log), 'utf8');
-  if ((verifierLog.match(/result=rejected unchanged=yes status=complete/g) || []).length !== 16 ||
+  verifierFailures = (verifierLog.match(/result=rejected unchanged=yes status=complete/g) || []).length;
+  if (verifierFailures !== 32 ||
     (verifierLog.match(/result=accepted unchanged=yes status=complete/g) || []).length !== 7 ||
     !verifierLog.includes('allocation_mutation_test: invalid_tail unchanged=yes status=complete') ||
     !verifierLog.includes('allocation_mutation_test: displaced_arg2 cleared=yes status=complete') ||
+    !verifierLog.includes('allocation_policy_test: register_pairs=25 independent_units=yes status=complete') ||
+    !/allocation_policy_test: endpoints=10200 supported=\d+ rejected=\d+ independent_table=yes status=complete/.test(verifierLog) ||
     !verifierLog.includes('spill_slot_test: cases=8 overlap_width_boundary_redefinition_controls=yes tacs_unchanged=yes status=complete') ||
     !verifierLog.includes('allocation_cost_test: nearer_rejected=yes farther_reused=yes status=complete') ||
     !verifierLog.includes('candidate_definition_test: read_before_write=yes previous_definition_excluded=yes status=complete'))
@@ -51,10 +57,24 @@ for (const flags of [[], ['-q']]) {
 }
 
 const programs = [];
-for (let variant = 0; variant < 8; variant++) {
+for (let variant = 0; variant < 12; variant++) {
   const constant = 1 + variant * 7;
   const operator = ['+', '-', '&', '|', '^'][variant % 5];
+  const comparison = ['==', '!=', '<', '>', '<=', '>='][variant % 6];
+  const equalityGuard = variant % 6 >= 2 ? `if (saved == c) { return ${variant % 6 >= 4 ? 'a' : 'b'}; } ` : '';
+  const expression = variant & 1 ? `saved${operator}c` : `c${operator}saved`;
+  const inner = variant & 4 ? 'column' : '0';
+  const call = `u8 called = ra_signed_helper(${variant & 1 ? 'previous' : `alias[start+row+${inner}]`},selector,row);`;
   const functions = [
+    ['matrix_byte', 'u8 a, u8 b, u8 c', `u8 saved = a^b; return ${expression};`, [1, 1, 1], 1],
+    ['matrix_word', 'u16 a, u16 b, u16 c', `u16 saved = ~b; return ${expression};`, [2, 2, 2], 2],
+    ['matrix_compare_byte', 'u8 a, u8 b, u8 c', `u8 saved = a^b; ${equalityGuard}if (${variant < 6 ? 'saved' : 'c'} ${comparison} ${variant < 6 ? 'c' : 'saved'}) { return a; } return b;`, [1, 1, 1], 1],
+    ['matrix_compare_word', 'u16 a, u16 b, u16 c', `u16 saved = ~b; ${equalityGuard}if (${variant < 6 ? 'saved' : 'c'} ${comparison} ${variant < 6 ? 'c' : 'saved'}) { return a; } return b;`, [2, 2, 2], 2],
+    ['matrix_compare_signed', 's8 a, s8 b, s8 c', `s8 saved = a^b; if (saved ${comparison} c) { return a; } return b;`, [1, 1, 1], 1],
+    ['matrix_extend', 's8 a, s8 b, u16 c', `s8 saved = a^b; s16 extended = saved; return ${variant & 1 ? 'c+extended' : 'extended+c'};`, [1, 1, 2], 2],
+    ['matrix_low_byte', 'u16 a, u16 b, u16 c', `u16 saved = ~a; u8 narrowed = ${variant & 1 ? 'b+saved' : 'saved+b'}; return c+narrowed;`, [2, 2, 2], 2],
+    ['matrix_shift', 'u16 a, u16 b, u8 c', `u16 saved = ~a; return saved ${variant & 1 ? '>>' : '<<'} (c&15);`, [2, 2, 1], 2],
+    ['matrix_structural', 'u8 *target, u8 *alias, u8 start, u8 count, u8 selector, u8 value', `u16 total = value; u8 saved = selector^value; u8 row = 0; while (row < count) { ${variant & 4 ? 'u8 column = 0; while (column < 2) {' : ''} u8 previous = target[start+row+${inner}]; ${variant & 1 ? call : ''} if ((previous^selector)&1) { alias[start+row+${inner}] = previous+saved; } else { target[start+row+${inner}] = previous^saved; } ${variant & 1 ? '' : call} total = total+target[start+row+${inner}]+called; ${variant & 4 ? 'column = column+1; }' : ''} row = row+1; } return total;`, [2, 2, 1, 1, 1, 1], 2],
     ['scalar_byte', 'u8 a, u8 b, u8 c', 'u8 saved = a^b; return (c+c)+saved;', [1, 1, 1], 1],
     ['scalar_signed_byte', 's8 a, s8 b, s8 c', 's8 saved = a^b; return (c|7)^saved;', [1, 1, 1], 1],
     ['scalar_signed_word', 's16 a, s16 b, s16 c', 's16 saved = a^b; return (c|7)^saved;', [2, 2, 2], 2],
@@ -98,16 +118,23 @@ for (let variant = 0; variant < 8; variant++) {
     ['join_call', 'u8 *target, u8 index, u8 selector, u8 value', `u16 retained = target[index]+${constant}; u8 called = ra_arithmetic_${variant}(value,selector,target[index]); if (selector&${1 << (variant % 4)}) { target[index] = called+value; } else { target[index+1] = called^value; retained = retained+selector; } return retained+target[index]+target[index+1];`, [2, 1, 1, 1], 2]
   ];
   for (const [family, parameters, body, widths, returnWidth] of functions) {
+    if (variant >= 8 && !family.startsWith('matrix_')) continue;
+    if (family.startsWith('matrix_') && variant >= ({matrix_byte: 10, matrix_word: 10,
+      matrix_compare_byte: 12, matrix_compare_word: 12, matrix_structural: 8}[family] || 2)) continue;
     if (process.env.RA_FAMILIES && family !== 'arithmetic' && !process.env.RA_FAMILIES.split(',').includes(family)) continue;
     const scalarFamily = family.startsWith('scalar_') || family === 'word_bc';
-    if (family !== 'arithmetic' && scalarFamily !== (process.env.RA_SCALAR_CASES === '1')) continue;
+    if (family !== 'arithmetic' && (process.env.RA_MATRIX_CASES === '1' ?
+      !family.startsWith('matrix_') : family.startsWith('matrix_') || scalarFamily !== (process.env.RA_SCALAR_CASES === '1'))) continue;
     if (scalarFamily && family !== 'word_bc' && variant > 1) continue;
     const name = `ra_${family}_${variant}`;
     programs.push({name, family, variant, constant, widths, returnWidth,
+      pointerParameters: family === 'matrix_structural' ? [0, 1] :
+        ['pointer', 'walk', 'nested', 'join_call', 'scalar_remat_pointer'].includes(family) ? [0] : [],
       source: `${family.startsWith('scalar_signed') ? 's' : 'u'}${returnWidth * 8} ${name}(${parameters}) { ${body} }`});
   }
 }
-const source = 'u8 ra_buffer[128];\nu16 ra_words[64];\ns8 ra_signed_helper(u8 a, u8 b, u8 c) { return a+b+c; }\nu8 ra_pointer_helper(u8 *target, u8 value) { target[0] = value; return target[1]; }\nu8 ra_recursive_helper(u8 depth, u8 value) { if (depth) { u8 saved = value^depth; u8 nested = ra_recursive_helper(depth-1,value+1); return nested^saved; } return value; }\n' + programs.map(program => program.source).join('\n') + '\nvoid main(void) {}\n';
+const preamble = 'u8 ra_buffer[128];\nu16 ra_words[64];\ns8 ra_signed_helper(u8 a, u8 b, u8 c) { return a+b+c; }\nu8 ra_pointer_helper(u8 *target, u8 value) { target[0] = value; return target[1]; }\nu8 ra_recursive_helper(u8 depth, u8 value) { if (depth) { u8 saved = value^depth; u8 nested = ra_recursive_helper(depth-1,value+1); return nested^saved; } return value; }\n';
+const source = preamble + programs.map(program => program.source).join('\n') + '\nvoid main(void) {}\n';
 writeFileSync(join(output, 'generated.ssc'), source);
 const modes = [['default', []], ['no_ra', ['-no-ra']], ['all_spill', ['-ra-all-spill']],
   ['ra', ['-ra']], ['ra_quiet', ['-ra', '-q']]];
@@ -228,6 +255,9 @@ function execute(code, entry, parameters, widths, buffer, bufferAddress, returnW
 
 const totals = Object.fromEntries(['default', 'all_spill', 'ra'].map(mode => [mode, {cases: 0, instructions: 0, cycles: 0, frame_reads: 0, frame_writes: 0}]));
 const programTotals = {};
+const shapes = new Map(programs.map(program => [program.name,
+  program.source.replace(program.name, 'generated').replace(/ra_arithmetic_\d+/g, 'ra_arithmetic').replace(/\b\d+\b/g, '#')]));
+const uniqueInputs = new Set();
 for (const program of programs) {
   programTotals[program.name] = Object.fromEntries(Object.keys(totals).map(mode => [mode, {cases: 0, instructions: 0, cycles: 0, frame_reads: 0, frame_writes: 0}]));
   for (let seed = 0; seed < cases; seed++) {
@@ -239,6 +269,64 @@ for (const program of programs) {
     let parameters = [byte, other, third];
     let expected;
     switch (program.family) {
+      case 'matrix_byte':
+      case 'matrix_word':
+      case 'matrix_compare_byte':
+      case 'matrix_compare_word':
+      case 'matrix_compare_signed': {
+        const word = program.family.endsWith('_word');
+        const mask = word ? 65535 : 255;
+        if (word) parameters = [(seed * 7919 + program.variant * 1009) & mask,
+          (seed * 5113 + 65535) & mask, (seed * 3571 + 32767) & mask];
+        const [first, second, last] = parameters;
+        let saved = word ? second ^ mask : first ^ second;
+        if (program.family === 'matrix_compare_signed') saved = saved >= 128 ? saved - 256 : saved;
+        if (program.family.startsWith('matrix_compare_')) {
+          const lastValue = program.family === 'matrix_compare_signed' && last >= 128 ? last - 256 : last;
+          const [left, right] = program.variant >= 6 ? [lastValue, saved] : [saved, lastValue];
+          expected = [left === right, left !== right, left < right, left > right,
+            left <= right, left >= right][program.variant % 6] ? first : second;
+        } else {
+          const [left, right] = program.variant & 1 ? [saved, last] : [last, saved];
+          expected = [left + right, left - right, left & right, left | right, left ^ right][program.variant % 5] & mask;
+        }
+        break;
+      }
+      case 'matrix_extend': {
+        parameters[2] = (seed * 3571 + 32767) & 65535;
+        const saved = byte ^ other;
+        expected = (parameters[2] + (saved >= 128 ? saved - 256 : saved)) & 65535;
+        break;
+      }
+      case 'matrix_low_byte':
+        parameters = [(seed * 7919 + program.variant * 1009) & 65535,
+          (seed * 5113 + 65535) & 65535, (seed * 3571 + 32767) & 65535];
+        expected = (parameters[2] + (((parameters[0] ^ 65535) + parameters[1]) & 255)) & 65535;
+        break;
+      case 'matrix_shift': {
+        parameters[0] = (seed * 7919 + program.variant * 1009) & 65535;
+        parameters[1] = (seed * 5113 + 65535) & 65535;
+        const saved = parameters[0] ^ 65535;
+        expected = (program.variant & 1 ? saved >>> (third & 15) : saved << (third & 15)) & 65535;
+        break;
+      }
+      case 'matrix_structural': {
+        parameters = [0, program.variant & 2 ? 0 : 8, seed & 15, 1 + seed % 4, other, byte];
+        expected = byte;
+        for (let row = 0; row < parameters[3]; row++) {
+          for (let column = 0; column < (program.variant & 4 ? 2 : 1); column++) {
+            const index = parameters[2] + row + column;
+            const alias = parameters[1] + index;
+            const previous = expectedBuffer[index];
+            let called = (previous + other + row) & 255;
+            if ((previous ^ other) & 1) expectedBuffer[alias] = (previous + (other ^ byte)) & 255;
+            else expectedBuffer[index] = previous ^ other ^ byte;
+            if (!(program.variant & 1)) called = (expectedBuffer[alias] + other + row) & 255;
+            expected = (expected + expectedBuffer[index] + called) & 65535;
+          }
+        }
+        break;
+      }
       case 'scalar_region':
       case 'scalar_call_region': {
         const saved = byte ^ other;
@@ -428,11 +516,12 @@ for (const program of programs) {
       }
       default: throw new Error('Unknown family');
     }
+    uniqueInputs.add(JSON.stringify([shapes.get(program.name), parameters, Buffer.from(buffer).toString('base64')]));
     for (const mode of Object.keys(totals)) {
       const image = compiled.get(mode);
       const bufferAddress = image.symbols.get(program.family === 'scalar_remat_word' ? 'ra_words' : 'ra_buffer');
       const args = parameters.slice();
-      if (['pointer', 'walk', 'nested', 'join_call', 'scalar_remat_pointer'].includes(program.family)) args[0] = bufferAddress;
+      for (const index of program.pointerParameters) args[index] += bufferAddress;
       try {
         const result = execute(image.rom, image.symbols.get(program.name), args, program.widths,
           buffer, bufferAddress, program.returnWidth);
@@ -443,8 +532,39 @@ for (const program of programs) {
           for (const metric of ['instructions', 'cycles', 'frame_reads', 'frame_writes']) counters[metric] += result[metric];
         }
       } catch (error) {
+        const retained = new Set([program]);
+        for (const caller of retained)
+          for (const candidate of programs)
+            if (caller.source.includes(`${candidate.name}(`)) retained.add(candidate);
+        const reduced = preamble + Array.from(retained, entry => entry.source).join('\n') + '\nvoid main(void) {}\n';
+        const reduction = {original_functions: programs.length, retained_functions: retained.size,
+          seed, parameters, expected, results: {}, reproduced: false};
+        writeFileSync(join(output, 'failure-reduced.ssc'), reduced);
+        for (const replayMode of new Set(['default', mode])) {
+          const directory = join(output, 'failure-reduced', replayMode);
+          mkdirSync(directory, {recursive: true});
+          writeFileSync(join(directory, 'main.ssc'), reduced);
+          try {
+            run(compiler, ['-mz80', '-rs', '3', ...modes.find(entry => entry[0] === replayMode)[1],
+              '-o', 'main.asm', 'main.ssc'], directory, 'compiler.log');
+            run(linker, ['-lsms', '-v', '-o', 'linked.sms', 'main.asm'], directory, 'linker.log');
+            const replay = readImage(directory);
+            const address = replay.symbols.get(program.family === 'scalar_remat_word' ? 'ra_words' : 'ra_buffer');
+            const replayArgs = parameters.slice();
+            for (const index of program.pointerParameters) replayArgs[index] += address;
+            const result = execute(replay.rom, replay.symbols.get(program.name), replayArgs,
+              program.widths, buffer, address, program.returnWidth);
+            reduction.results[replayMode] = {value: result.value,
+              correct: result.value === expected && Buffer.from(result.buffer).equals(Buffer.from(expectedBuffer))};
+          } catch (replayError) {
+            reduction.results[replayMode] = {correct: false, error: String(replayError)};
+          }
+        }
+        reduction.reproduced = !reduction.results[mode].correct &&
+          (mode === 'default' || reduction.results.default.correct);
+        writeFileSync(join(output, 'failure-reduction.json'), JSON.stringify(reduction, null, 2));
         writeFileSync(join(output, 'failure.json'), JSON.stringify({mode, seed, program, parameters: args,
-          expected, buffer: Array.from(buffer), error: String(error)}, null, 2));
+          expected, buffer: Array.from(buffer), error: String(error), reduction}, null, 2));
         throw new Error(`Failure ${program.name} seed=${seed} mode=${mode}: ${error}; artifacts=${output}`);
       }
     }
@@ -454,13 +574,20 @@ for (const [mode, totalsForMode] of Object.entries(totals))
   console.log(JSON.stringify({mode, ...totalsForMode, compile_seconds: compiled.get(mode).compileSeconds}));
 writeFileSync(join(output, 'execution-summary.json'), JSON.stringify(totals, null, 2));
 writeFileSync(join(output, 'program-execution-summary.json'), JSON.stringify(programTotals, null, 2));
-console.log(`PASS:verifier_failures=16 immutable=yes differential_cases=${totals.ra.cases} families=${new Set(programs.map(program => program.family)).size} variants=8 default_no_ra=identical artifacts=${output}`);
+const coverage = {functions: programs.length, unique_shapes: new Set(shapes.values()).size,
+  unique_shape_input_tuples: uniqueInputs.size, cases_per_mode: totals.ra.cases,
+  retained_registers: Array.from(new Set(Array.from(readFileSync(join(output, 'ra/main.asm'), 'utf8')
+    .matchAll(/; retained (?:arg[12]|result) in (HL|BC|A|B|C)\b/g), match => match[1]))).sort(),
+  node: process.version, emulator: emulatorVersion};
+writeFileSync(join(output, 'coverage-summary.json'), JSON.stringify(coverage, null, 2));
+console.log(JSON.stringify({coverage}));
+console.log(`PASS:verifier_failures=${verifierFailures} immutable=yes differential_cases=${totals.ra.cases} families=${new Set(programs.map(program => program.family)).size} default_no_ra=identical artifacts=${output}`);
 
 if (process.env.RA_REAL_PROJECTS !== '0') {
   const realTotals = {};
   for (const [project, routines] of [
-    ['calculations-1', ['calculationAdd3', 'calculationMultiplyAdd', 'calculationXorRoundTrip', 'calculationQuotientRoundTrip']],
-    ['calculations-2', ['calculationProductRestore', 'calculationShiftRestore', 'calculationPartitionRestore']]
+    ['calculations-1', ['calculationAdd3', 'calculationMultiplyAdd', 'calculationXorRoundTrip', 'calculationQuotientRoundTrip', 'convertNumbersToChars16']],
+    ['calculations-2', ['calculationProductRestore', 'calculationShiftRestore', 'calculationPartitionRestore', 'convertNumbersToChars16']]
   ]) {
     const images = new Map();
     for (const [mode, flags] of modes) {
@@ -490,7 +617,24 @@ if (process.env.RA_REAL_PROJECTS !== '0') {
         const third = (seed * 3571 + 3) & 65535;
         let parameters;
         let expected;
+        let buffer = new Uint8Array(0), expectedBuffer = buffer, bufferAddress = 0, returnWidth = 2;
         switch (name) {
+          case 'convertNumbersToChars16': {
+            bufferAddress = 0xc100;
+            buffer = Uint8Array.from({length: 128}, (_, index) => (index * 47 + seed * 11) & 255);
+            const start = buffer[120] = seed & 31;
+            expectedBuffer = buffer.slice();
+            parameters = [value, bufferAddress, bufferAddress + 120];
+            returnWidth = 0;
+            const digits = value.toString(16).padStart(4, '0');
+            for (let index = 0; index < digits.length; index++) {
+              const digit = parseInt(digits[index], 16);
+              expectedBuffer[start + 2 * index] = digit + (digit < 10 ? 0x10 : 0x17);
+              expectedBuffer[start + 2 * index + 1] = 0;
+            }
+            expectedBuffer[120] = start + 8;
+            break;
+          }
           case 'calculationAdd3': parameters = [value, other, third]; expected = (value + other + third) & 65535; break;
           case 'calculationMultiplyAdd': parameters = [value, other, third]; expected = (value * other + third) & 65535; break;
           case 'calculationXorRoundTrip': parameters = [value, other]; expected = value; break;
@@ -509,8 +653,9 @@ if (process.env.RA_REAL_PROJECTS !== '0') {
         for (const mode of Object.keys(totals)) {
           const image = images.get(mode);
           try {
-            const result = execute(image.rom, image.symbols.get(name), parameters, parameters.map(() => 2), new Uint8Array(0), 0, 2);
-            if (result.value !== expected) throw new Error(`Expected ${expected}, got ${result.value}`);
+            const result = execute(image.rom, image.symbols.get(name), parameters, parameters.map(() => 2), buffer, bufferAddress, returnWidth);
+            if ((returnWidth && result.value !== expected) || !Buffer.from(result.buffer).equals(Buffer.from(expectedBuffer)))
+              throw new Error(`Expected ${expected}, got ${result.value}; buffer_equal=${Buffer.from(result.buffer).equals(Buffer.from(expectedBuffer))}`);
             routineTotals[mode].cases++;
             for (const metric of ['instructions', 'cycles', 'frame_reads', 'frame_writes']) routineTotals[mode][metric] += result[metric];
           } catch (error) {
@@ -523,12 +668,15 @@ if (process.env.RA_REAL_PROJECTS !== '0') {
     }
   }
   writeFileSync(join(output, 'real-execution-summary.json'), JSON.stringify(realTotals, null, 2));
-  console.log(`PASS:real_routines=7 cases_per_routine=${cases} default_no_ra=identical artifacts=${output}`);
+  console.log(`PASS:real_routines=${Object.values(realTotals).reduce((count, routines) => count + Object.keys(routines).length, 0)} cases_per_routine=${cases} default_no_ra=identical artifacts=${output}`);
 }
 
-if (process.env.RA_SCALAR_CASES !== '1') {
-  Object.assign(process.env, {RA_SCALAR_CASES: '1', RA_REAL_PROJECTS: '0',
-    RA_EXECUTION_DIR: join(output, 'scalar'), RA_VERIFIER: harness});
-  run(process.execPath, [fileURLToPath(import.meta.url)], output, 'scalar-execution.log');
-  process.stdout.write(readFileSync(join(output, 'scalar-execution.log'), 'utf8'));
+if (process.env.RA_SCALAR_CASES !== '1' && process.env.RA_MATRIX_CASES !== '1') {
+  for (const cohort of process.env.RA_MATRIX_CASES === '0' ? ['scalar'] : ['scalar', 'matrix']) {
+    Object.assign(process.env, {RA_SCALAR_CASES: cohort === 'scalar' ? '1' : '0',
+      RA_MATRIX_CASES: cohort === 'matrix' ? '1' : '0', RA_REAL_PROJECTS: '0',
+      RA_EXECUTION_DIR: join(output, cohort), RA_VERIFIER: harness});
+    run(process.execPath, [fileURLToPath(import.meta.url)], output, `${cohort}-execution.log`);
+    process.stdout.write(readFileSync(join(output, `${cohort}-execution.log`), 'utf8'));
+  }
 }
