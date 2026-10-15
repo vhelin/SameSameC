@@ -10274,27 +10274,74 @@ counts identify audit targets, not dynamic savings or guaranteed opportunities.
 
 ### Batch 319-321: Align Allocation With Actual Lowering Effects
 
-- [ ] **319. Describe selected-lowering register effects.** Extend existing
+- [x] **319. Describe selected-lowering register effects.** Extend existing
       descriptors/policy data to express actual reads, writes, scratch units,
       and clobbers for supported operand locations and widths. Distinguish
       direct-to-BC complement from word ALU paths that compute through HL;
       include BC/B/C overlap and preservation needed by extension/index code.
       Use those facts in candidate/path decisions without weakening full
       call/asm barriers. Avoid a second parallel target-policy framework.
-- [ ] **320. Consolidate typed operand materialization.** Reuse the existing
+- [x] **320. Consolidate typed operand materialization.** Reuse the existing
       A/HL/BC/index materializers across duplicated emitter paths, making
       sign extension, truncation, scratch use, and preservation explicit in
       their current contracts. Remove superseded location handling as each
       path migrates. Preserve unsupported-combination failures and require
       matching assembly/ROMs for behavior-preserving migrations; separately
       qualify any intentional instruction improvement with actual execution.
-- [ ] **321. Independently test lowering/effect agreement.** Extend the
+- [x] **321. Independently test lowering/effect agreement.** Extend the
       existing harness/runner with live sentinel values across each newly
       described lowering variant, including overlapping byte/word units,
       destructive operands, signed widening, and low-byte word uses. Compare
       actual execution with independent expectations, not only allocator and
       verifier callbacks that share the same assumptions. Retain immutable
       rejection and atomic rollback tests for illegal effects/locations.
+
+                  Qualification for 319-321 (output-preserving consolidation):
+
+                  - The existing Z80 transparency predicate now combines physical read,
+                        write, and scratch units instead of separate B/C/BC branches. Typed
+                        byte/word rules preserve read-only BC and reject overlapping writes.
+                        Direct word complement into BC has A scratch but no HL write; word
+                        ALU paths remain scratch-HL barriers. The verifier uses this selected
+                        effect directly instead of rediscovering a competing candidate.
+                        Other paths remain conservative; full call/asm masks, ABI, and
+                        candidate endpoints are unchanged. This is not a complete model of
+                        flags or every IX/IY scratch instruction.
+                  - Existing HL materialization merges identical A/B/C zero-extension
+                        cases. Complement-to-BC and word-shift memory loads reuse the typed
+                        BC/index materializer, preserving extension, preservation mode,
+                        instructions, and unsupported-type failures. Production shrinks by
+                        48 lines across two existing files; no functions, APIs, abstractions,
+                        dependencies, production files, or byte-tag changes were added.
+                  - The actual-source harness adds 150 independent selected-effect checks,
+                        including BC/B/C writes, read-only BC, direct complement, scratch-HL
+                        ALU, and full barriers. Existing seven accepted/32 immutable rejected
+                        verifier cases, rollback tests, eight storage controls, 10,200 endpoint
+                        combinations, and 25 register-unit pairs still pass. Ten matrix
+                        sentinel variants independently execute live words across complement,
+                        signed widening, truncation, destructive shifts, and signed memory/
+                        computed indices with a live byte and complete buffer expectations.
+                  - Saved pre-batch and current Cygwin compilers, native MSVC Release,
+                        and native MSVC ASan each pass 181,760 cases per executed mode at
+                        512 seeds. Cohorts contain 88/74/96/44/44 functions with 11/37/85/37/37
+                        normalized shapes, plus nine real routines. All 35 ROM pairs and
+                        per-function execution/coverage summaries match baseline versus
+                        current and Cygwin versus each native build. All 50 generated
+                        ROM/assembly controls and 1,173 generated allocation/transfer
+                        decision entries match baseline exactly. Real-project ROMs match;
+                        randomized internal labels prevent literal real assembly identity.
+                        Default/`-no-ra` and traced/quiet identities pass; no executed-cycle,
+                        frame-traffic, or real-project frame regression was introduced or
+                        repaired. No speedup or compile-time/peak-memory benefit is claimed.
+                  - Fresh binaries were staged and SHA-matched; strict C90/-Wall/-Werror,
+                        editor diagnostics, and current-source compiler/verifier ASan checks
+                        pass. Both sequential authoritative full suites pass all 173 tests.
+                        Artifacts: `/tmp/ra321-final-{baseline,cygwin,native-release,native-asan}`;
+                        full-suite logs: `/tmp/ra321-{cygwin,native}-full.log`. All 19 protected
+                        dirty tracked-file hashes are unchanged. UBSan, Valgrind/leaks,
+                        exhaustive CFG/emitter coverage, upstream emulator tests, and SMS
+                        hardware/bank switching remain unrun. `-ra` remains opt-in; no later
+                        batch is started.
 
 ### Batch 322-324: Select Placements By Cost
 

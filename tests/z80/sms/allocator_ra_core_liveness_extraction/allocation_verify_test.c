@@ -83,6 +83,44 @@ int main(int argc, char **argv) {
     }
     fprintf(stderr, "allocation_policy_test: register_pairs=25 independent_units=yes status=complete\n");
     {
+      struct tac lowering;
+      int source_index, register_index, op_index;
+      int operations[] = { TAC_OP_COMPLEMENT, TAC_OP_AND, TAC_OP_FUNCTION_CALL,
+        TAC_OP_FUNCTION_CALL_USE_RETURN_VALUE, TAC_OP_ASM };
+      int checks = 0;
+
+      memset(&lowering, 0, sizeof(lowering));
+      lowering.result_physical_register = Z80_PHY_BC;
+      lowering.arg1_var_type_promoted = lowering.arg2_var_type_promoted = VARIABLE_TYPE_UINT16;
+      for (op_index = 0; op_index < 5; op_index++) {
+        lowering.op = operations[op_index];
+        for (source_index = 0; source_index < 5; source_index++) {
+          lowering.arg1_physical_register = physical_registers[source_index];
+          for (register_index = 0; register_index < 5; register_index++) {
+            int expected = op_index == 0 && register_index == 1 ? YES : NO;
+            if (_is_z80_basic_block_transparent_tac_for_physical_register(
+                &lowering, physical_registers[register_index]) != expected)
+              return 1;
+            checks++;
+          }
+        }
+      }
+      lowering.op = TAC_OP_ADD;
+      lowering.arg1_physical_register = Z80_PHY_HL;
+      lowering.arg2_physical_register = Z80_PHY_BC;
+      for (source_index = 0; source_index < 5; source_index++) {
+        lowering.result_physical_register = physical_registers[source_index];
+        for (register_index = 0; register_index < 5; register_index++) {
+          int expected = source_index < 2 && register_index >= 2 ? YES : NO;
+          if (_is_z80_basic_block_transparent_tac_for_physical_register(
+              &lowering, physical_registers[register_index]) != expected)
+            return 1;
+          checks++;
+        }
+      }
+      fprintf(stderr, "allocation_policy_test: lowering_effects=%d direct_bc_complement=yes scratch_hl_rejected=yes full_barriers=yes status=complete\n", checks);
+    }
+    {
       struct endpoint_case {
         int op, operand, byte_mask, word_mask, copy_byte_mask, copy_word_mask, complement_bc;
       } endpoints[] = {

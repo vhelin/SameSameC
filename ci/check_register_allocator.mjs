@@ -51,6 +51,7 @@ for (const flags of [[], ['-q']]) {
     !verifierLog.includes('allocation_mutation_test: invalid_tail unchanged=yes status=complete') ||
     !verifierLog.includes('allocation_mutation_test: displaced_arg2 cleared=yes status=complete') ||
     !verifierLog.includes('allocation_policy_test: register_pairs=25 independent_units=yes status=complete') ||
+    !/allocation_policy_test: lowering_effects=\d+ direct_bc_complement=yes scratch_hl_rejected=yes full_barriers=yes status=complete/.test(verifierLog) ||
     !/allocation_policy_test: endpoints=10200 supported=\d+ rejected=\d+ independent_table=yes status=complete/.test(verifierLog) ||
     !verifierLog.includes('spill_slot_test: cases=8 overlap_width_boundary_redefinition_controls=yes tacs_unchanged=yes status=complete') ||
     !verifierLog.includes('allocation_cost_test: nearer_rejected=yes farther_reused=yes status=complete') ||
@@ -79,6 +80,18 @@ for (let variant = 0; variant < 12; variant++) {
     ['matrix_extend', 's8 a, s8 b, u16 c', `s8 saved = a^b; s16 extended = saved; return ${variant & 1 ? 'c+extended' : 'extended+c'};`, [1, 1, 2], 2],
     ['matrix_low_byte', `${signedWord ? 's16' : 'u16'} a, u16 b, u16 c`, `${signedWord ? 's16' : 'u16'} saved = ~a; ${variant >= 6 ? 's8' : 'u8'} narrowed = ${variant < 2 ? (variant & 1 ? 'b+saved' : 'saved+b') : 'saved'}; ${variant >= 6 ? 's16 extended = narrowed;' : ''} return ${variant < 2 ? 'c+narrowed' : variant & 1 ? `${variant >= 6 ? 'extended' : 'narrowed'}+(b+c)` : `(b+c)+${variant >= 6 ? 'extended' : 'narrowed'}`};`, [2, 2, 2], 2],
     ['matrix_shift', 'u16 a, u16 b, u8 c', `u16 saved = ~a; return saved ${variant & 1 ? '>>' : '<<'} (c&15);`, [2, 2, 1], 2],
+    ['matrix_sentinel', variant >= 8 ? 's8 a, u8 b, u8 c' : variant === 2 || variant === 3 ? 's8 a, s8 b, u16 c' : 'u16 a, u16 b, u16 c', [
+      'u16 live = a+b; u16 saved = ~c; return (live+saved)^live;',
+      'u16 live = a+b; u16 saved = ~c; return (live^saved)+live;',
+      's8 saved = a^b; s16 wide = saved; u16 live = c+c; return wide+live;',
+      's8 saved = a^b; s16 wide = saved; u16 live = c+c; return live+wide;',
+      'u16 live = a+b; u8 low = c; return (live+low)^live;',
+      'u16 live = a+b; u8 low = c; return (low+live)^live;',
+      'u16 live = a+b; return (live << (c&15))^live;',
+      'u16 live = a+b; return (live >> (c&15))^live;',
+      'u8 *target = &ra_buffer[32]; u8 live = b^c; target[a] = live; u16 loaded = target[a]; return loaded+live;',
+      'u8 *target = &ra_buffer[32]; u8 live = b^c; s8 index = a^1; target[index] = live; u16 loaded = target[index]; return loaded+live;'
+    ][variant], variant >= 8 ? [1, 1, 1] : variant === 2 || variant === 3 ? [1, 1, 2] : [2, 2, 2], 2],
     ['matrix_structural', 'u8 *target, u8 *alias, u8 start, u8 count, u8 selector, u8 value', `u16 total = value; u8 saved = selector^value; u8 row = 0; while (row < count) { ${variant & 4 ? 'u8 column = 0; while (column < 2) {' : ''} u8 previous = target[start+row+${inner}]; ${variant & 1 ? call : ''} if ((previous^selector)&1) { alias[start+row+${inner}] = previous+saved; } else { target[start+row+${inner}] = previous^saved; } ${variant & 1 ? '' : call} total = total+target[start+row+${inner}]+called; ${variant & 4 ? 'column = column+1; }' : ''} row = row+1; } return total;`, [2, 2, 1, 1, 1, 1], 2],
     ['scalar_byte', 'u8 a, u8 b, u8 c', 'u8 saved = a^b; return (c+c)+saved;', [1, 1, 1], 1],
     ['scalar_signed_byte', 's8 a, s8 b, s8 c', 's8 saved = a^b; return (c|7)^saved;', [1, 1, 1], 1],
@@ -126,7 +139,7 @@ for (let variant = 0; variant < 12; variant++) {
     if (variant >= 8 && !family.startsWith('matrix_')) continue;
     if (family.startsWith('matrix_') && variant >= ({matrix_byte: 10, matrix_word: 10,
       matrix_compare_byte: 12, matrix_compare_word: 12, matrix_compare_signed: 12,
-      matrix_low_byte: 10, matrix_structural: 8}[family] || 2)) continue;
+      matrix_low_byte: 10, matrix_structural: 8, matrix_sentinel: 10}[family] || 2)) continue;
     if (comparisonForms && family !== 'arithmetic' && !family.startsWith('matrix_compare_')) continue;
     if (process.env.RA_FAMILIES && family !== 'arithmetic' && !process.env.RA_FAMILIES.split(',').includes(family)) continue;
     const scalarFamily = family.startsWith('scalar_') || family === 'word_bc';
@@ -328,6 +341,29 @@ for (const program of programs) {
         expected = (parameters[2] + (program.variant < 2 ?
           ((parameters[0] ^ 65535) + parameters[1]) & 255 :
           parameters[1] + (program.variant >= 6 && narrowed >= 128 ? narrowed - 256 : narrowed))) & 65535;
+        break;
+      }
+      case 'matrix_sentinel': {
+        const edges = [0, 1, 127, 128, 255, 256, 32768, 65535];
+        parameters = [(seed * 7919) & 65535, (seed * 5113 + 65535) & 65535,
+          (seed * 3571 + 32767) & 65535];
+        if (seed < 64) parameters = [edges[Math.floor(seed / 8)], edges[seed % 8], edges[(seed + 3) % 8]];
+        const [first, second, last] = parameters;
+        const live = (first + second) & 65535;
+        const saved = last ^ 65535;
+        if (program.variant < 2) expected = program.variant ? ((live ^ saved) + live) & 65535 : ((live + saved) & 65535) ^ live;
+        else if (program.variant < 4) {
+          parameters[0] &= 255; parameters[1] &= 255;
+          const byte = parameters[0] ^ parameters[1];
+          expected = ((last + last) + (byte >= 128 ? byte - 256 : byte)) & 65535;
+        } else if (program.variant < 6) expected = ((live + (last & 255)) & 65535) ^ live;
+        else if (program.variant < 8) expected = ((program.variant & 1 ? live >>> (last & 15) : live << (last & 15)) & 65535) ^ live;
+        else {
+          parameters = [((seed % 63) - 31) & 255, other, third];
+          const index = parameters[0] ^ (program.variant & 1);
+          expectedBuffer[32 + (index >= 128 ? index - 256 : index)] = other ^ third;
+          expected = (other ^ third) * 2;
+        }
         break;
       }
       case 'matrix_shift': {

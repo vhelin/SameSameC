@@ -5365,59 +5365,53 @@ static char *_get_first_allocator_physical_register_name(int physical_register);
 
 static int _is_z80_basic_block_transparent_tac_for_physical_register(struct tac *t, int physical_register) {
 
+  int read_units, written_units, scratch_units;
+
   if (t->op == TAC_OP_DEAD || t->op == TAC_OP_CREATE_VARIABLE)
     return YES;
 
-  if (physical_register == Z80_PHY_C) {
-    if (_is_register_allocator_byte_transparent_tac(t, physical_register) == YES)
-      return YES;
-    if ((t->op == TAC_OP_JUMP_EQ || t->op == TAC_OP_JUMP_NEQ ||
-        t->op == TAC_OP_JUMP_LT || t->op == TAC_OP_JUMP_GT ||
-        t->op == TAC_OP_JUMP_LTE || t->op == TAC_OP_JUMP_GTE) &&
+  read_units = _get_z80_register_allocator_physical_register_units(t->arg1_physical_register) |
+    _get_z80_register_allocator_physical_register_units(t->arg2_physical_register);
+  written_units = t->op == TAC_OP_ARRAY_WRITE ? RA_Z80_UNIT_NONE :
+    _get_z80_register_allocator_physical_register_units(t->result_physical_register);
+  scratch_units = RA_Z80_UNIT_A | RA_Z80_UNIT_H | RA_Z80_UNIT_L;
+  if (_z80_tac_may_clobber_bc(t->op) == YES)
+    scratch_units |= RA_Z80_UNIT_B | RA_Z80_UNIT_C;
+
+  if (t->op == TAC_OP_COMPLEMENT && t->result_physical_register == Z80_PHY_BC &&
+      (t->arg1_var_type_promoted == VARIABLE_TYPE_UINT16 || t->arg1_var_type_promoted == VARIABLE_TYPE_INT16))
+    scratch_units = RA_Z80_UNIT_A;
+  else {
+    if (_is_register_allocator_byte_transparent_tac(t, Z80_PHY_C) == YES)
+      scratch_units &= ~RA_Z80_UNIT_C;
+    if (_is_register_allocator_byte_transparent_tac(t, Z80_PHY_B) == YES)
+      scratch_units &= ~RA_Z80_UNIT_B;
+    if (_is_register_allocator_jump_op(t->op) == YES && t->op != TAC_OP_JUMP &&
         (t->arg1_var_type_promoted == VARIABLE_TYPE_INT8 ||
         t->arg1_var_type_promoted == VARIABLE_TYPE_UINT8) &&
         (t->arg2_var_type_promoted == VARIABLE_TYPE_INT8 ||
-        t->arg2_var_type_promoted == VARIABLE_TYPE_UINT8))
-      return YES;
-    if (_z80_tac_may_clobber_bc(t->op) == NO)
-      return YES;
-    return NO;
-  }
-
-  if (physical_register == Z80_PHY_B) {
-    if (_is_register_allocator_byte_transparent_tac(t, physical_register) == YES)
-      return YES;
-    if (_is_register_allocator_jump_op(t->op) == YES && t->op != TAC_OP_JUMP &&
-        (t->arg1_var_type_promoted == VARIABLE_TYPE_INT8 || t->arg1_var_type_promoted == VARIABLE_TYPE_UINT8) &&
-        (t->arg2_var_type_promoted == VARIABLE_TYPE_INT8 || t->arg2_var_type_promoted == VARIABLE_TYPE_UINT8) &&
-        (t->arg2_type == TAC_ARG_TYPE_CONSTANT || t->arg2_physical_register == Z80_PHY_B))
-      return YES;
-    if (_z80_tac_may_clobber_bc(t->op) == NO)
-      return YES;
-    return NO;
-  }
-
-  if (physical_register == Z80_PHY_BC) {
+        t->arg2_var_type_promoted == VARIABLE_TYPE_UINT8)) {
+      scratch_units &= ~RA_Z80_UNIT_C;
+      if (t->arg2_type == TAC_ARG_TYPE_CONSTANT || t->arg2_physical_register == Z80_PHY_B)
+        scratch_units &= ~RA_Z80_UNIT_B;
+    }
     if (t->arg2_physical_register == Z80_PHY_BC &&
         t->result_physical_register != Z80_PHY_BC &&
         t->result_physical_register != Z80_PHY_B && t->result_physical_register != Z80_PHY_C &&
         (t->arg1_var_type_promoted == VARIABLE_TYPE_UINT16 || t->arg1_var_type_promoted == VARIABLE_TYPE_INT16) &&
         (t->arg2_var_type_promoted == VARIABLE_TYPE_UINT16 || t->arg2_var_type_promoted == VARIABLE_TYPE_INT16) &&
         (t->op == TAC_OP_ADD || t->op == TAC_OP_SUB || t->op == TAC_OP_AND || t->op == TAC_OP_OR || t->op == TAC_OP_XOR))
-      return YES;
-    if (_z80_tac_may_clobber_bc(t->op) == NO)
-      return YES;
-    return NO;
+      scratch_units &= ~(read_units & (RA_Z80_UNIT_B | RA_Z80_UNIT_C));
+    if (t->op == TAC_OP_ASSIGNMENT) {
+      scratch_units &= ~(RA_Z80_UNIT_H | RA_Z80_UNIT_L);
+      if (t->arg1_type == TAC_ARG_TYPE_CONSTANT)
+        scratch_units &= ~RA_Z80_UNIT_A;
+    }
   }
 
-  if (t->op == TAC_OP_ASSIGNMENT) {
-    if (physical_register == Z80_PHY_HL)
-      return YES;
-    if (physical_register == Z80_PHY_A && t->arg1_type == TAC_ARG_TYPE_CONSTANT)
-      return YES;
-  }
-
-  return NO;
+  return ((written_units | scratch_units) &
+      _get_z80_register_allocator_physical_register_units(physical_register)) == 0 &&
+    physical_register != Z80_PHY_NONE ? YES : NO;
 }
 
 
@@ -6626,11 +6620,6 @@ static int _debug_register_allocator_liveness(struct tree_node *function_node, s
             }
           }
           for (slot_index = 0; slot_index < slot_count; slot_index++) {
-            if (registers[slot_index] == Z80_PHY_HL &&
-                operand_registers[TAC_USE_RESULT] == Z80_PHY_BC &&
-                _is_intervening_bc_candidate_transparent_for_hl(function_node,
-                instruction_index, blocks[block_index].end_tac) == YES)
-              continue;
             if (_get_register_allocator_target_policy()->is_tac_transparent_for_physical_register(instruction, registers[slot_index]) == NO) {
               for (temp_index = 0; temp_index < temp_count; temp_index++)
                 owners[temp_index] &= ~(1 << slot_index);

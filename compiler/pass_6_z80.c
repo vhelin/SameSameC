@@ -2050,21 +2050,13 @@ static int _materialize_to_hl(struct z80_location *location, FILE *file_out) {
   }
   else if (location->kind == LOC_PHY_HL) {
   }
-  else if (location->kind == LOC_PHY_A) {
-    fprintf(file_out, "      LD  L,A\n");
+  else if (location->kind == LOC_PHY_A || location->kind == LOC_PHY_B || location->kind == LOC_PHY_C) {
+    fprintf(file_out, "      LD  L,%s\n", _get_z80_physical_register_name(location->phy));
     _load_value_to_h(0, file_out);
   }
   else if (location->kind == LOC_PHY_BC) {
     fprintf(file_out, "      LD  L,C\n");
     fprintf(file_out, "      LD  H,B\n");
-  }
-  else if (location->kind == LOC_PHY_B) {
-    fprintf(file_out, "      LD  L,B\n");
-    _load_value_to_h(0, file_out);
-  }
-  else if (location->kind == LOC_PHY_C) {
-    fprintf(file_out, "      LD  L,C\n");
-    _load_value_to_h(0, file_out);
   }
   else if (location->kind == LOC_GLOBAL || location->kind == LOC_STACK_LOCAL || location->kind == LOC_STACK_SPILL) {
     _load_from_iy_to_l(0, file_out);
@@ -3194,27 +3186,15 @@ static int _generate_asm_complement_z80_16bit(struct tac *t, FILE *file_out, str
       _trace_z80_specialized_address_materialization(function_node, "complement_16bit_arg1_address", "arg1",
                                                       &arg1_location, RA_ADDRESS_TARGET_IX, ix_offset);
 
-      if (t->arg1_var_type == VARIABLE_TYPE_INT16 || t->arg1_var_type == VARIABLE_TYPE_UINT16) {
-        _load_from_ix_to_c(ix_offset, file_out);
-        _load_from_ix_to_b(ix_offset + 1, file_out);
+      if (t->arg1_var_type != VARIABLE_TYPE_INT16 && t->arg1_var_type != VARIABLE_TYPE_UINT16 &&
+          !((t->arg1_var_type == VARIABLE_TYPE_INT8 || t->arg1_var_type == VARIABLE_TYPE_UINT8) &&
+          (t->arg1_var_type_promoted == VARIABLE_TYPE_INT16 || t->arg1_var_type_promoted == VARIABLE_TYPE_UINT16))) {
+        fprintf(stderr, "_generate_asm_complement_z80_16bit(): Unhandled 8-bit ARG1 for BC result! Please submit a bug report!\n");
+        print_tac(t, NO, stderr);
+        return FAILED;
       }
-      else {
-        _load_from_ix_to_c(ix_offset, file_out);
-
-        if (t->arg1_var_type == VARIABLE_TYPE_INT8 && (t->arg1_var_type_promoted == VARIABLE_TYPE_INT16 ||
-                                                       t->arg1_var_type_promoted == VARIABLE_TYPE_UINT16)) {
-          _sign_extend_c_to_bc(file_out);
-        }
-        else if (t->arg1_var_type == VARIABLE_TYPE_UINT8 && (t->arg1_var_type_promoted == VARIABLE_TYPE_INT16 ||
-                                                             t->arg1_var_type_promoted == VARIABLE_TYPE_UINT16)) {
-          _load_value_to_b(0, file_out);
-        }
-        else {
-          fprintf(stderr, "_generate_asm_complement_z80_16bit(): Unhandled 8-bit ARG1 for BC result! Please submit a bug report!\n");
-          print_tac(t, NO, stderr);
-          return FAILED;
-        }
-      }
+      if (_materialize_array_index_to_bc(&arg1_location, t->arg1_var_type, ix_offset, NO, file_out) == FAILED)
+        return FAILED;
     }
 
     _complement_bc(file_out);
@@ -4599,32 +4579,15 @@ static int _aaa_generate_asm_shift_left_right_z80_16bit(struct tac *t, FILE *fil
     _load_value_to_bc(arg2_location.value, file_out);
   }
   else {
-    if (t->arg2_var_type == VARIABLE_TYPE_INT16 || t->arg2_var_type == VARIABLE_TYPE_UINT16) {
-      /* 16-bit */
-      _load_from_ix_to_c(ix_offset, file_out);
-      _load_from_ix_to_b(ix_offset + 1, file_out);
+    if (t->arg2_var_type != VARIABLE_TYPE_INT16 && t->arg2_var_type != VARIABLE_TYPE_UINT16 &&
+        !((t->arg2_var_type == VARIABLE_TYPE_INT8 || t->arg2_var_type == VARIABLE_TYPE_UINT8) &&
+        (t->arg2_var_type_promoted == VARIABLE_TYPE_INT16 || t->arg2_var_type_promoted == VARIABLE_TYPE_UINT16))) {
+      fprintf(stderr, "_aaa_generate_asm_shift_left_right_z80_16bit(): Unhandled 8-bit ARG2! Please submit a bug report!\n");
+      print_tac(t, NO, stderr);
+      return FAILED;
     }
-    else {
-      /* 8-bit */
-      _load_from_ix_to_c(ix_offset, file_out);
-
-      /* sign extend 8-bit -> 16-bit? */
-      if (t->arg2_var_type == VARIABLE_TYPE_INT8 && (t->arg2_var_type_promoted == VARIABLE_TYPE_INT16 ||
-                                                     t->arg2_var_type_promoted == VARIABLE_TYPE_UINT16)) {
-        /* yes */
-        _sign_extend_c_to_bc(file_out);
-      }
-      else if (t->arg2_var_type == VARIABLE_TYPE_UINT8 && (t->arg2_var_type_promoted == VARIABLE_TYPE_INT16 ||
-                                                           t->arg2_var_type_promoted == VARIABLE_TYPE_UINT16)) {
-        /* upper byte -> 0 */
-        _load_value_to_b(0, file_out);
-      }
-      else {
-        fprintf(stderr, "_aaa_generate_asm_shift_left_right_z80_16bit(): Unhandled 8-bit ARG2! Please submit a bug report!\n");
-        print_tac(t, NO, stderr);
-        return FAILED;
-      }
-    }
+    if (_materialize_array_index_to_bc(&arg2_location, t->arg2_var_type, ix_offset, NO, file_out) == FAILED)
+      return FAILED;
   }
 
   /******************************************************************************************************/
