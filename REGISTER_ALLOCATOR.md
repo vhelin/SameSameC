@@ -10345,21 +10345,21 @@ counts identify audit targets, not dynamic savings or guaranteed opportunities.
 
 ### Batch 322-324: Select Placements By Cost
 
-- [ ] **322. Rank all legal placements before committing a transition.**
+- [x] **322. Rank all legal placements before committing a transition.**
       Replace first-eligible arbitration plus a later single-register cost
       override with comparison of the existing legal A/HL/BC/B/C alternatives.
       Include displaced-owner costs and the opportunity cost of BC occupying
       both B and C. Keep qualification read-only until the selected plan passes
       existing atomic preflight. Add a case where the first legal placement is
       inferior to another legal placement, with measured emitted benefit.
-- [ ] **323. Reduce copies through placement affinity.** Prefer compatible
+- [x] **323. Reduce copies through placement affinity.** Prefer compatible
       source/result locations when the source dies at the operation, and use
       legal commutative operand ordering to avoid unnecessary materialization.
       Price moves and scratch preservation rather than rewarding retention
       alone. Keep subtraction, comparisons, shifts, aliased operands, and
       BC/B/C overlap as explicit safety controls. Demonstrate fewer executed
       moves or cycles, not merely a lower static copy count.
-- [ ] **324. Make the cost model lowering-aware and loop-weighted.** Replace
+- [x] **324. Make the cost model lowering-aware and loop-weighted.** Replace
       unexplained fixed transfer approximations with costs consistent with
       the selected emitter paths, including IX/IY setup, typed extension,
       preservation, reloads, and existing rematerialization. Weight uses and
@@ -10368,6 +10368,86 @@ counts identify audit targets, not dynamic savings or guaranteed opportunities.
       256-instruction/unknown-cost fallback explicit and test it. Retain
       negative profitability controls and the cycles/no-byte-growth policy
       unless a separately explained objective change is approved.
+
+                  Qualification for 322-324 (bounded cost-ranked placements):
+
+                  - Existing policy alternatives A/C/B or HL/BC are qualified read-only
+                        before atomic application, including alternatives hidden by initial
+                        rejection. The existing transition observer prices the candidate
+                        against displaced-owner reuse; copied slots exclude only the trial
+                        owner, so other BC/B/C overlaps and reservations still reject. No
+                        multi-owner eviction or new mutation protocol is introduced. Known
+                        alternatives must improve cycles without worsening saved bytes;
+                        unknown costs retain the established next-use placement fallback.
+                  - Existing BC complement lowering now admits commutative left operands
+                        and word array-read indices. Legal HL/BC index alternatives score
+                        68/76 saved cycles; BC wins and independently executes two fewer
+                        register copies, eight fewer cycles, and two fewer bytes per call.
+                        Four left-complement arithmetic forms save 76 cycles, four executed
+                        instructions and two frame reads/writes per call, and 12 ROM bytes
+                        per function.
+                        Reverse-order, simultaneous-complement, pointer-base, SUB, shift,
+                        comparison, alias, call/asm, and partial-register controls remain.
+                  - Named indexed/move/address/immediate costs replace numeric transfer
+                        approximations; commutative materialization and HL-to-BC index
+                        copies follow existing lowering. Signed-byte index preservation
+                        charges its worst-case 11-cycle/three-byte difference. Existing
+                        reload/rematerialization and spill setup are priced. Containing
+                        backward CFG-edge spans estimate frequencies 1/4/16/64, capped at
+                        64; cycles are weighted, static bytes are not. These are estimates,
+                        not measured frequencies or natural-loop analysis. IX/IY cache
+                        setup savings are conservatively excluded except for spill setup;
+                        this is not instruction-exact cache or whole-program costing.
+                        Producer/consumer/reload/bound unknowns are explicit. Actual-source
+                        tests prove weights 4/64, static bytes, immutable TAC/slot inputs,
+                        and unchanged next-use decisions beyond the 256-instruction bound.
+                        The negative control still rejects byte growth (+5 cycles/-1 byte).
+                  - Saved pre-batch/current Cygwin and current native Release/ASan each
+                        pass 188,928 cases per executed mode at 512 seeds. Existing cohorts
+                        contain 88/74/110/44/44 functions with 11/37/99/37/37 normalized
+                        shapes plus nine real routines. All 21 saved/current flags-off ROM
+                        controls and 70 Cygwin/native ROM comparisons pass, with identical
+                        cross-toolchain per-function counters and traced/quiet identities.
+                        Five generated routines and both real convertNumbersToChars16
+                        routines improve; no executed function regresses. Aggregate RA
+                        cycles fall 181,536,179 -> 181,097,907, instructions 14,467,127 ->
+                        14,449,719, frame reads 3,503,346 -> 3,491,058 and writes 1,817,276
+                        -> 1,804,988. Each real formatter saves 272 cycles and eight frame
+                        reads/writes per call. Complete buffers and DE/SP remain checked.
+                  - Matrix ROM payload falls by 50 bytes. Real-project RA ROM payloads
+                        fall 23,675 -> 23,275 and 16,288 -> 16,128 bytes; frame totals/maxima
+                        become 290/105 and 253/97 (previously 291/105 and 254/97). Static
+                        register copies increase 689 -> 769 and 595 -> 627; smaller ROM
+                        and faster executed routines do not imply fewer copies everywhere.
+                        The first project's default frame remains smaller at 283/101.
+                        Five-sample Cygwin RA compile medians increase 1.14 -> 1.41 seconds
+                        (ranges 1.12-1.15 / 1.38-1.42) and 0.73 -> 0.87 (0.73-0.75 /
+                        0.85-0.89); maximum RSS is 13,352 -> 13,356 and 13,220 -> 13,200 KiB.
+                        Default medians are 0.29 -> 0.30 and 0.22 -> 0.22 seconds. Runs
+                        are ordered baseline/current, with concurrent qualification;
+                        no compiler-throughput or peak-memory improvement is claimed.
+                  - Production adds 97 net lines in the existing pass, removes duplicate
+                        transition-context initialization, and reuses preparation, scoring,
+                        unit/path checks, and atomic application. No production functions,
+                        public APIs, dependencies, new production/test files, or second cost
+                        framework are added. Existing runner/harness additions total 52 net
+                        lines. Three makefiles update only measured read-only probe counts;
+                        actual transition/rollback checks remain. Transparency tag 02 is
+                        measured at 106 versus 118 bytes, with its frame 21 -> 19 bytes.
+                  - Strict C90/-Wall/-Werror, editor diagnostics, fresh current-source
+                        compiler/verifier ASan, 150 effect checks, 10,200 endpoint cells,
+                        25 unit pairs, seven accepted/32 immutable rejected verifier cases,
+                        eight layout controls and rollback checks pass. Both sequential
+                        full suites pass all 173 tests with fresh SHA-matched binaries.
+                        All 19 protected user edits are preserved, excluding only the owned
+                        diagnostic-count hunk in the already-dirty makefile from the hash
+                        comparison; its unrelated blank-line deletion remains unstaged.
+                        Artifacts: `/tmp/ra324-final-{baseline,cygwin,native-release,native-asan}`,
+                        `/tmp/ra324-bench-{before,after}`, `/tmp/ra324-{cygwin,native}-full.log`.
+                        UBSan, Valgrind/leaks, exhaustive CFG/emitter execution, upstream
+                        emulator tests, signed-word relational ordering, and SMS hardware/
+                        bank switching remain unqualified. `-ra` remains opt-in; no later
+                        batch is started.
 
 ### Batch 325-327: Expand Evidence-Backed Value Coverage
 

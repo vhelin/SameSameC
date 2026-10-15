@@ -661,7 +661,7 @@ all: linked.sms core_liveness_storage_test tac_insert_test z80_register_spill_te
 	test "$$(grep -c "join_path_state_release function=" compiler.log)" -eq 15
 	grep -q "join_path_state_candidate function=allocatorRaCoreLivenessLoop block=1 temp=r0 slot=0 start=36 end=38 reservation=available owner=r-1 status=complete" compiler.log
 	grep -q "join_path_state_candidate function=allocatorRaCoreLivenessLoopJoin block=1 temp=r0 slot=0 start=59 end=61 reservation=available owner=r-1 status=complete" compiler.log
-	test "$$(grep -c "join_path_state_candidate function=allocatorRaCoreLiveness" compiler.log)" -eq 24
+	test "$$(grep -c "join_path_state_candidate function=allocatorRaCoreLiveness" compiler.log)" -eq 66
 	grep -q "block_exit_spill_decision function=allocatorRaCoreLivenessDiamond block=1 temp=r0 end=8 entry=0 slot=4 spill=exempt ownership=function_scan status=complete" compiler.log
 	grep -q "block_exit_spill_decision function=allocatorRaCoreLivenessDiamond block=2 temp=r0 end=10 entry=1 slot=4 spill=exempt ownership=function_scan status=complete" compiler.log
 	grep -q "block_exit_spill_decision function=allocatorRaCoreLivenessDiamond block=3 temp=r0 end=12 entry=2 slot=4 spill=exempt ownership=function_scan status=complete" compiler.log

@@ -4740,6 +4740,11 @@ static int _is_register_allocator_bc_candidate(struct tac *producer, struct tac 
 
   if (consumer->op == TAC_OP_ASSIGNMENT && consumer_arg == TAC_USE_ARG1)
     return YES;
+  if (consumer->op == TAC_OP_ARRAY_READ && consumer_arg == TAC_USE_ARG2)
+    return YES;
+  if (consumer_arg == TAC_USE_ARG1 &&
+      (consumer->op == TAC_OP_ADD || consumer->op == TAC_OP_AND || consumer->op == TAC_OP_OR || consumer->op == TAC_OP_XOR))
+    return YES;
   if ((consumer->op == TAC_OP_ADD || consumer->op == TAC_OP_SUB || consumer->op == TAC_OP_AND || consumer->op == TAC_OP_OR || consumer->op == TAC_OP_XOR) && consumer_arg == TAC_USE_ARG2)
     return YES;
 
@@ -5884,7 +5889,9 @@ struct register_allocator_slot_transition_context {
   int physical_register;
   struct register_allocator_active_slot *active_slots;
   int producer_instruction, consumer_instruction, candidate_temp, candidate_operand;
-  int split_action, block_end;
+  int split_action, block_end, frequency;
+  int cost_known;
+  long saved_cycles, saved_bytes;
 };
 
 
@@ -5894,10 +5901,14 @@ static void _observe_register_allocator_transition_preparation(void *context,
   struct register_allocator_slot_transition_context *transition_context;
   long costs[2][2] = {{0, 0}, {0, 0}};
   int known[2] = {YES, YES};
-  int choice, decision, active_future;
+  char *unknown[2] = {"none", "none"};
+  enum { indexed_cycles = 19, indexed_bytes = 3, move_cycles = 4,
+    address_cycles = 29, address_bytes = 6, immediate_cycles = 10, immediate_bytes = 3 };
+  int choice, decision, active_future, frequency;
   struct register_allocator_active_slot *active;
 
   transition_context = (struct register_allocator_slot_transition_context *)context;
+  frequency = transition_context->frequency > 0 ? transition_context->frequency : 1;
   active = &transition_context->active_slots[preparation->slot_index];
   active_future = active->temp_index >= 0 && active->next_use > transition_context->producer_instruction;
   for (choice = 0; choice < (active_future == YES ? 2 : 1); choice++) {
@@ -5913,18 +5924,19 @@ static void _observe_register_allocator_transition_preparation(void *context,
         (g_tacs[producer].op == TAC_OP_ASSIGNMENT && g_tacs[producer].arg1_type == TAC_ARG_TYPE_CONSTANT) ||
         g_tacs[producer].op == TAC_OP_FUNCTION_CALL_USE_RETURN_VALUE) {
       known[choice] = NO;
+      unknown[choice] = end - producer > 256 ? "instruction_bound" : "producer";
       continue;
     }
     byte_count = temp->size / 8;
-    costs[choice][0] = byte_count * 19;
-    costs[choice][1] = byte_count * 3;
+    costs[choice][0] = byte_count * indexed_cycles;
+    costs[choice][1] = byte_count * indexed_bytes;
     if (byte_count == 1 && physical_register != Z80_PHY_A) {
-      costs[choice][0] -= 4;
+      costs[choice][0] -= move_cycles;
       costs[choice][1]--;
     }
     if (preserve == YES) {
-      costs[choice][0] -= 29 + byte_count * 19;
-      costs[choice][1] -= 6 + byte_count * 3;
+      costs[choice][0] -= address_cycles + byte_count * indexed_cycles;
+      costs[choice][1] -= address_bytes + byte_count * indexed_bytes;
     }
     for (instruction_index = producer + 1; instruction_index <= end; instruction_index++) {
       struct tac effect = g_tacs[instruction_index];
@@ -5936,23 +5948,31 @@ static void _observe_register_allocator_transition_preparation(void *context,
         if (operand < 0 || (effect.op != TAC_OP_ADD && effect.op != TAC_OP_SUB && effect.op != TAC_OP_AND &&
             effect.op != TAC_OP_OR && effect.op != TAC_OP_XOR && effect.op != TAC_OP_ARRAY_READ)) {
           known[choice] = NO;
+          unknown[choice] = "consumer";
           break;
         }
         if (instruction_index > consumer &&
             _get_register_allocator_split_reload_physical_register(&g_tacs[instruction_index], operand, temp->size) != physical_register) {
           known[choice] = NO;
+          unknown[choice] = "reload_location";
           break;
         }
-        costs[choice][0] += byte_count * 19;
-        costs[choice][1] += byte_count * 3;
+        costs[choice][0] += byte_count * indexed_cycles;
+        costs[choice][1] += byte_count * indexed_bytes;
         if (byte_count == 1)
-          transfer_bytes = operand == TAC_USE_ARG2 && physical_register == Z80_PHY_A ? 2 :
-            (physical_register != Z80_PHY_A || operand == TAC_USE_ARG2 ? 1 : 0);
-        else if ((physical_register == Z80_PHY_BC && operand == TAC_USE_ARG1) ||
-            (physical_register == Z80_PHY_HL && operand == TAC_USE_ARG2))
+          transfer_bytes = operand == TAC_USE_ARG1 && physical_register != Z80_PHY_A ? 1 : 0;
+        else if (physical_register == Z80_PHY_BC && operand == TAC_USE_ARG1 &&
+            effect.arg2_physical_register != Z80_PHY_HL)
           transfer_bytes = 2;
-        costs[choice][0] -= transfer_bytes * 4;
+        else if (physical_register == Z80_PHY_HL && effect.op == TAC_OP_ARRAY_READ && operand == TAC_USE_ARG2)
+          transfer_bytes = 2;
+        costs[choice][0] -= transfer_bytes * move_cycles;
         costs[choice][1] -= transfer_bytes;
+        if (effect.op == TAC_OP_ARRAY_READ && operand == TAC_USE_ARG2 &&
+            byte_count == 1 && effect.arg2_var_type == VARIABLE_TYPE_INT8) {
+          costs[choice][0] -= 11;
+          costs[choice][1] -= 3;
+        }
         if (resident == NO) {
           int rematerialize = g_tacs[producer].op == TAC_OP_GET_ADDRESS_ARRAY &&
             g_tacs[producer].arg1_type == TAC_ARG_TYPE_LABEL && g_tacs[producer].arg1_node != NULL &&
@@ -5961,8 +5981,8 @@ static void _observe_register_allocator_transition_preparation(void *context,
             g_tacs[producer].arg1_node->value > 0 && g_tacs[producer].arg2_type == TAC_ARG_TYPE_CONSTANT &&
             g_tacs[producer].arg2_d >= 0.0 && g_tacs[producer].arg2_d < g_tacs[producer].arg1_node->value &&
             g_tacs[producer].arg2_d <= 32767.0 && g_tacs[producer].arg2_d == (double)(int)g_tacs[producer].arg2_d;
-          costs[choice][0] -= rematerialize == YES ? 10 : byte_count * 19;
-          costs[choice][1] -= rematerialize == YES ? 3 : byte_count * 3;
+          costs[choice][0] -= rematerialize == YES ? immediate_cycles : byte_count * indexed_cycles;
+          costs[choice][1] -= rematerialize == YES ? immediate_bytes : byte_count * indexed_bytes;
           resident = YES;
         }
         if (operand == TAC_USE_ARG1)
@@ -5975,7 +5995,11 @@ static void _observe_register_allocator_transition_preparation(void *context,
       if (_get_register_allocator_target_policy()->is_tac_transparent_for_physical_register(&effect, physical_register) == NO)
         resident = NO;
     }
+    costs[choice][0] *= frequency;
   }
+  transition_context->cost_known = known[0] == YES && (active_future == NO || known[1] == YES);
+  transition_context->saved_cycles = costs[0][0] - (active_future == YES ? costs[1][0] : 0);
+  transition_context->saved_bytes = costs[0][1] - (active_future == YES ? costs[1][1] : 0);
   decision = preparation->plan.linear_scan_decision;
   if (known[0] == YES && (costs[0][0] <= 0 || costs[0][1] < 0))
     decision = RA_LINEAR_SCAN_KEEP_ACTIVE;
@@ -5985,12 +6009,12 @@ static void _observe_register_allocator_transition_preparation(void *context,
     else if (costs[1][0] > costs[0][0] && costs[1][1] >= costs[0][1])
       decision = RA_LINEAR_SCAN_KEEP_ACTIVE;
   }
-  RA_TRACE((stderr, "register_allocator: profitability function=%s tac=%d temp=r%d phy=%s known=%s saved_cycles=%ld saved_bytes=%ld active_known=%s active_saved_cycles=%ld active_saved_bytes=%ld next_use_decision=%d decision=%d objective=cycles_no_byte_growth weight=1 frequency=estimated bound=256\n",
+  RA_TRACE((stderr, "register_allocator: profitability function=%s tac=%d temp=r%d phy=%s known=%s saved_cycles=%ld saved_bytes=%ld active_known=%s active_saved_cycles=%ld active_saved_bytes=%ld next_use_decision=%d decision=%d objective=cycles_no_byte_growth weight=%d frequency=estimated bound=256 unknown=%s active_unknown=%s address_setup=excluded_unless_spilling extension=worst_case\n",
     transition_context->function_node->children[1]->label, transition_context->producer_instruction,
     transition_context->candidate_temp, _get_first_allocator_physical_register_name(transition_context->physical_register),
     known[0] == YES ? "yes" : "no", costs[0][0], costs[0][1],
     active_future == YES && known[1] == YES ? "yes" : "no", costs[1][0], costs[1][1],
-    preparation->plan.linear_scan_decision, decision));
+    preparation->plan.linear_scan_decision, decision, frequency, unknown[0], unknown[1]));
   if (decision != preparation->plan.linear_scan_decision) {
     preparation->plan.linear_scan_decision = decision;
     if (register_allocator_plan_slot_transition(transition_context->function_node->children[1]->label,
@@ -9953,6 +9977,7 @@ static int _select_register_allocator_alternate(void *context, char *reason, int
 
 static int _run_basic_block_linear_scan(struct tree_node *function_node,
   struct register_allocator_basic_block *blocks, int block_count,
+  struct register_allocator_cfg_edge *edges, int edge_count,
   struct register_allocator_join_path_state_entry *path_state_entries,
   int path_state_count) {
 
@@ -10037,7 +10062,13 @@ static int _run_basic_block_linear_scan(struct tree_node *function_node,
       active_slot_count, (unsigned long)active_slot_bytes));
 
   for (block_index = 0; block_index < block_count; block_index++) {
-    int tac_index;
+    int tac_index, edge_index, frequency = 1;
+
+    for (edge_index = 0; edge_index < edge_count && frequency < 64; edge_index++) {
+      if (edges[edge_index].to_block <= block_index && edges[edge_index].from_block >= block_index &&
+          edges[edge_index].from_block >= edges[edge_index].to_block)
+        frequency *= 4;
+    }
 
     if (register_allocator_reset_active_slots(function_node->children[1]->label, block_index, active_slots, active_slot_count) == FAILED)
       goto cleanup;
@@ -10187,6 +10218,80 @@ static int _run_basic_block_linear_scan(struct tree_node *function_node,
             _evaluate_register_allocator_candidate_active, &dispatch_context,
           _select_register_allocator_alternate, &selection_orchestration) == FAILED)
           goto cleanup;
+
+        if (selection_orchestration.preparation.interval_blocked == NO) {
+          int candidate_index, selected = selection_orchestration.finalization.dispatch.physical_register;
+          int selected_split = selection_orchestration.finalization.split_action, best_known = NO, best_found = NO;
+          long best_cycles = 0, best_bytes = 0;
+          struct register_allocator_active_slot probe_slots[5];
+
+          if (active_slot_count > 5)
+            goto cleanup;
+          transition_context.function_node = function_node;
+          transition_context.block_index = block_index;
+          transition_context.active_slots = active_slots;
+          transition_context.producer_instruction = tac_index;
+          transition_context.consumer_instruction = next_use;
+          transition_context.candidate_temp = register_index;
+          transition_context.candidate_operand = consumer_arg;
+          transition_context.block_end = blocks[block_index].end_tac;
+          transition_context.frequency = frequency;
+          for (candidate_index = -1; candidate_index < (temp_register->size == 8 ? byte_candidate_count : word_candidate_count); candidate_index++) {
+            struct register_allocator_candidate_transition_preparation preparation;
+            int trial = candidate_index < 0 ? selected : _get_register_allocator_target_policy()->get_candidate_physical_register(temp_register->size, candidate_index);
+            int slot = _get_register_allocator_target_policy()->get_active_slot_index(trial);
+            int trial_split = candidate.has_single_read == YES ? RA_SPLIT_ACTION_NONE : RA_SPLIT_ACTION_PRESERVE;
+
+            if (slot < 0 || slot >= active_slot_count)
+              continue;
+            if (candidate_index >= 0 && trial == selection_orchestration.finalization.dispatch.physical_register)
+              continue;
+            memcpy(probe_slots, active_slots, active_slot_bytes);
+            probe_slots[slot].temp_index = -1;
+            evaluation_context.active_slots = probe_slots;
+            if (_evaluate_register_allocator_candidate_allowed(&evaluation_context, trial) == NO ||
+                _evaluate_register_allocator_candidate_path(&evaluation_context, trial) == NO ||
+                _evaluate_register_allocator_candidate_conflict(&evaluation_context, trial) == NO ||
+                (trial_split == RA_SPLIT_ACTION_PRESERVE &&
+                _get_register_allocator_target_policy()->can_preserve_split_spill(consumer->op, consumer_arg, temp_register->size, trial) == NO))
+              continue;
+            if (register_allocator_prepare_candidate_transition(function_node->children[1]->label, block_index,
+                tac_index, register_index, next_use, consumer->op, consumer_arg, trial, Z80_PHY_NONE,
+                active_slots, active_slot_count, _get_register_allocator_target_policy(), function_node,
+                _register_allocator_active_temp_has_metadata, &preparation) == FAILED)
+              goto cleanup;
+            transition_context.physical_register = trial;
+            transition_context.split_action = trial_split;
+            _observe_register_allocator_transition_preparation(&transition_context, &preparation);
+            if (best_found == NO) {
+              best_found = YES;
+              selected = trial;
+              selected_split = trial_split;
+              best_known = transition_context.cost_known;
+              best_cycles = transition_context.saved_cycles;
+              best_bytes = transition_context.saved_bytes;
+            }
+            else if (best_known == YES && transition_context.cost_known == YES &&
+                preparation.plan.linear_scan_decision != RA_LINEAR_SCAN_KEEP_ACTIVE &&
+                transition_context.saved_cycles > best_cycles && transition_context.saved_bytes >= best_bytes) {
+              selected = trial;
+              selected_split = trial_split;
+              best_cycles = transition_context.saved_cycles;
+              best_bytes = transition_context.saved_bytes;
+            }
+          }
+          RA_TRACE((stderr, "register_allocator: placement_rank function=%s tac=%d original=%s selected=%s known=%s net_cycles=%ld net_bytes=%ld mutation=no\n",
+              function_node->children[1]->label, tac_index,
+              _get_first_allocator_physical_register_name(selection_orchestration.finalization.dispatch.physical_register),
+              _get_first_allocator_physical_register_name(selected), best_known == YES ? "yes" : "no", best_cycles, best_bytes));
+          if (best_found == YES && selected != selection_orchestration.finalization.dispatch.physical_register)
+            selection_orchestration.finalization.dispatch.action = RA_CANDIDATE_DISPATCH_USE_ALTERNATE;
+          selection_orchestration.finalization.dispatch.physical_register = selected;
+          selection_orchestration.finalization.split_action = selected_split;
+          selection_orchestration.preparation.preservation_supported = selected_split == RA_SPLIT_ACTION_PRESERVE;
+          if (best_found == YES)
+            selection_orchestration.proceed = YES;
+        }
       }
       if (extended_interval == YES && selection_orchestration.proceed == NO) {
         candidate = first_candidate;
@@ -10251,16 +10356,8 @@ static int _run_basic_block_linear_scan(struct tree_node *function_node,
       }
       if (selection_orchestration.proceed == NO)
         continue;
-      transition_context.function_node = function_node;
-      transition_context.block_index = block_index;
       transition_context.physical_register = physical_register;
-      transition_context.active_slots = active_slots;
-      transition_context.producer_instruction = tac_index;
-      transition_context.consumer_instruction = next_use;
-      transition_context.candidate_temp = register_index;
-      transition_context.candidate_operand = consumer_arg;
       transition_context.split_action = split_action;
-      transition_context.block_end = blocks[block_index].end_tac;
       if (register_allocator_execute_candidate_transition(
           function_node->children[1]->label, block_index, tac_index, register_index,
           next_use, consumer->op, consumer_arg, physical_register, Z80_PHY_NONE,
@@ -10678,7 +10775,7 @@ static int _scan_register_allocator_basic_blocks(struct tree_node *function_node
   RA_TRACE((stderr, "register_allocator: join_path_state_scan function=%s capacity=%d count=%d ownership=function_scan consumption=enabled status=complete\n",
       function_node->children[1]->label, path_state_storage.entry_capacity,
       path_state_count));
-  if (_run_basic_block_linear_scan(function_node, blocks, block_count,
+  if (_run_basic_block_linear_scan(function_node, blocks, block_count, edges, edge_count,
       path_state_entries, path_state_count) == FAILED) {
     goto cleanup;
   }

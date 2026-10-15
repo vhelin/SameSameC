@@ -21,7 +21,7 @@ all: linked.sms
 	: && ! grep -q "candidate_selection_prepare function=allocatorRaSplitSpill.*status=invalid\|candidate_selection_prepare function=allocatorRaSplitSpill.*status=dependency_failed" compiler.log
 	test `grep -c "candidate_selection_orchestrate function=allocatorRaSplitSpill.*proceed=yes.*order=prepare_finalize status=complete" compiler.log` -eq 12
 	: && ! grep -q "candidate_selection_orchestrate function=allocatorRaSplitSpill.*status=invalid\|candidate_selection_orchestrate function=allocatorRaSplitSpill.*status=dependency_failed" compiler.log
-	test `grep -c "candidate_transition_prepare function=allocatorRaSplitSpill.*order=slot_resolve_transition_plan status=complete" compiler.log` -eq 12
+	test `grep -c "candidate_transition_prepare function=allocatorRaSplitSpill.*order=slot_resolve_transition_plan status=complete" compiler.log` -eq 26
 	: && ! grep -q "candidate_transition_prepare function=allocatorRaSplitSpill.*status=invalid\|candidate_transition_prepare function=allocatorRaSplitSpill.*status=dependency_failed" compiler.log
 	test `grep -c "candidate_transition_execute function=allocatorRaSplitSpill.*order=prepare_apply status=complete" compiler.log` -eq 12
 	: && ! grep -q "candidate_transition_execute function=allocatorRaSplitSpill.*status=invalid\|candidate_transition_execute function=allocatorRaSplitSpill.*status=dependency_failed" compiler.log

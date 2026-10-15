@@ -125,15 +125,15 @@ int main(int argc, char **argv) {
         int op, operand, byte_mask, word_mask, copy_byte_mask, copy_word_mask, complement_bc;
       } endpoints[] = {
         { TAC_OP_ASSIGNMENT, TAC_USE_ARG1, 1, 2, 0, 0, YES },
-        { TAC_OP_ADD, TAC_USE_ARG1, 25, 2, 24, 0, NO },
+        { TAC_OP_ADD, TAC_USE_ARG1, 25, 2, 24, 0, YES },
         { TAC_OP_ADD, TAC_USE_ARG2, 25, 2, 24, 0, YES },
         { TAC_OP_SUB, TAC_USE_ARG1, 9, 2, 8, 0, NO },
         { TAC_OP_SUB, TAC_USE_ARG2, 0, 0, 0, 0, YES },
-        { TAC_OP_AND, TAC_USE_ARG1, 25, 2, 24, 0, NO },
+        { TAC_OP_AND, TAC_USE_ARG1, 25, 2, 24, 0, YES },
         { TAC_OP_AND, TAC_USE_ARG2, 25, 2, 24, 0, YES },
-        { TAC_OP_OR, TAC_USE_ARG1, 25, 2, 24, 0, NO },
+        { TAC_OP_OR, TAC_USE_ARG1, 25, 2, 24, 0, YES },
         { TAC_OP_OR, TAC_USE_ARG2, 25, 2, 24, 0, YES },
-        { TAC_OP_XOR, TAC_USE_ARG1, 25, 2, 24, 0, NO },
+        { TAC_OP_XOR, TAC_USE_ARG1, 25, 2, 24, 0, YES },
         { TAC_OP_XOR, TAC_USE_ARG2, 25, 2, 24, 0, YES },
         { TAC_OP_COMPLEMENT, TAC_USE_ARG1, 17, 2, 16, 0, NO },
         { TAC_OP_SHIFT_LEFT, TAC_USE_ARG1, 17, 2, 16, 0, NO },
@@ -141,7 +141,7 @@ int main(int argc, char **argv) {
         { TAC_OP_SHIFT_RIGHT, TAC_USE_ARG1, 17, 2, 16, 0, NO },
         { TAC_OP_SHIFT_RIGHT, TAC_USE_ARG2, 1, 4, 0, 0, NO },
         { TAC_OP_ARRAY_READ, TAC_USE_ARG1, 0, 2, 0, 2, NO },
-        { TAC_OP_ARRAY_READ, TAC_USE_ARG2, 25, 2, 24, 0, NO },
+        { TAC_OP_ARRAY_READ, TAC_USE_ARG2, 25, 2, 24, 0, YES },
         { TAC_OP_GET_ADDRESS_ARRAY, TAC_USE_ARG1, 0, 2, 0, 2, NO },
         { TAC_OP_GET_ADDRESS_ARRAY, TAC_USE_ARG2, 25, 2, 24, 0, NO },
         { TAC_OP_ARRAY_WRITE, TAC_USE_ARG1, 1, 2, 0, 0, NO },
@@ -427,6 +427,9 @@ int main(int argc, char **argv) {
     struct register_allocator_active_slot slots[5];
     struct register_allocator_candidate_transition_preparation preparation;
     struct register_allocator_slot_transition_context context;
+    struct tac before[4];
+    struct register_allocator_active_slot slots_before[5];
+    long cycles, bytes;
     int slot = _get_register_allocator_target_policy()->get_active_slot_index(Z80_PHY_C);
     memset(&context, 0, sizeof(context));
     context.function_node = &function;
@@ -449,6 +452,29 @@ int main(int argc, char **argv) {
     if (preparation.plan.linear_scan_decision != RA_LINEAR_SCAN_KEEP_ACTIVE)
       return 1;
     fprintf(stderr, "allocation_cost_test: nearer_rejected=yes farther_reused=yes status=complete\n");
+    memcpy(before, instructions, sizeof(before));
+    memcpy(slots_before, slots, sizeof(slots_before));
+    cycles = context.saved_cycles;
+    bytes = context.saved_bytes;
+    context.frequency = 4;
+    _observe_register_allocator_transition_preparation(&context, &preparation);
+    if (context.saved_cycles != cycles * 4 || context.saved_bytes != bytes ||
+        memcmp(before, instructions, sizeof(before)) != 0 ||
+        memcmp(slots_before, slots, sizeof(slots_before)) != 0)
+      return 1;
+    context.frequency = 64;
+    _observe_register_allocator_transition_preparation(&context, &preparation);
+    if (context.saved_cycles != cycles * 64 || context.saved_bytes != bytes)
+      return 1;
+    preparation.plan.linear_scan_decision = RA_LINEAR_SCAN_REPLACE_ACTIVE;
+    context.split_action = RA_SPLIT_ACTION_PRESERVE;
+    context.block_end = context.producer_instruction + 257;
+    _observe_register_allocator_transition_preparation(&context, &preparation);
+    if (context.cost_known != NO || preparation.plan.linear_scan_decision != RA_LINEAR_SCAN_REPLACE_ACTIVE ||
+        memcmp(before, instructions, sizeof(before)) != 0 ||
+        memcmp(slots_before, slots, sizeof(slots_before)) != 0)
+      return 1;
+    fprintf(stderr, "allocation_cost_test: weighted_cycles=yes static_bytes=yes instruction_bound=256 fallback=next_use immutable=yes status=complete\n");
   }
   instructions[1].store_retained_to_spill_operand = TAC_USE_ARG2;
   _clear_tac_retained_interval(0, 1, TAC_USE_ARG2);

@@ -55,6 +55,7 @@ for (const flags of [[], ['-q']]) {
     !/allocation_policy_test: endpoints=10200 supported=\d+ rejected=\d+ independent_table=yes status=complete/.test(verifierLog) ||
     !verifierLog.includes('spill_slot_test: cases=8 overlap_width_boundary_redefinition_controls=yes tacs_unchanged=yes status=complete') ||
     !verifierLog.includes('allocation_cost_test: nearer_rejected=yes farther_reused=yes status=complete') ||
+    !verifierLog.includes('allocation_cost_test: weighted_cycles=yes static_bytes=yes instruction_bound=256 fallback=next_use immutable=yes status=complete') ||
     !verifierLog.includes('candidate_definition_test: read_before_write=yes previous_definition_excluded=yes status=complete'))
     throw new Error('Verifier coverage count mismatch');
 }
@@ -74,6 +75,9 @@ for (let variant = 0; variant < 12; variant++) {
   const functions = [
     ['matrix_byte', 'u8 a, u8 b, u8 c', `u8 saved = a^b; return ${expression};`, [1, 1, 1], 1],
     ['matrix_word', 'u16 a, u16 b, u16 c', `u16 saved = ~b; return ${expression};`, [2, 2, 2], 2],
+    ['matrix_affinity', 'u16 a, u16 b, u16 c', `u16 live = a+b; return ${variant < 4 ? '(~c)' : 'live'} ${['+', '&', '|', '^'][variant % 4]} ${variant < 4 ? 'live' : '(~c)'};`, [2, 2, 2], 2],
+    ['matrix_rank', 'u16 a, u16 b, u16 c', `u16 live = ~a; u16 saved = ~c; return live ${['+', '&', '|', '^'][variant % 4]} saved;`, [2, 2, 2], 2],
+    ['matrix_index_affinity', 'u16 a', `${variant ? 'u8 *target = &ra_buffer[0]; ' : ''}u16 index = ~a; return ${variant ? 'target' : 'ra_buffer'}[index];`, [2], 1],
     ['matrix_compare_byte', 'u8 a, u8 b, u8 c', `u8 saved = ${comparisonForms === 2 ? 'a' : 'a^b'}; if (${variant < 6 ? 'saved' : byteComparison} ${comparison} ${variant < 6 ? byteComparison : 'saved'}) { return a; } return b;`, [1, 1, 1], 1],
     ['matrix_compare_word', 'u16 a, u16 b, u16 c', `u16 saved = ${comparisonForms === 2 ? 'a' : '~b'}; if (${variant < 6 ? 'saved' : wordComparison} ${comparison} ${variant < 6 ? wordComparison : 'saved'}) { return a; } return b;`, [2, 2, 2], 2],
     ['matrix_compare_signed', 's8 a, s8 b, s8 c', `s8 saved = ${comparisonForms === 2 ? 'a' : 'a^b'}; if (${variant < 6 ? 'saved' : signedComparison} ${comparison} ${variant < 6 ? signedComparison : 'saved'}) { return a; } return b;`, [1, 1, 1], 1],
@@ -139,7 +143,7 @@ for (let variant = 0; variant < 12; variant++) {
     if (variant >= 8 && !family.startsWith('matrix_')) continue;
     if (family.startsWith('matrix_') && variant >= ({matrix_byte: 10, matrix_word: 10,
       matrix_compare_byte: 12, matrix_compare_word: 12, matrix_compare_signed: 12,
-      matrix_low_byte: 10, matrix_structural: 8, matrix_sentinel: 10}[family] || 2)) continue;
+      matrix_low_byte: 10, matrix_structural: 8, matrix_sentinel: 10, matrix_affinity: 8, matrix_rank: 4}[family] || 2)) continue;
     if (comparisonForms && family !== 'arithmetic' && !family.startsWith('matrix_compare_')) continue;
     if (process.env.RA_FAMILIES && family !== 'arithmetic' && !process.env.RA_FAMILIES.split(',').includes(family)) continue;
     const scalarFamily = family.startsWith('scalar_') || family === 'word_bc';
@@ -193,6 +197,11 @@ if (!readFileSync(join(output, 'ra/main.asm')).equals(readFileSync(join(output, 
 const allocatorLog = readFileSync(join(output, 'ra/compiler.log'), 'utf8');
 for (const program of process.env.RA_BASELINE === '1' ? [] : programs) {
   const lines = allocatorLog.split(/\r?\n/).filter(line => line.includes(`function=${program.name} `));
+  if (program.family === 'matrix_index_affinity' && program.variant === 0 &&
+      (!lines.some(line => /profitability .*phy=HL known=yes /.test(line)) ||
+       !lines.some(line => /profitability .*phy=BC known=yes /.test(line)) ||
+       !lines.some(line => /placement_rank .*original=HL selected=BC known=yes .*mutation=no$/.test(line))))
+    throw new Error(`Cost-ranked word-index affinity missing: ${program.name}`);
   if (program.family === 'scalar_split_byte' &&
       (lines.filter(line => line.includes('scalar_split_transfer') && line.endsWith('kind=store')).length !== 1 ||
        lines.filter(line => line.includes('scalar_split_transfer') && line.endsWith('kind=reload')).length !== 1 ||
@@ -200,7 +209,10 @@ for (const program of process.env.RA_BASELINE === '1' ? [] : programs) {
     throw new Error(`Split transfer counts changed: ${program.name}`);
   if (program.family === 'scalar_cost_reject_byte' &&
       (lines.some(line => line.includes('scalar_split_transfer')) ||
-       !lines.some(line => /profitability .*known=yes saved_cycles=-7 saved_bytes=-4 .*decision=3 /.test(line))))
+       !lines.some(line => {
+         const score = line.match(/profitability .*known=yes saved_cycles=(-?\d+) saved_bytes=(-?\d+) .*decision=3 /);
+         return score && (Number(score[1]) <= 0 || Number(score[2]) < 0);
+       })))
     throw new Error(`Unprofitable split accepted: ${program.name}`);
   if (['scalar_region', 'scalar_call_region'].includes(program.family) &&
       (lines.filter(line => /scalar_split_transfer.*kind=store$/.test(line)).length !== 1 ||
@@ -341,6 +353,20 @@ for (const program of programs) {
         expected = (parameters[2] + (program.variant < 2 ?
           ((parameters[0] ^ 65535) + parameters[1]) & 255 :
           parameters[1] + (program.variant >= 6 && narrowed >= 128 ? narrowed - 256 : narrowed))) & 65535;
+        break;
+      }
+      case 'matrix_index_affinity':
+        parameters = [65535 - seed % buffer.length];
+        expected = buffer[seed % buffer.length];
+        break;
+      case 'matrix_rank':
+      case 'matrix_affinity': {
+        const edges = [0, 1, 127, 128, 255, 256, 32768, 65535];
+        parameters = seed < 64 ? [edges[Math.floor(seed / 8)], edges[seed % 8], edges[(seed + 3) % 8]] :
+          [(seed * 7919) & 65535, (seed * 5113 + 65535) & 65535, (seed * 3571 + 32767) & 65535];
+        const live = program.family === 'matrix_rank' ? parameters[0] ^ 65535 : (parameters[0] + parameters[1]) & 65535;
+        const saved = parameters[2] ^ 65535;
+        expected = [live + saved, live & saved, live | saved, live ^ saved][program.variant % 4] & 65535;
         break;
       }
       case 'matrix_sentinel': {
