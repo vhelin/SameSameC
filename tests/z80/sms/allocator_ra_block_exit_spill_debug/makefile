@@ -11,8 +11,8 @@ OFILES = main.asm
 
 all: linked.sms
 	$(BT) -s main.ssc
-	test `grep -c "control_flow_storage function=allocatorRaBlockExit.*status=complete" compiler.log` -eq 4
-	test `grep -c "control_flow_storage function=allocatorRaBlockExit.*instruction_bytes=[1-9][0-9]*.*status=complete" compiler.log` -eq 4
+	test `grep -c "control_flow_storage function=allocatorRaBlockExit.*status=complete" compiler.log` -eq 8
+	test `grep -c "control_flow_storage function=allocatorRaBlockExit.*instruction_bytes=[1-9][0-9]*.*status=complete" compiler.log` -eq 8
 	test `grep -c "allocation_verify function=allocatorRaBlockExit.*status=complete" compiler.log` -eq 4
 	: && ! grep -q "control_flow_storage function=allocatorRaBlockExit.*status=invalid_input" compiler.log
 	grep -q "linear_scan retain function=allocatorRaBlockExitRetainA" compiler.log

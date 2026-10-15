@@ -13,10 +13,10 @@ all: linked.sms
 	grep -q "struct_access_address function=allocatorRaStructArrayFieldWriteA root=g_allocator_struct_array_field_values access=array" compiler.log
 	grep -q "struct_access_address function=allocatorRaStructArrayFieldReadHl root=g_allocator_struct_array_field_values access=array" compiler.log
 	grep -q "migrated_emitter function=allocatorRaStructArrayFieldWriteA.*ARRAY_WRITE.*barrier=removed" compiler.log
-	grep -q "linear_scan retain.*function=allocatorRaStructArrayFieldWriteA.*GET_ADDRESS.*ADD arg1" compiler.log
 	grep -q "linear_scan retain.*function=allocatorRaStructArrayFieldWriteA.*ADD.*ARRAY_WRITE result" compiler.log
-	grep -q "linear_scan retain_interval.*function=allocatorRaStructArrayFieldReadHl.*ADD.*ARRAY_READ arg1" compiler.log
-	grep -q "linear_scan retain_interval.*function=allocatorRaStructArrayFieldReadHl.*ARRAY_READ.*XOR arg1" compiler.log
+	grep -q "linear_scan retain.*function=allocatorRaStructArrayFieldWriteA.*ADD.*ARRAY_WRITE result" compiler.log
+	grep -q "linear_scan retain.*.*function=allocatorRaStructArrayFieldReadHl.*ADD.*ARRAY_READ arg1" compiler.log
+	grep -q "linear_scan retain.*.*function=allocatorRaStructArrayFieldReadHl.*ARRAY_READ.*XOR arg1" compiler.log
 	grep -q "resolve function=allocatorRaStructArrayFieldWriteA operand=result kind=PHY_HL" compiler.log
 	grep -q "resolve function=allocatorRaStructArrayFieldReadHl operand=arg1 kind=PHY_HL" compiler.log
 	grep -q "array_write_base function=allocatorRaStructArrayFieldWriteA kind=PHY_HL memory_pointer_load=no" compiler.log

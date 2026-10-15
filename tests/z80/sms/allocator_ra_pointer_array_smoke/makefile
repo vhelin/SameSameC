@@ -12,20 +12,20 @@ OFILES = main.asm
 all: linked.sms
 	grep -q "migrated_emitter function=allocatorRaPointerArraySmoke.*ARRAY_WRITE.*barrier=removed" compiler.log
 	grep -q "linear_scan retain function=allocatorRaPointerArraySmoke.*8-bit in A.*ARRAY_WRITE arg1" compiler.log
-	grep -q "linear_scan retain_interval function=allocatorRaPointerArraySmoke.*16-bit in HL.*ARRAY_READ arg2" compiler.log
-	grep -q "linear_scan retain_interval function=allocatorRaPointerArraySmoke.*16-bit in HL.*ARRAY_READ.*XOR arg1" compiler.log
-	grep -q "linear_scan retain_interval function=allocatorRaPointerArraySmoke.*16-bit in HL.*ARRAY_WRITE arg1" compiler.log
+	grep -q "linear_scan retain.* function=allocatorRaPointerArraySmoke.*8-bit in A.*ARRAY_READ arg2" compiler.log
+	grep -q "linear_scan retain.* function=allocatorRaPointerArraySmoke.*8-bit in A.*ARRAY_READ.*XOR arg1" compiler.log
+	grep -q "linear_scan retain.* function=allocatorRaPointerArraySmoke.*16-bit in HL.*ARRAY_WRITE arg1" compiler.log
 	grep -q "array_read_base function=allocatorRaPointerArraySmoke kind=STACK_LOCAL memory_pointer_load=yes offset=-6" compiler.log
 	grep -q "array_read_base function=allocatorRaPointerArraySmoke kind=STACK_LOCAL memory_pointer_load=yes offset=-8" compiler.log
 	grep -q "array_write_base function=allocatorRaPointerArraySmoke kind=STACK_LOCAL memory_pointer_load=yes offset=-15" compiler.log
 	grep -q "array_write_base function=allocatorRaPointerArraySmoke kind=STACK_LOCAL memory_pointer_load=yes offset=-6" compiler.log
 	grep -q "array_write_value function=allocatorRaPointerArraySmoke kind=PHY_A bytes=1" compiler.log
 	grep -q "array_write_value function=allocatorRaPointerArraySmoke kind=PHY_HL bytes=2" compiler.log
-	grep -q "array_read_index function=allocatorRaPointerArraySmoke kind=PHY_HL" compiler.log
-	grep -q "register 0 size 2 spill yes phy NONE" main.asm
+	grep -q "array_read_index function=allocatorRaPointerArraySmoke kind=PHY_A" compiler.log
+	grep -q "register 0 size 1 spill no phy C" main.asm
 	grep -q "register 1 size 1 spill no phy A" main.asm
 	grep -q "retained arg1 in A" main.asm
-	grep -q "retained arg2 in HL" main.asm
+	grep -q "retained arg2 in A" main.asm
 	grep -q "retained result in HL" main.asm
 	grep -q "retained arg1 in HL" main.asm
 	: && ! grep -q "reason=unmigrated_emitter.*ARRAY" compiler.log

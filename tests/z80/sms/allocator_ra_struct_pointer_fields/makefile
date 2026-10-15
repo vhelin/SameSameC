@@ -14,12 +14,12 @@ all: linked.sms
 	grep -q "struct_access_address function=allocatorRaStructPointerFieldWriteA root=g_allocator_struct_pointer_outer_ptr access=pointer" compiler.log
 	grep -q "struct_access_indirect function=allocatorRaStructPointerFieldReadHl" compiler.log
 	grep -q "struct_access_address function=allocatorRaStructPointerFieldReadHl root=g_allocator_struct_pointer_outer_ptr access=pointer" compiler.log
-	grep -q "linear_scan retain_interval.*function=allocatorRaStructPointerFieldWriteA.*ADD.*ARRAY_READ arg1" compiler.log
-	grep -q "linear_scan retain_interval.*function=allocatorRaStructPointerFieldWriteA.*ARRAY_READ.*ADD arg1" compiler.log
+	grep -q "linear_scan retain.*.*function=allocatorRaStructPointerFieldWriteA.*ADD.*ARRAY_READ arg1" compiler.log
+	grep -q "linear_scan retain.*.*function=allocatorRaStructPointerFieldWriteA.*ARRAY_READ.*ADD arg1" compiler.log
 	grep -q "linear_scan retain.*function=allocatorRaStructPointerFieldWriteA.*ADD.*ARRAY_WRITE result" compiler.log
-	grep -q "linear_scan retain_interval.*function=allocatorRaStructPointerFieldReadHl.*ADD.*ARRAY_READ arg1" compiler.log
-	grep -q "linear_scan retain_interval.*function=allocatorRaStructPointerFieldReadHl.*ARRAY_READ.*ARRAY_READ arg1" compiler.log
-	grep -q "linear_scan retain_interval.*function=allocatorRaStructPointerFieldReadHl.*ARRAY_READ.*XOR arg1" compiler.log
+	grep -q "linear_scan retain.*.*function=allocatorRaStructPointerFieldReadHl.*ADD.*ARRAY_READ arg1" compiler.log
+	grep -q "linear_scan retain.*.*function=allocatorRaStructPointerFieldReadHl.*ARRAY_READ.*ARRAY_READ arg1" compiler.log
+	grep -q "linear_scan retain.*.*function=allocatorRaStructPointerFieldReadHl.*ARRAY_READ.*XOR arg1" compiler.log
 	grep -q "array_read_base function=allocatorRaStructPointerFieldWriteA kind=PHY_HL memory_pointer_load=no" compiler.log
 	grep -q "array_write_base function=allocatorRaStructPointerFieldWriteA kind=PHY_HL memory_pointer_load=no" compiler.log
 	grep -q "array_read_base function=allocatorRaStructPointerFieldReadHl kind=PHY_HL memory_pointer_load=no" compiler.log

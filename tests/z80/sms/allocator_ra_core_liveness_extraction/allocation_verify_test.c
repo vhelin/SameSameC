@@ -314,5 +314,85 @@ int main(int argc, char **argv) {
       instructions[1].store_retained_to_spill_operand != -1)
     return 1;
   fprintf(stderr, "allocation_mutation_test: displaced_arg2 cleared=yes status=complete\n");
+  for (index = 0; index < 8; index++) {
+    struct tac before[5], layout[5], swap;
+    int instruction_index, offset = -6;
+    memset(instructions, 0, sizeof(instructions));
+    memset(temps, 0, sizeof(temps));
+    g_allocator_enabled = YES;
+    g_allocator_force_all_spill = index == 6 ? YES : NO;
+    for (instruction_index = 0; instruction_index < 4; instruction_index++) {
+      struct tac *instruction = &instructions[instruction_index];
+      instruction->function_node = &function;
+      instruction->op = TAC_OP_ASSIGNMENT;
+      if (instruction_index % 2 == 0) {
+        instruction->arg1_type = TAC_ARG_TYPE_CONSTANT;
+        instruction->result_type = TAC_ARG_TYPE_TEMP;
+        instruction->result_d = instruction_index / 2;
+      }
+      else {
+        instruction->arg1_type = TAC_ARG_TYPE_TEMP;
+        instruction->arg1_d = instruction_index / 2;
+      }
+    }
+    for (instruction_index = 0; instruction_index < 2; instruction_index++) {
+      temps[instruction_index].register_index = instruction_index;
+      temps[instruction_index].spill_required = YES;
+      temps[instruction_index].size = instruction_index == 0 ? 16 : 8;
+    }
+    if (index == 1) {
+      swap = instructions[1];
+      instructions[1] = instructions[2];
+      instructions[2] = swap;
+    }
+    else if (index == 3) {
+      instructions[1].result_type = TAC_ARG_TYPE_TEMP;
+      instructions[1].result_d = 0;
+    }
+    else if (index == 4) {
+      swap = instructions[1];
+      instructions[1] = instructions[2];
+      instructions[2] = swap;
+      instructions[1].op = TAC_OP_FUNCTION_CALL_USE_RETURN_VALUE;
+    }
+    else if (index == 5) {
+      temps[0].size = 8;
+      temps[1].size = 16;
+    }
+    else if (index == 7) {
+      instructions[1].op = TAC_OP_REGISTER_SPILL;
+      instructions[1].arg1_original_register_index = 0;
+      instructions[1].arg1_physical_register = Z80_PHY_HL;
+      instructions[1].arg2_type = instructions[1].result_type = TAC_ARG_TYPE_CONSTANT;
+      instructions[1].arg2_d = 2;
+      instructions[1].result_d = -7;
+    }
+    memset(layout, 0, sizeof(layout));
+    memcpy(layout, instructions, sizeof(instructions));
+    g_tacs = layout;
+    g_tacs_count = 4;
+    if (index == 2) {
+      layout[4] = layout[3];
+      layout[3] = layout[2];
+      layout[2] = layout[1];
+      memset(&layout[1], 0, sizeof(layout[1]));
+      layout[1].function_node = &function;
+      layout[1].op = TAC_OP_LABEL;
+      layout[1].result_type = TAC_ARG_TYPE_LABEL;
+      layout[1].result_s = "spillLoop";
+      layout[4].op = TAC_OP_JUMP_EQ;
+      layout[4].result_type = TAC_ARG_TYPE_LABEL;
+      layout[4].result_s = "spillLoop";
+      layout[4].arg2_type = TAC_ARG_TYPE_CONSTANT;
+      g_tacs_count = 5;
+    }
+    memcpy(before, layout, sizeof(before));
+    if (assign_spill_slot_offsets(&function, &offset) == FAILED ||
+        memcmp(before, layout, sizeof(before)) != 0 ||
+        offset != (index == 0 ? -8 : -9) ||
+        (temps[0].offset_to_fp == temps[1].offset_to_fp) != (index == 0))
+      return 1;
+  }
+  fprintf(stderr, "spill_slot_test: cases=8 overlap_width_boundary_redefinition_controls=yes tacs_unchanged=yes status=complete\n");
   return 0;
 }

@@ -10,7 +10,7 @@ all: linked.sms
 	test "$$(grep -c "root=g_allocator_union_pointer_array access=array root_kind=union_pointer_array" compiler.log)" -eq 4
 	test "$$(grep -c "struct_access_indirect function=allocatorRaUnionPointerArray.*depth=1.*access=pointer" compiler.log)" -eq 4
 	grep -q "linear_scan retain.*function=allocatorRaUnionPointerArrayWrite.*ARRAY_READ.*ARRAY_WRITE result" compiler.log
-	grep -q "linear_scan retain_interval.*function=allocatorRaUnionPointerArrayRead.*ARRAY_READ.*XOR arg1" compiler.log
+	grep -q "linear_scan retain.*.*function=allocatorRaUnionPointerArrayRead.*ARRAY_READ.*XOR arg1" compiler.log
 	grep -q "struct_access_update function=allocatorRaUnionPointerArrayIncrement op=increment.*split_candidate=yes" compiler.log
 	grep -q "struct_access_update function=allocatorRaUnionPointerArrayDecrement op=decrement.*split_candidate=yes" compiler.log
 	grep -q "linear_scan split_spill function=allocatorRaUnionPointerArrayIncrement.*phy=HL" compiler.log

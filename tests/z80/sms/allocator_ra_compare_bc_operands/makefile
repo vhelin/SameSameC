@@ -11,8 +11,8 @@ OFILES = main.asm
 
 all: linked.sms
 	grep -q "linear_scan alternate function=allocatorRaCompareCOperand.*primary=A alternate=C" compiler.log
-	test "$$(grep -c "join_assignment_apply_entry function=allocatorRaCompareCOperand temp=r2 .*phy=C status=complete" compiler.log)" -eq 3
-	grep -q "join_assignment_apply_entry function=allocatorRaCompareCOperand temp=r2 assignment=2 role=consumer instruction=23 operand=1 phy=C status=complete" compiler.log
+	test "$$(grep -c "join_assignment_apply_entry function=allocatorRaCompareCOperand temp=r4 .*phy=C status=complete" compiler.log)" -eq 3
+	grep -q "join_assignment_apply_entry function=allocatorRaCompareCOperand temp=r4 assignment=2 role=consumer instruction=23 operand=1 phy=C status=complete" compiler.log
 	grep -q "linear_scan retain.*function=allocatorRaCompareCOperand.*8-bit in C.*XOR arg1" compiler.log
 	grep -q "compare_8bit function=allocatorRaCompareCOperand.*arg1_kind=PHY_C.*arg2_kind=CONST" compiler.log
 	grep -q "retained arg1 in C" main.asm

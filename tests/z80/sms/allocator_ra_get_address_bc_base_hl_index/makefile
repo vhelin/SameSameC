@@ -12,17 +12,17 @@ OFILES = main.asm
 all: linked.sms
 	grep -q "get_address_array_pointer_base_temp function=allocatorRaGetAddressBcBaseHlIndexA" compiler.log
 	grep -q "get_address_array_pointer_base_temp function=allocatorRaGetAddressBcBaseHlIndexHl" compiler.log
-	grep -q "linear_scan retain.*function=allocatorRaGetAddressBcBaseHlIndexA.*producer_tac=.*ADD.*consumer_tac=.*GET_ADDRESS_ARRAY.*arg2" compiler.log
+	grep -q "linear_scan retain.*function=allocatorRaGetAddressBcBaseHlIndexA.*producer_tac=.*ASSIGNMENT.*consumer_tac=.*GET_ADDRESS_ARRAY.*arg1" compiler.log
 	grep -q "linear_scan retain.*function=allocatorRaGetAddressBcBaseHlIndexHl.*producer_tac=.*XOR.*consumer_tac=.*GET_ADDRESS_ARRAY.*arg2" compiler.log
-	grep -q "linear_scan alternate function=allocatorRaGetAddressBcBaseHlIndexA.*primary=HL alternate=BC" compiler.log
+	grep -q "linear_scan alternate function=allocatorRaGetAddressBcBaseHlIndexHl.*primary=HL alternate=BC" compiler.log
 	grep -q "linear_scan alternate function=allocatorRaGetAddressBcBaseHlIndexHl.*primary=HL alternate=BC" compiler.log
 	grep -q "linear_scan retain.*function=allocatorRaGetAddressBcBaseHlIndexA.*ASSIGNMENT.*GET_ADDRESS_ARRAY.*arg1" compiler.log
 	grep -q "linear_scan retain.*function=allocatorRaGetAddressBcBaseHlIndexHl.*ASSIGNMENT.*GET_ADDRESS_ARRAY.*arg1" compiler.log
-	grep -q "resolve function=allocatorRaGetAddressBcBaseHlIndexA operand=arg1 kind=PHY_BC" compiler.log
+	grep -q "resolve function=allocatorRaGetAddressBcBaseHlIndexA operand=arg1 kind=PHY_HL" compiler.log
 	grep -q "resolve function=allocatorRaGetAddressBcBaseHlIndexHl operand=arg1 kind=PHY_BC" compiler.log
-	grep -q "get_address_base function=allocatorRaGetAddressBcBaseHlIndexA kind=PHY_BC memory_pointer_load=no" compiler.log
+	grep -q "get_address_base function=allocatorRaGetAddressBcBaseHlIndexA kind=PHY_HL memory_pointer_load=no" compiler.log
 	grep -q "get_address_base function=allocatorRaGetAddressBcBaseHlIndexHl kind=PHY_BC memory_pointer_load=no" compiler.log
-	grep -q "get_address_index function=allocatorRaGetAddressBcBaseHlIndexA kind=PHY_HL" compiler.log
+	grep -q "get_address_index function=allocatorRaGetAddressBcBaseHlIndexA kind=STACK_SPILL size=1" compiler.log
 	grep -q "get_address_index function=allocatorRaGetAddressBcBaseHlIndexHl kind=PHY_HL" compiler.log
 	: && ! grep -q "stack offset requested for retained" compiler.log
 	grep -q "retained arg1 in BC" main.asm

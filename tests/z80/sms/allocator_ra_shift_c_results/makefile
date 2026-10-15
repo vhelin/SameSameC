@@ -14,8 +14,8 @@ all: linked.sms
 	grep -q "shift_result function=allocatorRaShiftResultC op=SHIFT_RIGHT kind=STACK_SPILL size=2 phy=NONE var_type=3 promoted_type=3" compiler.log
 	grep -q "shift_result function=allocatorRaShiftResultB op=SHIFT_LEFT kind=STACK_SPILL size=2 phy=NONE var_type=3 promoted_type=3" compiler.log
 	grep -q "shift_result function=allocatorRaShiftResultB op=SHIFT_RIGHT kind=STACK_SPILL size=2 phy=NONE var_type=3 promoted_type=3" compiler.log
-	grep -q "linear_scan retain_interval function=allocatorRaShiftResultC.*16-bit in HL.*producer_tac=.*(ADD).*consumer_tac=.*(XOR arg2)" compiler.log
-	grep -q "linear_scan retain_interval function=allocatorRaShiftResultC.*16-bit in HL.*producer_tac=.*(AND).*consumer_tac=.*(OR arg2)" compiler.log
+	grep -q "linear_scan retain.* function=allocatorRaShiftResultC.*16-bit in HL.*producer_tac=.*(ADD).*consumer_tac=.*(XOR arg2)" compiler.log
+	grep -q "linear_scan retain.* function=allocatorRaShiftResultC.*16-bit in HL.*producer_tac=.*(AND).*consumer_tac=.*(OR arg2)" compiler.log
 	grep -q "linear_scan retain function=allocatorRaShiftResultB.*16-bit in HL.*producer_tac=.*(ADD).*consumer_tac=.*(XOR arg2)" compiler.log
 	: && ! grep -q "shift_physical_result function=allocatorRaShiftResult" compiler.log
 	test "$$(grep -c "shift left HL by BC" main.asm)" -eq 2

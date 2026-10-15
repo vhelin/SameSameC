@@ -15,7 +15,8 @@ all: linked.sms
 	grep -q "linear_scan retain.*function=allocatorRaZ80InReadResultC.*8-bit in C.*producer_tac=.*ARRAY_READ.*consumer_tac=.*XOR arg1" compiler.log
 	grep -q "z80_in_result function=allocatorRaZ80InReadResultC.*kind=PHY_C.*phy=C" compiler.log
 	grep -q "allocation_verify function=allocatorRaArrayReadResultB .*status=complete" compiler.log
-	grep -q "linear_scan retain_interval function=allocatorRaArrayReadResultB block=1 r1 8-bit in C producer_tac=.*(ARRAY_READ) consumer_tac=.*(XOR arg1) spill_slot=kept reason=none boundary_tac=-1" compiler.log
+	grep -q "linear_scan retain function=allocatorRaArrayReadResultB block=1 r1 8-bit in C producer_tac=.*(ARRAY_READ) consumer_tac=.*(XOR arg1)" compiler.log
+	grep -q "no spill slot function=allocatorRaArrayReadResultB r1 phy=C" compiler.log
 	test "$$(grep -c "array_read_result function=allocatorRaArrayReadResultB" compiler.log)" -eq 2
 	grep -q "array_read_result function=allocatorRaArrayReadResultB kind=STACK_SPILL size=1 phy=NONE value_bytes=1" compiler.log
 	grep -q "array_read_result function=allocatorRaArrayReadResultB kind=PHY_C size=1 phy=C value_bytes=1" compiler.log

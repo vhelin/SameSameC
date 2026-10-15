@@ -9785,7 +9785,7 @@ from these counts or treat further policy extraction as an optimization gain.
 
 ### Batch 307-309: Separate Values From Storage And Remove Redundant Traffic
 
-- [ ] **307. Preserve definition-specific identity through allocation.**
+- [x] **307. Preserve definition-specific identity through allocation.**
       Separate logical value/live-range identity from compacted temp names and
       eventual stack slots. Reuse existing instruction/definition metadata
       where sound; examine the placement of `reuse_registers()` rather than
@@ -9795,7 +9795,7 @@ from these counts or treat further policy extraction as an optimization gain.
       First require output-preserving behavior on supported paths and verifier
       coverage for redefinitions, width changes, joins, loops, and stale plans
       before enabling broader optimization based on the new identity.
-- [ ] **308. Coalesce copies and broaden safe rematerialization.** Use actual
+- [x] **308. Coalesce copies and broaden safe rematerialization.** Use actual
       value lifetimes and register constraints to remove avoidable copies and
       reloads. Extend existing constant/address rematerialization rather than
       duplicating it; compare recomputation with transport using step 306.
@@ -9804,7 +9804,7 @@ from these counts or treat further policy extraction as an optimization gain.
       extension, partial-register overlap, and parallel-move ordering. Add
       controls where coalescing increases pressure or rematerialization costs
       more, and qualify net bytes/cycles rather than counting deleted moves.
-- [ ] **309. Reuse actual spill backing by proven lifetimes.** Assign/share
+- [x] **309. Reuse actual spill backing by proven lifetimes.** Assign/share
       spill slots after physical allocation using the lifetimes of values that
       truly need memory, including CFG live segments and reload demands.
       Existing virtual-temp reuse is not absent; improve or replace its storage
@@ -9814,6 +9814,104 @@ from these counts or treat further policy extraction as an optimization gain.
       verifier and execution coverage for branches, loops, calls, and overlapping
       byte/word spills, with a demonstrated frame-size reduction and no
       unexplained instruction-cost increase.
+
+**Implementation and measured results (2026-10-15):**
+
+- Enabled Z80 allocation now bypasses early `reuse_registers()`, keeping logical
+      temp names distinct until allocation and final storage layout. Existing
+      definition-scoped discovery, original-register annotations, mutation
+      identities, and name compression remain in use; no second identity table
+      or SSA framework was added. Default, `-no-ra`, forced all-spill, and other
+      backends retain their old reuse path. Read-modify-write definitions still
+      need the existing definition-aware proofs, not just a unique temp name.
+- Precise byte/word metadata lets existing retention and assignment emission
+      remove intermediate word copies. Word arithmetic now reuses the existing
+      BC operand materializer instead of two duplicated memory/extension blocks.
+      This also fixes a newly exposed retained byte call result in A being read
+      as an IX stack location when widened. Signed extension and BC/B/C overlap
+      use the existing materializer rules. Copy removal is local, not a general
+      parallel-copy or CFG-wide coalescer.
+- Extended existing stable-global-array address rematerialization to nonzero,
+      integral, nonnegative in-bounds constant indices, including word-element
+      scaling. The existing transition cost observer uses the same eligibility
+      bounds and immediate-address cost. Mutable pointer loads, variable indices,
+      and out-of-bounds indices are not substituted. New byte/word controls each
+      save 28 executed cycles and two frame reads per invocation; the mutable
+      pointer control explicitly requires no rematerialization. Existing pressure
+      and deliberately unprofitable split controls remain active.
+- Actual backing reuse is in the existing final slot-assignment function, after
+      physical allocation. It rebuilds CFG/liveness with existing helpers and
+      bounds each single-definition temp's complete lifetime, extending bounds
+      through live-in/live-out blocks and backedges. Disjoint call-related memory
+      lifetimes can share; genuine live-across-call overlaps cannot. Every owner
+      of a proposed slot is checked, including inclusive instruction endpoints,
+      and a narrower slot cannot hold a later word. Locals remain separately
+      allocated. Multiple writes and unsupported hard boundaries conservatively
+      prevent sharing. Functions with absolute spill-transfer TACs retain their
+      planned offsets wholesale; this is not general lifetime-hole packing.
+- Reused the actual-code verifier fixture for eight storage controls: disjoint
+      word/byte reuse, overlap, loop/backedge overlap, redefinition, call overlap,
+      insufficient width, forced all-spill compatibility, and absolute-transfer
+      preservation. Every case requires unchanged TAC bytes. The existing seven
+      accepted and 16 immutable rejected allocation cases, traced/quiet modes,
+      stale-plan and atomic-tail tests remain. New executed scalar coverage adds
+      signed call widening, sequential spill demand, byte/word constant-address
+      rematerialization, and a mutable-pointer negative: 64 scalar functions in
+      26 families, alongside the original 88 functions and seven real routines.
+- Matched pre-batch and final compilers on identical generated sources, 512
+      seeds per function. Original-cohort instructions **6,299,640 -> 6,009,848**,
+      cycles **82,408,712 -> 78,272,776**, frame reads
+      **1,770,368 -> 1,718,144**, and writes **931,840 -> 843,776**. Scalar
+      instructions **1,121,280 -> 1,123,840**, cycles **14,274,048 -> 14,244,864**,
+      reads **285,696 -> 281,600**, and writes unchanged at **154,624**.
+      Combined generated cycles fall 4.3%, used ROM **17,606 -> 17,288 bytes**,
+      aggregate frames **1,826 -> 1,682**. The sequential spill control demonstrates
+      actual slot reuse and a **9 -> 8 byte** frame, not just virtual-name reuse.
+- These gains are not uniform. Pressure cases cost **+15 cycles/invocation**
+      after byte call-result materialization; signed-call widening costs
+      **+34.5 mean cycles/invocation** using the existing preserving-A sign
+      extension. Nested-loop and join/call cases save **4,033,536** and **163,840**
+      cycles respectively. The seven executed real routines have unchanged
+      instruction, cycle, and memory-access totals. Those pure bank-zero routines
+      do not execute the real projects' hardware-facing main loops.
+- The nine-fixture corpus has **28/36 raw ROM pairs identical**, including all
+      **27 default/`-no-ra`/all-spill controls**. Calculations-1 ROM
+      **23,805 -> 23,688 bytes**, aggregate frames **273 -> 291**, largest frame
+      **101 -> 105**; Calculations-2 ROM **16,381 -> 16,299**, frames **255 -> 254**,
+      largest **98 -> 97**. The remaining Calculations-1 frame increase reflects
+      conservative separate backing for unshareable/redefined values; `init`
+      grows **7 -> 13**, while the independently executed quotient routine drops
+      **15 -> 13**. Read-reload and core-liveness fixtures save two ROM bytes each.
+      Both byte-index/address fixtures grow nine ROM bytes while their aggregate
+      frames shrink three: the now-byte index is conservatively stack-backed
+      instead of using its former mixed-width word interval. Their word-index
+      BC/HL overlap assertions remain. Corpus spill/reload marker counts do not
+      increase. Exact temp, width, frame, byte, and analysis-count expectations
+      were updated in existing fixtures, without new test files.
+- Three alternating isolated baseline/candidate resource rounds give traced-RA
+      median compile-time sums **3.560 -> 3.730 s**, ranges
+      **3.020-3.590 -> 3.350-3.800 s**; flags-off medians **1.020 -> 1.060 s**.
+      Maximum traced-RA peak RSS is **13,476 -> 13,492 KiB**, measured by GNU time.
+      Concurrent matrix activity makes these noisy cost samples, not a compile
+      speedup. The added final-layout liveness pass has a measurable cost.
+      No new production functions, files, or public APIs: the two production
+      files are **net +57 total lines**, **net +58 nonblank lines**. Reusing the
+      operand materializer removes 48 duplicated emitter lines; the batch adds
+      capability but is not a net production source reduction.
+- Strict C90 and editor diagnostics pass. Final Cygwin and rebuilt native-ASan
+      compiler/verifier runs each pass **81,408 executions per executed mode**:
+      45,056 original, 32,768 scalar, and 3,584 real-routine cases. Aggregate and
+      per-program execution counters match exactly across toolchains, with no
+      ASan report. Generated traced/quiet full assembly and ROM identity, and
+      all matched disabled-mode ROM controls, pass. Freshly staged, hash-compared
+      final Cygwin and native Windows full suites each pass **173 tests**, run
+      sequentially after the final call-lifetime refinement.
+- `-ra` remains opt-in, the ABI is unchanged, and steps 310-315 are untouched.
+      Repeated seeds are not unique shapes or exhaustive coverage. General SSA,
+      arbitrary CFG retention/coalescing, and packing multiply-defined or fixed
+      spill-transfer lifetimes remain unsupported. UBSan, Valgrind/leak checking,
+      upstream emulator tests, and full SMS hardware/bank-switch execution were
+      not run.
 
 ### Batch 310-312: Extend Allocation Across Useful Regions
 

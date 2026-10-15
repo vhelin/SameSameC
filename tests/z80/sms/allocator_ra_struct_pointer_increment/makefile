@@ -22,10 +22,10 @@ all: linked.sms
 	grep -q "linear_scan reload_insert function=allocatorRaStructPointerDecrementHl.*operand=result.*phy=BC" compiler.log
 	grep -q "reload_insert_emit function=allocatorRaStructPointerIncrementA op=ARRAY_WRITE operand=result.*phy=BC" compiler.log
 	grep -q "reload_insert_emit function=allocatorRaStructPointerDecrementHl op=ARRAY_WRITE operand=result.*phy=BC" compiler.log
-	grep -q "linear_scan retain_interval.*function=allocatorRaStructPointerIncrementA.*ARRAY_READ.*ADD arg1" compiler.log
-	grep -q "linear_scan retain_interval.*function=allocatorRaStructPointerIncrementA.*ADD.*ARRAY_WRITE arg1" compiler.log
-	grep -q "linear_scan retain_interval.*function=allocatorRaStructPointerDecrementHl.*ARRAY_READ.*SUB arg1" compiler.log
-	grep -q "linear_scan retain_interval.*function=allocatorRaStructPointerDecrementHl.*SUB.*ARRAY_WRITE arg1" compiler.log
+	grep -q "linear_scan retain.*.*function=allocatorRaStructPointerIncrementA.*ARRAY_READ.*ADD arg1" compiler.log
+	grep -q "linear_scan retain.*.*function=allocatorRaStructPointerIncrementA.*ADD.*ARRAY_WRITE arg1" compiler.log
+	grep -q "linear_scan retain.*.*function=allocatorRaStructPointerDecrementHl.*ARRAY_READ.*SUB arg1" compiler.log
+	grep -q "linear_scan retain.*.*function=allocatorRaStructPointerDecrementHl.*SUB.*ARRAY_WRITE arg1" compiler.log
 	grep -q "array_read_base function=allocatorRaStructPointerIncrementA kind=PHY_HL memory_pointer_load=no" compiler.log
 	grep -q "array_write_base function=allocatorRaStructPointerIncrementA kind=PHY_BC memory_pointer_load=no" compiler.log
 	grep -q "array_read_base function=allocatorRaStructPointerDecrementHl kind=PHY_HL memory_pointer_load=no" compiler.log

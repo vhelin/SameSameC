@@ -11,12 +11,12 @@ OFILES = main.asm
 
 all: linked.sms
 	grep -q "allocation_verify function=allocatorRaSplitReloadNonzeroByte .*status=complete" compiler.log
-	grep -q "linear_scan retain_interval function=allocatorRaSplitReloadNonzeroByte.*ADD.*ARRAY_WRITE arg1" compiler.log
+	grep -q "linear_scan retain.* function=allocatorRaSplitReloadNonzeroByte.*ADD.*ARRAY_WRITE arg1" compiler.log
 	grep -q "resolve function=allocatorRaSplitReloadNonzeroByte operand=arg1 kind=PHY_A.*phy=A" compiler.log
 	grep -q "resolve function=allocatorRaSplitReloadNonzeroByte operand=arg2 kind=STACK_SPILL offset=-13" compiler.log
 	grep -q "array_write_index function=allocatorRaSplitReloadNonzeroByte kind=STACK_SPILL.*phy=NONE" compiler.log
 	grep -q "array_write_value function=allocatorRaSplitReloadNonzeroByte kind=PHY_A bytes=1.*phy=A" compiler.log
-	grep -q "linear_scan retain_interval function=allocatorRaSplitReloadNonzeroWord.*SUB.*ARRAY_WRITE arg1" compiler.log
+	grep -q "linear_scan retain.* function=allocatorRaSplitReloadNonzeroWord.*SUB.*ARRAY_WRITE arg1" compiler.log
 	grep -q "array_write_index function=allocatorRaSplitReloadNonzeroWord kind=STACK_SPILL.*phy=NONE" compiler.log
 	grep -q "array_write_value function=allocatorRaSplitReloadNonzeroWord kind=PHY_HL bytes=2.*phy=HL" compiler.log
 	grep -q "retained result in A" main.asm

@@ -48,7 +48,7 @@ all: linked.sms
 	test "$$(sed -n '/allocatorRaShiftLeftLoop:/,/\.ENDS/p; /allocatorRaShiftRightLoop:/,/\.ENDS/p' main.asm | grep -c "retained arg2 in C")" -eq 2
 	: && ! sed -n '/allocatorRaShiftLeftLoop:/,/\.ENDS/p' main.asm | grep -q "(IX-7)\|(IY-7)"
 	: && ! sed -n '/allocatorRaShiftRightLoop:/,/\.ENDS/p' main.asm | grep -q "(IX-7)\|(IY-7)"
-	sed -n '/allocatorRaShiftLoopConflict:/,/\.ENDS/p' main.asm | grep -q "LD  (IX-10),L"
+	sed -n '/allocatorRaShiftLoopConflict:/,/\.ENDS/p' main.asm | grep -q "LD  (IX-9),L"
 	: && ! sed -n '/allocatorRaShiftLoopConflict:/,/\.ENDS/p' main.asm | grep -q "retained result in C"
 	: && ! grep -q "stack offset requested for retained" compiler.log
 	$(BT) -s main.ssc

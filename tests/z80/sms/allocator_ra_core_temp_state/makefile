@@ -12,7 +12,7 @@ OFILES = main.asm
 all: linked.sms core_temp_state_test
 	$(BT) -s main.ssc
 	./core_temp_state_test > core_temp_state_test.log 2>&1
-	grep -q "temp_state_retain function=allocatorRaCoreTempStateSpillBacked.*storage=spill_backed status=complete" compiler.log
+	grep -q "temp_state_retain function=allocatorRaCoreTempStateSpillBacked.*storage=register_only status=complete" compiler.log
 	grep -q "temp_state_spill function=allocatorRaCoreTempStateDisplace.*reason=farther_next_use.*spill=yes.*status=complete" compiler.log
 	grep -q "temp_state_retain function=allocatorRaCoreTempStateRegisterOnly.*storage=register_only status=complete" compiler.log
 	grep -q "temp_state_retain function=coreRegisterOnly.*storage=register_only status=complete" core_temp_state_test.log

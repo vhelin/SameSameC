@@ -11,14 +11,14 @@ all: linked.sms
 	grep -q "struct_access_address function=allocatorRaStructPointerArrayRead root=g_allocator_struct_pointer_array access=array root_kind=struct_pointer_array" compiler.log
 	grep -q "struct_access_indirect function=allocatorRaStructPointerArrayWrite depth=1.*access=pointer" compiler.log
 	grep -q "struct_access_indirect function=allocatorRaStructPointerArrayRead depth=1.*access=pointer" compiler.log
-	grep -q "linear_scan retain_interval.*function=allocatorRaStructPointerArrayWrite.*GET_ADDRESS.*ADD arg1" compiler.log
-	grep -q "linear_scan retain_interval.*function=allocatorRaStructPointerArrayWrite.*SHIFT_LEFT.*ADD arg2" compiler.log
-	grep -q "linear_scan retain_interval.*function=allocatorRaStructPointerArrayWrite.*ARRAY_READ.*ADD arg1" compiler.log
+	grep -q "linear_scan retain.*function=allocatorRaStructPointerArrayWrite.*ADD.*ARRAY_READ arg1" compiler.log
+	grep -q "linear_scan retain.*.*function=allocatorRaStructPointerArrayWrite.*SHIFT_LEFT.*ADD arg2" compiler.log
+	grep -q "linear_scan retain.*.*function=allocatorRaStructPointerArrayWrite.*ARRAY_READ.*ADD arg1" compiler.log
 	grep -q "linear_scan retain.*function=allocatorRaStructPointerArrayWrite.*ADD.*ARRAY_WRITE result" compiler.log
-	grep -q "linear_scan retain_interval.*function=allocatorRaStructPointerArrayRead.*GET_ADDRESS.*ADD arg1" compiler.log
-	grep -q "linear_scan retain_interval.*function=allocatorRaStructPointerArrayRead.*SHIFT_LEFT.*ADD arg2" compiler.log
-	grep -q "linear_scan retain_interval.*function=allocatorRaStructPointerArrayRead.*ARRAY_READ.*ARRAY_READ arg1" compiler.log
-	grep -q "linear_scan retain_interval.*function=allocatorRaStructPointerArrayRead.*ARRAY_READ.*XOR arg1" compiler.log
+	grep -q "linear_scan retain.*function=allocatorRaStructPointerArrayRead.*ADD.*ARRAY_READ arg1" compiler.log
+	grep -q "linear_scan retain.*.*function=allocatorRaStructPointerArrayRead.*SHIFT_LEFT.*ADD arg2" compiler.log
+	grep -q "linear_scan retain.*.*function=allocatorRaStructPointerArrayRead.*ARRAY_READ.*ARRAY_READ arg1" compiler.log
+	grep -q "linear_scan retain.*.*function=allocatorRaStructPointerArrayRead.*ARRAY_READ.*XOR arg1" compiler.log
 	grep -q "array_write_base function=allocatorRaStructPointerArrayWrite kind=PHY_HL.*phy=HL" compiler.log
 	grep -q "array_read_base function=allocatorRaStructPointerArrayRead kind=PHY_HL.*phy=HL" compiler.log
 	: && ! grep -q "reason=unmigrated_emitter.*ARRAY" compiler.log

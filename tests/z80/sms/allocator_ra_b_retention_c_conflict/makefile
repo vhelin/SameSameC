@@ -15,7 +15,7 @@ all: linked.sms
 	grep -q "linear_scan overlap_check function=allocatorRaBRetentionCConflict.*candidate=C.*active_C=yes.*conflict=yes" compiler.log
 	grep -q "linear_scan overlap_check function=allocatorRaBRetentionCConflict.*candidate=B.*candidate_units=B.*active_C=yes.*conflict=no" compiler.log
 	grep -q "linear_scan alternate function=allocatorRaBRetentionCConflict.*primary=A alternate=B reason=clobber_between" compiler.log
-	grep -q "linear_scan retain_interval function=allocatorRaBRetentionCConflict.*8-bit in B.*consumer_tac=.*XOR arg1" compiler.log
+	grep -q "linear_scan retain.* function=allocatorRaBRetentionCConflict.*8-bit in B.*consumer_tac=.*XOR arg1" compiler.log
 	grep -q "resolve function=allocatorRaBRetentionCConflict operand=result kind=PHY_B" compiler.log
 	grep -q "resolve function=allocatorRaBRetentionCConflict operand=arg1 kind=PHY_B" compiler.log
 	grep -q "register 0 size 1 spill no phy C" main.asm

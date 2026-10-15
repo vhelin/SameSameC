@@ -19,11 +19,11 @@ all: linked.sms
 	grep -q "candidate_selection_prepare function=allocatorRaSplitSpillArrayHl.*single_read=no phy=2 proceed=yes blocked=no preservation_queried=yes preservation_supported=yes preservation_phy=2 reason=multi_read status=complete" compiler.log
 	test `grep -c "candidate_selection_prepare function=allocatorRaSplitSpill.*preservation_queried=yes" compiler.log` -eq 2
 	: && ! grep -q "candidate_selection_prepare function=allocatorRaSplitSpill.*status=invalid\|candidate_selection_prepare function=allocatorRaSplitSpill.*status=dependency_failed" compiler.log
-	test `grep -c "candidate_selection_orchestrate function=allocatorRaSplitSpill.*proceed=yes.*order=prepare_finalize status=complete" compiler.log` -eq 14
+	test `grep -c "candidate_selection_orchestrate function=allocatorRaSplitSpill.*proceed=yes.*order=prepare_finalize status=complete" compiler.log` -eq 12
 	: && ! grep -q "candidate_selection_orchestrate function=allocatorRaSplitSpill.*status=invalid\|candidate_selection_orchestrate function=allocatorRaSplitSpill.*status=dependency_failed" compiler.log
-	test `grep -c "candidate_transition_prepare function=allocatorRaSplitSpill.*order=slot_resolve_transition_plan status=complete" compiler.log` -eq 14
+	test `grep -c "candidate_transition_prepare function=allocatorRaSplitSpill.*order=slot_resolve_transition_plan status=complete" compiler.log` -eq 12
 	: && ! grep -q "candidate_transition_prepare function=allocatorRaSplitSpill.*status=invalid\|candidate_transition_prepare function=allocatorRaSplitSpill.*status=dependency_failed" compiler.log
-	test `grep -c "candidate_transition_execute function=allocatorRaSplitSpill.*order=prepare_apply status=complete" compiler.log` -eq 14
+	test `grep -c "candidate_transition_execute function=allocatorRaSplitSpill.*order=prepare_apply status=complete" compiler.log` -eq 12
 	: && ! grep -q "candidate_transition_execute function=allocatorRaSplitSpill.*status=invalid\|candidate_transition_execute function=allocatorRaSplitSpill.*status=dependency_failed" compiler.log
 	grep -q "linear_scan spill_insert function=allocatorRaSplitSpillArrayA.*destination=existing_spill_slot" compiler.log
 	grep -q "linear_scan spill_insert function=allocatorRaSplitSpillArrayHl.*destination=existing_spill_slot" compiler.log

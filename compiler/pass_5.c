@@ -82,7 +82,8 @@ int pass_5(void) {
 
   if (propagate_operand_types() == FAILED)
     return FAILED;
-  if (reuse_registers() == FAILED)
+  if ((g_allocator_enabled == NO || g_allocator_force_all_spill == YES || g_backend != BACKEND_Z80) &&
+      reuse_registers() == FAILED)
     return FAILED;
   if (g_register_allocator_trace) {
   _debug_register_allocator_temp_compaction_stage("after_reuse");
@@ -5945,9 +5946,11 @@ static void _observe_register_allocator_transition_preparation(void *context,
         if (resident == NO) {
           int rematerialize = g_tacs[producer].op == TAC_OP_GET_ADDRESS_ARRAY &&
             g_tacs[producer].arg1_type == TAC_ARG_TYPE_LABEL && g_tacs[producer].arg1_node != NULL &&
+            g_tacs[producer].arg1_node->type == TREE_NODE_TYPE_CREATE_VARIABLE &&
             (g_tacs[producer].arg1_node->flags & TREE_NODE_FLAG_GLOBAL) != 0 &&
             g_tacs[producer].arg1_node->value > 0 && g_tacs[producer].arg2_type == TAC_ARG_TYPE_CONSTANT &&
-            g_tacs[producer].arg2_d == 0.0;
+            g_tacs[producer].arg2_d >= 0.0 && g_tacs[producer].arg2_d < g_tacs[producer].arg1_node->value &&
+            g_tacs[producer].arg2_d <= 32767.0 && g_tacs[producer].arg2_d == (double)(int)g_tacs[producer].arg2_d;
           costs[choice][0] -= rematerialize == YES ? 10 : byte_count * 19;
           costs[choice][1] -= rematerialize == YES ? 3 : byte_count * 3;
           resident = YES;
@@ -11097,13 +11100,100 @@ static int run_register_allocator(struct tree_node *function_node) {
 
 static int assign_spill_slot_offsets(struct tree_node *function_node, int *offset) {
 
-  int j;
+  int j, count = function_node->local_variables->temp_registers_count;
+  int block_count = 0, edge_count = 0, iterations, status = FAILED, fixed_transfers = NO;
+  struct register_allocator_basic_block *blocks = NULL;
+  struct register_allocator_cfg_edge *edges = NULL;
+  struct register_allocator_liveness_storage storage;
+  char *live_sets = NULL;
+  char *shareable = NULL;
 
-  for (j = 0; j < function_node->local_variables->temp_registers_count; j++) {
+  for (j = 0; g_allocator_enabled == YES && j < g_tacs_count; j++) {
+    if (g_tacs[j].function_node == function_node && g_tacs[j].op == TAC_OP_REGISTER_SPILL) {
+      fixed_transfers = YES;
+      break;
+    }
+  }
+  if (g_allocator_enabled == YES && g_allocator_force_all_spill == NO && fixed_transfers == NO && count > 0) {
+    if (_rebuild_register_allocator_control_flow(function_node, &blocks, &edges, &block_count, &edge_count) == FAILED ||
+        register_allocator_plan_liveness_storage(function_node->children[1]->label, block_count, count, &storage) == FAILED)
+      goto cleanup;
+    shareable = (char *)calloc((size_t)count, 1);
+    live_sets = (char *)calloc(4, storage.buffer_bytes);
+    if (shareable == NULL || live_sets == NULL ||
+        _compute_register_allocator_live_sets(function_node, blocks, block_count, edges, edge_count,
+          live_sets, live_sets + storage.buffer_bytes, live_sets + storage.buffer_bytes * 2,
+          live_sets + storage.buffer_bytes * 3, &storage, &iterations) == FAILED)
+      goto cleanup;
+  }
+
+  for (j = 0; j < count; j++) {
     struct temp_register *temp_register = &(function_node->local_variables->temp_registers[j]);
     int temp_size = temp_register->size / 8;
 
     if (temp_register->spill_required == YES) {
+      int candidate, instruction_index, writes = 0;
+      if (shareable != NULL) {
+        temp_register->live_start = g_tacs_count;
+        temp_register->live_end = -1;
+        for (instruction_index = 0; instruction_index < g_tacs_count; instruction_index++) {
+          struct tac *instruction = &g_tacs[instruction_index];
+          int reads, written;
+          if (instruction->function_node != function_node || instruction->op == TAC_OP_DEAD)
+            continue;
+          reads = _tac_reads_temp_register(instruction, temp_register->register_index);
+          written = _tac_writes_temp_register(instruction, temp_register->register_index);
+          if (reads == YES || written == YES) {
+            if (temp_register->live_end < 0)
+              temp_register->live_start = instruction_index;
+            temp_register->live_end = instruction_index;
+            writes += written == YES;
+          }
+        }
+        if (writes == 1 && temp_register->live_end >= 0 &&
+            _tac_reads_temp_register(&g_tacs[temp_register->live_start], temp_register->register_index) == NO) {
+          shareable[j] = YES;
+          for (instruction_index = temp_register->live_start; instruction_index <= temp_register->live_end; instruction_index++) {
+            if (g_tacs[instruction_index].op != TAC_OP_LABEL &&
+                _is_register_allocator_jump_op(g_tacs[instruction_index].op) == NO &&
+                g_tacs[instruction_index].op != TAC_OP_FUNCTION_CALL &&
+                g_tacs[instruction_index].op != TAC_OP_FUNCTION_CALL_USE_RETURN_VALUE &&
+                _get_hard_boundary_spill_reason(&g_tacs[instruction_index]) != Z80_SPILL_REASON_NONE) {
+              shareable[j] = NO;
+              break;
+            }
+          }
+        }
+        for (instruction_index = 0; shareable[j] == YES && instruction_index < block_count; instruction_index++) {
+          int set_index = instruction_index * count + j;
+          if (live_sets[storage.buffer_bytes * 2 + set_index] != NO &&
+              blocks[instruction_index].start_tac < temp_register->live_start)
+            temp_register->live_start = blocks[instruction_index].start_tac;
+          if (live_sets[storage.buffer_bytes * 3 + set_index] != NO &&
+              blocks[instruction_index].end_tac > temp_register->live_end)
+            temp_register->live_end = blocks[instruction_index].end_tac;
+        }
+        for (candidate = 0; shareable[j] == YES && candidate < j; candidate++) {
+          struct temp_register *slot = &function_node->local_variables->temp_registers[candidate];
+          int owner;
+          if (shareable[candidate] != YES || slot->size < temp_register->size)
+            continue;
+          for (owner = 0; owner < j; owner++) {
+            struct temp_register *previous = &function_node->local_variables->temp_registers[owner];
+            if (previous->spill_required == YES && previous->offset_to_fp == slot->offset_to_fp &&
+                previous->live_start <= temp_register->live_end && temp_register->live_start <= previous->live_end)
+              break;
+          }
+          if (owner == j) {
+            temp_register->offset_to_fp = slot->offset_to_fp;
+            RA_TRACE((stderr, "register_allocator: spill_slot_reuse function=%s temp=r%d owner=r%d offset=%d size=%d scope=cfg_live_bounds\n",
+              function_node->children[1]->label, temp_register->register_index, slot->register_index, slot->offset_to_fp, temp_size));
+            break;
+          }
+        }
+        if (shareable[j] == YES && candidate < j)
+          continue;
+      }
       temp_register->offset_to_fp = *offset - (temp_size - 1);
 
   if (g_register_allocator_trace) {
@@ -11123,7 +11213,13 @@ static int assign_spill_slot_offsets(struct tree_node *function_node, int *offse
     }
   }
 
-  return SUCCEEDED;
+  status = SUCCEEDED;
+cleanup:
+  free(shareable);
+  free(live_sets);
+  free(blocks);
+  free(edges);
+  return status;
 }
 
 

@@ -2936,32 +2936,8 @@ static int _aaa_generate_asm_add_sub_or_xor_and_z80_16bit(struct tac *t, FILE *f
     else if (arg1_in_bc == YES) {
     }
     else {
-      if (t->arg1_var_type == VARIABLE_TYPE_INT16 || t->arg1_var_type == VARIABLE_TYPE_UINT16) {
-        /* 16-bit */
-        _load_from_ix_to_c(ix_offset, file_out);
-        _load_from_ix_to_b(ix_offset + 1, file_out);
-      }
-      else {
-        /* 8-bit */
-        _load_from_ix_to_c(ix_offset, file_out);
-
-        /* sign extend 8-bit -> 16-bit? */
-        if (t->arg1_var_type == VARIABLE_TYPE_INT8 && (t->arg1_var_type_promoted == VARIABLE_TYPE_INT16 ||
-                                                       t->arg1_var_type_promoted == VARIABLE_TYPE_UINT16)) {
-          /* yes */
-          _sign_extend_c_to_bc(file_out);
-        }
-        else if (t->arg1_var_type == VARIABLE_TYPE_UINT8 && (t->arg1_var_type_promoted == VARIABLE_TYPE_INT16 ||
-                                                             t->arg1_var_type_promoted == VARIABLE_TYPE_UINT16)) {
-          /* upper byte -> 0 */
-          _load_value_to_b(0, file_out);
-        }
-        else {
-          fprintf(stderr, "_aaa_generate_asm_add_sub_or_xor_and_z80_16bit(): Unhandled 8-bit ARG1! Please submit a bug report!\n");
-          print_tac(t, NO, stderr);
-          return FAILED;
-        }
-      }
+      if (_materialize_array_index_to_bc(&arg1_location, t->arg1_var_type, ix_offset, NO, file_out) == FAILED)
+        return FAILED;
     }
   }
   else if (arg2_location.kind == LOC_CONST) {
@@ -2973,32 +2949,8 @@ static int _aaa_generate_asm_add_sub_or_xor_and_z80_16bit(struct tac *t, FILE *f
       _load_value_to_bc(arg2_location.value, file_out);
   }
   else {
-    if (t->arg2_var_type == VARIABLE_TYPE_INT16 || t->arg2_var_type == VARIABLE_TYPE_UINT16) {
-      /* 16-bit */
-      _load_from_ix_to_c(ix_offset, file_out);
-      _load_from_ix_to_b(ix_offset + 1, file_out);
-    }
-    else {
-      /* 8-bit */
-      _load_from_ix_to_c(ix_offset, file_out);
-
-      /* sign extend 8-bit -> 16-bit? */
-      if (t->arg2_var_type == VARIABLE_TYPE_INT8 && (t->arg2_var_type_promoted == VARIABLE_TYPE_INT16 ||
-                                                     t->arg2_var_type_promoted == VARIABLE_TYPE_UINT16)) {
-        /* yes */
-        _sign_extend_c_to_bc(file_out);
-      }
-      else if (t->arg2_var_type == VARIABLE_TYPE_UINT8 && (t->arg2_var_type_promoted == VARIABLE_TYPE_INT16 ||
-                                                           t->arg2_var_type_promoted == VARIABLE_TYPE_UINT16)) {
-        /* upper byte -> 0 */
-        _load_value_to_b(0, file_out);
-      }
-      else {
-        fprintf(stderr, "_aaa_generate_asm_add_sub_or_xor_and_z80_16bit(): Unhandled 8-bit ARG2! Please submit a bug report!\n");
-        print_tac(t, NO, stderr);
-        return FAILED;
-      }
-    }
+    if (_materialize_array_index_to_bc(&arg2_location, t->arg2_var_type, ix_offset, NO, file_out) == FAILED)
+      return FAILED;
   }
 
   /******************************************************************************************************/
@@ -3832,8 +3784,17 @@ static int _transfer_array_base_spill(struct tac *t, struct tree_node *function_
       if (definition->op == TAC_OP_GET_ADDRESS_ARRAY && definition->arg1_type == TAC_ARG_TYPE_LABEL &&
           definition->arg1_node != NULL && definition->arg1_node->type == TREE_NODE_TYPE_CREATE_VARIABLE &&
           (definition->arg1_node->flags & TREE_NODE_FLAG_GLOBAL) != 0 && definition->arg1_node->value > 0 &&
-          definition->arg2_type == TAC_ARG_TYPE_CONSTANT && definition->arg2_d == 0.0) {
-        fprintf(file_out, "      LD  %s,%s\n", _get_z80_physical_register_name(physical_register), definition->arg1_s);
+          definition->arg2_type == TAC_ARG_TYPE_CONSTANT && definition->arg2_d >= 0.0 &&
+          definition->arg2_d < definition->arg1_node->value && definition->arg2_d <= 32767.0 &&
+          definition->arg2_d == (double)(int)definition->arg2_d) {
+        int displacement = (int)definition->arg2_d;
+        int element_type = get_array_item_variable_type(definition->arg1_node);
+        if (element_type == VARIABLE_TYPE_INT16 || element_type == VARIABLE_TYPE_UINT16)
+          displacement *= 2;
+        if (displacement == 0)
+          fprintf(file_out, "      LD  %s,%s\n", _get_z80_physical_register_name(physical_register), definition->arg1_s);
+        else
+          fprintf(file_out, "      LD  %s,%s+%d\n", _get_z80_physical_register_name(physical_register), definition->arg1_s, displacement);
         fprintf(file_out, "      ; rematerialize %s from stable global address into %s\n",
             operand_name, _get_z80_physical_register_name(physical_register));
         return SUCCEEDED;

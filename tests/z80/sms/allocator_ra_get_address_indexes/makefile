@@ -12,9 +12,9 @@ OFILES = main.asm
 all: linked.sms
 	grep -q "linear_scan retain.*function=allocatorRaGetAddressArrayIndexA.*producer_tac=.*ADD.*consumer_tac=.*GET_ADDRESS_ARRAY.*arg2" compiler.log
 	grep -q "linear_scan retain.*function=allocatorRaGetAddressArrayIndexHl.*producer_tac=.*XOR.*consumer_tac=.*GET_ADDRESS_ARRAY.*arg2" compiler.log
-	grep -q "resolve function=allocatorRaGetAddressArrayIndexA operand=arg2 kind=PHY_HL" compiler.log
+	grep -q "resolve function=allocatorRaGetAddressArrayIndexA operand=arg2 kind=PHY_A" compiler.log
 	grep -q "resolve function=allocatorRaGetAddressArrayIndexHl operand=arg2 kind=PHY_HL" compiler.log
-	grep -q "get_address_index function=allocatorRaGetAddressArrayIndexA kind=PHY_HL" compiler.log
+	grep -q "get_address_index function=allocatorRaGetAddressArrayIndexA kind=PHY_A" compiler.log
 	grep -q "get_address_index function=allocatorRaGetAddressArrayIndexHl kind=PHY_HL" compiler.log
 	: && ! grep -q "reason=unmigrated_emitter.*GET_ADDRESS" compiler.log
 	: && ! grep -q "stack offset requested for retained" compiler.log

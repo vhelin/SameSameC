@@ -44,6 +44,7 @@ for (const flags of [[], ['-q']]) {
     (verifierLog.match(/result=accepted unchanged=yes status=complete/g) || []).length !== 7 ||
     !verifierLog.includes('allocation_mutation_test: invalid_tail unchanged=yes status=complete') ||
     !verifierLog.includes('allocation_mutation_test: displaced_arg2 cleared=yes status=complete') ||
+    !verifierLog.includes('spill_slot_test: cases=8 overlap_width_boundary_redefinition_controls=yes tacs_unchanged=yes status=complete') ||
     !verifierLog.includes('allocation_cost_test: nearer_rejected=yes farther_reused=yes status=complete') ||
     !verifierLog.includes('candidate_definition_test: read_before_write=yes previous_definition_excluded=yes status=complete'))
     throw new Error('Verifier coverage count mismatch');
@@ -73,6 +74,11 @@ for (let variant = 0; variant < 8; variant++) {
     ['scalar_after_call', 'u8 a, u8 b, u8 c', `u8 saved = a^b; u8 out = (c+c)+saved; ra_buffer[0] = ra_arithmetic_${variant}(a,b,c); return out;`, [1, 1, 1], 1],
     ['scalar_call_argument', 'u8 a, u8 b, u8 c', `u8 saved = a^b; return ra_arithmetic_${variant}(saved,b,c);`, [1, 1, 1], 1],
     ['scalar_across_call', 'u8 a, u8 b, u8 c', `u8 saved = a^b; u8 called = ra_arithmetic_${variant}(a,b,c); return (called+c)+saved;`, [1, 1, 1], 1],
+    ['scalar_signed_call', 'u8 a, u8 b, u8 c', 'u16 first = a; return first+ra_signed_helper(a,b,c);', [1, 1, 1], 2],
+    ['scalar_slots', 'u8 a, u8 b, u8 c', 'ra_buffer[0] = ra_buffer[a]^ra_buffer[b]^(a+b); return ra_buffer[c]^ra_buffer[b+1]^(b+c);', [1, 1, 1], 1],
+    ['scalar_remat_byte', 'u8 first, u8 second', 'u8 *base = &ra_buffer[3]; u8 out = base[first]; out = out+base[second]; return out;', [1, 1], 1],
+    ['scalar_remat_word', 'u8 first, u8 second', 'u16 *base = &ra_words[3]; u16 out = base[first]; out = out+base[second]; return out;', [1, 1], 2],
+    ['scalar_remat_pointer', 'u8 *source, u8 first, u8 second', 'u8 *base = &source[3]; u8 out = base[first]; out = out+base[second]; return out;', [2, 1, 1], 1],
     ['word_bc', 'u16 a, u16 b, u16 c', `return (c+c)+(a${operator}b);`, [2, 2, 2], 2],
     ['arithmetic', `u8 a, u8 b, u8 c`, `return (a+b)+((c+${constant})+c);`, [1, 1, 1], 1],
     ['word', 'u16 a, u16 b, u16 c', `return (a+b)+((c+${constant})+c);`, [2, 2, 2], 2],
@@ -96,7 +102,7 @@ for (let variant = 0; variant < 8; variant++) {
       source: `${family.startsWith('scalar_signed') ? 's' : 'u'}${returnWidth * 8} ${name}(${parameters}) { ${body} }`});
   }
 }
-const source = 'u8 ra_buffer[128];\n' + programs.map(program => program.source).join('\n') + '\nvoid main(void) {}\n';
+const source = 'u8 ra_buffer[128];\nu16 ra_words[64];\ns8 ra_signed_helper(u8 a, u8 b, u8 c) { return a+b+c; }\n' + programs.map(program => program.source).join('\n') + '\nvoid main(void) {}\n';
 writeFileSync(join(output, 'generated.ssc'), source);
 const modes = [['default', []], ['no_ra', ['-no-ra']], ['all_spill', ['-ra-all-spill']],
   ['ra', ['-ra']], ['ra_quiet', ['-ra', '-q']]];
@@ -144,6 +150,11 @@ for (const program of process.env.RA_BASELINE === '1' ? [] : programs) {
       (lines.some(line => line.includes('scalar_split_transfer')) ||
        !lines.some(line => /profitability .*known=yes saved_cycles=-7 saved_bytes=-4 .*decision=3 /.test(line))))
     throw new Error(`Unprofitable split accepted: ${program.name}`);
+  if (program.family.startsWith('scalar_remat_')) {
+    const assembly = readFileSync(join(output, 'ra/main.asm'), 'utf8').split(`${program.name}:`)[1].split('.ENDS')[0];
+    if (assembly.includes('; rematerialize ') !== (program.family !== 'scalar_remat_pointer'))
+      throw new Error(`Constant-address rematerialization mismatch: ${program.name}`);
+  }
 }
 
 function execute(code, entry, parameters, widths, buffer, bufferAddress, returnWidth) {
@@ -208,6 +219,28 @@ for (const program of programs) {
     let parameters = [byte, other, third];
     let expected;
     switch (program.family) {
+      case 'scalar_signed_call': {
+        const called = (byte + other + third) & 255;
+        expected = (byte + (called >= 128 ? called - 256 : called)) & 65535;
+        break;
+      }
+      case 'scalar_slots':
+        parameters = [1 + (seed & 15), 1 + ((seed * 3) & 15), 17 + (seed & 15)];
+        expectedBuffer[0] = buffer[parameters[0]] ^ buffer[parameters[1]] ^ ((parameters[0] + parameters[1]) & 255);
+        expected = buffer[parameters[2]] ^ buffer[parameters[1] + 1] ^ ((parameters[1] + parameters[2]) & 255);
+        break;
+      case 'scalar_remat_byte':
+      case 'scalar_remat_word':
+      case 'scalar_remat_pointer': {
+        parameters = [seed & 15, (seed * 7) & 15];
+        const width = program.family === 'scalar_remat_word' ? 2 : 1;
+        const first = (3 + parameters[0]) * width;
+        const second = (3 + parameters[1]) * width;
+        expected = width === 2 ? ((buffer[first] | buffer[first + 1] << 8) + (buffer[second] | buffer[second + 1] << 8)) & 65535 :
+          (buffer[first] + buffer[second]) & 255;
+        if (program.family === 'scalar_remat_pointer') parameters.unshift(0);
+        break;
+      }
       case 'scalar_word_index':
         parameters = [(seed * 7919 + program.variant * 1009) & 65535, (seed * 5113 + 65535) & 65535, third];
         expectedBuffer[program.constant] = third;
@@ -341,11 +374,12 @@ for (const program of programs) {
     }
     for (const mode of Object.keys(totals)) {
       const image = compiled.get(mode);
+      const bufferAddress = image.symbols.get(program.family === 'scalar_remat_word' ? 'ra_words' : 'ra_buffer');
       const args = parameters.slice();
-      if (['pointer', 'walk', 'nested', 'join_call'].includes(program.family)) args[0] = image.symbols.get('ra_buffer');
+      if (['pointer', 'walk', 'nested', 'join_call', 'scalar_remat_pointer'].includes(program.family)) args[0] = bufferAddress;
       try {
         const result = execute(image.rom, image.symbols.get(program.name), args, program.widths,
-          buffer, image.symbols.get('ra_buffer'), program.returnWidth);
+          buffer, bufferAddress, program.returnWidth);
         if (result.value !== expected || !Buffer.from(result.buffer).equals(Buffer.from(expectedBuffer)))
           throw new Error(`Expected ${expected}, got ${result.value}; buffer_equal=${Buffer.from(result.buffer).equals(Buffer.from(expectedBuffer))}`);
         for (const counters of [totals[mode], programTotals[program.name][mode]]) {
