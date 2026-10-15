@@ -66,6 +66,11 @@ for (let variant = 0; variant < 8; variant++) {
     ['scalar_multi_rmw', 'u16 a, u16 b, u16 c', 'u16 saved = ~c; return ((a+saved)^saved)+b;', [2, 2, 2], 2],
     ['scalar_multi_byte', 'u8 a, u8 b, u8 c', 'u8 saved = a^b; return ((c+saved)^saved)+saved;', [1, 1, 1], 1],
     ['scalar_split_byte', 'u8 a, u8 b, u8 c', 'u8 saved = a^b; u8 first = c+saved; u8 loaded = ra_buffer[1]; return ((((first+loaded)^saved)+saved)^saved)+saved;', [1, 1, 1], 1],
+    ['scalar_region', 'u8 a, u8 b, u8 c', `u8 saved = a^b; u8 first = c+saved; u8 loaded = ra_buffer[1]; u8 out = ((((first+loaded)^saved)+saved)^saved)+saved; if (a < b) { ${variant === 1 ? 'ra_buffer[2] = out;' : ''} out = out+1; } return ((out^saved)+saved)^saved;`, [1, 1, 1], 1],
+    ['scalar_region_escape', 'u8 a, u8 b, u8 c', 'u8 saved = a^b; if (a < b) { ra_pointer_helper(&saved,c); } return saved+b;', [1, 1, 1], 1],
+    ['scalar_call_region', 'u8 a, u8 b, u8 c', `u8 saved = a^b; u8 first = c+saved; u8 loaded = ra_buffer[1]; u8 out = ((((first+loaded)^saved)+saved)^saved)+saved; u8 called = ra_pointer_helper(ra_buffer,ra_signed_helper(${variant === 1 ? 'ra_recursive_helper(2,a)' : 'a'},b,c)); return ((((out^saved)+saved)^saved)+saved)^called;`, [1, 1, 1], 1],
+    ['scalar_loop_pressure', 'u8 a, u8 b, u8 c', 'u8 left = a; u8 right = b; while (left < right) { left = left+1; right = right-1; } return left^right;', [1, 1, 1], 1],
+    ['scalar_loop_call', 'u8 a, u8 b, u8 c', 'u8 saved = a^b; u8 value = b; while (c) { value = ra_pointer_helper(ra_buffer,value)+saved; c = c-1; } return value;', [1, 1, 1], 1],
     ['scalar_cost_reject_byte', 'u8 a, u8 b, u8 c', 'u8 saved = a^b; u8 first = c+saved; u8 loaded = ra_buffer[1]; return ((first+loaded)^saved)+saved;', [1, 1, 1], 1],
     ['scalar_split_word', 'u16 a, u16 b, u16 c', 'u16 saved = ~c; u16 first = a+saved; u16 loaded = ra_buffer[1]; return ((first+loaded)^saved)+b+saved;', [2, 2, 2], 2],
     ['scalar_word_index', 'u16 a, u16 b, u8 c', `u16 out = a+b; ra_buffer[${constant}] = c; return out+ra_buffer[${constant}];`, [2, 2, 1], 2],
@@ -102,7 +107,7 @@ for (let variant = 0; variant < 8; variant++) {
       source: `${family.startsWith('scalar_signed') ? 's' : 'u'}${returnWidth * 8} ${name}(${parameters}) { ${body} }`});
   }
 }
-const source = 'u8 ra_buffer[128];\nu16 ra_words[64];\ns8 ra_signed_helper(u8 a, u8 b, u8 c) { return a+b+c; }\n' + programs.map(program => program.source).join('\n') + '\nvoid main(void) {}\n';
+const source = 'u8 ra_buffer[128];\nu16 ra_words[64];\ns8 ra_signed_helper(u8 a, u8 b, u8 c) { return a+b+c; }\nu8 ra_pointer_helper(u8 *target, u8 value) { target[0] = value; return target[1]; }\nu8 ra_recursive_helper(u8 depth, u8 value) { if (depth) { u8 saved = value^depth; u8 nested = ra_recursive_helper(depth-1,value+1); return nested^saved; } return value; }\n' + programs.map(program => program.source).join('\n') + '\nvoid main(void) {}\n';
 writeFileSync(join(output, 'generated.ssc'), source);
 const modes = [['default', []], ['no_ra', ['-no-ra']], ['all_spill', ['-ra-all-spill']],
   ['ra', ['-ra']], ['ra_quiet', ['-ra', '-q']]];
@@ -150,6 +155,21 @@ for (const program of process.env.RA_BASELINE === '1' ? [] : programs) {
       (lines.some(line => line.includes('scalar_split_transfer')) ||
        !lines.some(line => /profitability .*known=yes saved_cycles=-7 saved_bytes=-4 .*decision=3 /.test(line))))
     throw new Error(`Unprofitable split accepted: ${program.name}`);
+  if (['scalar_region', 'scalar_call_region'].includes(program.family) &&
+      (lines.filter(line => /scalar_split_transfer.*kind=store$/.test(line)).length !== 1 ||
+       lines.filter(line => /scalar_split_transfer.*kind=reload$/.test(line)).length !== 2 ||
+       lines.filter(line => line.includes('reload_reuse')).length !== (program.family === 'scalar_region' ? 5 : 6)))
+    throw new Error(`Function-region transfers changed: ${program.name}`);
+  if (program.family === 'scalar_loop_pressure' &&
+      ['B', 'C'].some(register => !lines.some(line =>
+        line.includes('loop_retention_apply_preflight') && line.includes(`selected=${register} `) && line.includes('application=applied'))))
+    throw new Error(`Two-value loop retention missing: ${program.name}`);
+  if (['scalar_region_escape', 'scalar_call_argument', 'scalar_narrow'].includes(program.family) &&
+      lines.some(line => /scalar_copy_promotion .*variable=saved /.test(line)))
+    throw new Error(`Unsafe scalar promoted: ${program.name}`);
+  if (program.family === 'scalar_loop_call' && lines.some(line =>
+      line.includes('loop_retention_apply_preflight') && line.includes('application=applied')))
+    throw new Error(`Call-clobbered loop retained: ${program.name}`);
   if (program.family.startsWith('scalar_remat_')) {
     const assembly = readFileSync(join(output, 'ra/main.asm'), 'utf8').split(`${program.name}:`)[1].split('.ENDS')[0];
     if (assembly.includes('; rematerialize ') !== (program.family !== 'scalar_remat_pointer'))
@@ -219,6 +239,42 @@ for (const program of programs) {
     let parameters = [byte, other, third];
     let expected;
     switch (program.family) {
+      case 'scalar_region':
+      case 'scalar_call_region': {
+        const saved = byte ^ other;
+        const first = (third + saved) & 255;
+        let value = (((first + buffer[1]) & 255) ^ saved) + saved;
+        value = (((value & 255) ^ saved) + saved) & 255;
+        if (program.family === 'scalar_region') {
+          if (program.variant === 1 && byte < other) expectedBuffer[2] = value;
+          value = (value + (byte < other ? 1 : 0)) & 255;
+          expected = ((((value ^ saved) + saved) & 255) ^ saved);
+        } else {
+          const calledByte = program.variant === 1 ? ((byte + 2) & 255) ^ ((byte + 1) & 255) ^ byte ^ 3 : byte;
+          expectedBuffer[0] = (calledByte + other + third) & 255;
+          value = (((value ^ saved) + saved) & 255) ^ saved;
+          expected = ((value + saved) & 255) ^ buffer[1];
+        }
+        break;
+      }
+      case 'scalar_region_escape':
+        expected = ((byte < other ? third : byte ^ other) + other) & 255;
+        break;
+      case 'scalar_loop_pressure': {
+        const iterations = Math.max(0, Math.ceil((other - byte) / 2));
+        expected = (byte + iterations) ^ (other - iterations);
+        break;
+      }
+      case 'scalar_loop_call': {
+        parameters[2] = seed & 7;
+        let value = other;
+        for (let iteration = 0; iteration < parameters[2]; iteration++) {
+          expectedBuffer[0] = value;
+          value = (buffer[1] + (byte ^ other)) & 255;
+        }
+        expected = value;
+        break;
+      }
       case 'scalar_signed_call': {
         const called = (byte + other + third) & 255;
         expected = (byte + (called >= 128 ? called - 256 : called)) & 65535;

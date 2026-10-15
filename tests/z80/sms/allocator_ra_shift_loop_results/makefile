@@ -17,7 +17,7 @@ all: linked.sms
 	: && ! grep -q "loop_retention_transaction function=allocatorRaComplementContinueLoop" compiler.log
 	sed -n '/allocatorRaComplementContinueLoop:/,/\.ENDS/p' main.asm | grep -q "IX-6"
 	grep -q "loop_retention_transaction function=allocatorRaArithmeticLoop .*transaction=applied atomic=yes ownership=function_scan" compiler.log
-	grep -q "loop_register_selection_preflight function=allocatorRaArithmeticLoopCompareConflict.*selected=NONE.*action=preserve_stack" compiler.log
+	for register in B C; do grep -q "loop_retention_apply_preflight function=allocatorRaArithmeticLoopCompareConflict.*selected=$$register .*application=applied" compiler.log || exit 1; done
 	grep -q "loop_register_path_reservation_preflight function=allocatorRaArithmeticLoopCompareConflict.*candidate=B.*transparent=no" compiler.log
 	grep -q "loop_register_selection function=allocatorRaShiftLeftLoop.*assignments=5.*selected=1 phy=5 selection=ready status=complete" compiler.log
 	grep -q "loop_register_selection function=allocatorRaShiftRightLoop.*assignments=5.*selected=1 phy=5 selection=ready status=complete" compiler.log

@@ -138,7 +138,7 @@ all: linked.sms core_liveness_storage_test tac_insert_test z80_register_spill_te
 	test "$$(grep -c "join_reservation function=allocatorRaCoreLiveness" compiler.log)" -eq 22
 	test "$$(grep -c "join_reservation_preflight function=allocatorRaCoreLiveness" compiler.log)" -eq 22
 	grep -q "join_schedule_preflight function=allocatorRaCoreLivenessDiamond block=4 temp=r0 selected=C assignments=3 schedule=ready mode=observe_only status=complete" compiler.log
-	test "$$(grep -c "join_schedule function=allocatorRaCoreLiveness" compiler.log)" -eq 33
+	test "$$(grep -c "join_schedule function=allocatorRaCoreLiveness" compiler.log)" -eq 34
 	test "$$(grep -c "register_allocator_core: join_retention function=allocatorRaCoreLiveness.*eligible=yes" compiler.log)" -eq 1
 	: && ! grep -q "join_retention.*function=allocatorRaCoreLiveness.*status=invalid" compiler.log
 	grep -q "join_retention function=coreJoinRetentionA .*selected=4 eligible=yes reason=all_paths_proven status=complete" core_liveness_storage_test.log
@@ -414,7 +414,7 @@ all: linked.sms core_liveness_storage_test tac_insert_test z80_register_spill_te
 	: && ! grep -q "loop_register_retry function=allocatorRaCoreLiveness" compiler.log
 	grep -q "loop_register_path_legality_preflight function=allocatorRaCoreLivenessMultiValue block=1 temp=r4 candidate=B producers_consumers=complete legal=yes status=complete" compiler.log
 	grep -q "loop_register_path_legality_preflight function=allocatorRaCoreLivenessMultiValue block=1 temp=r3 candidate=B producers_consumers=complete legal=yes status=complete" compiler.log
-	grep -q "loop_register_selection_preflight function=allocatorRaCoreLivenessMultiValue block=1 temp=r4 preferred=C candidates=3 bound=0 selected=NONE candidate=-1 attempt=1 action=preserve_stack mode=mutation status=complete" compiler.log
+	grep -q "loop_register_selection_preflight function=allocatorRaCoreLivenessMultiValue block=1 temp=r4 preferred=C candidates=3 bound=0 selected=B candidate=2 attempt=1 action=retain mode=mutation status=complete" compiler.log
 	grep -q "post_promotion_reconciliation function=allocatorRaCoreLivenessLoopJoin inserted=0 rewritten=0 added_temps=0 state_count=4 status=complete" compiler.log
 	grep -q "loop_stack_promotion function=allocatorRaCoreLivenessLoopJoin16 block=1 identity=1 size=16 proposed_temp=r1 existing_temps=1 plan=ready reason=none status=complete" compiler.log
 	grep -q "loop_join_candidate function=allocatorRaCoreLivenessLoopJoin16 block=1 blocks=4 temps=2 candidates=1 temp=r1 candidate=ready reason=unique_live_in status=complete" compiler.log
@@ -473,12 +473,12 @@ all: linked.sms core_liveness_storage_test tac_insert_test z80_register_spill_te
 	sed -n '/allocatorRaCoreLivenessMultiValue:/,/\.ENDS/p' main.asm | grep -q "retained arg2 in C"
 	grep -q "loop_register_path_reservation_preflight function=allocatorRaCoreLivenessMultiValue block=1 temp=r4 candidate=C reservation=1 path_block=1 start=179 end=183 transparent=yes blocking=-1 status=complete" compiler.log
 	grep -q "loop_register_path_reservation_preflight function=allocatorRaCoreLivenessMultiValue block=1 temp=r4 candidate=C reservation=2 path_block=2 start=184 end=193 transparent=no blocking=184 status=complete" compiler.log
-	grep -q "loop_register_path_candidate function=allocatorRaCoreLivenessMultiValue block=1 temp=r4 candidate=2 phy=4 path_safe=no status=complete" compiler.log
-	grep -q "loop_register_path_reservation_preflight function=allocatorRaCoreLivenessMultiValue.*candidate=B.*transparent=no.*blocking=183" compiler.log
-	: && ! grep -q "loop_retention_transaction function=allocatorRaCoreLivenessMultiValue temp=r4" compiler.log
-	: && ! grep -q "block_exit_spill_decision function=allocatorRaCoreLivenessMultiValue .*temp=r4 .*spill=exempt" compiler.log
-	: && ! sed -n '/allocatorRaCoreLivenessMultiValue:/,/\.ENDS/p' main.asm | grep -q "retained arg[12] in B"
-	sed -n '/allocatorRaCoreLivenessMultiValue:/,/\.ENDS/p' main.asm | grep -q "IX-9"
+	grep -q "loop_register_path_candidate function=allocatorRaCoreLivenessMultiValue block=1 temp=r4 candidate=2 phy=4 path_safe=yes status=complete" compiler.log
+	grep -q "loop_register_path_reservation_preflight function=allocatorRaCoreLivenessMultiValue block=1 temp=r4 candidate=B reservation=1 path_block=1 start=179 end=183 transparent=yes blocking=-1 status=complete" compiler.log
+	grep -q "loop_retention_transaction function=allocatorRaCoreLivenessMultiValue temp=r4 .*transaction=applied atomic=yes" compiler.log
+	test "$$(grep -c "block_exit_spill_decision function=allocatorRaCoreLivenessMultiValue .*temp=r4 .*spill=exempt" compiler.log)" -eq 3
+	sed -n '/allocatorRaCoreLivenessMultiValue:/,/\.ENDS/p' main.asm | grep -q "retained arg[12] in B"
+	: && ! sed -n '/allocatorRaCoreLivenessMultiValue:/,/\.ENDS/p' main.asm | grep -q "IX-9"
 	grep -q "loop_stack_promotion function=allocatorRaCoreLivenessNestedLoops block=1 identity=1 size=8 proposed_temp=r3 existing_temps=3 plan=ready reason=none status=complete" compiler.log
 	grep -q "loop_join_path_reservation function=allocatorRaCoreLivenessNestedLoops block=1 temp=r3 slot=4 blocks=7 instructions=441 edges=8 assignments=5 capacity=7 reservations=7 plan=ready order=stable_block status=complete" compiler.log
 	grep -q "loop_retention_conflict_preflight function=allocatorRaCoreLivenessNestedLoops block=1 temp=r3 selected=C slot=4 reservations=7 conflict=no conflict_block=-1 conflict_start=-1 conflict_end=-1 owner=r-1 action=retain status=complete" compiler.log
@@ -592,7 +592,7 @@ all: linked.sms core_liveness_storage_test tac_insert_test z80_register_spill_te
 	test "$$(grep -c "join_reservation_interval function=.*status=invalid_interval" core_liveness_storage_test.log)" -eq 3
 	grep -q "join_path_reservation function=allocatorRaCoreLivenessDiamond temp=r0 blocks=9 instructions=441 edges=10 assignments=3 capacity=9 reservations=4 plan=ready status=complete" compiler.log
 	grep -q "join_path_reservation_preflight function=allocatorRaCoreLivenessDiamond block=4 temp=r0 selected=C slot=4 blocks=4 plan=ready mode=observe_only status=complete" compiler.log
-	test "$$(grep -c "join_path_reservation function=allocatorRaCoreLiveness" compiler.log)" -eq 49
+	test "$$(grep -c "join_path_reservation function=allocatorRaCoreLiveness" compiler.log)" -eq 50
 	test "$$(grep -c "join_path_reservation_preflight function=allocatorRaCoreLiveness" compiler.log)" -eq 22
 	test "$$(grep -c "join_path_reservation_block function=allocatorRaCoreLivenessDiamond" compiler.log)" -eq 4
 	grep -q "join_path_reservation_block function=allocatorRaCoreLivenessDiamond temp=r0 reservation=0 block=1 start=5 end=8 slot=4 status=complete" compiler.log
@@ -635,7 +635,7 @@ all: linked.sms core_liveness_storage_test tac_insert_test z80_register_spill_te
 	grep -q "join_path_reservation_commit function=allocatorRaCoreLivenessDiamond temp=r0 blocks=9 instructions=441 reservations=4 reservation_capacity=9 state_count=4 state_capacity=9 committed=4 conflict=-1 commit=committed status=complete" compiler.log
 	grep -q "join_path_reservation_commit_preflight function=allocatorRaCoreLivenessDiamond block=4 temp=r0 selected=C slot=4 planned=4 committed=4 state_count=4 commit=committed ownership=function_scan mode=observe_only status=complete" compiler.log
 	grep -q "join_path_reservation_commit function=allocatorRaCoreLivenessLoopJoin temp=r1 blocks=4 instructions=441 reservations=4 reservation_capacity=4 state_count=4 state_capacity=8 committed=4 conflict=-1 commit=committed status=complete" compiler.log
-	test "$$(grep -c "join_path_reservation_commit function=allocatorRaCoreLiveness" compiler.log)" -eq 33
+	test "$$(grep -c "join_path_reservation_commit function=allocatorRaCoreLiveness" compiler.log)" -eq 34
 	test "$$(grep -c "join_path_reservation_commit_preflight function=allocatorRaCoreLiveness" compiler.log)" -eq 22
 	test "$$(grep -c "join_path_reservation_commit_entry function=allocatorRaCoreLivenessDiamond" compiler.log)" -eq 4
 	test "$$(grep -c "join_assignment_apply_entry function=allocatorRaCoreLivenessDiamond" compiler.log)" -eq 3

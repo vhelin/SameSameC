@@ -9915,7 +9915,7 @@ from these counts or treat further policy extraction as an optimization gain.
 
 ### Batch 310-312: Extend Allocation Across Useful Regions
 
-- [ ] **310. Use function-level live segments for region decisions.** Build on
+- [x] **310. Use function-level live segments for region decisions.** Build on
       existing CFG/liveness and definition identity to represent lifetime holes
       and values crossing ordinary block boundaries. Start with unambiguous
       straight-line regions, then joins where all incoming states can be
@@ -9925,7 +9925,7 @@ from these counts or treat further policy extraction as an optimization gain.
       structural mutations. Test edge-specific transfers, critical-edge
       placement, incompatible incoming locations, and all-path rollback before
       replacing conservative stack-backed decisions.
-- [ ] **311. Retain profitable loop-carried values under pressure.** Extend
+- [x] **311. Retain profitable loop-carried values under pressure.** Extend
       current loop support to multiple simultaneously live values and useful
       nested-loop regions, using estimated or measured hotness and actual
       register-unit conflicts. Account for entry, backedge, and exit transfers
@@ -9934,7 +9934,7 @@ from these counts or treat further policy extraction as an optimization gain.
       Require execution-tested removal of repeated loop-body memory traffic
       and report total dynamic cycles including setup/exit costs; an additional
       recognized loop shape alone is not an optimization result.
-- [ ] **312. Limit call-related spills to the values and regions needing them.**
+- [x] **312. Limit call-related spills to the values and regions needing them.**
       Preserve the existing ABI and caller-clobber rules. Split live ranges
       around calls and choose saves/reloads or rematerialization using proven
       value liveness and cost, rather than keeping an entire lifetime in memory.
@@ -9944,6 +9944,84 @@ from these counts or treat further policy extraction as an optimization gain.
       argument/return conventions. Test live values across nested calls,
       recursion where supported, pointer writes, and mixed-width returns, with
       frame/stack restoration and observable-memory checks.
+
+                  Batch 310-312 implementation and qualification:
+
+                  - Single-definition, non-escaping scalar locals now reach the existing
+                        function CFG/liveness and split/reload graph across ordinary labels,
+                        branches, and calls. This changes value eligibility, not boundary
+                        ownership proofs. Existing all-path reservations, atomic transactions,
+                        mutation-triggered rebuilds, block-exit spills, and final verification
+                        still decide resident segments. A scalar passed directly as a call
+                        argument, an address-taken local, unsupported narrowing, redefinition,
+                        or an asm barrier remains excluded. Pointer promotion remains bounded
+                        to its previous single-block/call-free rules.
+                  - Existing loop selection can now put a second byte value in B: byte
+                        SUB arg1 and comparison arg2 have explicit legality, a resident B
+                        comparison operand needs no address/materialization round trip, and
+                        RA-only literal comparisons use the existing immediate SUB emitter
+                        instead of overwriting B. Default, `-no-ra`, and forced-all-spill
+                        emission remain unchanged. Register-unit conflicts, path clobbers,
+                        entry/backedge/exit reservations, and parallel-copy rejection still
+                        use existing machinery; no new register, scheduler, or helper was added.
+                  - Calls keep the full existing clobber set and ABI. Eligible scalar
+                        values can have a resident prefix, one preservation store, and later
+                        independently proven reload segments instead of an entirely
+                        memory-resident lifetime. No callee summary, callee-saved convention,
+                        or retention through an unknown call/asm was introduced.
+                  - The existing execution runner now covers 88 original functions,
+                        74 scalar functions in 31 families, and seven real bank-zero routines.
+                        Five new scalar families cover a branch region (including a branch
+                        pointer-write variant), nested signed-return/pointer-writing calls
+                        with a bounded recursive-call variant,
+                        two simultaneously updated loop-header values, calls inside a loop,
+                        and address escape. Exact gates require one store/two reloads and
+                        five/six reload reuses in the region/call controls, B/C loop ownership,
+                        and no unsafe escape/narrowing/call-argument promotion or call-loop
+                        retention. Existing join/critical-edge, rollback, nested-loop,
+                        break/continue, multiple-latch, conflict, and redefinition controls
+                        remain active. Unsupported critical edges and incompatible incoming
+                        locations still fall back; arbitrary cross-label reload reuse was not
+                        enabled. Recursive calls use the same full clobber rules, with a
+                        scalar live across recursion checked against a closed-form oracle.
+                  - Against saved pre-batch `f4f1e66`, matching sources at 512 seeds gave
+                        86,528 executions per mode/toolchain, with independently checked
+                        results, observable writes, bounds, and DE/SP restoration. Cygwin GCC
+                        and native MSVC ASan produced identical counters and ROMs in every
+                        mode. Aggregate RA cycles fell 114,616,610 -> 112,465,448 (1.88%),
+                        frame reads 2,288,022 -> 2,220,274, and writes 1,206,546 -> 1,174,720;
+                        no generated function regressed in cycles. Including setup/exit, the
+                        region control fell 709,000 -> 625,032 cycles, nested-call region
+                        3,056,640 -> 2,955,264, and pressure loop 6,203,700 -> 4,975,674.
+                        That loop's reads fell 69,878 -> 24,658 and writes 67,830 -> 45,220.
+                        The call-loop negative retained no loop value and kept the same
+                        memory traffic; its smaller compares alone saved 18,432 cycles.
+                  - Combined generated ROM fell 19,394 -> 19,172 bytes; frames
+                        1,837 -> 1,821. Register copies rose 626 -> 636, preservation stores
+                        10 -> 14, and reloads 8 -> 16. These extra bounded transfers replace
+                        repeated memory reads, not a claim of transfer-free allocation.
+                        Calculations-1 ROM fell 23,688 -> 23,675 and calculations-2
+                        16,299 -> 16,288; frame totals/maxima stayed 291/105 and 254/97,
+                        with unchanged copy counts and no explicit inserted spill/reload.
+                        Baseline/current default, `-no-ra`, and all-spill ROMs matched for
+                        both generated cohorts and both real projects; trace/quiet matched.
+                  - Three alternating two-project measurement rounds, concurrent with
+                        other validation, gave summed RA compiler-time medians
+                        2.08 -> 2.10 seconds (ranges 2.01-2.18 and 2.04-2.18), measured peak
+                        RSS 13,260 -> 13,264 KiB. Disabled-mode times were noisier. No compiler
+                        time or memory improvement is claimed; cumulative workspace-plan
+                        counts are not peak memory. Production growth is 14 lines across
+                        two existing files, with no new functions, APIs, or test files.
+                  - Strict C90/warnings and editor diagnostics passed. Fresh staged
+                        Cygwin/native binaries were compared before tests. Native compiler
+                        and actual-source verifier ASan runs reported no errors; the seven
+                        accepted/16 immutable rejected cases and eight spill-layout controls
+                        passed in traced and quiet modes. The final sequential Cygwin and
+                        native Windows full suites each passed all 173 tests. Only tagged
+                        byte expectations and measured trace/ownership assertions changed
+                        in existing fixtures; executable fixture sources were preserved.
+                        UBSan, Valgrind/leak checking, exhaustive CFG coverage, upstream
+                        emulator tests, and SMS hardware/bank switching remain unrun.
 
 ### Batch 313-315: Close Coverage Gaps And Qualify The Result
 

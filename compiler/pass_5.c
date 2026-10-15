@@ -206,8 +206,8 @@ static int _promote_register_allocator_local_values(void) {
       if (instruction->op == TAC_OP_DEAD)
         continue;
       if (instruction_index > producer_index &&
-          (instruction->op == TAC_OP_LABEL || instruction->op == TAC_OP_ASM ||
-          _is_register_allocator_jump_op(instruction->op) == YES ||
+          (instruction->op == TAC_OP_ASM || (pointer_base == YES &&
+          (instruction->op == TAC_OP_LABEL || _is_register_allocator_jump_op(instruction->op) == YES)) ||
           instruction->op == TAC_OP_RETURN || instruction->op == TAC_OP_RETURN_VALUE))
         crossed_barrier = YES;
       if (instruction->op == TAC_OP_FUNCTION_CALL || instruction->op == TAC_OP_FUNCTION_CALL_USE_RETURN_VALUE) {
@@ -220,7 +220,7 @@ static int _promote_register_allocator_local_values(void) {
               instruction->arguments[argument_index].node == variable)
             eligible = NO;
         }
-        if (instruction_index > producer_index)
+        if (pointer_base == YES && instruction_index > producer_index)
           crossed_barrier = YES;
       }
       if (instruction->op == TAC_OP_ASM) {
@@ -273,8 +273,9 @@ static int _promote_register_allocator_local_values(void) {
     if (next_temp == INT_MAX)
       return FAILED;
 
-    RA_TRACE((stderr, "register_allocator: %s_promotion function=%s variable=%s temp=r%d reads=%d uses=%d scope=single_block status=complete\n",
-      pointer_base == YES ? "pointer_base" : "scalar_copy", function_node->children[1]->label, producer->result_s, next_temp, reads, uses));
+    RA_TRACE((stderr, "register_allocator: %s_promotion function=%s variable=%s temp=r%d reads=%d uses=%d scope=%s status=complete\n",
+      pointer_base == YES ? "pointer_base" : "scalar_copy", function_node->children[1]->label, producer->result_s, next_temp, reads, uses,
+      pointer_base == YES ? "single_block" : "function_value"));
     if (pointer_base == NO)
       producer->result_var_type = variable->children[0]->value;
     for (instruction_index = function_start; instruction_index < function_end; instruction_index++) {
@@ -4773,8 +4774,12 @@ static int _is_register_allocator_b_candidate(struct tac *producer, struct tac *
     return NO;
   if ((consumer->op == TAC_OP_ARRAY_WRITE || consumer->op == TAC_OP_ARRAY_READ || consumer->op == TAC_OP_GET_ADDRESS_ARRAY) && consumer_arg == TAC_USE_ARG2)
     return YES;
-  if (consumer->op == TAC_OP_SUB)
-    return consumer_arg == TAC_USE_ARG2 ? YES : NO;
+  if (consumer->op == TAC_OP_SUB || _is_register_allocator_jump_op(consumer->op) == YES) {
+    if ((consumer->arg1_var_type_promoted != VARIABLE_TYPE_UINT8 && consumer->arg1_var_type_promoted != VARIABLE_TYPE_INT8) ||
+        (consumer->arg2_var_type_promoted != VARIABLE_TYPE_UINT8 && consumer->arg2_var_type_promoted != VARIABLE_TYPE_INT8))
+      return NO;
+    return consumer_arg == (consumer->op == TAC_OP_SUB ? TAC_USE_ARG1 : TAC_USE_ARG2) ? YES : NO;
+  }
   if (consumer->op == TAC_OP_ADD || consumer->op == TAC_OP_AND || consumer->op == TAC_OP_OR || consumer->op == TAC_OP_XOR)
     return YES;
 
@@ -5377,6 +5382,11 @@ static int _is_z80_basic_block_transparent_tac_for_physical_register(struct tac 
 
   if (physical_register == Z80_PHY_B) {
     if (_is_register_allocator_byte_transparent_tac(t, physical_register) == YES)
+      return YES;
+    if (_is_register_allocator_jump_op(t->op) == YES && t->op != TAC_OP_JUMP &&
+        (t->arg1_var_type_promoted == VARIABLE_TYPE_INT8 || t->arg1_var_type_promoted == VARIABLE_TYPE_UINT8) &&
+        (t->arg2_var_type_promoted == VARIABLE_TYPE_INT8 || t->arg2_var_type_promoted == VARIABLE_TYPE_UINT8) &&
+        (t->arg2_type == TAC_ARG_TYPE_CONSTANT || t->arg2_physical_register == Z80_PHY_B))
       return YES;
     if (_z80_tac_may_clobber_bc(t->op) == NO)
       return YES;

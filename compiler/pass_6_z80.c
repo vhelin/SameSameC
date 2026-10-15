@@ -29,7 +29,7 @@ extern struct tree_node *g_global_nodes;
 extern int g_verbose_mode, g_input_float_mode, g_current_filename_id, g_current_line_number;
 extern struct tac *g_tacs;
 extern int g_tacs_count, g_tacs_max, g_bank, g_slot, g_ram_bank, g_ram_slot;
-extern int g_allocator_enabled;
+extern int g_allocator_enabled, g_allocator_force_all_spill;
 extern char g_tmp[4096], g_error_message[sizeof(g_tmp) + MAX_NAME_LENGTH + 1 + 1024];
 
 static int g_return_id = 1, g_is_ix_de = NO;
@@ -5997,8 +5997,8 @@ static int _bbb_generate_asm_jump_eq_lt_gt_neq_lte_gte_z80_8bit(struct tac *t, F
   /* source address (arg2) -> ix */
   /******************************************************************************************************/
 
-  if (arg2_in_a == YES) {
-    fprintf(file_out, "      ; retained arg2 in A\n");
+  if (arg2_in_a == YES || arg2_location.kind == LOC_PHY_B) {
+    fprintf(file_out, "      ; retained arg2 in %s\n", _get_z80_physical_register_name(arg2_location.phy));
   }
   else {
     ix_offset = 0;
@@ -6013,7 +6013,8 @@ static int _bbb_generate_asm_jump_eq_lt_gt_neq_lte_gte_z80_8bit(struct tac *t, F
   /* copy data (arg2) -> b */
   /******************************************************************************************************/
 
-  if (arg2_in_a == YES) {
+  if (arg2_in_a == YES || arg2_location.kind == LOC_PHY_B ||
+      (g_allocator_enabled == YES && g_allocator_force_all_spill == NO && arg2_location.kind == LOC_CONST)) {
   }
   else if (arg2_location.kind == LOC_PHY_HL || arg2_location.kind == LOC_PHY_BC) {
     fprintf(file_out, "      LD  B,%s\n", arg2_location.kind == LOC_PHY_HL ? "L" : "C");
@@ -6031,7 +6032,10 @@ static int _bbb_generate_asm_jump_eq_lt_gt_neq_lte_gte_z80_8bit(struct tac *t, F
   /* a = a - b */
   /******************************************************************************************************/
 
-  _sub_b_from_a(file_out);
+  if (g_allocator_enabled == YES && g_allocator_force_all_spill == NO && arg2_location.kind == LOC_CONST)
+    _sub_value_from_a(arg2_location.value & 0xff, file_out);
+  else
+    _sub_b_from_a(file_out);
 
   /******************************************************************************************************/
   /* jumps */
