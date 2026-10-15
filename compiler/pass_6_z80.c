@@ -5897,8 +5897,11 @@ static int _aaa_generate_asm_jump_eq_lt_gt_neq_lte_gte_z80_16bit(struct tac *t, 
     _jump_nz_to(t->result_s, file_out);
   else if (op == TAC_OP_JUMP_LT)
     _jump_c_to(t->result_s, file_out);
-  else if (op == TAC_OP_JUMP_GT)
+  else if (op == TAC_OP_JUMP_GT) {
+    _jump_z_to("+", file_out);
     _jump_nc_to(t->result_s, file_out);
+    fprintf(file_out, "+:\n");
+  }
   else if (op == TAC_OP_JUMP_LTE) {
     _jump_z_to(t->result_s, file_out);
     _jump_c_to(t->result_s, file_out);
@@ -6049,14 +6052,32 @@ static int _bbb_generate_asm_jump_eq_lt_gt_neq_lte_gte_z80_8bit(struct tac *t, F
   /* jumps */
   /******************************************************************************************************/
 
+  if (get_max_variable_type_2(t->arg1_var_type_promoted, t->arg2_var_type_promoted) == VARIABLE_TYPE_INT8 &&
+      op != TAC_OP_JUMP_EQ && op != TAC_OP_JUMP_NEQ) {
+    if (op == TAC_OP_JUMP_GT)
+      _jump_z_to("++", file_out);
+    else if (op == TAC_OP_JUMP_LTE)
+      _jump_z_to(t->result_s, file_out);
+    fprintf(file_out, "      JP  PO,+\n");
+    _xor_value_to_a(128, file_out);
+    fprintf(file_out, "+:\n      JP  %s,%s\n",
+        op == TAC_OP_JUMP_LT || op == TAC_OP_JUMP_LTE ? "M" : "P", t->result_s);
+    if (op == TAC_OP_JUMP_GT)
+      fprintf(file_out, "++:\n");
+    return SUCCEEDED;
+  }
+
   if (op == TAC_OP_JUMP_EQ)
     _jump_z_to(t->result_s, file_out);
   else if (op == TAC_OP_JUMP_NEQ)
     _jump_nz_to(t->result_s, file_out);
   else if (op == TAC_OP_JUMP_LT)
     _jump_c_to(t->result_s, file_out);
-  else if (op == TAC_OP_JUMP_GT)
+  else if (op == TAC_OP_JUMP_GT) {
+    _jump_z_to("+", file_out);
     _jump_nc_to(t->result_s, file_out);
+    fprintf(file_out, "+:\n");
+  }
   else if (op == TAC_OP_JUMP_LTE) {
     _jump_z_to(t->result_s, file_out);
     _jump_c_to(t->result_s, file_out);

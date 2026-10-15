@@ -10163,17 +10163,311 @@ from these counts or treat further policy extraction as an optimization gain.
                         comparison failures in a separately scoped follow-up before widening
                         eligibility or considering unconditional RA. No later batch is started.
 
+### Follow-On Quality Roadmap: Steps 316-339
+
+The following batches track follow-on work. Completed steps are checked only
+after their qualification gates pass. They improve correctness,
+allocation quality, compile cost, and maintainability beyond the completed
+bounded Z80 milestone; they do not reopen that milestone or make `-ra`
+unconditional. Do not begin with a full SSA rewrite, graph-coloring replacement,
+new target, or further generic extraction without a demonstrated need. Reuse
+the existing allocator, materializers, verifier, fixtures, and execution runner.
+
+Steps 316-318 address three independently reproduced default-mode wrong-code
+cases, not allocator-only failures. Their intended semantic/output corrections
+must be isolated and documented. Outside those demonstrated corrections,
+preserve default/`-no-ra`/forced-all-spill compatibility. Record fresh matched
+baselines after the corrections; do not count their effects as allocator gains.
+Every later optimization needs a before/after case with independent execution,
+and every consolidation needs output/allocation equivalence. Static rejection
+counts identify audit targets, not dynamic savings or guaranteed opportunities.
+
+### Batch 316-318: Correct The Known Baseline Semantics
+
+- [x] **316. Preserve truncation through word-to-byte copy chains.** Retain the
+      reduced `u16 saved=~a; u8 narrowed=saved; return (b+c)+narrowed;`
+      failure in existing tests, including the case expected to return 33021
+      rather than 32765. Fix the owning conversion/copy path instead of hiding
+      it through allocator eligibility. Cover byte boundaries, signedness,
+      narrowing followed by widening, and both ALU operand positions. Execute
+      default, forced-all-spill, and RA against an independent typed oracle;
+      require `-no-ra` agreement with corrected default behavior.
+- [x] **317. Correct signed-byte relational ordering.** Retain the unguarded
+      `s8 saved=a^b; if(saved<c) return a; return b;` reproduction, whose
+      byte inputs (184,75,97) should return 184 rather than 75. Fix the actual
+      signed comparison lowering and cover all six comparison forms, equality,
+      both operand orders, constants/registers/memory, and -128/-1/0/127.
+      Keep signed ordering cases in the executable matrix rather than limiting
+      qualification to equality or adding source guards around failures.
+- [x] **318. Correct unsigned relational equality boundaries.** Retain the
+      unguarded `u8 saved=a^b; if(saved>c) return a; return b;` reproduction
+      for (0,68,68), expected 68 rather than 0. Check all six comparison forms,
+      both orders, equality and adjacent values at byte/word boundaries. Remove
+      the matrix's equality guards only after independent execution passes in
+      every relevant mode. Requalify the three semantic fixes together and
+      establish a corrected baseline before widening allocation eligibility.
+
+                  Qualification for 316-318 (baseline semantics, not allocation gains):
+
+                  - Saved pre-edit compilers reproduce all three retained default-mode
+                        failures: narrowing returns 32765 instead of 33021; signed ordering
+                        returns 75 instead of 184 for (184,75,97); unsigned byte `>` returns
+                        0 instead of 68 for (0,68,68). An unguarded word equality counterpart
+                        also returns 0 instead of 65467. Existing failure reduction retains
+                        the exact sources/inputs under `/tmp/ra318-before-*`.
+                  - `_optimize_il_23` no longer substitutes an untruncated word source for
+                        an assignment that narrows to a byte. The existing assignment and
+                        extension emitters perform the conversion; no new pass or allocator
+                        eligibility exception was added. Tests cover all four signed/unsigned
+                        word-to-byte combinations, widening signed bytes through s16, both
+                        ALU operand positions, and boundary pairs. Byte relational emission
+                        now uses sign XOR overflow for signed ordering; strict unsigned `>`
+                        excludes equality in both byte and word emission. Full call/asm masks,
+                        ABI, register eligibility, and opt-in behavior remain unchanged.
+                  - The existing runner removes unsigned equality guards and executes all
+                        six signed/unsigned byte and unsigned word comparisons in both orders.
+                        Two small additional cohorts reuse the same generator/oracle for
+                        computed-value/literal and memory-value/literal forms. Signed negative
+                        one uses `(0-1)`: unary minus in that expression position is rejected
+                        by the existing parser, which was not changed. The first 65 seeds
+                        retain exact failures and an eight-by-eight boundary grid; later seeds
+                        retain varied full-range inputs. No new test file or dependency was
+                        added. Eight existing byte tags were refreshed only for the added
+                        equality-skipping jump and resulting branch-address relocations;
+                        executable fixture sources and allocation assertions are unchanged.
+                  - Fresh Cygwin GCC, native MSVC Release, and native MSVC ASan compilers
+                        each pass 176,640 executions per mode at 512 seeds: 88 original,
+                        74 scalar, 86 matrix, 44 computed-literal, 44 memory-literal functions,
+                        and nine real routines. The five generated cohorts have 11/37/75/37/37
+                        normalized shapes and 26,624/25,600/32,792/15,896/15,896 unique full
+                        shape/input tuples within their cohorts. These are not globally unique
+                        CFG counts. Actual-source verifier checks remain seven accepted and
+                        32 immutable rejected cases, eight layout controls, 10,200 endpoint
+                        combinations, and 25 physical-unit pairs, in traced and quiet modes.
+                        All 35 ROM pairs and generated/real execution counters match between
+                        Cygwin and each native toolchain. Default/`-no-ra` ROMs and traced/quiet
+                        RA ROM/assembly agree. ASan reports no compiler/verifier errors.
+                  - Both sequential authoritative full suites pass all 173 tests, with
+                        fresh hash-matched staged binaries. Strict C90/-Wall/-Werror and editor
+                        diagnostics pass. The original/scalar generated sources, ten mode ROMs,
+                        and all original/scalar/real dynamic counters match pre-batch artifacts.
+                        Both real projects' ROM, frame, and static-copy totals are unchanged;
+                        the first project's existing RA frame regression is not repaired here.
+                  - The corrected expanded workload totals default/all-spill/RA cycles
+                        225,581,587/225,689,107/176,419,171, frame reads
+                        4,663,612/4,665,660/3,411,698, and frame writes
+                        3,022,948/3,024,996/1,769,660. Frame traffic includes ABI transfers.
+                        These establish a new matched correctness baseline, not a speedup
+                        introduced by this batch; the expanded matrix is not comparable with
+                        the guarded pre-batch workload. Final execution artifacts are under
+                        `/tmp/ra318-final-{cygwin,native-release,native-asan}`; corrected Cygwin
+                        and native Release baseline binaries are retained in those final dirs.
+                  - Production growth is 25 net lines in two existing files, with no new
+                        production functions, APIs, files, or abstractions. Existing optimizer,
+                        type-priority, jump, and XOR helpers are reused. All 19 protected dirty
+                        tracked-file hashes remain unchanged. No compile-time/peak-memory
+                        improvement is claimed; controlled resource profiling, UBSan,
+                        Valgrind/leaks, exhaustive emitter/CFG execution, upstream emulator
+                        tests, and SMS hardware/bank switching remain unrun. Signed word
+                        relational ordering is not certified by this batch. No later step
+                        is started and `-ra` remains opt-in.
+
+### Batch 319-321: Align Allocation With Actual Lowering Effects
+
+- [ ] **319. Describe selected-lowering register effects.** Extend existing
+      descriptors/policy data to express actual reads, writes, scratch units,
+      and clobbers for supported operand locations and widths. Distinguish
+      direct-to-BC complement from word ALU paths that compute through HL;
+      include BC/B/C overlap and preservation needed by extension/index code.
+      Use those facts in candidate/path decisions without weakening full
+      call/asm barriers. Avoid a second parallel target-policy framework.
+- [ ] **320. Consolidate typed operand materialization.** Reuse the existing
+      A/HL/BC/index materializers across duplicated emitter paths, making
+      sign extension, truncation, scratch use, and preservation explicit in
+      their current contracts. Remove superseded location handling as each
+      path migrates. Preserve unsupported-combination failures and require
+      matching assembly/ROMs for behavior-preserving migrations; separately
+      qualify any intentional instruction improvement with actual execution.
+- [ ] **321. Independently test lowering/effect agreement.** Extend the
+      existing harness/runner with live sentinel values across each newly
+      described lowering variant, including overlapping byte/word units,
+      destructive operands, signed widening, and low-byte word uses. Compare
+      actual execution with independent expectations, not only allocator and
+      verifier callbacks that share the same assumptions. Retain immutable
+      rejection and atomic rollback tests for illegal effects/locations.
+
+### Batch 322-324: Select Placements By Cost
+
+- [ ] **322. Rank all legal placements before committing a transition.**
+      Replace first-eligible arbitration plus a later single-register cost
+      override with comparison of the existing legal A/HL/BC/B/C alternatives.
+      Include displaced-owner costs and the opportunity cost of BC occupying
+      both B and C. Keep qualification read-only until the selected plan passes
+      existing atomic preflight. Add a case where the first legal placement is
+      inferior to another legal placement, with measured emitted benefit.
+- [ ] **323. Reduce copies through placement affinity.** Prefer compatible
+      source/result locations when the source dies at the operation, and use
+      legal commutative operand ordering to avoid unnecessary materialization.
+      Price moves and scratch preservation rather than rewarding retention
+      alone. Keep subtraction, comparisons, shifts, aliased operands, and
+      BC/B/C overlap as explicit safety controls. Demonstrate fewer executed
+      moves or cycles, not merely a lower static copy count.
+- [ ] **324. Make the cost model lowering-aware and loop-weighted.** Replace
+      unexplained fixed transfer approximations with costs consistent with
+      the selected emitter paths, including IX/IY setup, typed extension,
+      preservation, reloads, and existing rematerialization. Weight uses and
+      transfers by bounded loop-frequency estimates rather than uniformly by
+      one; identify estimates and unknowns in diagnostics. Make the current
+      256-instruction/unknown-cost fallback explicit and test it. Retain
+      negative profitability controls and the cycles/no-byte-growth policy
+      unless a separately explained objective change is approved.
+
+### Batch 325-327: Expand Evidence-Backed Value Coverage
+
+- [ ] **325. Audit assignments feeding array indexes first.** The retained
+      two-project summaries contain 189 producer/next-use rejections: 174
+      unsupported forms and 15 clobbers; 160 are assignment-to-array-index
+      operands. Separate constants and copy chains better handled by existing
+      propagation/rematerialization from values worth retaining. Enable only
+      proven, profitable byte/word index forms, with signedness, index scaling,
+      pointer-base conflicts, and bounded aliasing execution controls. Recount
+      rejections and measure actual real-routine benefit; eliminating a static
+      rejection is not itself completion.
+- [ ] **326. Broaden profitable word placements in BC.** Audit the current
+      complement-only general BC producer rule against existing word emitters,
+      especially ALU results consumed as right operands. Add supported forms
+      only after their HL scratch and B/C interference are represented by the
+      lowering-effect contract. Include SUB right operands, computed shift
+      counts, simultaneous retained HL values, and displaced byte owners.
+      Require a useful independently executed case for each expansion and
+      retain rejection of incompatible live-register combinations.
+- [ ] **327. Promote more supported scalar uses.** Extend the existing
+      single-definition, nonescaping scalar path to proven comparison, shift,
+      index, and by-value call-argument uses currently excluded by its consumer
+      allowlist. Materialize stack ABI arguments at the boundary; this does
+      not permit registers to survive calls. Preserve address-taking/asm
+      exclusions, dominance/definition identity, and exact conversion semantics.
+      Keep multi-definition promotion and wider pointer scope deferred unless
+      a measured case justifies a separately tested extension of existing
+      reaching-definition machinery; do not silently relax those invariants.
+
+### Batch 328-330: Improve Loop Retention And Frame Storage
+
+- [ ] **328. Price loop retention and split placement together.** Use existing
+      CFG/loop and reservation machinery to compare retaining a value through
+      a loop with storing/reloading or rematerializing at proven boundaries.
+      Account for hot repeated uses, exits, calls, nested-loop pressure, and
+      competing BC versus B/C ownership. Require actual loop execution with
+      zero/one/multiple iterations and cold-path controls; avoid moving spill
+      work into a hot loop or adding per-iteration copies for a static win.
+- [ ] **329. Diagnose and reduce the measured frame regression.** Trace the
+      first calculations project's default/RA frame totals 283/291 and maxima
+      101/105 to individual functions, promoted values, and storage lifetimes.
+      Do not assume spill-slot reuse restrictions caused this regression.
+      Remove demonstrated unnecessary slots/lifetime expansion while retaining
+      ABI storage and valid preservation destinations. Report per-function
+      maximum frame size alongside cycles/ROM; explain any retained tradeoff.
+- [ ] **330. Share spill storage using proven memory interference.** Improve
+      existing CFG-adjusted enclosing lifetime bounds where mutually exclusive
+      paths or dead segments demonstrably permit safe sharing. Address the
+      current whole-function sharing opt-out when a REGISTER_SPILL TAC exists:
+      preserve its absolute-offset contract, or safely resolve transfers after
+      layout, before allowing reuse. Test branches, loops, calls, reused
+      definitions, byte/word widths, and immutable failed layout validation.
+      Require an actual frame reduction without added incorrect transfers.
+
+### Batch 331-333: Reduce Compiler Work And Diagnostic Overhead
+
+- [ ] **331. Make quiet mode quiet and profile matched builds.** Move successful
+      discovery/next-use and lifecycle diagnostics behind existing trace
+      control while preserving errors and intentional user-facing reports.
+      Retained quiet generated-cohort logs still contain roughly 0.6-0.8 MB
+      each; verify suppression and traced/quiet assembly/ROM identity. Then
+      profile quiet and traced compilation separately on identical sources,
+      retaining log sizes, wall-time dispersion, and actual peak RSS. Do not
+      attribute the previous noisy RA/default timing gap to a guessed hotspot.
+- [ ] **332. Reuse per-definition use information within function bounds.**
+      If profiling confirms repeated next-use/path scans are material, build
+      or reuse ordered use/definition observations in the existing analysis
+      storage instead of repeatedly scanning the remainder of global TACs.
+      Preserve reads-before-writes, redefinition stops, all operand roles, and
+      deterministic candidate ordering. Invalidate/rebuild observations after
+      mutations using the existing rebuild boundary; retain allocation/ROM
+      equivalence and demonstrate a compile-time benefit without excess memory.
+- [ ] **333. Consolidate redundant analysis and workspace work.** Use measured
+      profiles to remove duplicate CFG/liveness reconstruction or temporary
+      allocations when the analyzed TACs and metadata are unchanged. Reuse
+      existing function-owned storage and explicit invalidation rather than
+      global caches or another ownership abstraction. Keep post-mutation
+      verification and fail-closed checks. If no material duplication is found,
+      revise/defer this item explicitly instead of adding infrastructure to
+      satisfy it; require measured time/RSS benefit for retained changes.
+
+### Batch 334-336: Measure Quality Beyond Static Retention Counts
+
+- [ ] **334. Measure executed copies and transfer causes.** Extend the existing
+      emulator runner to distinguish dynamic register moves, explicit allocator
+      preservation/reloads, and ABI/argument/result frame traffic. Keep static
+      ROM/copy counts separately labeled, and validate counter attribution on
+      small known instruction sequences. Report per-routine results and outliers
+      so aggregate cycle wins cannot hide copy-heavy or frame-heavy regressions.
+- [ ] **335. Expand structural coverage around the changed decisions.** Reuse
+      existing generated cohorts and failure reduction for competing legal
+      placements, copy affinity, live-range holes, loop pressure, conversions,
+      call arguments, and overlapping units. Keep unguarded baseline regressions
+      from 316-318 and both successful/rejected allocation controls. Vary CFGs
+      and operand relationships, report unique shapes separately from seeds,
+      and retain reproducible failures without claiming exhaustive coverage.
+- [ ] **336. Qualify representative real software loops.** Extend the current
+      calculations-based execution corpus with actual source loops, pointer
+      indexing, and call boundaries affected by these changes, using independent
+      oracles and complete memory/DE/SP checks. Keep the existing real routines
+      as controls. Separate source-loop coverage from emulator/library helper
+      loops and unrolled formatters, and state bank-zero/software-only limits;
+      do not imply SMS hardware or bank-switching certification.
+
+### Batch 337-339: Consolidate And Requalify The Quality Work
+
+- [ ] **337. Remove superseded production machinery.** Review touched policy,
+      cost, materialization, and orchestration paths for duplicated decisions,
+      forwarding-only layers, and obsolete exceptions introduced or replaced
+      by these batches. Consolidate within existing functions/modules when it
+      removes real complexity; do not add phase-specific wrappers or extract
+      abstractions solely for a future backend. Report net production lines,
+      functions, public API, and test-code changes separately, with equivalence
+      checks for output-preserving cleanup and no unrelated formatting churn.
+- [ ] **338. Requalify correctness across modes and toolchains.** Run focused
+      actual-source verifier/layout tests, independent generated/real execution,
+      strict C90/warnings, freshly staged Cygwin and native MSVC builds, both
+      sequential full suites, and available sanitizer gates. Check corrected
+      default/`-no-ra` agreement, forced-all-spill controls, traced/quiet
+      identity, atomic failures, and cross-toolchain outputs. Name intentional
+      semantic differences from the pre-316 baseline and every unrun check
+      explicitly.
+- [ ] **339. Publish measured quality/cost results and choose further work.**
+      Compare each optimization with its corrected matched baseline, including
+      per-function cycles, executed copies/transfers, ROM, total/maximum frames,
+      rejection reasons, quiet/traced compile time, log volume, and actual peak
+      RSS. Alternate isolated timing runs and report dispersion. Separate
+      baseline correctness fixes, output-preserving cleanup, and allocation
+      gains; retain only explained tradeoffs and demonstrated benefits. Decide
+      from remaining real misses whether broader value representation/global
+      allocation is warranted, rather than precommitting to a rewrite. Keep
+      `-ra` opt-in and leave unprofitable or unproven work explicitly open.
+
 **Shared completion gates:** Each three-step batch gets its own local commit,
 with no push and no unrelated worktree changes included. Reuse existing
 functions, planners, fixtures, and scripts; new production helpers/APIs must
 remove real duplication or enable a demonstrated capability. For optimization
 changes, include a before/after control showing actual benefit and independent
 execution correctness. For output-preserving consolidation, require matching
-ROMs and allocation decisions. Keep default/`-no-ra` compatibility, full-width
-and partial-register safety, immutable verifier failure cases, and atomic
-mutation rejection/rollback. Run focused checks after each edit and both full
-suites plus available sanitizer/execution gates before closing a batch; report
-the actual test count rather than freezing today's count in new assertions.
+ROMs and allocation decisions. Except for the isolated, independently verified
+baseline semantic corrections in 316-318, keep default/`-no-ra` compatibility.
+Keep full-width and partial-register safety, immutable verifier failure cases,
+and atomic mutation rejection/rollback. Run focused checks after each edit and
+both full suites plus available sanitizer/execution gates before closing a
+batch; report the actual test count rather than freezing today's count in new
+assertions.
 An unprofitable or unproven item remains unchecked or is explicitly revised,
 not marked complete because supporting infrastructure was added.
 

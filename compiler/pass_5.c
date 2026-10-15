@@ -1911,7 +1911,11 @@ static int _optimize_il_23(int *optimizations_counter) {
       if (current < 0)
         break;
 
-      if (g_tacs[current].op == TAC_OP_ASSIGNMENT) {
+      if (g_tacs[current].op == TAC_OP_ASSIGNMENT &&
+          !((g_tacs[current].result_var_type_promoted == VARIABLE_TYPE_UINT8 ||
+             g_tacs[current].result_var_type_promoted == VARIABLE_TYPE_INT8) &&
+            (g_tacs[current].arg1_var_type_promoted == VARIABLE_TYPE_UINT16 ||
+             g_tacs[current].arg1_var_type_promoted == VARIABLE_TYPE_INT16))) {
         next = current;
 
         while (1) {

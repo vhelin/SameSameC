@@ -15,6 +15,8 @@ const compiler = process.env.SAMESAMECC || 'samesamecc';
 const linker = process.env.SAMESAMECL || 'samesamecl';
 const cases = Number(process.env.RA_CASES || 64);
 if (!Number.isInteger(cases) || cases < 1 || cases > 4096) throw new Error('RA_CASES must be 1..4096');
+const comparisonForms = Number(process.env.RA_COMPARISON_FORMS || 0);
+if (![0, 1, 2].includes(comparisonForms)) throw new Error('RA_COMPARISON_FORMS must be 0..2');
 mkdirSync(output, {recursive: true});
 
 function run(command, args, cwd, log) {
@@ -61,18 +63,21 @@ for (let variant = 0; variant < 12; variant++) {
   const constant = 1 + variant * 7;
   const operator = ['+', '-', '&', '|', '^'][variant % 5];
   const comparison = ['==', '!=', '<', '>', '<=', '>='][variant % 6];
-  const equalityGuard = variant % 6 >= 2 ? `if (saved == c) { return ${variant % 6 >= 4 ? 'a' : 'b'}; } ` : '';
+  const byteComparison = comparisonForms ? '128' : 'c';
+  const wordComparison = comparisonForms ? '32768' : 'c';
+  const signedComparison = comparisonForms ? '(0-1)' : 'c';
+  const signedWord = variant === 4 || variant === 5 || variant >= 8;
   const expression = variant & 1 ? `saved${operator}c` : `c${operator}saved`;
   const inner = variant & 4 ? 'column' : '0';
   const call = `u8 called = ra_signed_helper(${variant & 1 ? 'previous' : `alias[start+row+${inner}]`},selector,row);`;
   const functions = [
     ['matrix_byte', 'u8 a, u8 b, u8 c', `u8 saved = a^b; return ${expression};`, [1, 1, 1], 1],
     ['matrix_word', 'u16 a, u16 b, u16 c', `u16 saved = ~b; return ${expression};`, [2, 2, 2], 2],
-    ['matrix_compare_byte', 'u8 a, u8 b, u8 c', `u8 saved = a^b; ${equalityGuard}if (${variant < 6 ? 'saved' : 'c'} ${comparison} ${variant < 6 ? 'c' : 'saved'}) { return a; } return b;`, [1, 1, 1], 1],
-    ['matrix_compare_word', 'u16 a, u16 b, u16 c', `u16 saved = ~b; ${equalityGuard}if (${variant < 6 ? 'saved' : 'c'} ${comparison} ${variant < 6 ? 'c' : 'saved'}) { return a; } return b;`, [2, 2, 2], 2],
-    ['matrix_compare_signed', 's8 a, s8 b, s8 c', `s8 saved = a^b; if (saved ${comparison} c) { return a; } return b;`, [1, 1, 1], 1],
+    ['matrix_compare_byte', 'u8 a, u8 b, u8 c', `u8 saved = ${comparisonForms === 2 ? 'a' : 'a^b'}; if (${variant < 6 ? 'saved' : byteComparison} ${comparison} ${variant < 6 ? byteComparison : 'saved'}) { return a; } return b;`, [1, 1, 1], 1],
+    ['matrix_compare_word', 'u16 a, u16 b, u16 c', `u16 saved = ${comparisonForms === 2 ? 'a' : '~b'}; if (${variant < 6 ? 'saved' : wordComparison} ${comparison} ${variant < 6 ? wordComparison : 'saved'}) { return a; } return b;`, [2, 2, 2], 2],
+    ['matrix_compare_signed', 's8 a, s8 b, s8 c', `s8 saved = ${comparisonForms === 2 ? 'a' : 'a^b'}; if (${variant < 6 ? 'saved' : signedComparison} ${comparison} ${variant < 6 ? signedComparison : 'saved'}) { return a; } return b;`, [1, 1, 1], 1],
     ['matrix_extend', 's8 a, s8 b, u16 c', `s8 saved = a^b; s16 extended = saved; return ${variant & 1 ? 'c+extended' : 'extended+c'};`, [1, 1, 2], 2],
-    ['matrix_low_byte', 'u16 a, u16 b, u16 c', `u16 saved = ~a; u8 narrowed = ${variant & 1 ? 'b+saved' : 'saved+b'}; return c+narrowed;`, [2, 2, 2], 2],
+    ['matrix_low_byte', `${signedWord ? 's16' : 'u16'} a, u16 b, u16 c`, `${signedWord ? 's16' : 'u16'} saved = ~a; ${variant >= 6 ? 's8' : 'u8'} narrowed = ${variant < 2 ? (variant & 1 ? 'b+saved' : 'saved+b') : 'saved'}; ${variant >= 6 ? 's16 extended = narrowed;' : ''} return ${variant < 2 ? 'c+narrowed' : variant & 1 ? `${variant >= 6 ? 'extended' : 'narrowed'}+(b+c)` : `(b+c)+${variant >= 6 ? 'extended' : 'narrowed'}`};`, [2, 2, 2], 2],
     ['matrix_shift', 'u16 a, u16 b, u8 c', `u16 saved = ~a; return saved ${variant & 1 ? '>>' : '<<'} (c&15);`, [2, 2, 1], 2],
     ['matrix_structural', 'u8 *target, u8 *alias, u8 start, u8 count, u8 selector, u8 value', `u16 total = value; u8 saved = selector^value; u8 row = 0; while (row < count) { ${variant & 4 ? 'u8 column = 0; while (column < 2) {' : ''} u8 previous = target[start+row+${inner}]; ${variant & 1 ? call : ''} if ((previous^selector)&1) { alias[start+row+${inner}] = previous+saved; } else { target[start+row+${inner}] = previous^saved; } ${variant & 1 ? '' : call} total = total+target[start+row+${inner}]+called; ${variant & 4 ? 'column = column+1; }' : ''} row = row+1; } return total;`, [2, 2, 1, 1, 1, 1], 2],
     ['scalar_byte', 'u8 a, u8 b, u8 c', 'u8 saved = a^b; return (c+c)+saved;', [1, 1, 1], 1],
@@ -120,7 +125,9 @@ for (let variant = 0; variant < 12; variant++) {
   for (const [family, parameters, body, widths, returnWidth] of functions) {
     if (variant >= 8 && !family.startsWith('matrix_')) continue;
     if (family.startsWith('matrix_') && variant >= ({matrix_byte: 10, matrix_word: 10,
-      matrix_compare_byte: 12, matrix_compare_word: 12, matrix_structural: 8}[family] || 2)) continue;
+      matrix_compare_byte: 12, matrix_compare_word: 12, matrix_compare_signed: 12,
+      matrix_low_byte: 10, matrix_structural: 8}[family] || 2)) continue;
+    if (comparisonForms && family !== 'arithmetic' && !family.startsWith('matrix_compare_')) continue;
     if (process.env.RA_FAMILIES && family !== 'arithmetic' && !process.env.RA_FAMILIES.split(',').includes(family)) continue;
     const scalarFamily = family.startsWith('scalar_') || family === 'word_bc';
     if (family !== 'arithmetic' && (process.env.RA_MATRIX_CASES === '1' ?
@@ -278,11 +285,22 @@ for (const program of programs) {
         const mask = word ? 65535 : 255;
         if (word) parameters = [(seed * 7919 + program.variant * 1009) & mask,
           (seed * 5113 + 65535) & mask, (seed * 3571 + 32767) & mask];
+        if (program.family.startsWith('matrix_compare_') && seed < 65) {
+          const edges = word ? [0, 1, 255, 256, 32767, 32768, 65534, 65535] :
+            [0, 1, 2, 127, 128, 129, 254, 255];
+          const saved = edges[Math.floor(Math.max(0, seed - 1) / 8)];
+          parameters = word ? [byte, mask ^ saved, edges[Math.max(0, seed - 1) % 8]] :
+            [byte, byte ^ saved, edges[Math.max(0, seed - 1) % 8]];
+          if (seed === 0) parameters = word ? [0, 65535 ^ 68, 68] :
+            program.family === 'matrix_compare_signed' ? [184, 75, 97] : [0, 68, 68];
+          if (comparisonForms === 2) parameters[0] = saved;
+        }
         const [first, second, last] = parameters;
-        let saved = word ? second ^ mask : first ^ second;
+        let saved = comparisonForms === 2 ? first : word ? second ^ mask : first ^ second;
         if (program.family === 'matrix_compare_signed') saved = saved >= 128 ? saved - 256 : saved;
         if (program.family.startsWith('matrix_compare_')) {
-          const lastValue = program.family === 'matrix_compare_signed' && last >= 128 ? last - 256 : last;
+          const lastValue = comparisonForms ? (program.family === 'matrix_compare_signed' ? -1 : word ? 32768 : 128) :
+            program.family === 'matrix_compare_signed' && last >= 128 ? last - 256 : last;
           const [left, right] = program.variant >= 6 ? [lastValue, saved] : [saved, lastValue];
           expected = [left === right, left !== right, left < right, left > right,
             left <= right, left >= right][program.variant % 6] ? first : second;
@@ -298,11 +316,20 @@ for (const program of programs) {
         expected = (parameters[2] + (saved >= 128 ? saved - 256 : saved)) & 65535;
         break;
       }
-      case 'matrix_low_byte':
-        parameters = [(seed * 7919 + program.variant * 1009) & 65535,
+      case 'matrix_low_byte': {
+        parameters = [(seed * 7919 + (program.variant % 2) * 1009) & 65535,
           (seed * 5113 + 65535) & 65535, (seed * 3571 + 32767) & 65535];
-        expected = (parameters[2] + (((parameters[0] ^ 65535) + parameters[1]) & 255)) & 65535;
+        if (seed > 0 && seed <= 64) {
+          const edges = [0, 1, 127, 128, 255, 256, 32768, 65535];
+          parameters = [edges[Math.floor((seed - 1) / 8)], edges[(seed - 1) % 8],
+            edges[(seed + 2) % 8]];
+        }
+        const narrowed = (parameters[0] ^ 65535) & 255;
+        expected = (parameters[2] + (program.variant < 2 ?
+          ((parameters[0] ^ 65535) + parameters[1]) & 255 :
+          parameters[1] + (program.variant >= 6 && narrowed >= 128 ? narrowed - 256 : narrowed))) & 65535;
         break;
+      }
       case 'matrix_shift': {
         parameters[0] = (seed * 7919 + program.variant * 1009) & 65535;
         parameters[1] = (seed * 5113 + 65535) & 65535;
@@ -672,9 +699,11 @@ if (process.env.RA_REAL_PROJECTS !== '0') {
 }
 
 if (process.env.RA_SCALAR_CASES !== '1' && process.env.RA_MATRIX_CASES !== '1') {
-  for (const cohort of process.env.RA_MATRIX_CASES === '0' ? ['scalar'] : ['scalar', 'matrix']) {
+  for (const cohort of process.env.RA_MATRIX_CASES === '0' ? ['scalar'] :
+    ['scalar', 'matrix', 'matrix_literals', 'matrix_memory']) {
     Object.assign(process.env, {RA_SCALAR_CASES: cohort === 'scalar' ? '1' : '0',
-      RA_MATRIX_CASES: cohort === 'matrix' ? '1' : '0', RA_REAL_PROJECTS: '0',
+      RA_MATRIX_CASES: cohort === 'scalar' ? '0' : '1', RA_REAL_PROJECTS: '0',
+      RA_COMPARISON_FORMS: cohort === 'matrix_literals' ? '1' : cohort === 'matrix_memory' ? '2' : '0',
       RA_EXECUTION_DIR: join(output, cohort), RA_VERIFIER: harness});
     run(process.execPath, [fileURLToPath(import.meta.url)], output, `${cohort}-execution.log`);
     process.stdout.write(readFileSync(join(output, `${cohort}-execution.log`), 'utf8'));
