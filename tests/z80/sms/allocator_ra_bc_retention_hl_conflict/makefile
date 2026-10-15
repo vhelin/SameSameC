@@ -25,6 +25,7 @@ all: linked.sms
 	grep -q "linear_scan retain function=allocatorRaBcRetentionSubtract.*16-bit in BC.*SUB arg2" compiler.log
 	grep -q "rejection_summary function=allocatorRaBcRetentionRejected.*consumer=SUB.*operand=arg2.*reason=unsupported_physical_register.*unique_decisions=1" compiler.log
 	: && ! grep -q "linear_scan retain.*function=allocatorRaBcRetentionRejected.*in BC" compiler.log
+	grep -q "multi_read_retain function=allocatorRaBcMultiRead.*phy=BC.*reads=2" compiler.log
 
 
 linked.sms: $(OFILES) makefile

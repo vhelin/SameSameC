@@ -186,5 +186,133 @@ int main(int argc, char **argv) {
   instructions[0].result_physical_register = Z80_PHY_NONE;
   if (check_verification(&function, instructions, 3, FAILED, "loop_missing_entry_owner") == FAILED)
     return 1;
+  for (index = 0; index < 4; index++) {
+    memset(&instructions[index], 0, sizeof(instructions[index]));
+    instructions[index].function_node = &function;
+    instructions[index].reload_spill_to_physical_operand = -1;
+    instructions[index].store_retained_to_spill_operand = -1;
+    instructions[index].result_type = TAC_ARG_TYPE_TEMP;
+    instructions[index].arg1_type = TAC_ARG_TYPE_CONSTANT;
+    instructions[index].arg2_type = TAC_ARG_TYPE_TEMP;
+    instructions[index].arg2_physical_register = Z80_PHY_BC;
+    instructions[index].result_var_type = instructions[index].arg1_var_type_promoted =
+      instructions[index].arg2_var_type_promoted = VARIABLE_TYPE_UINT16;
+    instructions[index].result_d = 1;
+    instructions[index].result_physical_register = Z80_PHY_HL;
+  }
+  temps[0].size = temps[1].size = 16;
+  instructions[0].op = TAC_OP_COMPLEMENT;
+  instructions[0].arg2_type = TAC_ARG_TYPE_NONE;
+  instructions[0].arg2_physical_register = Z80_PHY_NONE;
+  instructions[0].result_d = 0;
+  instructions[0].result_physical_register = Z80_PHY_BC;
+  instructions[1].op = TAC_OP_ADD;
+  for (index = 2; index < 4; index++) {
+    instructions[index].op = index == 2 ? TAC_OP_XOR : TAC_OP_SUB;
+    instructions[index].arg1_type = TAC_ARG_TYPE_TEMP;
+    instructions[index].arg1_d = 1;
+    instructions[index].arg1_physical_register = Z80_PHY_HL;
+  }
+  if (check_verification(&function, instructions, 4, SUCCEEDED, "word_repeated_bc_owner") == FAILED)
+    return 1;
+  instructions[1].arg2_type = TAC_ARG_TYPE_CONSTANT;
+  instructions[1].arg2_physical_register = Z80_PHY_NONE;
+  if (check_verification(&function, instructions, 4, FAILED, "word_repeated_bc_clobber") == FAILED)
+    return 1;
+  instructions[1].arg2_type = TAC_ARG_TYPE_TEMP;
+  instructions[1].arg2_physical_register = Z80_PHY_BC;
+  {
+    struct register_allocator_candidate candidate;
+    instructions[2].result_d = 0;
+    if (register_allocator_discover_candidate(name.label, 0, 3, 4, &function,
+        _register_allocator_instruction_get_produced_temp, _register_allocator_instruction_is_active,
+        _register_allocator_instruction_reads_temp, _register_allocator_instruction_writes_temp,
+        _register_allocator_instruction_get_consumer_operand, &candidate) == FAILED || candidate.has_single_read != NO)
+      return 1;
+    instructions[1].result_d = 0;
+    if (register_allocator_discover_candidate(name.label, 0, 3, 4, &function,
+        _register_allocator_instruction_get_produced_temp, _register_allocator_instruction_is_active,
+        _register_allocator_instruction_reads_temp, _register_allocator_instruction_writes_temp,
+        _register_allocator_instruction_get_consumer_operand, &candidate) == FAILED || candidate.has_single_read != YES)
+      return 1;
+    instructions[1].result_d = instructions[2].result_d = 1;
+    fprintf(stderr, "candidate_definition_test: read_before_write=yes previous_definition_excluded=yes status=complete\n");
+  }
+  {
+    struct register_allocator_reload_mutation mutations[2];
+    struct tac before[4];
+    memset(mutations, 0, sizeof(mutations));
+    instructions[1].arg2_physical_register = Z80_PHY_NONE;
+    mutations[0].apply = mutations[1].apply = YES;
+    mutations[0].instruction = 1;
+    mutations[0].operand = TAC_USE_ARG2;
+    mutations[0].physical_register = Z80_PHY_BC;
+    mutations[1].instruction = 2;
+    mutations[1].temp_index = 1;
+    mutations[1].operand = TAC_USE_ARG1;
+    mutations[1].physical_register = Z80_PHY_HL;
+    memcpy(before, instructions, sizeof(before));
+    if (_register_allocator_apply_reload_transaction(&function, mutations, 2) != FAILED ||
+        memcmp(before, instructions, sizeof(before)) != 0)
+      return 1;
+    fprintf(stderr, "allocation_mutation_test: invalid_tail unchanged=yes status=complete\n");
+  }
+  for (index = 0; index < 4; index++) {
+    instructions[index].result_var_type = instructions[index].arg1_var_type_promoted =
+      instructions[index].arg2_var_type_promoted = VARIABLE_TYPE_UINT8;
+    instructions[index].result_physical_register = Z80_PHY_NONE;
+    instructions[index].arg1_physical_register = Z80_PHY_NONE;
+    instructions[index].arg2_physical_register = Z80_PHY_C;
+  }
+  temps[0].size = temps[1].size = 8;
+  instructions[0].op = TAC_OP_XOR;
+  instructions[0].arg2_type = TAC_ARG_TYPE_CONSTANT;
+  instructions[0].arg2_physical_register = Z80_PHY_NONE;
+  instructions[0].result_physical_register = Z80_PHY_C;
+  instructions[1].arg2_physical_register = Z80_PHY_C;
+  instructions[2].op = TAC_OP_ADD;
+  instructions[3].op = TAC_OP_XOR;
+  if (check_verification(&function, instructions, 4, SUCCEEDED, "byte_repeated_c_owner") == FAILED)
+    return 1;
+  instructions[1].result_d = 0;
+  instructions[1].result_physical_register = Z80_PHY_A;
+  if (check_verification(&function, instructions, 4, FAILED, "byte_repeated_redefinition") == FAILED)
+    return 1;
+  instructions[1].result_d = 1;
+  instructions[1].result_physical_register = Z80_PHY_NONE;
+  {
+    struct register_allocator_active_slot slots[5];
+    struct register_allocator_candidate_transition_preparation preparation;
+    struct register_allocator_slot_transition_context context;
+    int slot = _get_register_allocator_target_policy()->get_active_slot_index(Z80_PHY_C);
+    memset(&context, 0, sizeof(context));
+    context.function_node = &function;
+    context.physical_register = Z80_PHY_C;
+    context.active_slots = slots;
+    context.producer_instruction = 1;
+    context.consumer_instruction = 2;
+    context.candidate_temp = 1;
+    context.candidate_operand = TAC_USE_ARG1;
+    context.split_action = RA_SPLIT_ACTION_NONE;
+    context.block_end = 3;
+    if (register_allocator_reset_active_slots(name.label, 0, slots, 5) == FAILED ||
+        register_allocator_assign_active_slot(name.label, 0, slot, slots, 5, 0, 3, 0, TAC_USE_ARG2, YES) == FAILED ||
+        register_allocator_prepare_candidate_transition(name.label, 0, 1, 1, 2, TAC_OP_ADD, TAC_USE_ARG1,
+        Z80_PHY_C, Z80_PHY_NONE, slots, 5, _get_register_allocator_target_policy(), &function,
+        _register_allocator_active_temp_has_metadata, &preparation) == FAILED ||
+        preparation.plan.linear_scan_decision != RA_LINEAR_SCAN_REPLACE_ACTIVE)
+      return 1;
+    _observe_register_allocator_transition_preparation(&context, &preparation);
+    if (preparation.plan.linear_scan_decision != RA_LINEAR_SCAN_KEEP_ACTIVE)
+      return 1;
+    fprintf(stderr, "allocation_cost_test: nearer_rejected=yes farther_reused=yes status=complete\n");
+  }
+  instructions[1].store_retained_to_spill_operand = TAC_USE_ARG2;
+  _clear_tac_retained_interval(0, 1, TAC_USE_ARG2);
+  if (instructions[0].result_physical_register != Z80_PHY_NONE ||
+      instructions[1].arg2_physical_register != Z80_PHY_NONE ||
+      instructions[1].store_retained_to_spill_operand != -1)
+    return 1;
+  fprintf(stderr, "allocation_mutation_test: displaced_arg2 cleared=yes status=complete\n");
   return 0;
 }

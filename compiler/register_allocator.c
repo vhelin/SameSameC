@@ -574,12 +574,12 @@ int register_allocator_discover_candidate(char *function_name, int producer_inst
     for (instruction_index = consumer_instruction + 1; instruction_index < instruction_count; instruction_index++) {
       if (is_active(context, instruction_index, temp_index) == NO)
         continue;
-      if (writes_temp(context, instruction_index, temp_index) == YES)
-        break;
       if (reads_temp(context, instruction_index, temp_index) == YES) {
         candidate->has_single_read = NO;
         break;
       }
+      if (writes_temp(context, instruction_index, temp_index) == YES)
+        break;
     }
   }
 

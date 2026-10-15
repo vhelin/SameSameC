@@ -9661,7 +9661,7 @@ from these counts or treat further policy extraction as an optimization gain.
 
 ### Batch 304-306: Retain Reused Values And Price Allocation Decisions
 
-- [ ] **304. Support general same-block multi-use retention.** Extend existing
+- [x] **304. Support general same-block multi-use retention.** Extend existing
       candidate discovery and interval state so a value can remain resident
       through several reads until its last read, redefinition, or actual
       clobber. Start with stable-width, unambiguous definitions and straight-line
@@ -9671,7 +9671,7 @@ from these counts or treat further policy extraction as an optimization gain.
       while retaining fail-closed handling for unsupported cases. Test repeated
       arithmetic, array-base use, pressure, and intervening clobbers against
       independent results and memory-access counts.
-- [ ] **305. Generalize preservation and reload placement only where needed.**
+- [x] **305. Generalize preservation and reload placement only where needed.**
       Reuse the existing split-spill/reload planners and atomic application for
       more than the specialized word-HL array-base case. Track whether backing
       storage already holds the current value; avoid duplicate stores/reloads,
@@ -9680,7 +9680,7 @@ from these counts or treat further policy extraction as an optimization gain.
       joins, and failed-plan rollback. Do not enable arbitrary cross-block
       retention before all-path safety is proven. Show reduced executed
       transfers, not just additional retained-value diagnostics.
-- [ ] **306. Add a bounded target-aware profitability model.** Extend existing
+- [x] **306. Add a bounded target-aware profitability model.** Extend existing
       arbitration rather than building a second selector. Compare avoided
       stack traffic with producer/consumer transfers, spill/reload costs, and
       rematerialization in both encoded bytes and Z80 cycles. State the chosen
@@ -9691,6 +9691,97 @@ from these counts or treat further policy extraction as an optimization gain.
       rejected choices, including pressure and cases where nearer use is more
       expensive; retain only measured improvements without unexplained corpus
       regressions.
+
+**Implementation and measured results (2026-10-15):**
+
+- Extended the existing promotion, candidate, path, interval-marking, and owner
+      verification code for stable-width same-block repeated reads. Discovery
+      checks reads before writes so a later read-modify-write still consumes the
+      old definition; that write then ends its lifetime. Every supported read
+      receives the physical annotation, including non-destructive byte C and
+      word BC arithmetic reads. Complete single-definition coverage can remove
+      backing; compacted names with other definitions may retain their slot.
+      Ambiguous double-operand reads, unsupported widths, clobbers, escaping
+      locals, and unproven cross-block lifetimes remain conservative.
+- Reused the split/reload planners, transactional callbacks, target validation,
+      and existing array-base transfer helper for scalar arg1/arg2 byte/word
+      preservation. Backing is written before destructive use and reloaded on
+      demand. A same-block resident reload is reused until a real clobber,
+      redefinition, or boundary. Failed-tail mutation remains atomic; displaced
+      arg2 cleanup now clears its matching preservation marker. Pointer-base
+      transfers stay two bytes regardless of array element width. Cached IX
+      addressing and existing byte-store primitives avoid constructing a second
+      raw spill TAC and redundantly restoring the frame base.
+- Profitability extends the existing transition observer and planner, not a
+      second selector. The objective is positive estimated cycle savings with
+      no estimated byte growth. A 256-instruction scan compares indexed-stack
+      payloads, physical transfers, preservation/reload, and the existing stable
+      global-address rematerialization. Frequency is explicitly estimated at
+      weight one, including loops; no trip count is invented. Unknown shapes,
+      incomparable choices, and exact ties keep deterministic next-use behavior.
+      These are bounded payload estimates, not exact final address-cache costs.
+      Accepted byte/word split examples estimate 23/9 saved cycles and zero byte
+      growth; measured savings are 52/38 cycles because cached address setup is
+      cheaper. The short negative control estimates -7 cycles/-4 bytes and is
+      rejected. A planner test keeps the farther reused value over nearer use.
+- Extended existing fixtures and the differential runner, without new test
+      files. The scalar cohort is now 54 functions/21 families; the original
+      cohort remains 88 functions/11 families. Added repeated byte/word reads,
+      definition-ending read-modify-write, byte/word clobber splits, and a
+      deliberately rejected short split. The actual-code verifier accepts seven
+      valid and rejects 16 malformed cases immutably in both trace modes, with
+      separate invalid-tail rollback, displaced-arg2 cleanup, discovery, and
+      pressure-cost checks. `RA_FAMILIES` selects matched subsets; explicit
+      `RA_BASELINE=1` skips only new diagnostic expectations, never independent
+      result, memory, ABI, or ROM-identity checks.
+- Matched pre-batch compiler and final compiler on the same eight arithmetic
+      helpers plus eight new byte-reuse/split functions, 512 seeds each:
+      RA cycles **2,653,696 -> 2,500,096** (5.8% fewer), instructions unchanged at
+      **202,752**, frame reads **57,344 -> 48,128**, frame writes
+      **22,528 -> 21,504**, and used ROM **983 -> 943 bytes**. Frame counters
+      include argument/return/ABI traffic, not only temp spills. Per invocation:
+      repeated byte **249 -> 189 cycles**, byte split **421 -> 369**, word split
+      **712 -> 674**; the rejected short split remains **383**. Byte split uses
+      one preservation store, one demand reload, and three resident-reload
+      reuses. All matched disabled ROMs are identical. New word-redefinition
+      shapes are independently checked, not used as baseline speedup controls:
+      the saved baseline rejects that cohort with
+      `missing_or_clobbered_definition`; the final compiler executes it correctly.
+- The established 88-function, 42-function scalar, and seven real-routine
+      execution counters are unchanged from the preceding compiler. The matched
+      nine-fixture corpus has **34/36 raw ROM pairs identical**, including all
+      **27 default/`-no-ra`/all-spill controls**. The scalar fixture uses
+      **1,029 -> 1,023 ROM bytes**, aggregate frames **131 -> 130**; the expanded
+      BC fixture uses **472 -> 466 bytes**, frames unchanged at **57**. The latter
+      includes the new definition-boundary regression, not an old-corpus
+      performance claim. Calculations-1/2 and the other five fixtures have
+      unchanged ROMs and frames.
+- Three alternating baseline/candidate measurement rounds in isolated copies
+      used the existing measurement script and actual GNU-time RSS. Aggregate
+      traced-RA median compile-time sums are **2.960 -> 2.980 s**, ranges
+      **2.880-3.010 -> 2.930-3.150 s**; flags-off medians **0.780 -> 0.860 s**.
+      Maximum traced-RA peak RSS is **13,452 -> 13,468 KiB**. This is noisy
+      local cost evidence, not a compile-time improvement. Resource samples
+      preceded the final one-line preservation-marker cleanup; all 36 corpus
+      ROMs were rebuilt and matched afterward. No new production
+      functions, files, or public APIs: existing transfer/path/mutation code is
+      reused. The three production sources are **net +296 total lines**,
+      **net +295 nonblank lines**; this batch adds capability, not a net source
+      reduction. Duplicate raw spill construction and unused scan bookkeeping
+      were removed rather than adding emitter helpers.
+- Strict C90, focused byte fixtures, traced/quiet full assembly and ROM
+      identity, default/`-no-ra` identity, and independent execution passed.
+      Final Cygwin and rebuilt native-ASan compiler/verifier runs each completed
+      **76,288 executions per executed mode**: 45,056 original generated,
+      27,648 scalar, and 3,584 real-routine cases. Counters match exactly across
+      toolchains, with no ASan report. Repeated seeds/input patterns are not
+      unique shapes or exhaustive coverage. Freshly staged, hash-compared
+      frozen-source Cygwin and native Windows full suites passed **173 tests
+      each**, run sequentially after the final preservation-marker fix.
+- `-ra` remains opt-in and the ABI is unchanged. Arbitrary CFG-wide retention,
+      full value identity, coalescing, and general spill-slot reuse remain later
+      work. UBSan, Valgrind/leak checking, upstream emulator tests, and full SMS
+      hardware/bank-switching execution were not run. Steps 307-315 are untouched.
 
 ### Batch 307-309: Separate Values From Storage And Remove Redundant Traffic
 

@@ -471,7 +471,8 @@ all: linked.sms core_liveness_storage_test tac_insert_test z80_register_spill_te
 	grep -q "loop_retention_conflict_preflight function=allocatorRaCoreLivenessMultiValue block=1 temp=r2 selected=C slot=4 reservations=4 conflict=no conflict_block=-1 conflict_start=-1 conflict_end=-1 owner=r-1 action=retain status=complete" compiler.log
 	grep -q "loop_retention_apply_preflight function=allocatorRaCoreLivenessMultiValue block=1 temp=r2 selected=C slot=4 assignments=5 reservations=4 application=applied ownership=function_scan status=complete" compiler.log
 	sed -n '/allocatorRaCoreLivenessMultiValue:/,/\.ENDS/p' main.asm | grep -q "retained arg2 in C"
-	grep -q "loop_register_path_reservation_preflight function=allocatorRaCoreLivenessMultiValue block=1 temp=r3 candidate=C reservation=1 path_block=1 start=179 end=183 transparent=no blocking=180 status=complete" compiler.log
+	grep -q "loop_register_path_reservation_preflight function=allocatorRaCoreLivenessMultiValue block=1 temp=r3 candidate=C reservation=1 path_block=1 start=179 end=183 transparent=yes blocking=-1 status=complete" compiler.log
+	grep -q "loop_register_path_reservation_preflight function=allocatorRaCoreLivenessMultiValue block=1 temp=r3 candidate=C reservation=2 path_block=2 start=184 end=193 transparent=no blocking=184 status=complete" compiler.log
 	grep -q "loop_register_path_candidate function=allocatorRaCoreLivenessMultiValue block=1 temp=r3 candidate=2 phy=4 path_safe=no status=complete" compiler.log
 	grep -q "loop_register_path_reservation_preflight function=allocatorRaCoreLivenessMultiValue.*candidate=B.*transparent=no.*blocking=183" compiler.log
 	: && ! grep -q "loop_retention_transaction function=allocatorRaCoreLivenessMultiValue temp=r3" compiler.log

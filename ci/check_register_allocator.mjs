@@ -40,8 +40,12 @@ for (const flags of [[], ['-q']]) {
   const log = flags.length ? 'verifier-quiet.log' : 'verifier.log';
   run(harness, flags, output, log);
   const verifierLog = readFileSync(join(output, log), 'utf8');
-  if ((verifierLog.match(/result=rejected unchanged=yes status=complete/g) || []).length !== 14 ||
-    (verifierLog.match(/result=accepted unchanged=yes status=complete/g) || []).length !== 5)
+  if ((verifierLog.match(/result=rejected unchanged=yes status=complete/g) || []).length !== 16 ||
+    (verifierLog.match(/result=accepted unchanged=yes status=complete/g) || []).length !== 7 ||
+    !verifierLog.includes('allocation_mutation_test: invalid_tail unchanged=yes status=complete') ||
+    !verifierLog.includes('allocation_mutation_test: displaced_arg2 cleared=yes status=complete') ||
+    !verifierLog.includes('allocation_cost_test: nearer_rejected=yes farther_reused=yes status=complete') ||
+    !verifierLog.includes('candidate_definition_test: read_before_write=yes previous_definition_excluded=yes status=complete'))
     throw new Error('Verifier coverage count mismatch');
 }
 
@@ -57,6 +61,12 @@ for (let variant = 0; variant < 8; variant++) {
     ['scalar_word', 'u16 a, u16 b, u16 c', 'u16 saved = a^b; return (c+c)+saved;', [2, 2, 2], 2],
     ['scalar_copy', 'u16 a, u16 b, u16 c', 'u16 saved = a; return (b+c)+saved;', [2, 2, 2], 2],
     ['scalar_complement_sub', 'u16 a, u16 b, u16 c', 'return (a+b)-(~c);', [2, 2, 2], 2],
+    ['scalar_multi_word', 'u16 a, u16 b, u16 c', 'u16 left = a+b; u16 saved = ~c; return ((left+saved)^saved)-saved;', [2, 2, 2], 2],
+    ['scalar_multi_rmw', 'u16 a, u16 b, u16 c', 'u16 saved = ~c; return ((a+saved)^saved)+b;', [2, 2, 2], 2],
+    ['scalar_multi_byte', 'u8 a, u8 b, u8 c', 'u8 saved = a^b; return ((c+saved)^saved)+saved;', [1, 1, 1], 1],
+    ['scalar_split_byte', 'u8 a, u8 b, u8 c', 'u8 saved = a^b; u8 first = c+saved; u8 loaded = ra_buffer[1]; return ((((first+loaded)^saved)+saved)^saved)+saved;', [1, 1, 1], 1],
+    ['scalar_cost_reject_byte', 'u8 a, u8 b, u8 c', 'u8 saved = a^b; u8 first = c+saved; u8 loaded = ra_buffer[1]; return ((first+loaded)^saved)+saved;', [1, 1, 1], 1],
+    ['scalar_split_word', 'u16 a, u16 b, u16 c', 'u16 saved = ~c; u16 first = a+saved; u16 loaded = ra_buffer[1]; return ((first+loaded)^saved)+b+saved;', [2, 2, 2], 2],
     ['scalar_word_index', 'u16 a, u16 b, u8 c', `u16 out = a+b; ra_buffer[${constant}] = c; return out+ra_buffer[${constant}];`, [2, 2, 1], 2],
     ['scalar_narrow', 'u16 a, u16 b, u16 c', 'u8 saved = a+b; return (c+c)+saved;', [2, 2, 2], 2],
     ['scalar_before_call', 'u8 a, u8 b, u8 c', `u8 called = ra_arithmetic_${variant}(a,b,c); u8 saved = a^b; return (called+called)+saved;`, [1, 1, 1], 1],
@@ -77,6 +87,7 @@ for (let variant = 0; variant < 8; variant++) {
     ['join_call', 'u8 *target, u8 index, u8 selector, u8 value', `u16 retained = target[index]+${constant}; u8 called = ra_arithmetic_${variant}(value,selector,target[index]); if (selector&${1 << (variant % 4)}) { target[index] = called+value; } else { target[index+1] = called^value; retained = retained+selector; } return retained+target[index]+target[index+1];`, [2, 1, 1, 1], 2]
   ];
   for (const [family, parameters, body, widths, returnWidth] of functions) {
+    if (process.env.RA_FAMILIES && family !== 'arithmetic' && !process.env.RA_FAMILIES.split(',').includes(family)) continue;
     const scalarFamily = family.startsWith('scalar_') || family === 'word_bc';
     if (family !== 'arithmetic' && scalarFamily !== (process.env.RA_SCALAR_CASES === '1')) continue;
     if (scalarFamily && family !== 'word_bc' && variant > 1) continue;
@@ -121,6 +132,19 @@ if (!compiled.get('ra').rom.equals(compiled.get('ra_quiet').rom))
   throw new Error('Traced/quiet allocator ROM mismatch');
 if (!readFileSync(join(output, 'ra/main.asm')).equals(readFileSync(join(output, 'ra_quiet/main.asm'))))
   throw new Error('Traced/quiet allocator assembly mismatch');
+const allocatorLog = readFileSync(join(output, 'ra/compiler.log'), 'utf8');
+for (const program of process.env.RA_BASELINE === '1' ? [] : programs) {
+  const lines = allocatorLog.split(/\r?\n/).filter(line => line.includes(`function=${program.name} `));
+  if (program.family === 'scalar_split_byte' &&
+      (lines.filter(line => line.includes('scalar_split_transfer') && line.endsWith('kind=store')).length !== 1 ||
+       lines.filter(line => line.includes('scalar_split_transfer') && line.endsWith('kind=reload')).length !== 1 ||
+       lines.filter(line => line.includes('reload_reuse')).length !== 3))
+    throw new Error(`Split transfer counts changed: ${program.name}`);
+  if (program.family === 'scalar_cost_reject_byte' &&
+      (lines.some(line => line.includes('scalar_split_transfer')) ||
+       !lines.some(line => /profitability .*known=yes saved_cycles=-7 saved_bytes=-4 .*decision=3 /.test(line))))
+    throw new Error(`Unprofitable split accepted: ${program.name}`);
+}
 
 function execute(code, entry, parameters, widths, buffer, bufferAddress, returnWidth) {
   const memory = new Uint8Array(65536).fill(0xa5);
@@ -137,14 +161,20 @@ function execute(code, entry, parameters, widths, buffer, bufferAddress, returnW
     memory[offset] = value & 255;
     if (widths[index] === 2) memory[offset + 1] = value >> 8;
   });
+  let frameReads = 0, frameWrites = 0;
   const hal = {
     tStateCount: 0,
-    readMemory: address => memory[address & 65535],
+    readMemory: address => {
+      address &= 65535;
+      if (address >= frame - 256 && address < frame - 1) frameReads++;
+      return memory[address];
+    },
     writeMemory: (address, value) => {
       address &= 65535;
       if (!(address >= frame - 256 && address < frame - 1) &&
           !(address >= bufferAddress && address < bufferAddress + buffer.length))
         throw new Error(`Out-of-bounds write ${address.toString(16)}`);
+      if (address >= frame - 256 && address < frame - 1) frameWrites++;
       memory[address] = value & 255;
     },
     contendMemory: () => {}, contendPort: () => {}, readPort: () => 0,
@@ -161,13 +191,14 @@ function execute(code, entry, parameters, widths, buffer, bufferAddress, returnW
   }
   if (cpu.regs.de !== frame || cpu.regs.sp !== frame + 1) throw new Error('Frame/stack restoration failure');
   return {value: memory[resultOffset] + (returnWidth === 2 ? memory[resultOffset + 1] * 256 : 0),
-    buffer: memory.slice(bufferAddress, bufferAddress + buffer.length), instructions, cycles: hal.tStateCount};
+    buffer: memory.slice(bufferAddress, bufferAddress + buffer.length), instructions, cycles: hal.tStateCount,
+    frame_reads: frameReads, frame_writes: frameWrites};
 }
 
-const totals = Object.fromEntries(['default', 'all_spill', 'ra'].map(mode => [mode, {cases: 0, instructions: 0, cycles: 0}]));
+const totals = Object.fromEntries(['default', 'all_spill', 'ra'].map(mode => [mode, {cases: 0, instructions: 0, cycles: 0, frame_reads: 0, frame_writes: 0}]));
 const programTotals = {};
 for (const program of programs) {
-  programTotals[program.name] = Object.fromEntries(Object.keys(totals).map(mode => [mode, {cases: 0, instructions: 0, cycles: 0}]));
+  programTotals[program.name] = Object.fromEntries(Object.keys(totals).map(mode => [mode, {cases: 0, instructions: 0, cycles: 0, frame_reads: 0, frame_writes: 0}]));
   for (let seed = 0; seed < cases; seed++) {
     const byte = (seed * 73 + program.variant * 19) & 255;
     const other = (seed * 29 + 17) & 255;
@@ -186,10 +217,25 @@ for (const program of programs) {
       case 'scalar_signed_word':
       case 'scalar_copy':
       case 'scalar_complement_sub':
+      case 'scalar_multi_word':
+      case 'scalar_multi_rmw':
+      case 'scalar_split_word':
       case 'scalar_narrow':
       case 'word_bc': {
         parameters = [(seed * 7919 + program.variant * 1009) & 65535, (seed * 5113 + 65535) & 65535, (seed * 3571 + 32767) & 65535];
         const [first, second, thirdWord] = parameters;
+        if (program.family === 'scalar_split_word') {
+          const saved = thirdWord ^ 65535;
+          expected = (((((first + saved + buffer[1]) & 65535) ^ saved) + second) + saved) & 65535;
+          break;
+        }
+        if (program.family.startsWith('scalar_multi_')) {
+          const saved = thirdWord ^ 65535;
+          expected = program.family === 'scalar_multi_word' ?
+            ((((first + second + saved) & 65535) ^ saved) - saved) & 65535 :
+            ((((first + saved) & 65535) ^ saved) + second) & 65535;
+          break;
+        }
         if (program.family === 'scalar_signed_word') {
           expected = (thirdWord | 7) ^ first ^ second;
           break;
@@ -206,6 +252,18 @@ for (const program of programs) {
         break;
       }
       case 'scalar_byte': expected = (2 * third + (byte ^ other)) & 255; break;
+      case 'scalar_multi_byte': {
+        const saved = byte ^ other;
+        expected = ((((third + saved) & 255) ^ saved) + saved) & 255;
+        break;
+      }
+      case 'scalar_split_byte':
+      case 'scalar_cost_reject_byte': {
+        const saved = byte ^ other;
+        expected = (((((third + saved + buffer[1]) & 255) ^ saved) + saved)) & 255;
+        if (program.family === 'scalar_split_byte') expected = ((expected ^ saved) + saved) & 255;
+        break;
+      }
       case 'scalar_signed_byte': expected = ((third | 7) ^ byte ^ other) & 255; break;
       case 'scalar_widen': expected = 2 * third + ((byte + other) & 255); break;
       case 'scalar_before_call': expected = (2 * ((byte + other + 2 * third + program.constant) & 255) + (byte ^ other)) & 255; break;
@@ -292,8 +350,7 @@ for (const program of programs) {
           throw new Error(`Expected ${expected}, got ${result.value}; buffer_equal=${Buffer.from(result.buffer).equals(Buffer.from(expectedBuffer))}`);
         for (const counters of [totals[mode], programTotals[program.name][mode]]) {
           counters.cases++;
-          counters.instructions += result.instructions;
-          counters.cycles += result.cycles;
+          for (const metric of ['instructions', 'cycles', 'frame_reads', 'frame_writes']) counters[metric] += result[metric];
         }
       } catch (error) {
         writeFileSync(join(output, 'failure.json'), JSON.stringify({mode, seed, program, parameters: args,
@@ -307,7 +364,7 @@ for (const [mode, totalsForMode] of Object.entries(totals))
   console.log(JSON.stringify({mode, ...totalsForMode, compile_seconds: compiled.get(mode).compileSeconds}));
 writeFileSync(join(output, 'execution-summary.json'), JSON.stringify(totals, null, 2));
 writeFileSync(join(output, 'program-execution-summary.json'), JSON.stringify(programTotals, null, 2));
-console.log(`PASS:verifier_failures=14 immutable=yes differential_cases=${totals.ra.cases} families=${new Set(programs.map(program => program.family)).size} variants=8 default_no_ra=identical artifacts=${output}`);
+console.log(`PASS:verifier_failures=16 immutable=yes differential_cases=${totals.ra.cases} families=${new Set(programs.map(program => program.family)).size} variants=8 default_no_ra=identical artifacts=${output}`);
 
 if (process.env.RA_REAL_PROJECTS !== '0') {
   const realTotals = {};
@@ -335,7 +392,7 @@ if (process.env.RA_REAL_PROJECTS !== '0') {
     if (!images.get('ra').rom.equals(images.get('ra_quiet').rom)) throw new Error(`${project}: traced/quiet allocator ROM mismatch`);
     realTotals[project] = {};
     for (const name of routines) {
-      const routineTotals = Object.fromEntries(Object.keys(totals).map(mode => [mode, {cases: 0, instructions: 0, cycles: 0}]));
+      const routineTotals = Object.fromEntries(Object.keys(totals).map(mode => [mode, {cases: 0, instructions: 0, cycles: 0, frame_reads: 0, frame_writes: 0}]));
       realTotals[project][name] = routineTotals;
       for (let seed = 0; seed < cases; seed++) {
         const value = (seed * 7919 + 32767) & 65535;
@@ -365,8 +422,7 @@ if (process.env.RA_REAL_PROJECTS !== '0') {
             const result = execute(image.rom, image.symbols.get(name), parameters, parameters.map(() => 2), new Uint8Array(0), 0, 2);
             if (result.value !== expected) throw new Error(`Expected ${expected}, got ${result.value}`);
             routineTotals[mode].cases++;
-            routineTotals[mode].instructions += result.instructions;
-            routineTotals[mode].cycles += result.cycles;
+            for (const metric of ['instructions', 'cycles', 'frame_reads', 'frame_writes']) routineTotals[mode][metric] += result[metric];
           } catch (error) {
             writeFileSync(join(output, 'failure.json'), JSON.stringify({project, name, mode, seed, parameters, expected, error: String(error)}, null, 2));
             throw new Error(`Failure ${project}/${name} seed=${seed} mode=${mode}: ${error}; artifacts=${output}`);

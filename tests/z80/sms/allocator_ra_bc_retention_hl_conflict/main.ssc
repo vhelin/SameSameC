@@ -31,3 +31,9 @@ u16 allocatorRaBcRetentionRejected(u16 a, u16 b, u16 c) {
   g_bc_retention_target = out;
   return g_bc_retention_target;
 }
+
+u16 allocatorRaBcMultiRead(u16 a, u16 c) {
+  u16 held;
+  held = ~c;
+  return (a + held) ^ held;
+}

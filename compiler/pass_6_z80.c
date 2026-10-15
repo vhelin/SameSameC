@@ -3757,16 +3757,23 @@ static int _transfer_array_base_spill(struct tac *t, struct tree_node *function_
   struct register_allocator_reload_emission reload;
   struct register_allocator_spill_emission spill;
   char *function_name, *operand_name, *op_name;
-  int ix_offset, operand, physical_register, temp;
+  int ix_offset, operand, physical_register, temp, byte_count, scalar;
 
-  if ((is_reload == YES && t->reload_spill_to_physical_operand == -1) ||
-      (is_reload == NO && t->store_retained_to_spill_operand != TAC_USE_ARG1))
+  scalar = t->op == TAC_OP_ADD || t->op == TAC_OP_SUB || t->op == TAC_OP_AND || t->op == TAC_OP_OR || t->op == TAC_OP_XOR;
+  operand = is_reload == YES ? t->reload_spill_to_physical_operand : t->store_retained_to_spill_operand;
+  if (operand == -1)
     return SUCCEEDED;
   function_name = "<unknown>";
   if (function_node != NULL && function_node->children[1] != NULL)
     function_name = function_node->children[1]->label;
-  operand = is_reload == YES ? t->reload_spill_to_physical_operand : TAC_USE_ARG1;
-  if ((t->op == TAC_OP_ARRAY_READ || (is_reload == YES && t->op == TAC_OP_ASSIGNMENT)) && operand == TAC_USE_ARG1 &&
+  if (scalar == YES && (operand == TAC_USE_ARG1 || operand == TAC_USE_ARG2) &&
+      (operand == TAC_USE_ARG1 ? t->arg1_type : t->arg2_type) == TAC_ARG_TYPE_TEMP) {
+    temp = (int)(operand == TAC_USE_ARG1 ? t->arg1_d : t->arg2_d);
+    physical_register = base_location->phy;
+    operand_name = operand == TAC_USE_ARG1 ? "arg1" : "arg2";
+    op_name = "SCALAR";
+  }
+  else if ((t->op == TAC_OP_ARRAY_READ || (is_reload == YES && t->op == TAC_OP_ASSIGNMENT)) && operand == TAC_USE_ARG1 &&
       t->arg1_type == TAC_ARG_TYPE_TEMP && base_location->kind == LOC_PHY_HL &&
       t->arg1_physical_register == Z80_PHY_HL) {
     temp = (int)t->arg1_d;
@@ -3790,22 +3797,23 @@ static int _transfer_array_base_spill(struct tac *t, struct tree_node *function_
     return FAILED;
   }
   spill_tac = *t;
-  spill_tac.arg1_physical_register = spill_tac.result_physical_register = Z80_PHY_NONE;
+  spill_tac.arg1_physical_register = spill_tac.arg2_physical_register = spill_tac.result_physical_register = Z80_PHY_NONE;
   if (_resolve_tac_location(&spill_tac, operand, function_node, &spill_location) == FAILED ||
       spill_location.kind != LOC_STACK_SPILL)
     return FAILED;
+  byte_count = scalar == YES ? spill_location.size : 2;
   if (is_reload == YES) {
     if (register_allocator_prepare_reload_operand_emission(function_name, YES,
       temp, operand, Z80_PHY_NONE, physical_register, YES,
-        spill_location.offset, 2, &reload) == FAILED || reload.emit != YES ||
-        reload.operand != operand || reload.physical_register != physical_register || reload.byte_count != 2)
+        spill_location.offset, byte_count, &reload) == FAILED || reload.emit != YES ||
+        reload.operand != operand || reload.physical_register != physical_register || reload.byte_count != byte_count)
       return FAILED;
   }
   else if (register_allocator_prepare_spill_emission(function_name, YES,
-      temp, Z80_PHY_NONE, physical_register, YES, spill_location.offset, 2, &spill) == FAILED ||
-      spill.emit != YES || spill.physical_register != physical_register || spill.byte_count != 2)
+      temp, Z80_PHY_NONE, physical_register, YES, spill_location.offset, byte_count, &spill) == FAILED ||
+      spill.emit != YES || spill.physical_register != physical_register || spill.byte_count != byte_count)
     return FAILED;
-  if (is_reload == YES) {
+  if (is_reload == YES && byte_count == 2) {
     int definition_index;
 
     for (definition_index = (int)(t - g_tacs) - 1; definition_index >= 0; definition_index--) {
@@ -3836,20 +3844,41 @@ static int _transfer_array_base_spill(struct tac *t, struct tree_node *function_
   if (_load_location_address_to_ix(&spill_location, &ix_offset, file_out) == FAILED)
     return FAILED;
   if (is_reload == NO) {
-    if (_store_from_hl(&spill_location, ix_offset, file_out) == FAILED)
+    if (physical_register == Z80_PHY_A)
+      _load_a_into_ix(ix_offset, file_out);
+    else if (physical_register == Z80_PHY_B)
+      _load_b_into_ix(ix_offset, file_out);
+    else if (physical_register == Z80_PHY_C || physical_register == Z80_PHY_BC) {
+      _load_c_into_ix(ix_offset, file_out);
+      if (byte_count == 2)
+        _load_b_into_ix(ix_offset + 1, file_out);
+    }
+    else if (_store_from_hl(&spill_location, ix_offset, file_out) == FAILED)
       return FAILED;
   }
-  else if (physical_register == Z80_PHY_HL) {
-    _load_from_ix_to_l(ix_offset, file_out);
-    _load_from_ix_to_h(ix_offset + 1, file_out);
-  }
   else {
-    _load_from_ix_to_c(ix_offset, file_out);
-    _load_from_ix_to_b(ix_offset + 1, file_out);
+    if (physical_register == Z80_PHY_A)
+      _load_from_ix_to_a(ix_offset, file_out);
+    else if (physical_register == Z80_PHY_B)
+      _load_from_ix_to_b(ix_offset, file_out);
+    else if (physical_register == Z80_PHY_C || physical_register == Z80_PHY_BC)
+      _load_from_ix_to_c(ix_offset, file_out);
+    else if (physical_register == Z80_PHY_HL)
+      _load_from_ix_to_l(ix_offset, file_out);
+    if (byte_count == 2) {
+      if (physical_register == Z80_PHY_HL)
+        _load_from_ix_to_h(ix_offset + 1, file_out);
+      else
+        _load_from_ix_to_b(ix_offset + 1, file_out);
+    }
   }
+  if (scalar == YES)
+    RA_TRACE((stderr, "register_allocator: scalar_split_transfer function=%s tac=%d operand=%d phy=%s bytes=%d kind=%s\n",
+      function_name, (int)(t - g_tacs), operand, _get_z80_physical_register_name(physical_register),
+      byte_count, is_reload == YES ? "reload" : "store"));
 
 #if defined(DEBUG_PASS_6_REGISTER_ALLOCATOR)
-  if (g_allocator_enabled == YES) {
+  if (g_allocator_enabled == YES && scalar == NO) {
     if (is_reload == YES)
       RA_TRACE((stderr, "register_allocator: reload_insert_emit function=%s op=%s operand=%s source_offset=%d bytes=2 phy=%s operand_id=%d\n",
           function_name, op_name, operand_name, reload.source_offset,
@@ -3862,7 +3891,7 @@ static int _transfer_array_base_spill(struct tac *t, struct tree_node *function_
   if (is_reload == YES)
     fprintf(file_out, "      ; reload %s from spill slot into %s\n", operand_name, _get_z80_physical_register_name(physical_register));
   else
-    fprintf(file_out, "      ; preserve retained arg1 in spill slot\n");
+    fprintf(file_out, "      ; preserve retained %s in spill slot\n", operand_name);
   return SUCCEEDED;
 }
 
@@ -7230,6 +7259,16 @@ int generate_asm_z80(FILE *file_out) {
         print_tac(t, YES, file_out);
         fprintf(file_out, "      ; -----------------------------------------------------------------\n");
 
+        if (op == TAC_OP_ADD || op == TAC_OP_SUB || op == TAC_OP_AND || op == TAC_OP_OR || op == TAC_OP_XOR) {
+          int is_reload;
+          for (is_reload = NO; is_reload <= YES; is_reload++) {
+            struct z80_location location;
+            int operand = is_reload == YES ? t->reload_spill_to_physical_operand : t->store_retained_to_spill_operand;
+            if (operand != -1 && (_resolve_tac_location(t, operand, function_node, &location) == FAILED ||
+                _transfer_array_base_spill(t, function_node, &location, is_reload, file_out) == FAILED))
+              return FAILED;
+          }
+        }
         if (op == TAC_OP_LABEL && t->is_function == NO)
           fprintf(file_out, "    %s:\n", t->result_s);
         else if (op == TAC_OP_LABEL)

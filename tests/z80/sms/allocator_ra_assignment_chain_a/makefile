@@ -13,7 +13,8 @@ all: linked.sms
 	$(BT) -s main.ssc
 	grep -q "scalar_copy_promotion function=allocatorRaScalarCopyA .*reads=1 uses=1 scope=single_block status=complete" compiler.log
 	grep -q "linear_scan retain function=allocatorRaScalarCopyA.*8-bit in C.*ADD arg2" compiler.log
-	: && ! grep -q "scalar_copy_promotion function=allocatorRaScalarCopyFallback " compiler.log
+	grep -q "scalar_copy_promotion function=allocatorRaScalarCopyFallback variable=repeated .*reads=2 " compiler.log
+	: && ! grep -E "scalar_copy_promotion function=allocatorRaScalarCopyFallback variable=(escaped|barrier|redefined) " compiler.log
 	for name in Bit Word BeforeCall AfterCall; do grep -q "scalar_copy_promotion function=allocatorRaScalar$$name " compiler.log || exit 1; done
 	: && ! grep -E "scalar_copy_promotion function=allocatorRaScalar(CallArgument|AcrossCall|Narrow) " compiler.log
 
