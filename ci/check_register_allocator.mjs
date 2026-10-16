@@ -59,6 +59,8 @@ for (const flags of [[], ['-q']]) {
     !verifierLog.includes('spill_slot_test: fixed_prefix=yes shared_suffix=yes invalid_fixed=5 immutable=yes status=complete') ||
     !verifierLog.includes('allocation_cost_test: nearer_rejected=yes farther_reused=yes status=complete') ||
     !verifierLog.includes('allocation_cost_test: weighted_cycles=yes static_bytes=yes instruction_bound=256 fallback=next_use immutable=yes status=complete') ||
+    !verifierLog.includes('allocation_cost_test: split_reload_overlap_controls=4 status=complete') ||
+    !verifierLog.includes('allocation_cost_test: rejected_first_alternative=yes known_alternative_over_unknown_fallback=yes status=complete') ||
     !verifierLog.includes('candidate_definition_test: read_before_write=yes previous_definition_excluded=yes status=complete'))
     throw new Error('Verifier coverage count mismatch');
 }
@@ -149,6 +151,7 @@ for (let variant = 0; variant < 12; variant++) {
     ['scalar_multi_word', 'u16 a, u16 b, u16 c', 'u16 left = a+b; u16 saved = ~c; return ((left+saved)^saved)-saved;', [2, 2, 2], 2],
     ['scalar_multi_rmw', 'u16 a, u16 b, u16 c', 'u16 saved = ~c; return ((a+saved)^saved)+b;', [2, 2, 2], 2],
     ['scalar_multi_byte', 'u8 a, u8 b, u8 c', 'u8 saved = a^b; return ((c+saved)^saved)+saved;', [1, 1, 1], 1],
+    ['scalar_rank_fallback', `u16 a, u16 b, ${variant ? 'u8' : 'u16'} c`, `u16 saved = ~a; u16 first = saved+b; u16 second = saved+first; if (c&${1 << variant}) { ${variant ? 'return second+saved;' : 'second = second+saved;'} } return second;`, [2, 2, variant ? 1 : 2], 2],
     ['scalar_split_byte', 'u8 a, u8 b, u8 c', 'u8 saved = a^b; u8 first = c+saved; u8 loaded = ra_buffer[1]; return ((((first+loaded)^saved)+saved)^saved)+saved;', [1, 1, 1], 1],
     ['scalar_region', 'u8 a, u8 b, u8 c', `u8 saved = a^b; u8 first = c+saved; u8 loaded = ra_buffer[1]; u8 out = ((((first+loaded)^saved)+saved)^saved)+saved; if (a < b) { ${variant === 1 ? 'ra_buffer[2] = out;' : ''} out = out+1; } return ((out^saved)+saved)^saved;`, [1, 1, 1], 1],
     ['scalar_region_escape', 'u8 a, u8 b, u8 c', 'u8 saved = a^b; if (a < b) { ra_pointer_helper(&saved,c); } return saved+b;', [1, 1, 1], 1],
@@ -737,10 +740,17 @@ for (const program of programs) {
       case 'scalar_multi_word':
       case 'scalar_multi_rmw':
       case 'scalar_split_word':
+      case 'scalar_rank_fallback':
       case 'scalar_narrow':
       case 'word_bc': {
         parameters = [(seed * 7919 + program.variant * 1009) & 65535, (seed * 5113 + 65535) & 65535, (seed * 3571 + 32767) & 65535];
         const [first, second, thirdWord] = parameters;
+        if (program.family === 'scalar_rank_fallback') {
+          const saved = first ^ 65535;
+          expected = (saved + ((saved + second) & 65535)) & 65535;
+          if (thirdWord & (1 << program.variant)) expected = (expected + saved) & 65535;
+          break;
+        }
         if (program.family === 'scalar_split_word') {
           const saved = thirdWord ^ 65535;
           expected = (((((first + saved + buffer[1]) & 65535) ^ saved) + second) + saved) & 65535;

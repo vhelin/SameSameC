@@ -5213,6 +5213,17 @@ static int _register_allocator_instruction_is_split_reload_eligible(void *contex
       instruction, operand, temp_register->size);
   if (physical_register == Z80_PHY_NONE)
     return NO;
+  if ((operand != TAC_USE_ARG1 && instruction->arg1_physical_register != Z80_PHY_NONE &&
+      _register_allocator_physical_registers_overlap(function_node->children[1]->label,
+      physical_register, instruction->arg1_physical_register) == YES) ||
+      (operand != TAC_USE_ARG2 && instruction->arg2_physical_register != Z80_PHY_NONE &&
+      _register_allocator_physical_registers_overlap(function_node->children[1]->label,
+      physical_register, instruction->arg2_physical_register) == YES) ||
+      (operand != TAC_USE_RESULT && instruction->op == TAC_OP_ARRAY_WRITE &&
+      instruction->result_physical_register != Z80_PHY_NONE &&
+      _register_allocator_physical_registers_overlap(function_node->children[1]->label,
+      physical_register, instruction->result_physical_register) == YES))
+    return NO;
   if ((operand == TAC_USE_RESULT && instruction->result_physical_register != Z80_PHY_NONE) ||
       (operand == TAC_USE_ARG1 && instruction->arg1_physical_register != Z80_PHY_NONE) ||
       (operand == TAC_USE_ARG2 && instruction->arg2_physical_register != Z80_PHY_NONE))
@@ -10263,7 +10274,7 @@ static int _run_basic_block_linear_scan(struct tree_node *function_node,
 
         if (selection_orchestration.preparation.interval_blocked == NO) {
           int candidate_index, selected = selection_orchestration.finalization.dispatch.physical_register;
-          int selected_split = selection_orchestration.finalization.split_action, best_known = NO, best_found = NO;
+          int selected_split = selection_orchestration.finalization.split_action, best_known = NO, best_found = NO, first_trial = YES;
           long best_cycles = 0, best_bytes = 0;
           struct register_allocator_active_slot probe_slots[5];
 
@@ -10305,9 +10316,11 @@ static int _run_basic_block_linear_scan(struct tree_node *function_node,
             transition_context.physical_register = trial;
             transition_context.split_action = trial_split;
             _observe_register_allocator_transition_preparation(&transition_context, &preparation);
-            if (best_found == NO || (best_known == YES && transition_context.cost_known == YES &&
-                preparation.plan.linear_scan_decision != RA_LINEAR_SCAN_KEEP_ACTIVE &&
-                transition_context.saved_cycles > best_cycles && transition_context.saved_bytes >= best_bytes)) {
+            if (preparation.plan.linear_scan_decision != RA_LINEAR_SCAN_KEEP_ACTIVE &&
+              (transition_context.cost_known == YES || first_trial == YES) &&
+              (best_found == NO || (transition_context.cost_known == YES &&
+              (best_known == NO || (transition_context.saved_cycles > best_cycles &&
+              transition_context.saved_bytes >= best_bytes))))) {
               best_found = YES;
               selected = trial;
               selected_split = trial_split;
@@ -10315,6 +10328,7 @@ static int _run_basic_block_linear_scan(struct tree_node *function_node,
               best_cycles = transition_context.saved_cycles;
               best_bytes = transition_context.saved_bytes;
             }
+            first_trial = NO;
           }
           RA_TRACE((stderr, "register_allocator: placement_rank function=%s tac=%d original=%s selected=%s known=%s net_cycles=%ld net_bytes=%ld mutation=no\n",
               function_node->children[1]->label, tac_index,

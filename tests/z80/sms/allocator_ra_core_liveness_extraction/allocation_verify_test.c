@@ -517,6 +517,84 @@ int main(int argc, char **argv) {
       return 1;
     fprintf(stderr, "allocation_cost_test: weighted_cycles=yes static_bytes=yes instruction_bound=256 fallback=next_use immutable=yes status=complete\n");
   }
+  {
+    struct tac ranking[4];
+    struct temp_register before[2];
+    struct register_allocator_basic_block blocks[2];
+    memcpy(before, temps, sizeof(before));
+    memset(ranking, 0, sizeof(ranking));
+    memset(blocks, 0, sizeof(blocks));
+    for (index = 0; index < 4; index++) {
+      ranking[index].function_node = &function;
+      ranking[index].op = index == 0 ? TAC_OP_COMPLEMENT : TAC_OP_ADD;
+      ranking[index].arg1_type = index == 0 ? TAC_ARG_TYPE_CONSTANT : TAC_ARG_TYPE_TEMP;
+      ranking[index].arg1_d = index == 0 ? 7 : 0;
+      ranking[index].arg2_type = TAC_ARG_TYPE_CONSTANT;
+      ranking[index].arg2_d = 1;
+      ranking[index].result_type = TAC_ARG_TYPE_TEMP;
+      ranking[index].result_d = index == 0 ? 0 : 1;
+      ranking[index].result_var_type = ranking[index].arg1_var_type_promoted =
+        ranking[index].arg2_var_type_promoted = VARIABLE_TYPE_UINT16;
+      ranking[index].arg1_physical_register = ranking[index].arg2_physical_register =
+        ranking[index].result_physical_register = Z80_PHY_NONE;
+      ranking[index].reload_spill_to_physical_operand = -1;
+      ranking[index].store_retained_to_spill_operand = -1;
+    }
+    temps[0].size = temps[1].size = 16;
+    temps[0].spill_required = temps[1].spill_required = YES;
+    temps[0].physical_register = temps[1].physical_register = Z80_PHY_NONE;
+    temps[0].offset_to_fp = -7;
+    temps[1].offset_to_fp = -9;
+    g_tacs = ranking;
+    g_tacs_count = 4;
+    ranking[2].arg2_type = TAC_ARG_TYPE_TEMP;
+    for (index = 0; index < 4; index++) {
+      int registers[4] = { Z80_PHY_HL, Z80_PHY_BC, Z80_PHY_B, Z80_PHY_C };
+      temps[1].size = index < 2 ? 16 : 8;
+      ranking[2].arg1_d = index < 2 ? 0 : 1;
+      ranking[2].arg2_d = index < 2 ? 1 : 0;
+      ranking[2].arg1_physical_register = index < 2 ? Z80_PHY_NONE : registers[index];
+      ranking[2].arg2_physical_register = index < 2 ? registers[index] : Z80_PHY_NONE;
+      if (_register_allocator_instruction_is_split_reload_eligible(&function, 2, 0) !=
+          (index == 1 ? YES : NO))
+        return 1;
+    }
+    temps[1].size = 16;
+    ranking[2].arg1_d = 0;
+    ranking[2].arg2_type = TAC_ARG_TYPE_CONSTANT;
+    ranking[2].arg2_d = 1;
+    ranking[2].arg1_physical_register = ranking[2].arg2_physical_register = Z80_PHY_NONE;
+    fprintf(stderr, "allocation_cost_test: split_reload_overlap_controls=4 status=complete\n");
+    for (index = 0; index < 3; index++) {
+      int instruction_index;
+      blocks[0].end_tac = index == 2 ? 3 : 1 + index;
+      blocks[1].start_tac = 2 + index;
+      blocks[1].end_tac = 3;
+      temps[0].spill_required = temps[1].spill_required = YES;
+      for (instruction_index = 0; instruction_index < 4; instruction_index++) {
+        ranking[instruction_index].result_physical_register =
+          ranking[instruction_index].arg1_physical_register =
+          ranking[instruction_index].arg2_physical_register = Z80_PHY_NONE;
+        ranking[instruction_index].store_retained_to_spill_operand = -1;
+      }
+      if (index == 2) {
+        ranking[0].op = TAC_OP_ADD;
+        ranking[1].op = TAC_OP_COMPLEMENT;
+        ranking[1].arg1_type = TAC_ARG_TYPE_CONSTANT;
+        ranking[2].arg2_type = ranking[3].arg2_type = TAC_ARG_TYPE_TEMP;
+        ranking[2].arg2_d = ranking[3].arg1_d = 1;
+        ranking[3].arg2_d = 0;
+        ranking[3].op = TAC_OP_XOR;
+      }
+      if (_run_basic_block_linear_scan(&function, blocks, index == 2 ? 1 : 2, NULL, 0, NULL, 0) == FAILED ||
+          ranking[0].result_physical_register != Z80_PHY_HL)
+        return 1;
+    }
+    memcpy(temps, before, sizeof(before));
+    g_tacs = instructions;
+    g_tacs_count = 4;
+    fprintf(stderr, "allocation_cost_test: rejected_first_alternative=yes known_alternative_over_unknown_fallback=yes status=complete\n");
+  }
   instructions[1].store_retained_to_spill_operand = TAC_USE_ARG2;
   _clear_tac_retained_interval(0, 1, TAC_USE_ARG2);
   if (instructions[0].result_physical_register != Z80_PHY_NONE ||

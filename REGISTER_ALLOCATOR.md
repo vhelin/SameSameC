@@ -11065,6 +11065,224 @@ counts identify audit targets, not dynamic savings or guaranteed opportunities.
       /tmp/ra339-{cygwin,native}-full.log, and
       /tmp/ra339-historical-all-modules-{results.json,builds,execution,timing}.
 
+### Batch 340-342: Correct And Unify Allocation Decisions
+
+These quality improvements extend the bounded working allocator, not its
+completion definition. Keep 328, 332, 333 and 339 open until their own evidence
+requirements are satisfied; the steps below do not complete them by association.
+Prefer changes to existing decision paths over another allocator framework.
+
+- [x] **340. Rank profitable candidates independently of the fallback.**
+      First add actual-source regressions for a rejected first placement
+      suppressing a profitable alternative, and an unknown-cost first placement
+      blocking a known profitable alternative. Separate fallback selection from
+      the best acceptable scored placement inside the existing ranking loop.
+      Preserve deterministic ties, displaced-owner costs, BC/B/C overlap,
+      atomic preflight and the cycles/no-byte-growth objective. State how
+      acceptable nondominating scores compare; demonstrate emitted benefit,
+      not just a different diagnostic or selected register.
+      Completed in the existing ranking loop: reject KEEP_ACTIVE trials as
+      scored winners, allow a known acceptable placement to replace an unknown
+      fallback, and keep the first legal unknown trial when no preferred
+      register exists. A rejected known first trial does not authorize later
+      unknown alternatives. Equal or nondominating known scores keep the earlier
+      choice; replacement requires strictly more saved cycles and no fewer
+      saved bytes. The actual-source harness covers rejected, unknown and
+      no-preference first placements without changing atomic application.
+      Two independently executed source variants also exposed an existing
+      optional split-reload collision: loading one input into HL overwrote a
+      different retained HL input. Keep that read on the existing stack path
+      when target register units overlap; reuse the existing eligibility hook
+      and four actual-source HL/BC/B/C controls, not a verifier exemption.
+      With this safety fix held constant, disabling only the ranking change
+      costs each variant 4,096 cycles and 1,024 register moves over 512 inputs:
+      the fix saves eight cycles and two moves per call, with unchanged frame
+      reads/writes and a 16,384-byte matched ROM image. Static register-move
+      sites fall from 316 to 312 across the matched scalar corpus. All other
+      scalar counters and default/forced-spill counters remain identical.
+- [ ] **341. Make frequency weighting change a justified decision.** Weight
+      individual uses and preservation/reload/rematerialization operations by
+      their execution regions rather than multiplying both competing totals
+      by one common factor. Reuse the existing CFG/cost observer; distinguish
+      estimated loop frequency from measured iterations and keep bytes static.
+      Add hot-use/cold-transfer and reversed-hotness controls that change the
+      selected plan, plus zero-trip, nested-loop and unknown-cost controls.
+      Require independently executed improvement; numerical scaling alone
+      does not qualify this step or justify a new profiling subsystem.
+      Still open: a per-operation prototype changed a synthetic hot/cold
+      decision but did not establish an emitted production benefit. Removed
+      that prototype and its extra CFG/context fields rather than retaining
+      unproven code. Ordinary block-local candidates generally share a region;
+      the existing common-frequency estimate remains unchanged.
+- [ ] **342. Cost one loop-retention versus split/rematerialize choice.** Reuse
+      the same observer to compare whole-loop retention with existing legal
+      alternatives, including entry, backedge, exit and competing-owner costs.
+      Replace preferred-first selection only where that comparison is known.
+      Preserve all-path reservations, call barriers and transactional mutation.
+      Execute zero/one/multiple iterations, cold exits and BC/B/C pressure;
+      require an actual cycle/transfer benefit without an unexplained frame or
+      ROM regression. Leave broader step 328 open if the joint policy remains
+      limited or unproven; do not add a parallel loop cost model.
+      Still open: loop plans cover entry/latch definitions and all-path
+      reservations, while the current observer stops at a redefinition. A
+      lexical scan is not a justified joint cost comparison. No loop-selection
+      behavior, new cost model, profiling layer or production helper was added.
+
+Batch evidence: strict C89/Werror actual-source checks and the independent
+corpus pass under Cygwin GCC, native Release and native ASan: 413 generated
+entries plus nine real routines, 216,064 cases per mode at 512 inputs per
+entry. Both sequential repository suites pass all 173 tests using freshly
+staged, hash-verified compilers; native linking requires wla-dx/binaries in
+the incoming PATH. Final traced/quiet native ASan verifiers pass, and 202
+saved sanitizer-run logs contain no ASan reports. UBSan, Valgrind, hardware
+execution and new compile-time/peak-memory attribution remain unclaimed.
+All 420 pre-existing entries retain exactly the prior per-routine
+counters, including cycles, frame traffic and register moves. Their real
+project ROMs remain byte-identical; all three toolchains also emit identical
+ROMs and counters. The production diff is 18 added/four removed lines, net 14,
+with no new functions, APIs, dependencies or repository files. Earlier broad
+unknown-alternative acceptance failed a profitability control; restricting
+fallbacks to an explicitly preferred register then regressed eight existing
+entries. The first-legal-trial rule fixes both, with no retained counter
+regression. Evidence: /tmp/ra342-measured-results.json,
+/tmp/ra342-rank-isolated-{before,after}, /tmp/ra342-verifier.log,
+/tmp/ra342-final-{cygwin,native-release,native-asan}, and the retained original
+failure under /tmp/ra342-rank-reassignment-failure-{before,after}; full-suite
+logs are /tmp/ra342-{cygwin,native}-full.log. Steps
+328, 332, 333, 339, 341 and 342 remain open; RA remains opt-in.
+
+### Batch 343-345: Improve Lowering And Remove Avoidable Copies
+
+- [ ] **343. Select a real clobber bottleneck by executed cost.** Audit the
+      recorded 15 clobber decisions among 18 static project rejections against
+      actual intervening lowering, use frequency and transfer costs. Static
+      counts are not executed misses or proof of recoverable savings. Pick one
+      useful sequence, retaining its matched baseline and independent oracle;
+      extract hardware-free source when necessary and explicitly distinguish
+      compiled banked/hardware routines from independently executed code.
+- [ ] **344. Remove one demonstrated unnecessary lowering clobber.** Improve
+      existing emitters through legal operand ordering or scratch-register
+      selection for the selected sequence. Update the existing lowering-effect,
+      legality and cost contracts together; never admit a placement merely by
+      weakening its clobber declaration. Check signed extension, flags,
+      noncommutative operands, address caches, partial registers and BC/B/C
+      interference. Require fewer executed cycles or transfers in the selected
+      real case, with rejection controls for incompatible owners unchanged.
+- [ ] **345. Coalesce a proven source/result or copy-chain placement.** Reuse
+      existing operand metadata and affinity to keep a dying source/result in
+      a compatible register and avoid redundant materialization. Price moves
+      introduced elsewhere; more register moves can still be a valid tradeoff
+      when cycles and frame traffic improve. Preserve tied/destructive operand
+      semantics, frame-pointer ownership, call ABI and overlapping units. Show
+      an independently executed reduction; do not add a separate copy planner
+      or expand the register pool without a demonstrated lowering contract.
+
+### Batch 346-348: Improve Definition And Lifetime Information
+
+- [ ] **346. Reuse function-local definition/use observations where needed.**
+      Identify a concrete limitation in repeated discovery or value tracking,
+      then reuse existing metadata to distinguish definitions, ordered reads
+      and lifetime segments within function bounds. Preserve reads-before-
+      writes, operand roles and deterministic ordering. Measure quiet compile
+      time/RSS before retaining extra storage; invalidate through the existing
+      mutation/rebuild boundary. Do not revive the unproven caches from 332/333
+      or introduce a second value table solely for hypothetical future use.
+- [ ] **347. Extend scalar promotion for one proven reaching definition.**
+      Use the preceding observations to support a useful reassignment or
+      dominated-use case currently excluded by single-definition promotion.
+      Require unambiguous definition identity on every path; retain escape,
+      asm, alias, conversion and ABI exclusions. Test joins, reused definitions,
+      loops, signed bytes and narrowing with independent results/buffers.
+      Keep ambiguous cases rejected and require measured real-source benefit;
+      broad SSA conversion is not a prerequisite or an implied commitment.
+- [ ] **348. Use one profitable lifetime hole or regional continuation.**
+      Extend existing interval/reservation machinery to release a register
+      during a proven dead segment or retain a value across a supported edge.
+      Compare transfers and competing-owner benefit, not enclosing interval
+      length alone. Check all predecessors, path-specific definitions, cold
+      paths, calls and partial-register pressure with immutable failure and
+      rollback controls. Require independent execution and an actual benefit;
+      do not replace the allocator with global graph colouring by default.
+
+### Batch 349-351: Reduce Backing Storage Without Hiding Tradeoffs
+
+- [ ] **349. Reproduce the remaining maximum-frame outlier precisely.** Trace
+      calculations-1's default/RA maximum 101/102 bytes to the retained value,
+      its actual memory lifetime and preservation uses. Keep per-function
+      totals/maxima, ABI storage and executed transfers visible. Establish
+      whether the extra byte is necessary under current lowering; smaller
+      aggregate frames do not settle this question. A justified retained byte
+      is an explained tradeoff, not grounds for unsafe reuse or forced success.
+- [ ] **350. Prefer proven rematerialization or shorter backing lifetimes.**
+      Reuse existing cost/materialization and slot-sharing logic for a concrete
+      constant, stable address or dead memory segment identified in 349.
+      Account for typed conversion, every reconstruction and dynamic frequency;
+      do not duplicate side effects or assume aliased memory is unchanged.
+      Require a frame reduction or executed transfer/cycle benefit, with full
+      buffer/ABI guards and negative alias/escape controls. Leave the outlier
+      unchanged if its backing is necessary or reconstruction is unprofitable.
+- [ ] **351. Relax fixed spill-prefix sharing only for a measured blocker.**
+      First demonstrate that an absolute spill destination prevents useful
+      reuse. If justified, use existing temp/transfer metadata to resolve
+      destinations after layout instead of freezing unrelated preceding slots.
+      Preserve destination widths, ABI offsets, emit-time validation and atomic
+      failure; test byte/word sharing, branches, loops and live preservation
+      sites. Do not change the transfer representation or add indirection if
+      suffix sharing already suffices; explicitly defer an unprofitable trial.
+
+### Batch 352-354: Strengthen Decision Tests And Consolidate Implementation
+
+- [ ] **352. Add tests that falsify allocation choices, not just counters.**
+      Extend existing generators/harnesses with the decision-changing cases
+      above, including rejected/unknown first candidates, hot/cold reversals,
+      multi-definition joins, loop pressure, calls and narrow/wide overlap.
+      Preserve independent return/buffer/DE/SP guards, failure reduction and
+      deterministic seeds. Report structural shapes separately from literal
+      variants and case counts. Treat newly exposed baseline semantic bugs as
+      separate correctness work, never as allocation gains or suppressed tests.
+- [ ] **353. Optimize analysis work only after a material profile.** Profile
+      quiet matched builds separately from traced I/O. Bound unnecessary scans
+      to the function and reuse unchanged function-owned analysis only where
+      measured repeated work justifies it. Keep explicit mutation invalidation,
+      post-mutation verification and no global caches. Alternate isolated runs
+      with actual peak RSS; remove trials without a demonstrated benefit.
+      Existing deferred 332/333 remain open unless their criteria are met.
+- [ ] **354. Consolidate decision plumbing while preserving safety.** Remove
+      duplicate preparation, scoring, dispatch and finalization introduced or
+      superseded by these changes inside existing owners. Avoid phase-specific
+      wrappers, forwarding-only helpers and new public APIs without a concrete
+      need. Report production/test line and function/API changes separately.
+      For cleanup, require identical decisions, ROMs and execution metrics;
+      retain immutable rejection, verifier checks and transactional rollback.
+
+### Batch 355-357: Attribute Gains And Requalify The Result
+
+- [ ] **355. Measure each retained optimization against a matched control.**
+      Retain reproducible per-change baselines/ablations as work proceeds,
+      varying every affected module and holding common sources/flags fixed.
+      Report per-function cycles, executed copies and categorized transfers,
+      ROM, total/maximum frames and rejection reasons on real source as well
+      as generated controls. Include isolated alternating quiet/traced compile
+      time, log volume and actual RSS with dispersion. Separate baseline fixes,
+      allocation gains and cleanup; do not substitute bundled batch deltas for
+      individual-feature attribution or silently mark historical 339 complete.
+- [ ] **356. Requalify the final source and freshly staged binaries.** Run
+      actual-source verifier/layout and atomic-failure checks, independent
+      generated/real execution, strict C90/warnings, Cygwin/native MSVC and
+      available ASan gates. Verify default/-no-ra, forced-all-spill controls,
+      traced/quiet identity and cross-toolchain outputs, then both full suites
+      sequentially with hash-matched fresh binaries and actual test counts.
+      Name signed-word, hardware/bank, sanitizer and other coverage still unrun;
+      do not inherit a passing gate from a different source or binary revision.
+- [ ] **357. Publish retained tradeoffs and choose the next scope.** Summarize
+      attributable benefits, per-function regressions, compile-cost changes,
+      net production complexity and every deferred/unproven item. Retain only
+      demonstrated improvements or explicitly justified tradeoffs. Decide from
+      remaining executed misses whether wider value representation or global
+      allocation is warranted; do not equate more framework extraction with
+      better allocation. Keep -ra opt-in, preserve the existing safety gates,
+      and stop or revise work that fails its benefit criterion.
+
 **Shared completion gates:** Each three-step batch gets its own local commit,
 with no push and no unrelated worktree changes included. Reuse existing
 functions, planners, fixtures, and scripts; new production helpers/APIs must
