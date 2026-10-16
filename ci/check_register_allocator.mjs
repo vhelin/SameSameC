@@ -57,7 +57,8 @@ for (const flags of [[], ['-q']]) {
     !/allocation_policy_test: direct_bc_bitwise=yes unsigned_widening=yes signed_right_fallback=yes bc_overlap_rejected=yes status=complete/.test(verifierLog) ||
     !/allocation_policy_test: endpoints=10200 supported=\d+ rejected=\d+ independent_table=yes status=complete/.test(verifierLog) ||
     !verifierLog.includes('spill_slot_test: cases=10 overlap_width_boundary_redefinition_controls=yes tacs_unchanged=yes status=complete') ||
-    !verifierLog.includes('spill_slot_test: fixed_prefix=yes shared_suffix=yes shared_nonoverlap_prefix=yes invalid_fixed=5 immutable=yes status=complete') ||
+    !verifierLog.includes('spill_slot_test: fixed_prefix=yes shared_suffix=yes invalid_fixed=11 immutable=yes status=complete') ||
+    !verifierLog.includes('spill_slot_test: fixed_owners=3 byte_word_mixed=yes prefix_stable=yes suffix_shared=yes tacs_unchanged=yes status=complete') ||
     !verifierLog.includes('allocation_cost_test: nearer_rejected=yes farther_reused=yes status=complete') ||
     !verifierLog.includes('allocation_cost_test: weighted_cycles=yes static_bytes=yes instruction_bound=256 fallback=next_use immutable=yes status=complete') ||
     !verifierLog.includes('allocation_cost_test: split_reload_overlap_controls=4 status=complete') ||
@@ -165,6 +166,7 @@ for (let variant = 0; variant < 12; variant++) {
     ['scalar_call_region', 'u8 a, u8 b, u8 c', `u8 saved = a^b; u8 first = c+saved; u8 loaded = ra_buffer[1]; u8 out = ((((first+loaded)^saved)+saved)^saved)+saved; u8 called = ra_pointer_helper(ra_buffer,ra_signed_helper(${variant === 1 ? 'ra_recursive_helper(2,a)' : 'a'},b,c)); return ((((out^saved)+saved)^saved)+saved)^called;`, [1, 1, 1], 1],
     ['scalar_loop_pressure', 'u8 a, u8 b, u8 c', 'u8 left = a; u8 right = b; while (left < right) { left = left+1; right = right-1; } return left^right;', [1, 1, 1], 1],
     ['scalar_loop_call', 'u8 a, u8 b, u8 c', 'u8 saved = a^b; u8 value = b; while (c) { value = ra_pointer_helper(ra_buffer,value)+saved; c = c-1; } return value;', [1, 1, 1], 1],
+    ['scalar_decision_loop', 'u16 a, u8 count, u8 value', `u16 saved = a; u16 out = a^0x4321; u8 left = value; u8 right = count+value; while (count) { if (count&1) { saved = out^count; } else { saved = saved+left; } left = left+1; right = right-1; ${variant ? 'left = left+ra_pointer_helper(ra_buffer,right);' : ''} u8 combined = left+right; out = (out+saved)^combined; ra_buffer[count] = left^right; count = count-1; } return out+saved+left+right;`, [2, 1, 1], 2],
     ['scalar_cost_reject_byte', 'u8 a, u8 b, u8 c', 'u8 saved = a^b; u8 first = c+saved; u8 loaded = ra_buffer[1]; return ((first+loaded)^saved)+saved;', [1, 1, 1], 1],
     ['scalar_split_word', 'u16 a, u16 b, u16 c', 'u16 saved = ~c; u16 first = a+saved; u16 loaded = ra_buffer[1]; return ((first+loaded)^saved)+b+saved;', [2, 2, 2], 2],
     ['scalar_word_index', 'u16 a, u16 b, u8 c', `u16 out = a+b; ra_buffer[${constant}] = c; return out+ra_buffer[${constant}];`, [2, 2, 1], 2],
@@ -368,6 +370,9 @@ for (const program of process.env.RA_BASELINE === '1' ? [] : programs) {
   if (program.family === 'scalar_loop_call' && lines.some(line =>
       line.includes('loop_retention_apply_preflight') && line.includes('application=applied')))
     throw new Error(`Call-clobbered loop retained: ${program.name}`);
+  if (program.family === 'scalar_decision_loop' && lines.some(line =>
+      /scalar_copy_promotion .*variable=saved /.test(line)))
+    throw new Error(`Ambiguous loop definitions promoted: ${program.name}`);
   if (program.family.startsWith('scalar_remat_')) {
     const assembly = readFileSync(join(output, 'ra/main.asm'), 'utf8').split(`${program.name}:`)[1].split('.ENDS')[0];
     if (assembly.includes('; rematerialize ') !== (program.family !== 'scalar_remat_pointer'))
@@ -496,8 +501,9 @@ const totals = Object.fromEntries(['default', 'all_spill', 'ra'].map(mode => [mo
   Object.fromEntries(['cases', ...executionMetrics].map(metric => [metric, 0]))]));
 const programTotals = {};
 const shapes = new Map(programs.map(program => [program.name,
-  program.source.replace(program.name, 'generated').replace(/ra_arithmetic_\d+/g, 'ra_arithmetic').replace(/\b\d+\b/g, '#')]));
+  program.source.replace(program.name, 'generated').replace(/ra_arithmetic_\d+/g, 'ra_arithmetic').replace(/\b(?:0x[0-9a-f]+|\d+)\b/gi, '#')]));
 const uniqueInputs = new Set();
+const decisionLoopPaths = new Map();
 for (const program of programs) {
   programTotals[program.name] = Object.fromEntries(Object.keys(totals).map(mode => [mode,
     Object.fromEntries(['cases', ...executionMetrics].map(metric => [metric, 0]))]));
@@ -727,6 +733,27 @@ for (const program of programs) {
         expected = value;
         break;
       }
+      case 'scalar_decision_loop': {
+        parameters = [(seed * 7919 + 32767) & 65535, seed % 8, third];
+        const [first, count, value] = parameters;
+        let saved = first, out = first ^ 0x4321, left = value, right = (count + value) & 255;
+        for (let remaining = count; remaining; remaining--) {
+          saved = remaining & 1 ? out ^ remaining : (saved + left) & 65535;
+          left = (left + 1) & 255;
+          right = (right - 1) & 255;
+          if (program.variant) {
+            expectedBuffer[0] = right;
+            left = (left + expectedBuffer[1]) & 255;
+          }
+          out = ((out + saved) ^ ((left + right) & 255)) & 65535;
+          expectedBuffer[remaining] = left ^ right;
+        }
+        expected = (out + saved + left + right) & 65535;
+        const paths = decisionLoopPaths.get(program.name) || new Set();
+        paths.add(count === 0 ? 'zero' : count === 1 ? 'one' : 'multiple');
+        decisionLoopPaths.set(program.name, paths);
+        break;
+      }
       case 'scalar_signed_call': {
         const called = (byte + other + third) & 255;
         expected = (byte + (called >= 128 ? called - 256 : called)) & 65535;
@@ -934,6 +961,8 @@ for (const program of programs) {
           throw new Error(`${program.name}: source-loop backedges=${result.entry_backedges}, expected=${program.variant ? seed % 64 : expected}`);
         if (program.family === 'scalar_frequency_loop' && result.entry_backedges !== expected - (parameters[0] ^ program.constant))
           throw new Error(`${program.name}: frequency-loop backedges=${result.entry_backedges}, expected=${expected - (parameters[0] ^ program.constant)}`);
+        if (program.family === 'scalar_decision_loop' && result.entry_backedges !== parameters[1])
+          throw new Error(`${program.name}: decision-loop backedges=${result.entry_backedges}, expected=${parameters[1]}`);
         if (mode === 'ra' && process.env.RA_BASELINE !== '1' &&
             ['scalar_split_byte', 'scalar_split_word', 'scalar_call_region'].includes(program.family)) {
           const bytes = program.family === 'scalar_split_word' ? [2, 4] : program.family === 'scalar_call_region' ? [1, 2] : [1, 1];
@@ -999,6 +1028,11 @@ if (process.env.RA_FAMILIES?.split(',').includes('matrix_source_loop') &&
   throw new Error('Both source-loop cases must be selected');
 const coverage = {functions: programs.length, unique_shapes: new Set(shapes.values()).size,
   shape_definition: 'normalized_source_not_unique_cfg',
+  literal_variant_extras: programs.length - new Set(shapes.values()).size,
+  decision_loop_paths: Object.fromEntries(Array.from(decisionLoopPaths, ([name, paths]) => {
+    if (cases >= 3 && paths.size !== 3) throw new Error(`Missing zero/one/multiple loop coverage: ${name}`);
+    return [name, Array.from(paths).sort()];
+  })),
   source_loops: programs.filter(program => program.family === 'matrix_source_loop').map(program => ({name: program.name,
     source: `calculations-1/${program.variant ? 'bank_1.ssc:calculateAndPrint5:while' : 'bank_2.ssc:calculateAndPrint3:for'}`})),
   unique_shape_input_tuples: uniqueInputs.size, cases_per_mode: totals.ra.cases,

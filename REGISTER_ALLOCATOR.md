@@ -11396,27 +11396,19 @@ opt-in.
       was proven for this retained backing under current signed/typed uses, so
       the outlier byte remains an explicit tradeoff rather than a forced win.
 
-      Fixed spill destinations were already sharing suffix storage, but a
-      measured byte-prefix blocker remained when a fixed spill used one byte:
-      unrelated non-overlapping prefix bytes were conservatively excluded from
-      reuse. Slot sharing now keeps fixed-destination safety while allowing
-      sharing for slots whose assigned range is entirely outside the fixed
-      destination span. Existing destination validation and immutable failure
-      behavior remain fail-closed; no transfer representation or post-layout
-      indirection was added.
-
-      The allocator core verifier now locks three fixed-destination controls in
-      one fixture: unchanged two-byte fixed-prefix behavior, existing shared
-      suffix reuse, and newly allowed non-overlapping byte-prefix reuse. Five
-      invalid fixed-destination cases remain immutable failures with unchanged
-      TAC/temp metadata. The checker assertion was updated to require the new
-      `shared_nonoverlap_prefix=yes` coverage marker while preserving existing
-      accepted/rejected counts and lifecycle checks. No broad spill-policy
-      relaxation was introduced.
+      Correction from 352-354: the prefix-sharing trial in this batch was
+      unsafe and its claimed benefit is withdrawn. Non-overlap with the fixed
+      destination is insufficient: reusing an earlier slot moves later owners
+      without retargeting their absolute stores. A new byte-owner regression
+      reproduces offset -8 remaining in the store while its owner moves to -6.
+      Prefix layout is now frozen through the deepest fixed destination again;
+      suffix sharing remains supported. Further relaxation is explicitly
+      deferred, not credited as an optimization. No transfer representation or
+      post-layout indirection was added.
 
 ### Batch 352-354: Strengthen Decision Tests And Consolidate Implementation
 
-- [ ] **352. Add tests that falsify allocation choices, not just counters.**
+- [x] **352. Add tests that falsify allocation choices, not just counters.**
       Extend existing generators/harnesses with the decision-changing cases
       above, including rejected/unknown first candidates, hot/cold reversals,
       multi-definition joins, loop pressure, calls and narrow/wide overlap.
@@ -11424,20 +11416,81 @@ opt-in.
       deterministic seeds. Report structural shapes separately from literal
       variants and case counts. Treat newly exposed baseline semantic bugs as
       separate correctness work, never as allocation gains or suppressed tests.
-- [ ] **353. Optimize analysis work only after a material profile.** Profile
+- [x] **353. Optimize analysis work only after a material profile.** Profile
       quiet matched builds separately from traced I/O. Bound unnecessary scans
       to the function and reuse unchanged function-owned analysis only where
       measured repeated work justifies it. Keep explicit mutation invalidation,
       post-mutation verification and no global caches. Alternate isolated runs
       with actual peak RSS; remove trials without a demonstrated benefit.
       Existing deferred 332/333 remain open unless their criteria are met.
-- [ ] **354. Consolidate decision plumbing while preserving safety.** Remove
+- [x] **354. Consolidate decision plumbing while preserving safety.** Remove
       duplicate preparation, scoring, dispatch and finalization introduced or
       superseded by these changes inside existing owners. Avoid phase-specific
       wrappers, forwarding-only helpers and new public APIs without a concrete
       need. Report production/test line and function/API changes separately.
       For cleanup, require identical decisions, ROMs and execution metrics;
       retain immutable rejection, verifier checks and transactional rollback.
+
+Qualification (352-354):
+
+- Existing ranking controls now require the actual selected producer/consumer
+  registers, including the rejected first alternative and a known alternative
+  over an unknown fallback. Frequency controls preserve the decision as well
+  as weighted cycles/static bytes. Two independently executed mixed byte/word
+  loop variants combine conditional redefinitions, pressure and a call/no-call
+  contrast. Complete buffer, return, DE/SP and write guards remain; exact loop
+  backedges and zero/one/multiple paths are required. These are execution-path
+  controls, not a claim of new cross-block hot/cold allocation support.
+- Three byte/word/mixed fixed-owner layout controls require stable preceding
+  slots, exact absolute owner destinations and shared suffixes. The byte case
+  fails on the prior committed allocator before the correction above. Eleven
+  invalid destination/width/type controls require unchanged TACs, temp metadata
+  and layout offset, with explicit failure diagnostics. Existing branch, loop,
+  overlap, width and rollback controls remain.
+- Removed the duplicate dispatch context and forwarding-only alternate chooser.
+  The existing selector copies its evaluation context locally for alternate
+  path/overlap flags, preserving primary and ranking state. Production changes:
+  23 added/122 removed lines (99 net removed), one fewer function and internal
+  context type, no new functions, public APIs, dependencies or production files.
+  Test/runner changes: 105 added/6 removed lines (99 net added), no new test
+  functions or tracked files. The fixed-layout correction is separate from
+  output-preserving consolidation, not counted as an allocation gain.
+- Matched corrected/pre-consolidation and final compilers produce identical
+  80 ROMs, 21 metric files and 8,812 selected ranking/profitability/retention/
+  rejection trace lines (only randomized static-symbol IDs normalized). The
+  same outputs match fresh native MSVC Release and ASan compilers. Strict C89,
+  pedantic/Wall/Werror passes with only GCC 14's existing
+  calloc-transposed-args warning disabled; no new warning was suppressed.
+  Traced/quiet verifiers retain seven accepts and 32 immutable rejects. Both
+  existing core-liveness and equal-next-use fixture suites pass on the fresh
+  Cygwin/native compilers in isolated copies.
+- Final independent execution covers 427 generated entries plus nine real
+  bank-zero routines, 223,232 cases per mode at 512 inputs, on Cygwin GCC,
+  native Release and native ASan. The six cohorts report 11/52/103/37/37/40
+  normalized source shapes separately from literal variants and case counts;
+  these are not unique CFG counts. Hex literals now normalize like decimals.
+  Default/-no-ra and traced/quiet ROM identity pass; all 217 ASan-run logs are
+  free of reported sanitizer errors and both sanitizer binary imports are
+  verified. Hardware-facing banked loops are compiled, not independently
+  executed.
+- Quiet/traced gprof runs were collected separately on matched real sources.
+  Coarse samples and substantial instrumentation overhead did not justify an
+  analysis cache or speculative lifetime/invalidation changes; none was added.
+  Six isolated alternating control/final rounds use the existing measurement
+  script, all five modes and actual GNU-time peak RSS. Quiet project medians
+  are 225->220 ms (210-270/190-240) and 185->195 ms (170-210/170-250);
+  RSS medians 13,220->13,212 and 13,106->13,108 KiB. Traced medians are
+  1,540->1,515 and 910->905 ms, with overlapping ranges. No throughput, RSS or
+  log-volume improvement is claimed. Analysis optimization and historical
+  332/333 remain deferred.
+- Under the currently installed assembler, matched RA project ROMs remain
+  22,621/16,000 used bytes and frames 269/102 and 236/96 total/maximum.
+  The first project's default/RA maximum remains 101/102; no frame gain is
+  claimed. Artifacts, isolated measurements and reproducible comparison:
+  /tmp/ra352/{control,final,native,asan,profile-quiet,profile-trace},
+  /tmp/ra352/comparison.json and /tmp/ra352/compare.mjs. Full-suite requalification
+  remains step 356; UBSan, Valgrind, hardware/bank execution and exhaustive CFG
+  coverage are not claimed. RA stays opt-in.
 
 ### Batch 355-357: Attribute Gains And Requalify The Result
 

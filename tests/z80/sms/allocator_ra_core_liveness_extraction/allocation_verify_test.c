@@ -519,12 +519,14 @@ int main(int argc, char **argv) {
     context.frequency = 4;
     _observe_register_allocator_transition_preparation(&context, &preparation);
     if (context.saved_cycles != cycles * 4 || context.saved_bytes != bytes ||
+        preparation.plan.linear_scan_decision != RA_LINEAR_SCAN_KEEP_ACTIVE ||
         memcmp(before, instructions, sizeof(before)) != 0 ||
         memcmp(slots_before, slots, sizeof(slots_before)) != 0)
       return 1;
     context.frequency = 64;
     _observe_register_allocator_transition_preparation(&context, &preparation);
-    if (context.saved_cycles != cycles * 64 || context.saved_bytes != bytes)
+    if (context.saved_cycles != cycles * 64 || context.saved_bytes != bytes ||
+        preparation.plan.linear_scan_decision != RA_LINEAR_SCAN_KEEP_ACTIVE)
       return 1;
     preparation.plan.linear_scan_decision = RA_LINEAR_SCAN_REPLACE_ACTIVE;
     context.split_action = RA_SPLIT_ACTION_PRESERVE;
@@ -606,8 +608,13 @@ int main(int argc, char **argv) {
         ranking[3].op = TAC_OP_XOR;
       }
       if (_run_basic_block_linear_scan(&function, blocks, index == 2 ? 1 : 2, NULL, 0, NULL, 0) == FAILED ||
-          ranking[0].result_physical_register != Z80_PHY_HL)
+          ranking[0].result_physical_register != Z80_PHY_HL ||
+          ranking[1].arg1_physical_register != (index == 2 ? Z80_PHY_NONE : Z80_PHY_HL) ||
+          (index == 2 && (ranking[1].result_physical_register != Z80_PHY_BC ||
+          ranking[2].arg1_physical_register != Z80_PHY_HL || ranking[2].arg2_physical_register != Z80_PHY_BC))) {
+        fprintf(stderr, "allocation_cost_test: alternative=%d status=wrong_placement\n", index);
         return 1;
+      }
     }
     memcpy(temps, before, sizeof(before));
     g_tacs = instructions;
@@ -731,10 +738,56 @@ int main(int argc, char **argv) {
       return 1;
   }
   fprintf(stderr, "spill_slot_test: cases=10 overlap_width_boundary_redefinition_controls=yes tacs_unchanged=yes status=complete\n");
+  for (index = 0; index < 3; index++) {
+    struct temp_register slots[5];
+    struct tac layout[10], before[10];
+    int instruction_index, offset = -6, width = index == 0 ? 1 : 2;
+    memset(slots, 0, sizeof(slots));
+    memset(layout, 0, sizeof(layout));
+    for (instruction_index = 0; instruction_index < 10; instruction_index++) {
+      struct tac *instruction = &layout[instruction_index];
+      int temp = instruction_index / 2;
+      instruction->function_node = &function;
+      instruction->op = TAC_OP_ASSIGNMENT;
+      instruction->arg1_type = instruction_index % 2 == 0 ? TAC_ARG_TYPE_CONSTANT : TAC_ARG_TYPE_TEMP;
+      instruction->arg1_d = instruction_index % 2 == 0 ? 42 : temp;
+      instruction->result_type = instruction_index % 2 == 0 ? TAC_ARG_TYPE_TEMP : TAC_ARG_TYPE_NONE;
+      instruction->result_d = temp;
+      slots[temp].register_index = temp;
+      slots[temp].spill_required = YES;
+      slots[temp].size = (index == 2 && temp == 0 ? 1 : width) * 8;
+    }
+    layout[5].op = TAC_OP_REGISTER_SPILL;
+    layout[5].arg1_original_register_index = 2;
+    layout[5].arg1_physical_register = width == 1 ? Z80_PHY_A : Z80_PHY_HL;
+    layout[5].arg2_type = layout[5].result_type = TAC_ARG_TYPE_CONSTANT;
+    layout[5].arg2_d = width;
+    layout[5].result_d = -6 - (slots[0].size / 8 + width * 2 - 1);
+    memcpy(before, layout, sizeof(before));
+    locals.temp_registers = slots;
+    locals.temp_registers_count = 5;
+    g_tacs = layout;
+    g_tacs_count = 10;
+    if (assign_spill_slot_offsets(&function, &offset) == FAILED ||
+        slots[0].offset_to_fp == slots[1].offset_to_fp ||
+        slots[2].offset_to_fp != layout[5].result_d ||
+        slots[3].offset_to_fp != layout[5].result_d - width ||
+        slots[4].offset_to_fp != slots[3].offset_to_fp ||
+        offset != slots[3].offset_to_fp - 1 ||
+        memcmp(before, layout, sizeof(before)) != 0) {
+      fprintf(stderr, "spill_slot_test: fixed_owner=%d width=%d actual=%d expected=%.0f status=failed\n",
+          index, width, slots[2].offset_to_fp, layout[5].result_d);
+      return 1;
+    }
+  }
+  locals.temp_registers = temps;
+  locals.temp_registers_count = 2;
+  fprintf(stderr, "spill_slot_test: fixed_owners=3 byte_word_mixed=yes prefix_stable=yes suffix_shared=yes tacs_unchanged=yes status=complete\n");
   {
     struct temp_register slots[3], slots_before[3];
     struct tac layout[6], before[6];
     double invalid_destinations[] = {0, -7.5, -32769, 1e100, -7};
+    double invalid_widths[] = {0, -1, 1.5, 3, 1e100, 1};
     int instruction_index, offset = -6;
     memset(slots, 0, sizeof(slots));
     memset(layout, 0, sizeof(layout));
@@ -776,10 +829,11 @@ int main(int argc, char **argv) {
     for (instruction_index = 0; instruction_index < 3; instruction_index++)
       slots[instruction_index].size = 8;
     layout[1].arg2_d = 1;
+    layout[1].result_d = -6;
     memcpy(before, layout, sizeof(before));
     if (assign_spill_slot_offsets(&function, &offset) == FAILED || offset != -8 ||
         slots[0].offset_to_fp != -6 || slots[1].offset_to_fp != -7 ||
-        slots[2].offset_to_fp != -6 || memcmp(before, layout, sizeof(before)) != 0)
+        slots[2].offset_to_fp != -7 || memcmp(before, layout, sizeof(before)) != 0)
       return 1;
     memcpy(slots_before, slots, sizeof(slots));
     for (instruction_index = 0; instruction_index < 5; instruction_index++) {
@@ -791,9 +845,20 @@ int main(int argc, char **argv) {
           memcmp(before, layout, sizeof(before)) != 0 || memcmp(slots_before, slots, sizeof(slots)) != 0)
         return 1;
     }
+    layout[1].result_type = TAC_ARG_TYPE_CONSTANT;
+    layout[1].result_d = -6;
+    for (instruction_index = 0; instruction_index < 6; instruction_index++) {
+      offset = -6;
+      layout[1].arg2_d = invalid_widths[instruction_index];
+      layout[1].arg2_type = instruction_index == 5 ? TAC_ARG_TYPE_TEMP : TAC_ARG_TYPE_CONSTANT;
+      memcpy(before, layout, sizeof(before));
+      if (assign_spill_slot_offsets(&function, &offset) != FAILED || offset != -6 ||
+          memcmp(before, layout, sizeof(before)) != 0 || memcmp(slots_before, slots, sizeof(slots)) != 0)
+        return 1;
+    }
     locals.temp_registers = temps;
     locals.temp_registers_count = 2;
-    fprintf(stderr, "spill_slot_test: fixed_prefix=yes shared_suffix=yes shared_nonoverlap_prefix=yes invalid_fixed=5 immutable=yes status=complete\n");
+    fprintf(stderr, "spill_slot_test: fixed_prefix=yes shared_suffix=yes invalid_fixed=11 immutable=yes status=complete\n");
   }
   {
     int physical_registers[] = { Z80_PHY_A, Z80_PHY_HL, Z80_PHY_BC, Z80_PHY_B, Z80_PHY_C };

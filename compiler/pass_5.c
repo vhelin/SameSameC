@@ -9825,6 +9825,8 @@ struct register_allocator_candidate_evaluation_context {
   int bc_slot;
   int b_slot;
   int c_slot;
+  int *alternate_registers;
+  int alternate_count;
 };
 
 
@@ -9955,43 +9957,23 @@ static int _register_allocator_active_temp_has_metadata(void *context, int temp_
 }
 
 
-static int _choose_register_allocator_alternate(struct tree_node *function_node, int block_index,
-    char *reason, struct tac *producer, struct tac *consumer, struct temp_register *temp_register,
-    int consumer_arg, int *physical_registers, int physical_register_count, int check_path,
-    int check_overlap, struct register_allocator_active_slot *active_slots, int a_slot, int hl_slot,
-    int bc_slot, int b_slot, int c_slot,
-    struct register_allocator_join_path_state_entry *path_state_entries,
-    int path_state_count, int block_count, int active_slot_count,
-    int *selected_physical_register, int *selected_candidate_index) {
+static int _select_register_allocator_alternate(void *context, char *reason, int check_path,
+    int check_overlap, int *selected_physical_register, int *selected_candidate_index) {
 
   struct register_allocator_candidate_evaluation evaluations[2];
   struct register_allocator_candidate_selection selection;
   struct register_allocator_candidate_evaluation_context evaluation_context;
 
-  if (physical_register_count <= 0 || physical_register_count > 2)
+  evaluation_context = *(struct register_allocator_candidate_evaluation_context *)context;
+  if (evaluation_context.alternate_count <= 0 || evaluation_context.alternate_count > 2)
     return FAILED;
 
-  evaluation_context.function_node = function_node;
-  evaluation_context.producer = producer;
-  evaluation_context.consumer = consumer;
-  evaluation_context.temp_register = temp_register;
-  evaluation_context.active_slots = active_slots;
-  evaluation_context.path_state_entries = path_state_entries;
-  evaluation_context.path_state_count = path_state_count;
-  evaluation_context.block_count = block_count;
-  evaluation_context.active_slot_count = active_slot_count;
-  evaluation_context.block_index = block_index;
-  evaluation_context.consumer_arg = consumer_arg;
   evaluation_context.check_path = check_path;
   evaluation_context.check_overlap = check_overlap;
-  evaluation_context.a_slot = a_slot;
-  evaluation_context.hl_slot = hl_slot;
-  evaluation_context.bc_slot = bc_slot;
-  evaluation_context.b_slot = b_slot;
-  evaluation_context.c_slot = c_slot;
 
-  if (register_allocator_select_candidate_register(function_node->children[1]->label, block_index,
-      reason, physical_registers, physical_register_count, Z80_PHY_NONE, &evaluation_context,
+  if (register_allocator_select_candidate_register(evaluation_context.function_node->children[1]->label,
+      evaluation_context.block_index, reason, evaluation_context.alternate_registers,
+      evaluation_context.alternate_count, Z80_PHY_NONE, &evaluation_context,
       _evaluate_register_allocator_candidate_allowed, _evaluate_register_allocator_candidate_path,
       _evaluate_register_allocator_candidate_conflict, evaluations, 2, &selection) == FAILED)
     return FAILED;
@@ -9999,60 +9981,6 @@ static int _choose_register_allocator_alternate(struct tree_node *function_node,
   *selected_physical_register = selection.physical_register;
   *selected_candidate_index = selection.candidate_index;
   return SUCCEEDED;
-}
-
-
-struct register_allocator_candidate_dispatch_context {
-  struct tree_node *function_node;
-  struct tac *producer;
-  struct tac *consumer;
-  struct temp_register *temp_register;
-  struct register_allocator_active_slot *active_slots;
-  struct register_allocator_join_path_state_entry *path_state_entries;
-  int path_state_count;
-  int block_count;
-  int active_slot_count;
-  int *byte_candidate_registers;
-  int byte_candidate_count;
-  int *word_candidate_registers;
-  int word_candidate_count;
-  int block_index;
-  int consumer_arg;
-  int a_slot;
-  int hl_slot;
-  int bc_slot;
-  int b_slot;
-  int c_slot;
-};
-
-
-static int _select_register_allocator_alternate(void *context, char *reason, int check_path,
-    int check_overlap, int *selected_physical_register, int *selected_candidate_index) {
-
-  struct register_allocator_candidate_dispatch_context *dispatch_context;
-  int *candidate_registers;
-  int candidate_count;
-
-  dispatch_context = (struct register_allocator_candidate_dispatch_context *)context;
-  if (dispatch_context->temp_register->size == 16) {
-    candidate_registers = &dispatch_context->word_candidate_registers[1];
-    candidate_count = dispatch_context->word_candidate_count - 1;
-  }
-  else {
-    candidate_registers = &dispatch_context->byte_candidate_registers[1];
-    candidate_count = dispatch_context->byte_candidate_count - 1;
-  }
-
-  return _choose_register_allocator_alternate(dispatch_context->function_node,
-      dispatch_context->block_index, reason, dispatch_context->producer,
-      dispatch_context->consumer, dispatch_context->temp_register,
-      dispatch_context->consumer_arg, candidate_registers, candidate_count, check_path,
-      check_overlap, dispatch_context->active_slots, dispatch_context->a_slot,
-      dispatch_context->hl_slot, dispatch_context->bc_slot, dispatch_context->b_slot,
-      dispatch_context->c_slot, dispatch_context->path_state_entries,
-      dispatch_context->path_state_count, dispatch_context->block_count,
-      dispatch_context->active_slot_count, selected_physical_register,
-      selected_candidate_index);
 }
 
 
@@ -10169,7 +10097,6 @@ static int _run_basic_block_linear_scan(struct tree_node *function_node,
       int fallback_plan;
       int rejection_reason = 0;
       int extended_interval = NO, extend_reads = YES;
-      struct register_allocator_candidate_dispatch_context dispatch_context;
       struct register_allocator_candidate_selection_orchestration selection_orchestration;
       struct register_allocator_candidate_transition_execution transition_execution;
       struct register_allocator_slot_transition_context transition_context;
@@ -10265,27 +10192,10 @@ static int _run_basic_block_linear_scan(struct tree_node *function_node,
         evaluation_context.bc_slot = bc_slot;
         evaluation_context.b_slot = b_slot;
         evaluation_context.c_slot = c_slot;
-
-        dispatch_context.function_node = function_node;
-        dispatch_context.producer = producer;
-        dispatch_context.consumer = consumer;
-        dispatch_context.temp_register = temp_register;
-        dispatch_context.active_slots = active_slots;
-        dispatch_context.path_state_entries = path_state_entries;
-        dispatch_context.path_state_count = path_state_count;
-        dispatch_context.block_count = block_count;
-        dispatch_context.active_slot_count = active_slot_count;
-        dispatch_context.byte_candidate_registers = byte_candidate_registers;
-        dispatch_context.byte_candidate_count = byte_candidate_count;
-        dispatch_context.word_candidate_registers = word_candidate_registers;
-        dispatch_context.word_candidate_count = word_candidate_count;
-        dispatch_context.block_index = block_index;
-        dispatch_context.consumer_arg = consumer_arg;
-        dispatch_context.a_slot = a_slot;
-        dispatch_context.hl_slot = hl_slot;
-        dispatch_context.bc_slot = bc_slot;
-        dispatch_context.b_slot = b_slot;
-        dispatch_context.c_slot = c_slot;
+        evaluation_context.alternate_registers = temp_register->size == 16 ?
+          &word_candidate_registers[1] : &byte_candidate_registers[1];
+        evaluation_context.alternate_count = (temp_register->size == 16 ?
+          word_candidate_count : byte_candidate_count) - 1;
         if (register_allocator_orchestrate_candidate_selection(
           function_node->children[1]->label, block_index,
           _get_register_allocator_target_policy(), &candidate, consumer->op,
@@ -10296,7 +10206,7 @@ static int _run_basic_block_linear_scan(struct tree_node *function_node,
           temp_register->spill_boundary_tac, &evaluation_context,
             _evaluate_register_allocator_candidate_allowed,
             _evaluate_register_allocator_candidate_path,
-            _evaluate_register_allocator_candidate_active, &dispatch_context,
+            _evaluate_register_allocator_candidate_active, &evaluation_context,
           _select_register_allocator_alternate, &selection_orchestration) == FAILED)
           goto cleanup;
 
@@ -11283,8 +11193,7 @@ static int run_register_allocator(struct tree_node *function_node) {
 static int assign_spill_slot_offsets(struct tree_node *function_node, int *offset) {
 
   int j, count = function_node->local_variables->temp_registers_count;
-  int block_count = 0, edge_count = 0, iterations, status = FAILED;
-  int fixed_floor = 0, fixed_ceiling = -1, fixed_present = NO;
+  int block_count = 0, edge_count = 0, iterations, status = FAILED, fixed_limit = 0;
   struct register_allocator_basic_block *blocks = NULL;
   struct register_allocator_cfg_edge *edges = NULL;
   struct register_allocator_liveness_storage storage;
@@ -11295,22 +11204,16 @@ static int assign_spill_slot_offsets(struct tree_node *function_node, int *offse
     if (g_tacs[j].function_node == function_node && g_tacs[j].op == TAC_OP_REGISTER_SPILL) {
       double destination = g_tacs[j].result_d;
       double bytes = g_tacs[j].arg2_d;
-      int byte_count;
-      int highest_destination;
       if (g_tacs[j].result_type != TAC_ARG_TYPE_CONSTANT ||
           g_tacs[j].arg2_type != TAC_ARG_TYPE_CONSTANT ||
           !(destination >= -32768 && destination < 0) || destination != (int)destination ||
-          !(bytes > 0 && bytes <= 32768) || bytes != (int)bytes)
+          (bytes != 1 && bytes != 2) || destination + bytes > 0) {
+        fprintf(stderr, "register_allocator: spill_slot_layout function=%s tac=%d destination=%.17g bytes=%.17g status=invalid_fixed_destination\n",
+            function_node->children[1]->label, j, destination, bytes);
         return FAILED;
-      byte_count = (int)bytes;
-      highest_destination = (int)destination + (byte_count - 1);
-      if (highest_destination >= 0 || highest_destination < -32768)
-        return FAILED;
-      if (fixed_present == NO || destination < fixed_floor)
-        fixed_floor = (int)destination;
-      if (fixed_present == NO || highest_destination > fixed_ceiling)
-        fixed_ceiling = highest_destination;
-      fixed_present = YES;
+      }
+      if (destination < fixed_limit)
+        fixed_limit = (int)destination;
     }
   }
   if (g_allocator_enabled == YES && g_allocator_force_all_spill == NO && count > 0) {
@@ -11332,9 +11235,7 @@ static int assign_spill_slot_offsets(struct tree_node *function_node, int *offse
 
     if (temp_register->spill_required == YES) {
       int candidate, instruction_index, writes = 0;
-      int outside_fixed_span;
-      outside_fixed_span = fixed_present == NO || *offset > fixed_ceiling || *offset < fixed_floor;
-      if (shareable != NULL && outside_fixed_span == YES) {
+      if (shareable != NULL && *offset < fixed_limit) {
         temp_register->live_start = g_tacs_count;
         temp_register->live_end = -1;
         for (instruction_index = 0; instruction_index < g_tacs_count; instruction_index++) {
