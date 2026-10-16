@@ -10748,26 +10748,119 @@ counts identify audit targets, not dynamic savings or guaranteed opportunities.
 
 ### Batch 334-336: Measure Quality Beyond Static Retention Counts
 
-- [ ] **334. Measure executed copies and transfer causes.** Extend the existing
+- [x] **334. Measure executed copies and transfer causes.** Extend the existing
       emulator runner to distinguish dynamic register moves, explicit allocator
       preservation/reloads, and ABI/argument/result frame traffic. Keep static
       ROM/copy counts separately labeled, and validate counter attribution on
       small known instruction sequences. Report per-routine results and outliers
       so aggregate cycle wins cannot hide copy-heavy or frame-heavy regressions.
-- [ ] **335. Expand structural coverage around the changed decisions.** Reuse
+- [x] **335. Expand structural coverage around the changed decisions.** Reuse
       existing generated cohorts and failure reduction for competing legal
       placements, copy affinity, live-range holes, loop pressure, conversions,
       call arguments, and overlapping units. Keep unguarded baseline regressions
       from 316-318 and both successful/rejected allocation controls. Vary CFGs
       and operand relationships, report unique shapes separately from seeds,
       and retain reproducible failures without claiming exhaustive coverage.
-- [ ] **336. Qualify representative real software loops.** Extend the current
+- [x] **336. Qualify representative real software loops.** Extend the current
       calculations-based execution corpus with actual source loops, pointer
       indexing, and call boundaries affected by these changes, using independent
       oracles and complete memory/DE/SP checks. Keep the existing real routines
       as controls. Separate source-loop coverage from emulator/library helper
       loops and unrolled formatters, and state bank-zero/software-only limits;
       do not imply SMS hardware or bank-switching certification.
+
+      **334-336 implementation and qualification:** Reused the existing runner,
+      WLA listing, emulator, generated families, independent oracles, reducer,
+      and per-routine totals. The only production addition is two lines emitting
+      a begin comment around existing allocator transfers; instruction bytes,
+      allocation decisions, frame layout and mutation policy are unchanged.
+      Runner net growth is 172 lines (205 added/33 removed), including shared
+      metric lists replacing duplicated lists. No new production/test helper
+      functions, public APIs, dependencies or tracked files were introduced.
+      No allocation improvement or compile-time benefit is claimed for this
+      measurement/coverage batch. Steps 328, 332 and 333 remain open; 337+ has
+      not started.
+
+      Executed register moves count unprefixed byte-register LD instructions,
+      excluding immediate/memory/HALT forms, exchanges and indexed-register
+      forms; this is not a universal logical-copy count. Frame byte accesses
+      are partitioned exclusively into explicit allocator preserve/reload,
+      ABI argument/result/frame, and remaining other_frame traffic, using
+      existing TAC/emitter annotations. Unknown executed instructions fail
+      generated qualification; all generated and nine real routines report
+      zero unmapped instructions. Static padded ROM image bytes and register-LD
+      sites are separate in static-summary.json, not dynamic counts or payload
+      size. Passive listing-enabled reassembly must reproduce every ROM byte.
+      Known controls check 7 instructions/49 cycles/2 register moves, indexed
+      transfers at 10/149 with six exclusive byte causes, PUSH/POP at 3/31 with
+      two ABI reads/writes, branch counting at 4/38, and ordered software port
+      capture plus unexpected-port rejection. Actual byte split, word split
+      and call-region controls require preserve/reload byte counts 1/1, 2/4
+      and 1/2 per invocation respectively.
+
+      Four additional matrix_structural variants combine zero-to-seven loop
+      iterations, calls before/after branches, overlapping/disjoint pointer
+      aliases, conditional word-to-byte truncation and swapped operand order.
+      Previous unguarded correctness regressions and actual-source acceptance,
+      immutable rejection, overlapping-unit and rollback controls remain.
+      Shapes below mean normalized source, not distinct CFGs or an exhaustive
+      search. Shape/input tuples are reported separately from execution seeds:
+
+      | Cohort | Functions | Shapes | Shape/Input Tuples |
+      | --- | ---: | ---: | ---: |
+      | original | 88 | 11 | 26624 |
+      | scalar | 74 | 37 | 25600 |
+      | matrix | 114 | 103 | 45592 |
+      | matrix_literals | 44 | 37 | 15896 |
+      | matrix_memory | 44 | 37 | 15896 |
+      | matrix_values | 47 | 40 | 17664 |
+
+      Two additional extracted calculations-1 cases execute the original
+      calculateAndPrint3 prefix (four formatter calls, pointer indexing and
+      source for-loop), and the original calculateAndPrint5 pointer-while
+      block with supplied start/end pointers. They do not execute the rest of
+      either hardware-facing function. Independent formatting/buffer and
+      ordered port-sequence oracles retain full 128-byte buffer, write guards,
+      DE/SP restoration and instruction bounds; the while case spans 0..63
+      bytes. Named TAC-CFG backedges in entry/callee sections are separated;
+      anonymous arithmetic/formatter lowering loops are excluded. Both cases
+      require exact expected entry iterations: 45824 backedges per mode at
+      512 seeds. The nine original full-project real routines remain controls.
+      Port writes are captured in software only; other routines still reject
+      them. This is bank-zero software qualification, not SMS hardware, port
+      timing, bank-switching or whole-application certification.
+
+      Cygwin GCC, native MSVC Release and native MSVC ASan each pass 215040
+      cases per mode at 512 seeds (411 generated cohort entries plus nine real
+      routines). All 120 matched-333/current ROM pairs, 80 cross-toolchain ROM
+      pairs and 18 complete same-toolchain allocator traces match. Original
+      execution metrics match the expanded-source baseline; new metrics agree
+      across all current toolchains. RA totals: 20900785 instructions,
+      263026947 cycles, 5011186 frame reads, 2651836 writes, 1640646 register
+      moves, 15360 preservation bytes and 15360 reload bytes. Default has
+      330285515 cycles and 846888 register moves. Per-routine quality summaries
+      flag all increases: 290 cohort/routine entries increase register moves;
+      none increases summed cycles or frame traffic in these sampled cases.
+      Largest copy increases are source_loop_0 (+81920 moves, -3918336 cycles)
+      and scalar_loop_pressure_0/1 (+56550/+56500 moves). These are explained
+      register-traffic tradeoffs, not a claim that every individual case wins.
+
+      Strict C90/Werror, editor diagnostics, warning-free native builds and
+      current-source ASan compiler/verifier controls pass (350 effects, 10200
+      endpoints, 25 pairs, seven accepts/32 immutable rejects, ten layouts,
+      five invalid fixed layouts and rollback). Both sequential full suites
+      pass 173 tests with freshly staged/hash-matched compilers; logs are
+      /tmp/ra336-{cygwin,native}-full.log. Evidence: /tmp/ra336-measured-results.json
+      and /tmp/ra336-{final,baseline}-{cygwin,native-release,native-asan}, including
+      per-routine quality, static/execution/coverage summaries and source maps.
+      Baseline provenance was corrected before comparison: the saved
+      ra333-final-native-*/baseline-samesamecc.exe copies are actually Cygwin;
+      authentic native baselines are ra333-native-{release,asan}/bin/samesamecc.exe
+      (SHA256 prefixes 2d4bfcf498ff/72588848e0a3). All final comparisons use the
+      verified authentic outputs; old mislabeled copies were left untouched.
+      UBSan, Valgrind/leaks, upstream emulator tests, exhaustive CFGs and
+      signed-word relational qualification remain unrun; the pre-existing
+      default conditional-initializer bug remains outside this batch.
 
 ### Batch 337-339: Consolidate And Requalify The Quality Work
 

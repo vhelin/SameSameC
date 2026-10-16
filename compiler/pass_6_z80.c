@@ -3790,6 +3790,8 @@ static int _transfer_array_base_spill(struct tac *t, struct tree_node *function_
       break;
     }
   }
+  fprintf(file_out, "      ; allocator transfer begin kind=%s bytes=%d\n",
+      is_reload == YES ? "reload" : "preserve", byte_count);
   if (_load_location_address_to_ix(&spill_location, &ix_offset, file_out) == FAILED)
     return FAILED;
   if (is_reload == NO) {

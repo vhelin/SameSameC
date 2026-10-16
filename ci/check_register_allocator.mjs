@@ -64,8 +64,11 @@ for (const flags of [[], ['-q']]) {
 }
 
 const programs = [];
-const realIndexBody = readFileSync(join(root, 'tests/z80/sms/calculations-1/bank_2.ssc'), 'utf8')
-  .split('void calculateAndPrint3(u8 *chars, u8 one, u8 zero) {')[1].split('__z80_out')[0];
+const realLoopBody = readFileSync(join(root, 'tests/z80/sms/calculations-1/bank_2.ssc'), 'utf8')
+  .split('void calculateAndPrint3(u8 *chars, u8 one, u8 zero) {')[1].split('\n  extra1 =')[0];
+const realIndexBody = realLoopBody.split('__z80_out')[0];
+const realWhileBody = readFileSync(join(root, 'tests/z80/sms/calculations-1/bank_1.ssc'), 'utf8')
+  .match(/^  while \(start < chars\) \{[\s\S]*?^  \}/m)[0];
 for (let variant = 0; variant < 12; variant++) {
   const constant = 1 + variant * 7;
   const operator = ['+', '-', '&', '|', '^'][variant % 5];
@@ -115,6 +118,8 @@ for (let variant = 0; variant < 12; variant++) {
       'u8 saved = a; ra_pointer_helper(&saved,b); return saved;'
     ][variant], [4, 6, 7, 8, 9, 11].includes(variant) ? [1, 1, 1] : [2, 2, 2], 2],
     ['matrix_real_index', 'u8 *chars, u8 one, u8 zero', `${realIndexBody} return index;`, [2, 1, 1], 2],
+    ['matrix_source_loop', variant ? 'u8 *start, u8 *chars' : 'u8 *chars, u8 one, u8 zero',
+      variant ? realWhileBody : `${realLoopBody} return index;`, variant ? [2, 2] : [2, 1, 1], variant ? 0 : 2],
     ['matrix_compare_byte', 'u8 a, u8 b, u8 c', `u8 saved = ${comparisonForms === 2 ? 'a' : 'a^b'}; if (${variant < 6 ? 'saved' : byteComparison} ${comparison} ${variant < 6 ? byteComparison : 'saved'}) { return a; } return b;`, [1, 1, 1], 1],
     ['matrix_compare_word', 'u16 a, u16 b, u16 c', `u16 saved = ${comparisonForms === 2 ? 'a' : '~b'}; if (${variant < 6 ? 'saved' : wordComparison} ${comparison} ${variant < 6 ? wordComparison : 'saved'}) { return a; } return b;`, [2, 2, 2], 2],
     ['matrix_compare_signed', 's8 a, s8 b, s8 c', `s8 saved = ${comparisonForms === 2 ? 'a' : 'a^b'}; if (${variant < 6 ? 'saved' : signedComparison} ${comparison} ${variant < 6 ? signedComparison : 'saved'}) { return a; } return b;`, [1, 1, 1], 1],
@@ -133,7 +138,7 @@ for (let variant = 0; variant < 12; variant++) {
       'u8 *target = &ra_buffer[32]; u8 live = b^c; target[a] = live; u16 loaded = target[a]; return loaded+live;',
       'u8 *target = &ra_buffer[32]; u8 live = b^c; s8 index = a^1; target[index] = live; u16 loaded = target[index]; return loaded+live;'
     ][variant], variant >= 8 ? [1, 1, 1] : variant === 2 || variant === 3 ? [1, 1, 2] : [2, 2, 2], 2],
-    ['matrix_structural', 'u8 *target, u8 *alias, u8 start, u8 count, u8 selector, u8 value', `u16 total = value; u8 saved = selector^value; u8 row = 0; while (row < count) { ${variant & 4 ? 'u8 column = 0; while (column < 2) {' : ''} u8 previous = target[start+row+${inner}]; ${variant & 1 ? call : ''} if ((previous^selector)&1) { alias[start+row+${inner}] = previous+saved; } else { target[start+row+${inner}] = previous^saved; } ${variant & 1 ? '' : call} total = total+target[start+row+${inner}]+called; ${variant & 4 ? 'column = column+1; }' : ''} row = row+1; } return total;`, [2, 2, 1, 1, 1, 1], 2],
+    ['matrix_structural', 'u8 *target, u8 *alias, u8 start, u8 count, u8 selector, u8 value', `u16 total = value; u8 saved = selector^value; u8 row = 0; while (row < count) { ${variant & 4 ? 'u8 column = 0; while (column < 2) {' : ''} u8 previous = target[start+row+${inner}]; ${variant & 1 ? call : ''} if ((previous^selector)&1) { alias[start+row+${inner}] = previous+saved; } else { target[start+row+${inner}] = previous^saved; } ${variant & 1 ? '' : call} total = total+target[start+row+${inner}]+called; ${variant >= 8 ? `u8 narrowed = total; if (row&1) { total = ${variant & 2 ? 'narrowed+total' : 'total+narrowed'}; } else { total = total+(selector&7); }` : ''} ${variant & 4 ? 'column = column+1; }' : ''} row = row+1; } return total;`, [2, 2, 1, 1, 1, 1], 2],
     ['scalar_byte', 'u8 a, u8 b, u8 c', 'u8 saved = a^b; return (c+c)+saved;', [1, 1, 1], 1],
     ['scalar_signed_byte', 's8 a, s8 b, s8 c', 's8 saved = a^b; return (c|7)^saved;', [1, 1, 1], 1],
     ['scalar_signed_word', 's16 a, s16 b, s16 c', 's16 saved = a^b; return (c|7)^saved;', [2, 2, 2], 2],
@@ -180,11 +185,11 @@ for (let variant = 0; variant < 12; variant++) {
     if (variant >= 8 && !family.startsWith('matrix_')) continue;
     if (family.startsWith('matrix_') && variant >= ({matrix_byte: 10, matrix_word: 10,
       matrix_compare_byte: 12, matrix_compare_word: 12, matrix_compare_signed: 12,
-      matrix_low_byte: 10, matrix_structural: 8, matrix_sentinel: 10, matrix_affinity: 8, matrix_rank: 4,
+      matrix_low_byte: 10, matrix_structural: 12, matrix_sentinel: 10, matrix_affinity: 8, matrix_rank: 4,
       matrix_index_copy: 12, matrix_bc_alu: 12, matrix_scalar_uses: 12, matrix_real_index: 1}[family] || 2)) continue;
     if (comparisonForms && family !== 'arithmetic' && !family.startsWith('matrix_compare_')) continue;
     if (process.env.RA_FAMILIES && family !== 'arithmetic' && !process.env.RA_FAMILIES.split(',').includes(family)) continue;
-    if (family.startsWith('matrix_') && ['matrix_index_copy', 'matrix_bc_alu', 'matrix_scalar_uses', 'matrix_real_index'].includes(family) !==
+    if (family.startsWith('matrix_') && ['matrix_index_copy', 'matrix_bc_alu', 'matrix_scalar_uses', 'matrix_real_index', 'matrix_source_loop'].includes(family) !==
       (process.env.RA_VALUE_CASES === '1')) continue;
     const scalarFamily = family.startsWith('scalar_') || family === 'word_bc';
     if (family !== 'arithmetic' && (process.env.RA_MATRIX_CASES === '1' ?
@@ -192,13 +197,13 @@ for (let variant = 0; variant < 12; variant++) {
     if (scalarFamily && family !== 'word_bc' && variant > 1) continue;
     const name = `ra_${family}_${variant}`;
     programs.push({name, family, variant, constant, widths, returnWidth,
-      pointerParameters: family === 'matrix_real_index' ? [0] : family === 'matrix_structural' || (family === 'matrix_index_copy' && variant === 9) ? [0, 1] :
+      pointerParameters: family === 'matrix_source_loop' ? variant ? [0, 1] : [0] : family === 'matrix_real_index' ? [0] : family === 'matrix_structural' || (family === 'matrix_index_copy' && variant === 9) ? [0, 1] :
         ['pointer', 'walk', 'nested', 'join_call', 'scalar_remat_pointer'].includes(family) ? [0] : [],
-      source: `${family.startsWith('scalar_signed') ? 's' : 'u'}${returnWidth * 8} ${name}(${parameters}) { ${body} }`});
+      source: `${returnWidth ? `${family.startsWith('scalar_signed') ? 's' : 'u'}${returnWidth * 8}` : 'void'} ${name}(${parameters}) { ${body} }`});
   }
 }
 const preamble = 'u8 ra_buffer[128];\nu16 ra_words[64];\ns8 ra_signed_helper(u8 a, u8 b, u8 c) { return a+b+c; }\nu8 ra_pointer_helper(u8 *target, u8 value) { target[0] = value; return target[1]; }\nu8 ra_recursive_helper(u8 depth, u8 value) { if (depth) { u8 saved = value^depth; u8 nested = ra_recursive_helper(depth-1,value+1); return nested^saved; } return value; }\n' +
-  (programs.some(program => ['matrix_real_index', 'matrix_scalar_uses'].includes(program.family)) ?
+  (programs.some(program => ['matrix_real_index', 'matrix_scalar_uses', 'matrix_source_loop'].includes(program.family)) ?
     readFileSync(join(root, 'tests/z80/sms/calculations-1/main.ssc'), 'utf8').match(/^void convertNumbersToChars16\([^;]+\) \{[\s\S]*?^\}/m)[0] + '\n' +
     readFileSync(join(root, 'tests/z80/sms/calculations-1/main.ssc'), 'utf8').match(/^u16 calculationAdd3\([^;]+\) \{[\s\S]*?^\}/m)[0] + '\n' : '');
 const source = preamble + programs.map(program => program.source).join('\n') + '\nvoid main(void) {}\n';
@@ -208,13 +213,61 @@ const modes = [['default', []], ['no_ra', ['-no-ra']], ['all_spill', ['-ra-all-s
 
 function readImage(directory) {
   const symbols = new Map();
-  const symbolFile = readdirSync(directory).find(name => name.endsWith('.sym'));
-  if (!symbolFile) throw new Error(`Missing symbol file in ${directory}`);
-  for (const line of readFileSync(join(directory, symbolFile), 'utf8').split(/\r?\n/)) {
+  for (const line of readFileSync(join(directory, 'linked.sym'), 'utf8').split(/\r?\n/)) {
     const match = line.match(/^00:([0-9a-f]+)\s+(\S+)$/i);
     if (match) symbols.set(match[2], parseInt(match[1], 16));
   }
-  return {rom: readFileSync(join(directory, 'linked.sms')), symbols};
+  const rom = readFileSync(join(directory, 'linked.sms'));
+  run('wla-z80', ['-i', '-o', 'counters.o', 'linked.sms.combined.asm'], directory, 'counter-assembler.log');
+  writeFileSync(join(directory, 'counters.link'), '[objects]\ncounters.o\n');
+  run('wlalink', ['-i', 'counters.link', 'counters.sms'], directory, 'counter-linker.log');
+  if (!rom.equals(readFileSync(join(directory, 'counters.sms'))))
+    throw new Error(`Listing-enabled ROM mismatch in ${directory}`);
+  const transfers = new Map();
+  const staticMetrics = {rom_image_bytes: rom.length, register_move_sites: 0};
+  let cause = 'other_frame', tacCause = cause, argumentsInFrame = [], transferOpen = false, section = '';
+  for (const line of readFileSync(join(directory, 'linked.sms.combined.lst'), 'utf8').split(/\r?\n/)) {
+    const source = line.slice(60).trim();
+    if (/^\.SECTION\b/.test(source)) {
+      if (transferOpen) throw new Error('Unterminated allocator transfer');
+      cause = tacCause = 'other_frame';
+      argumentsInFrame = [];
+      section = source.match(/^\.SECTION "([^"]+)"/)[1];
+    }
+    if (/^; TAC:/.test(source)) {
+      if (transferOpen) throw new Error('Allocator transfer crossed TAC boundary');
+      cause = tacCause = /^; TAC: spill /.test(source) ? 'allocator_preserve' :
+        /\breturn\b/.test(source) ? 'abi_result' : /\b[A-Za-z_]\w*\(/.test(source) ? 'abi_frame' : 'other_frame';
+    }
+    const argument = source.match(/^; TAC: variable .* size (\d+) offset (-?\d+) type argument$/);
+    if (argument) argumentsInFrame.push([Number(argument[2]), Number(argument[1])]);
+    const begin = source.match(/^; allocator transfer begin kind=(reload|preserve) bytes=([12])$/);
+    if (begin) {
+      if (transferOpen) throw new Error('Nested allocator transfer');
+      transferOpen = true;
+      cause = `allocator_${begin[1]}`;
+    }
+    if (/^; (?:reload .* from spill slot into|preserve retained .* in spill slot)/.test(source)) {
+      if (!transferOpen && process.env.RA_BASELINE !== '1') throw new Error('Allocator transfer end without begin');
+      transferOpen = false;
+      cause = tacCause;
+    }
+    if (!transferOpen) {
+      if (/^; copy argument \d+/.test(source)) cause = 'abi_argument';
+      if (/^; (?:return value ->|copy return value to)/.test(source)) cause = 'abi_result';
+      if (/^; old stack frame address ->/.test(source)) cause = 'abi_frame';
+    }
+    const address = line.match(/^\s*\d+\s+([0-9a-f]{4})\s+[0-9a-f]{4}\s+([0-9a-f]{4})\s+([0-9a-f]{4,8})\s+/i);
+    if (!address || !/^[A-Z][A-Z0-9]*(?:\s|$)/.test(source)) continue;
+    const opcode = rom[parseInt(address[3], 16)];
+    if ((opcode & 0xc0) === 0x40 && (opcode & 7) !== 6 && ((opcode >> 3) & 7) !== 6)
+      staticMetrics.register_move_sites++;
+    if (parseInt(address[1], 16) === 0)
+      transfers.set(parseInt(address[2], 16), {cause, argumentsInFrame, section,
+        branch: tacCause === 'other_frame' && /^(?:JP|JR)\s+(?:[A-Z]+,\s*)?_label_/.test(source)});
+  }
+  if (transferOpen || !transfers.size) throw new Error('Incomplete execution attribution map');
+  return {rom, symbols, transfers, staticMetrics};
 }
 
 const compiled = new Map();
@@ -237,6 +290,8 @@ if (!compiled.get('ra').rom.equals(compiled.get('ra_quiet').rom))
   throw new Error('Traced/quiet allocator ROM mismatch');
 if (!readFileSync(join(output, 'ra/main.asm')).equals(readFileSync(join(output, 'ra_quiet/main.asm'))))
   throw new Error('Traced/quiet allocator assembly mismatch');
+writeFileSync(join(output, 'static-summary.json'), JSON.stringify(Object.fromEntries(
+  Array.from(compiled, ([mode, image]) => [mode, image.staticMetrics])), null, 2));
 const allocatorLog = readFileSync(join(output, 'ra/compiler.log'), 'utf8');
 if (process.env.RA_BASELINE !== '1') {
   const quietAllocatorLines = readFileSync(join(output, 'ra_quiet/compiler.log'), 'utf8')
@@ -296,7 +351,11 @@ for (const program of process.env.RA_BASELINE === '1' ? [] : programs) {
   }
 }
 
-function execute(code, entry, parameters, widths, buffer, bufferAddress, returnWidth) {
+const transferCauses = ['allocator_preserve', 'allocator_reload', 'abi_argument', 'abi_result', 'abi_frame', 'other_frame'];
+const executionMetrics = ['instructions', 'cycles', 'frame_reads', 'frame_writes', 'register_moves', 'unmapped_instructions', 'entry_backedges', 'callee_backedges',
+  ...transferCauses.flatMap(cause => [`${cause}_reads`, `${cause}_writes`])];
+
+function execute(code, entry, parameters, widths, buffer, bufferAddress, returnWidth, transfers = new Map(), portsAllowed = false) {
   const memory = new Uint8Array(65536).fill(0xa5);
   memory.set(code.subarray(0, 0xc000));
   memory.set(buffer, bufferAddress);
@@ -311,12 +370,20 @@ function execute(code, entry, parameters, widths, buffer, bufferAddress, returnW
     memory[offset] = value & 255;
     if (widths[index] === 2) memory[offset + 1] = value >> 8;
   });
-  let frameReads = 0, frameWrites = 0;
+  let frameReads = 0, frameWrites = 0, instructionMetadata;
+  const portWrites = [];
+  const traffic = Object.fromEntries(transferCauses.flatMap(cause => [`${cause}_reads`, `${cause}_writes`]).map(metric => [metric, 0]));
   const hal = {
     tStateCount: 0,
     readMemory: address => {
       address &= 65535;
-      if (address >= frame - 256 && address < frame - 1) frameReads++;
+      if (address >= frame - 256 && address < frame - 1) {
+        frameReads++;
+        let cause = instructionMetadata?.cause || 'other_frame';
+        if (cause === 'other_frame' && instructionMetadata?.argumentsInFrame.some(([offset, size]) =>
+          address >= ((cpu.regs.de + offset) & 65535) && address < ((cpu.regs.de + offset) & 65535) + size)) cause = 'abi_argument';
+        traffic[`${cause}_reads`]++;
+      }
       return memory[address];
     },
     writeMemory: (address, value) => {
@@ -324,34 +391,92 @@ function execute(code, entry, parameters, widths, buffer, bufferAddress, returnW
       if (!(address >= frame - 256 && address < frame - 1) &&
           !(address >= bufferAddress && address < bufferAddress + buffer.length))
         throw new Error(`Out-of-bounds write ${address.toString(16)}`);
-      if (address >= frame - 256 && address < frame - 1) frameWrites++;
+      if (address >= frame - 256 && address < frame - 1) {
+        frameWrites++;
+        traffic[`${instructionMetadata?.cause || 'other_frame'}_writes`]++;
+      }
       memory[address] = value & 255;
     },
     contendMemory: () => {}, contendPort: () => {}, readPort: () => 0,
-    writePort: () => { throw new Error('Unexpected port write'); }
+    writePort: (address, value) => {
+      if (!portsAllowed) throw new Error('Unexpected port write');
+      if (![0xbe, 0xbf].includes(address & 255)) throw new Error('Unsupported captured port');
+      portWrites.push([address & 255, value & 255]);
+    }
   };
   const cpu = new Z80(hal);
   cpu.regs.pc = entry;
   cpu.regs.de = frame;
   cpu.regs.sp = frame - 1;
-  let instructions = 0;
+  let instructions = 0, registerMoves = 0, unmappedInstructions = 0, entryBackedges = 0, calleeBackedges = 0;
   while (cpu.regs.pc !== sentinel) {
     if (++instructions > 20000 || cpu.regs.pc >= 0xc000) throw new Error('Instruction bound/PC escape');
+    instructionMetadata = transfers.get(cpu.regs.pc);
+    if (!instructionMetadata) unmappedInstructions++;
+    const opcode = memory[cpu.regs.pc];
+    if ((opcode & 0xc0) === 0x40 && (opcode & 7) !== 6 && ((opcode >> 3) & 7) !== 6)
+      registerMoves++;
+    const previousPC = cpu.regs.pc;
     cpu.step();
+    if (instructionMetadata?.branch && cpu.regs.pc <= previousPC &&
+        transfers.get(cpu.regs.pc)?.section === instructionMetadata.section) {
+      if (instructionMetadata.section === transfers.get(entry)?.section) entryBackedges++;
+      else calleeBackedges++;
+    }
   }
   if (cpu.regs.de !== frame || cpu.regs.sp !== frame + 1) throw new Error('Frame/stack restoration failure');
+  if (transferCauses.reduce((count, cause) => count + traffic[`${cause}_reads`], 0) !== frameReads ||
+      transferCauses.reduce((count, cause) => count + traffic[`${cause}_writes`], 0) !== frameWrites)
+    throw new Error('Frame traffic attribution is not a partition');
   return {value: memory[resultOffset] + (returnWidth === 2 ? memory[resultOffset + 1] * 256 : 0),
     buffer: memory.slice(bufferAddress, bufferAddress + buffer.length), instructions, cycles: hal.tStateCount,
-    frame_reads: frameReads, frame_writes: frameWrites};
+    frame_reads: frameReads, frame_writes: frameWrites, register_moves: registerMoves,
+    unmapped_instructions: unmappedInstructions, entry_backedges: entryBackedges,
+    callee_backedges: calleeBackedges, port_writes: portWrites, ...traffic};
 }
 
-const totals = Object.fromEntries(['default', 'all_spill', 'ra'].map(mode => [mode, {cases: 0, instructions: 0, cycles: 0, frame_reads: 0, frame_writes: 0}]));
+const counterProbe = execute(Uint8Array.of(0x21, 0, 0xc1, 0x06, 42, 0x48, 0x79, 0x77, 0x7e, 0xc9),
+  0, [], [], new Uint8Array(1), 0xc100, 0);
+if (counterProbe.register_moves !== 2 || counterProbe.instructions !== 7 ||
+    counterProbe.cycles !== 49 || counterProbe.buffer[0] !== 42)
+  throw new Error('Executed register-move counter calibration failed');
+const trafficProbe = execute(Uint8Array.of(0xdd, 0x21, 0xf8, 0xcf, 0x06, 42, 0x78,
+  0xdd, 0x70, 0, 0xdd, 0x4e, 0, 0xdd, 0x71, 1, 0xdd, 0x7e, 1, 0xdd, 0x77, 2, 0xdd, 0x6e, 2, 0xc9),
+  0, [], [], new Uint8Array(0), 0, 0, new Map([[7, 'allocator_preserve'], [10, 'allocator_reload'],
+    [13, 'abi_argument'], [16, 'abi_argument'], [19, 'abi_result'], [22, 'abi_result']]
+    .map(([address, cause]) => [address, {cause, argumentsInFrame: []}])));
+if (trafficProbe.cycles !== 149 || trafficProbe.instructions !== 10 || trafficProbe.register_moves !== 1 ||
+    trafficProbe.frame_reads !== 3 || trafficProbe.frame_writes !== 3 ||
+    ['allocator_preserve_writes', 'allocator_reload_reads', 'abi_argument_reads', 'abi_argument_writes',
+      'abi_result_reads', 'abi_result_writes'].some(metric => trafficProbe[metric] !== 1))
+  throw new Error('Frame transfer-cause counter calibration failed');
+const stackProbe = execute(Uint8Array.of(0xc5, 0xc1, 0xc9), 0, [], [], new Uint8Array(0), 0, 0,
+  new Map([0, 1].map(address => [address, {cause: 'abi_frame', argumentsInFrame: []}])));
+if (stackProbe.instructions !== 3 || stackProbe.cycles !== 31 || stackProbe.register_moves !== 0 ||
+    stackProbe.abi_frame_reads !== 2 || stackProbe.abi_frame_writes !== 2)
+  throw new Error('ABI stack counter calibration failed');
+const branchProbe = execute(Uint8Array.of(0x06, 2, 0x10, 0xfe, 0xc9), 0, [], [], new Uint8Array(0), 0, 0,
+  new Map([0, 2, 4].map(address => [address, {cause: 'other_frame', argumentsInFrame: [], section: 'probe', branch: address === 2}])));
+if (branchProbe.instructions !== 4 || branchProbe.cycles !== 38 || branchProbe.entry_backedges !== 1 || branchProbe.callee_backedges !== 0)
+  throw new Error('Source-loop backedge counter calibration failed');
+const portCode = Uint8Array.of(0x3e, 42, 0xd3, 0xbe, 0xc9);
+if (JSON.stringify(execute(portCode, 0, [], [], new Uint8Array(0), 0, 0, new Map(), true).port_writes) !== '[[190,42]]')
+  throw new Error('Software port-sink calibration failed');
+let rejectedPort = false;
+try { execute(portCode, 0, [], [], new Uint8Array(0), 0, 0); }
+catch (error) { rejectedPort = String(error).includes('Unexpected port write'); }
+if (!rejectedPort) throw new Error('Unexpected port write was not rejected');
+console.log('PASS:counter_calibration=register_moves,indexed_transfers,abi_stack,backedges,port_sink frame_partition=exclusive');
+
+const totals = Object.fromEntries(['default', 'all_spill', 'ra'].map(mode => [mode,
+  Object.fromEntries(['cases', ...executionMetrics].map(metric => [metric, 0]))]));
 const programTotals = {};
 const shapes = new Map(programs.map(program => [program.name,
   program.source.replace(program.name, 'generated').replace(/ra_arithmetic_\d+/g, 'ra_arithmetic').replace(/\b\d+\b/g, '#')]));
 const uniqueInputs = new Set();
 for (const program of programs) {
-  programTotals[program.name] = Object.fromEntries(Object.keys(totals).map(mode => [mode, {cases: 0, instructions: 0, cycles: 0, frame_reads: 0, frame_writes: 0}]));
+  programTotals[program.name] = Object.fromEntries(Object.keys(totals).map(mode => [mode,
+    Object.fromEntries(['cases', ...executionMetrics].map(metric => [metric, 0]))]));
   for (let seed = 0; seed < cases; seed++) {
     const byte = (seed * 73 + program.variant * 19) & 255;
     const other = (seed * 29 + 17) & 255;
@@ -359,7 +484,7 @@ for (const program of programs) {
     const buffer = Uint8Array.from({length: 128}, (_, index) => (index * 47 + seed * 11 + program.variant) & 255);
     const expectedBuffer = buffer.slice();
     let parameters = [byte, other, third];
-    let expected;
+    let expected, expectedPorts = [];
     switch (program.family) {
       case 'matrix_byte':
       case 'matrix_word':
@@ -462,7 +587,15 @@ for (const program of programs) {
           ((((second & 1) ? first : last) + second) & 65535) ^ ((second & 1) ? first : last), second][program.variant];
         break;
       }
-      case 'matrix_real_index': {
+      case 'matrix_real_index':
+      case 'matrix_source_loop': {
+        if (program.family === 'matrix_source_loop' && program.variant) {
+          const start = 32, count = seed % 64;
+          parameters = [start, start + count];
+          expected = 0;
+          expectedPorts = Array.from(buffer.slice(start, start + count), value => [0xbe, value]);
+          break;
+        }
         parameters = [0, 1, 0];
         const text = '$0115 = $0115 = $0115 = $0115';
         for (let index = 0; index < text.length; index++) {
@@ -471,6 +604,8 @@ for (const program of programs) {
           expectedBuffer[index * 2 + 1] = 0;
         }
         expected = text.length * 2;
+        if (program.family === 'matrix_source_loop')
+          expectedPorts = [[0xbf, 0], [0xbf, 0x7b], ...Array.from(expectedBuffer.slice(0, expected), value => [0xbe, value])];
         break;
       }
       case 'matrix_rank':
@@ -514,7 +649,7 @@ for (const program of programs) {
         break;
       }
       case 'matrix_structural': {
-        parameters = [0, program.variant & 2 ? 0 : 8, seed & 15, 1 + seed % 4, other, byte];
+        parameters = [0, program.variant & 2 ? 0 : 8, seed & 15, program.variant >= 8 ? seed % 8 : 1 + seed % 4, other, byte];
         expected = byte;
         for (let row = 0; row < parameters[3]; row++) {
           for (let column = 0; column < (program.variant & 4 ? 2 : 1); column++) {
@@ -526,6 +661,8 @@ for (const program of programs) {
             else expectedBuffer[index] = previous ^ other ^ byte;
             if (!(program.variant & 1)) called = (expectedBuffer[alias] + other + row) & 255;
             expected = (expected + expectedBuffer[index] + called) & 65535;
+            if (program.variant >= 8)
+              expected = (expected + (row & 1 ? expected & 255 : other & 7)) & 65535;
           }
         }
         break;
@@ -728,12 +865,23 @@ for (const program of programs) {
       for (const index of program.pointerParameters) args[index] += bufferAddress;
       try {
         const result = execute(image.rom, image.symbols.get(program.name), args, program.widths,
-          buffer, bufferAddress, program.returnWidth);
-        if (result.value !== expected || !Buffer.from(result.buffer).equals(Buffer.from(expectedBuffer)))
+          buffer, bufferAddress, program.returnWidth, image.transfers, program.family === 'matrix_source_loop');
+        if (result.unmapped_instructions) throw new Error(`${program.name}: unmapped executed instructions`);
+        if (program.family === 'matrix_source_loop' && result.entry_backedges !== (program.variant ? seed % 64 : expected))
+          throw new Error(`${program.name}: source-loop backedges=${result.entry_backedges}, expected=${program.variant ? seed % 64 : expected}`);
+        if (mode === 'ra' && process.env.RA_BASELINE !== '1' &&
+            ['scalar_split_byte', 'scalar_split_word', 'scalar_call_region'].includes(program.family)) {
+          const bytes = program.family === 'scalar_split_word' ? [2, 4] : program.family === 'scalar_call_region' ? [1, 2] : [1, 1];
+          if (result.allocator_preserve_writes !== bytes[0] || result.allocator_reload_reads !== bytes[1])
+            throw new Error(`${program.name}: explicit transfer byte counts differ`);
+        }
+        if ((program.returnWidth && result.value !== expected) || !Buffer.from(result.buffer).equals(Buffer.from(expectedBuffer)) ||
+            result.port_writes.length !== expectedPorts.length ||
+            result.port_writes.some(([port, value], index) => port !== expectedPorts[index][0] || value !== expectedPorts[index][1]))
           throw new Error(`Expected ${expected}, got ${result.value}; buffer_equal=${Buffer.from(result.buffer).equals(Buffer.from(expectedBuffer))}`);
         for (const counters of [totals[mode], programTotals[program.name][mode]]) {
           counters.cases++;
-          for (const metric of ['instructions', 'cycles', 'frame_reads', 'frame_writes']) counters[metric] += result[metric];
+          for (const metric of executionMetrics) counters[metric] += result[metric];
         }
       } catch (error) {
         const retained = new Set([program]);
@@ -758,9 +906,10 @@ for (const program of programs) {
             const replayArgs = parameters.slice();
             for (const index of program.pointerParameters) replayArgs[index] += address;
             const result = execute(replay.rom, replay.symbols.get(program.name), replayArgs,
-              program.widths, buffer, address, program.returnWidth);
+              program.widths, buffer, address, program.returnWidth, replay.transfers, program.family === 'matrix_source_loop');
             reduction.results[replayMode] = {value: result.value,
-              correct: result.value === expected && Buffer.from(result.buffer).equals(Buffer.from(expectedBuffer))};
+              correct: (!program.returnWidth || result.value === expected) && Buffer.from(result.buffer).equals(Buffer.from(expectedBuffer)) &&
+                JSON.stringify(result.port_writes) === JSON.stringify(expectedPorts)};
           } catch (replayError) {
             reduction.results[replayMode] = {correct: false, error: String(replayError)};
           }
@@ -769,7 +918,7 @@ for (const program of programs) {
           (mode === 'default' || reduction.results.default.correct);
         writeFileSync(join(output, 'failure-reduction.json'), JSON.stringify(reduction, null, 2));
         writeFileSync(join(output, 'failure.json'), JSON.stringify({mode, seed, program, parameters: args,
-          expected, buffer: Array.from(buffer), error: String(error), reduction}, null, 2));
+          expected, expected_ports: expectedPorts, buffer: Array.from(buffer), error: String(error), reduction}, null, 2));
         throw new Error(`Failure ${program.name} seed=${seed} mode=${mode}: ${error}; artifacts=${output}`);
       }
     }
@@ -779,7 +928,14 @@ for (const [mode, totalsForMode] of Object.entries(totals))
   console.log(JSON.stringify({mode, ...totalsForMode, compile_seconds: compiled.get(mode).compileSeconds}));
 writeFileSync(join(output, 'execution-summary.json'), JSON.stringify(totals, null, 2));
 writeFileSync(join(output, 'program-execution-summary.json'), JSON.stringify(programTotals, null, 2));
+const qualityTotals = {...programTotals};
+if (process.env.RA_FAMILIES?.split(',').includes('matrix_source_loop') &&
+    programs.filter(program => program.family === 'matrix_source_loop').length !== 2)
+  throw new Error('Both source-loop cases must be selected');
 const coverage = {functions: programs.length, unique_shapes: new Set(shapes.values()).size,
+  shape_definition: 'normalized_source_not_unique_cfg',
+  source_loops: programs.filter(program => program.family === 'matrix_source_loop').map(program => ({name: program.name,
+    source: `calculations-1/${program.variant ? 'bank_1.ssc:calculateAndPrint5:while' : 'bank_2.ssc:calculateAndPrint3:for'}`})),
   unique_shape_input_tuples: uniqueInputs.size, cases_per_mode: totals.ra.cases,
   retained_registers: Array.from(new Set(Array.from(readFileSync(join(output, 'ra/main.asm'), 'utf8')
     .matchAll(/; retained (?:arg[12]|result) in (HL|BC|A|B|C)\b/g), match => match[1]))).sort(),
@@ -812,10 +968,14 @@ if (process.env.RA_REAL_PROJECTS !== '0') {
     }
     if (!images.get('default').rom.equals(images.get('no_ra').rom)) throw new Error(`${project}: default/-no-ra ROM mismatch`);
     if (!images.get('ra').rom.equals(images.get('ra_quiet').rom)) throw new Error(`${project}: traced/quiet allocator ROM mismatch`);
+    writeFileSync(join(output, project, 'static-summary.json'), JSON.stringify(Object.fromEntries(
+      Array.from(images, ([mode, image]) => [mode, image.staticMetrics])), null, 2));
     realTotals[project] = {};
     for (const name of routines) {
-      const routineTotals = Object.fromEntries(Object.keys(totals).map(mode => [mode, {cases: 0, instructions: 0, cycles: 0, frame_reads: 0, frame_writes: 0}]));
+      const routineTotals = Object.fromEntries(Object.keys(totals).map(mode => [mode,
+        Object.fromEntries(['cases', ...executionMetrics].map(metric => [metric, 0]))]));
       realTotals[project][name] = routineTotals;
+      qualityTotals[`${project}/${name}`] = routineTotals;
       for (let seed = 0; seed < cases; seed++) {
         const value = (seed * 7919 + 32767) & 65535;
         const other = (seed * 5113 + 17) & 65535;
@@ -858,11 +1018,11 @@ if (process.env.RA_REAL_PROJECTS !== '0') {
         for (const mode of Object.keys(totals)) {
           const image = images.get(mode);
           try {
-            const result = execute(image.rom, image.symbols.get(name), parameters, parameters.map(() => 2), buffer, bufferAddress, returnWidth);
+            const result = execute(image.rom, image.symbols.get(name), parameters, parameters.map(() => 2), buffer, bufferAddress, returnWidth, image.transfers);
             if ((returnWidth && result.value !== expected) || !Buffer.from(result.buffer).equals(Buffer.from(expectedBuffer)))
               throw new Error(`Expected ${expected}, got ${result.value}; buffer_equal=${Buffer.from(result.buffer).equals(Buffer.from(expectedBuffer))}`);
             routineTotals[mode].cases++;
-            for (const metric of ['instructions', 'cycles', 'frame_reads', 'frame_writes']) routineTotals[mode][metric] += result[metric];
+            for (const metric of executionMetrics) routineTotals[mode][metric] += result[metric];
           } catch (error) {
             writeFileSync(join(output, 'failure.json'), JSON.stringify({project, name, mode, seed, parameters, expected, error: String(error)}, null, 2));
             throw new Error(`Failure ${project}/${name} seed=${seed} mode=${mode}: ${error}; artifacts=${output}`);
@@ -875,6 +1035,18 @@ if (process.env.RA_REAL_PROJECTS !== '0') {
   writeFileSync(join(output, 'real-execution-summary.json'), JSON.stringify(realTotals, null, 2));
   console.log(`PASS:real_routines=${Object.values(realTotals).reduce((count, routines) => count + Object.keys(routines).length, 0)} cases_per_routine=${cases} default_no_ra=identical artifacts=${output}`);
 }
+
+const qualityRows = Object.entries(qualityTotals).map(([routine, modes]) => ({routine,
+  cycles_delta: modes.ra.cycles - modes.default.cycles,
+  register_moves_delta: modes.ra.register_moves - modes.default.register_moves,
+  frame_traffic_delta: modes.ra.frame_reads + modes.ra.frame_writes - modes.default.frame_reads - modes.default.frame_writes,
+  allocator_preserve_bytes: modes.ra.allocator_preserve_writes, allocator_reload_bytes: modes.ra.allocator_reload_reads}));
+const outliers = Object.fromEntries(['cycles', 'register_moves', 'frame_traffic'].map(metric =>
+  [metric, qualityRows.filter(row => row[`${metric}_delta`] > 0).sort((left, right) => right[`${metric}_delta`] - left[`${metric}_delta`]).map(row => row.routine)]));
+writeFileSync(join(output, 'quality-summary.json'), JSON.stringify({baseline: 'default',
+  register_moves: 'executed unprefixed byte-register LD instructions; stack/exchange traffic is not a register LD',
+  frame_traffic: 'exclusive byte-access categories; other_frame remains unclassified', per_routine: qualityRows, increases: outliers}, null, 2));
+console.log(JSON.stringify({quality_outliers: Object.fromEntries(Object.entries(outliers).map(([metric, routines]) => [metric, routines.length]))}));
 
 if (process.env.RA_SCALAR_CASES !== '1' && process.env.RA_MATRIX_CASES !== '1') {
   for (const cohort of process.env.RA_MATRIX_CASES === '0' ? ['scalar'] :
