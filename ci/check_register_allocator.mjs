@@ -147,6 +147,10 @@ for (let variant = 0; variant < 12; variant++) {
     ['scalar_signed_word', 's16 a, s16 b, s16 c', 's16 saved = a^b; return (c|7)^saved;', [2, 2, 2], 2],
     ['scalar_widen', 'u8 a, u8 b, u8 c', 'u16 saved = a+b; return (c+c)+saved;', [1, 1, 1], 2],
     ['scalar_word', 'u16 a, u16 b, u16 c', 'u16 saved = a^b; return (c+c)+saved;', [2, 2, 2], 2],
+    ['scalar_reassigned_word', 'u16 a, u16 b, u16 c', `u16 saved = a^b; u16 first = c+saved; ${variant ? 'if (a&1) {' : ''} saved = b^c; ${variant ? '}' : ''} return (first+saved)^saved;`, [2, 2, 2], 2],
+    ['scalar_reassigned_byte', `${variant ? 's8' : 'u8'} a, ${variant ? 's8' : 'u8'} b, ${variant ? 's8' : 'u8'} c`, `${variant ? 's8' : 'u8'} saved = a^b; ${variant ? 's8' : 'u8'} first = c+saved; saved = a^c; return (first+saved)^saved;`, [1, 1, 1], 1],
+    ['scalar_lifetime_hole', 'u16 a, u16 b, u16 c', `u16 saved = a^b; u16 first = c+saved; ${variant ? 'u8 called = ra_signed_helper(a,b,c);' : 'u8 called = 0;'} u16 middle = b+c+called; saved = a+c; return (first^middle)+(saved^middle);`, [2, 2, 2], 2],
+    ['scalar_source_reassigned', 'u16 a, u8 b, u8 c', `s16 result = 0x7521; u8 low = result; ra_buffer[0] = low; result = (((a|b)%0x1001)<<4)-10000; result ^= 0x4321; u8 next = result; ra_buffer[1] = next; result = ((((${variant ? '(c|a)|(b|c)' : '(a|c)|(c|b)'})%0x1001)<<4)-(c|10000)); result ^= (0x4321|c); return result;`, [2, 1, 1], 2],
     ['scalar_source_bitwise', 'u16 a, u8 b, u8 c', `return ((((${variant ? '(c|a)|(b|c)' : '(a|c)|(c|b)'}) % 0x1001) << 4) - (c|10000)) ^ (0x4321|c);`, [2, 1, 1], 2],
     ['scalar_copy', 'u16 a, u16 b, u16 c', 'u16 saved = a; return (b+c)+saved;', [2, 2, 2], 2],
     ['scalar_complement_sub', 'u16 a, u16 b, u16 c', 'return (a+b)-(~c);', [2, 2, 2], 2],
@@ -300,6 +304,20 @@ writeFileSync(join(output, 'static-summary.json'), JSON.stringify(Object.fromEnt
   Array.from(compiled, ([mode, image]) => [mode, image.staticMetrics])), null, 2));
 const allocatorLog = readFileSync(join(output, 'ra/compiler.log'), 'utf8');
 if (process.env.RA_BASELINE !== '1') {
+  if (/scalar_copy_promotion function=ra_pressure_\d+ variable=first .+scope=linear_definitions/.test(allocatorLog))
+    throw new Error('Mixed-width reassignment was promoted');
+  if (programs.some(program => program.family === 'scalar_reassigned_word')) {
+    for (const name of ['reassigned_word_0', 'lifetime_hole_0', 'lifetime_hole_1', 'source_reassigned_0', 'source_reassigned_1']) {
+      if (programs.some(program => program.name === `ra_scalar_${name}`) &&
+          !new RegExp(`scalar_copy_promotion function=ra_scalar_${name} variable=(?:saved|result) .+scope=linear_definitions`).test(allocatorLog))
+        throw new Error(`Missing proven definition promotion: ${name}`);
+    }
+    if (/scalar_copy_promotion function=ra_scalar_(?:reassigned_word_1|reassigned_byte_[01]) variable=saved /.test(allocatorLog))
+      throw new Error('Ambiguous or byte-width reassignment was promoted');
+    const ranges = Array.from(allocatorLog.matchAll(/linear_scan retain_interval function=ra_scalar_reassigned_word_0 block=\d+ r(\d+) 16-bit in (HL|BC) producer_tac=(\d+)\([^\n]+?consumer_tac=(\d+)\(/g));
+    if (ranges.length !== 2 || ranges[0][1] !== ranges[1][1] || Number(ranges[0][4]) >= Number(ranges[1][3]))
+      throw new Error('Reassigned definitions did not release their disjoint retained lifetimes');
+  }
   const quietAllocatorLines = readFileSync(join(output, 'ra_quiet/compiler.log'), 'utf8')
     .split(/\r?\n/).filter(line => /^register_allocator_core: |^register_allocator: (?:rejection_summary|loop_retention_coverage|target_active_slots_release|join_path_state_release|post_promotion_reconciliation) /.test(line));
   if (quietAllocatorLines.join('\n') !==
@@ -744,10 +762,24 @@ for (const program of programs) {
       case 'scalar_multi_rmw':
       case 'scalar_split_word':
       case 'scalar_rank_fallback':
+      case 'scalar_reassigned_word':
+      case 'scalar_lifetime_hole':
       case 'scalar_narrow':
       case 'word_bc': {
         parameters = [(seed * 7919 + program.variant * 1009) & 65535, (seed * 5113 + 65535) & 65535, (seed * 3571 + 32767) & 65535];
         const [first, second, thirdWord] = parameters;
+        if (program.family === 'scalar_lifetime_hole') {
+          const called = program.variant ? ((first & 255) + (second & 255) + (thirdWord & 255)) & 255 : 0;
+          const middle = (second + thirdWord + called) & 65535;
+          expected = ((((thirdWord + (first ^ second)) & 65535) ^ middle) + (((first + thirdWord) & 65535) ^ middle)) & 65535;
+          break;
+        }
+        if (program.family === 'scalar_reassigned_word') {
+          const initial = first ^ second;
+          const saved = !program.variant || (first & 1) ? second ^ thirdWord : initial;
+          expected = (((thirdWord + initial + saved) & 65535) ^ saved) & 65535;
+          break;
+        }
         if (program.family === 'scalar_rank_fallback') {
           const saved = first ^ 65535;
           expected = (saved + ((saved + second) & 65535)) & 65535;
@@ -782,10 +814,16 @@ for (const program of programs) {
         break;
       }
       case 'scalar_byte': expected = (2 * third + (byte ^ other)) & 255; break;
+      case 'scalar_reassigned_byte': expected = (((third + (byte ^ other) + (byte ^ third)) & 255) ^ byte ^ third) & 255; break;
+      case 'scalar_source_reassigned':
       case 'scalar_source_bitwise': {
         parameters = [(seed * 7919 + 32767) & 65535, other, third];
         if (seed < 4) parameters = [[0, 65535, 0x6543, 32768][seed], [0, 255, 0x95, 128][seed], [0, 255, 0, 1][seed]];
         const [first, second, last] = parameters;
+        if (program.family === 'scalar_source_reassigned') {
+          expectedBuffer[0] = 0x21;
+          expectedBuffer[1] = (((((first | second) % 0x1001) << 4) - 10000) ^ 0x4321) & 255;
+        }
         expected = ((((((first | last) | (last | second)) % 0x1001) << 4) - (last | 10000)) ^ (0x4321 | last)) & 65535;
         break;
       }

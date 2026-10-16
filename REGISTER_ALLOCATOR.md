@@ -11269,7 +11269,7 @@ and 342 remain open; RA remains opt-in.
 
 ### Batch 346-348: Improve Definition And Lifetime Information
 
-- [ ] **346. Reuse function-local definition/use observations where needed.**
+- [x] **346. Reuse function-local definition/use observations where needed.**
       Identify a concrete limitation in repeated discovery or value tracking,
       then reuse existing metadata to distinguish definitions, ordered reads
       and lifetime segments within function bounds. Preserve reads-before-
@@ -11277,7 +11277,13 @@ and 342 remain open; RA remains opt-in.
       time/RSS before retaining extra storage; invalidate through the existing
       mutation/rebuild boundary. Do not revive the unproven caches from 332/333
       or introduce a second value table solely for hypothetical future use.
-- [ ] **347. Extend scalar promotion for one proven reaching definition.**
+      Reuse operand-type propagation before promotion and the existing
+      function-bounded eligibility/rewrite walks. Observe ordered reads,
+      definitions, stable word width and control-flow boundaries locally,
+      without another value table, cache, helper or analysis lifetime. A return
+      value is read before closing its region. Type facts are recomputed by
+      the existing post-rewrite propagation; no stale analysis is retained.
+- [x] **347. Extend scalar promotion for one proven reaching definition.**
       Use the preceding observations to support a useful reassignment or
       dominated-use case currently excluded by single-definition promotion.
       Require unambiguous definition identity on every path; retain escape,
@@ -11285,7 +11291,18 @@ and 342 remain open; RA remains opt-in.
       loops, signed bytes and narrowing with independent results/buffers.
       Keep ambiguous cases rejected and require measured real-source benefit;
       broad SSA conversion is not a prerequisite or an implied commitment.
-- [ ] **348. Use one profitable lifetime hole or regional continuation.**
+      Admit compatible word reassignments only without internal labels/jumps
+      and with word-width observations at every definition. Preserve existing
+      escape, asm, operand-role and pointer restrictions; byte reassignments
+      and narrowing remain excluded. Existing reads-before-writes semantics
+      handle read/modify/write definitions. calculations-2's independently
+      executed calculationShiftRestore and calculationPartitionRestore each
+      save 152 cycles and eight frame-byte accesses per call. A hardware-free
+      calculateAndPrint5 arithmetic/reassignment extraction and its commuted
+      variant each save 318 cycles, one register move and 15 frame-byte
+      accesses per call, with complete buffer/ABI guards. The original banked
+      hardware routine is compiled only, not independently executed.
+- [x] **348. Use one profitable lifetime hole or regional continuation.**
       Extend existing interval/reservation machinery to release a register
       during a proven dead segment or retain a value across a supported edge.
       Compare transfers and competing-owner benefit, not enclosing interval
@@ -11293,6 +11310,55 @@ and 342 remain open; RA remains opt-in.
       paths, calls and partial-register pressure with immutable failure and
       rollback controls. Require independent execution and an actual benefit;
       do not replace the allocator with global graph colouring by default.
+      Feed the newly admitted definitions to existing per-TAC intervals and
+      reservations, rather than adding a second lifetime allocator. The runner
+      requires one temp's first retained definition to end before its second
+      begins, while the intervening word owner uses the available register.
+      Pressure/hole variants, including a call in the dead region, save 76
+      cycles and four frame-byte accesses per call; the direct two-definition
+      case saves 274 cycles and 14 accesses. Conditional definitions, loops,
+      escape/alias and signed-byte controls remain in the independent corpus.
+      Ambiguous multi-predecessor regions are excluded, not newly supported.
+
+The initial broad trial exposed an actual mixed-width failure in existing
+ra_pressure_0: a byte-inferred first definition followed by word arithmetic
+produced an invalid frame store after promotion. The saved independent reducer
+retains the two-function failure in /tmp/ra346-full-after. Stable-width checks
+now reject that placement; the runner requires every original pressure variant
+to stay unpromoted for this pattern. No verifier or write guard was relaxed.
+
+Matched final qualification: 425 generated entries plus nine existing real
+routines, 222,208 cases per mode at 512 inputs on Cygwin GCC, native Release
+and native ASan. All seven execution summaries and 80 ROMs match across
+toolchains; 48 baseline default/-no-ra/forced-spill ROMs are unchanged. Seven
+entries improve, with no sampled cycle/frame-traffic regressions: 699,392 fewer
+cycles, 2,048 fewer register moves and 34,816 fewer frame-byte accesses. A
+return-only control disables just multi-definition admission while keeping
+type observations/return ordering/common sources current; every dynamic
+counter equals baseline, attributing the measured gains to definition reuse.
+calculations-1 remains 22,561 used ROM bytes and 269/102 total/maximum frame
+bytes. calculations-2 improves 15,988->15,940 ROM bytes and 242->236 total frame
+bytes, maximum 96 unchanged; no individual function frame grows. Both improved
+real function sections shrink 24 bytes each.
+
+Six isolated alternating rounds using the existing measurement script and GNU
+time retain actual peak RSS and all five modes. Quiet project medians are
+215->235 ms (ranges 200-230/200-250) and 180->205 ms (170-220/170-220); RSS
+medians 13,282->13,284 and 13,146->13,148 KiB. Traced medians 1,500->1,465 and
+855->840 ms, with overlapping ranges; no compiler-throughput or RSS benefit
+is claimed. The extra type pass is a measured modest quiet-build tradeoff,
+not a retained speculative cache. Production grows 15 net lines in the
+existing owner; no new production functions, APIs, dependencies or repository
+files. Strict C89/Werror and final traced/quiet actual-source checks pass on
+three toolchains, preserving seven accepts and 32 immutable rejects; 220 ASan
+logs are clean and compiler/verifier runtime imports verified. Both final
+sequential full suites pass 173 tests each on freshly staged Cygwin and native
+Windows compilers; logs are /tmp/ra346-{cygwin,native}-full.log. Artifacts:
+/tmp/ra346-final-{before,return-only,after,native-release,native-asan},
+/tmp/ra346-measured-results.json and /tmp/ra346-benchmark/samples.json.
+No general SSA, global allocation, hardware/bank, UBSan, Valgrind or exhaustive
+CFG claim is made. Steps 328, 332, 333, 339, 341 and 342 remain open; RA stays
+opt-in.
 
 ### Batch 349-351: Reduce Backing Storage Without Hiding Tradeoffs
 
