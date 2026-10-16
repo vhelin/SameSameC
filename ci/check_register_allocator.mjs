@@ -57,7 +57,7 @@ for (const flags of [[], ['-q']]) {
     !/allocation_policy_test: direct_bc_bitwise=yes unsigned_widening=yes signed_right_fallback=yes bc_overlap_rejected=yes status=complete/.test(verifierLog) ||
     !/allocation_policy_test: endpoints=10200 supported=\d+ rejected=\d+ independent_table=yes status=complete/.test(verifierLog) ||
     !verifierLog.includes('spill_slot_test: cases=10 overlap_width_boundary_redefinition_controls=yes tacs_unchanged=yes status=complete') ||
-    !verifierLog.includes('spill_slot_test: fixed_prefix=yes shared_suffix=yes invalid_fixed=5 immutable=yes status=complete') ||
+    !verifierLog.includes('spill_slot_test: fixed_prefix=yes shared_suffix=yes shared_nonoverlap_prefix=yes invalid_fixed=5 immutable=yes status=complete') ||
     !verifierLog.includes('allocation_cost_test: nearer_rejected=yes farther_reused=yes status=complete') ||
     !verifierLog.includes('allocation_cost_test: weighted_cycles=yes static_bytes=yes instruction_bound=256 fallback=next_use immutable=yes status=complete') ||
     !verifierLog.includes('allocation_cost_test: split_reload_overlap_controls=4 status=complete') ||

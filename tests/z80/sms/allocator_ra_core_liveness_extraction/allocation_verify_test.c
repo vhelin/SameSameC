@@ -772,6 +772,15 @@ int main(int argc, char **argv) {
         slots[0].offset_to_fp != -7 || slots[1].offset_to_fp != -9 ||
         slots[2].offset_to_fp != -9 || memcmp(before, layout, sizeof(before)) != 0)
       return 1;
+    offset = -6;
+    for (instruction_index = 0; instruction_index < 3; instruction_index++)
+      slots[instruction_index].size = 8;
+    layout[1].arg2_d = 1;
+    memcpy(before, layout, sizeof(before));
+    if (assign_spill_slot_offsets(&function, &offset) == FAILED || offset != -8 ||
+        slots[0].offset_to_fp != -6 || slots[1].offset_to_fp != -7 ||
+        slots[2].offset_to_fp != -6 || memcmp(before, layout, sizeof(before)) != 0)
+      return 1;
     memcpy(slots_before, slots, sizeof(slots));
     for (instruction_index = 0; instruction_index < 5; instruction_index++) {
       offset = -6;
@@ -784,7 +793,7 @@ int main(int argc, char **argv) {
     }
     locals.temp_registers = temps;
     locals.temp_registers_count = 2;
-    fprintf(stderr, "spill_slot_test: fixed_prefix=yes shared_suffix=yes invalid_fixed=5 immutable=yes status=complete\n");
+    fprintf(stderr, "spill_slot_test: fixed_prefix=yes shared_suffix=yes shared_nonoverlap_prefix=yes invalid_fixed=5 immutable=yes status=complete\n");
   }
   {
     int physical_registers[] = { Z80_PHY_A, Z80_PHY_HL, Z80_PHY_BC, Z80_PHY_B, Z80_PHY_C };

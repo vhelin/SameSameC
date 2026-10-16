@@ -11362,14 +11362,14 @@ opt-in.
 
 ### Batch 349-351: Reduce Backing Storage Without Hiding Tradeoffs
 
-- [ ] **349. Reproduce the remaining maximum-frame outlier precisely.** Trace
+- [x] **349. Reproduce the remaining maximum-frame outlier precisely.** Trace
       calculations-1's default/RA maximum 101/102 bytes to the retained value,
       its actual memory lifetime and preservation uses. Keep per-function
       totals/maxima, ABI storage and executed transfers visible. Establish
       whether the extra byte is necessary under current lowering; smaller
       aggregate frames do not settle this question. A justified retained byte
       is an explained tradeoff, not grounds for unsafe reuse or forced success.
-- [ ] **350. Prefer proven rematerialization or shorter backing lifetimes.**
+- [x] **350. Prefer proven rematerialization or shorter backing lifetimes.**
       Reuse existing cost/materialization and slot-sharing logic for a concrete
       constant, stable address or dead memory segment identified in 349.
       Account for typed conversion, every reconstruction and dynamic frequency;
@@ -11377,7 +11377,7 @@ opt-in.
       Require a frame reduction or executed transfer/cycle benefit, with full
       buffer/ABI guards and negative alias/escape controls. Leave the outlier
       unchanged if its backing is necessary or reconstruction is unprofitable.
-- [ ] **351. Relax fixed spill-prefix sharing only for a measured blocker.**
+- [x] **351. Relax fixed spill-prefix sharing only for a measured blocker.**
       First demonstrate that an absolute spill destination prevents useful
       reuse. If justified, use existing temp/transfer metadata to resolve
       destinations after layout instead of freezing unrelated preceding slots.
@@ -11385,6 +11385,34 @@ opt-in.
       failure; test byte/word sharing, branches, loops and live preservation
       sites. Do not change the transfer representation or add indirection if
       suffix sharing already suffices; explicitly defer an unprofitable trial.
+
+      Qualification (349-351): The outlier remains the static
+      `calculateAndPrint` routine in calculations-1 at default/RA 101/102
+      frame bytes. The existing retained-byte lifetime is still the measured
+      owner under current lowering and preservation rules; aggregate frame
+      decreases elsewhere do not remove this one-byte local maximum. Existing
+      cost/materialization rules were reused without adding a second
+      rematerialization path: no profitable, side-effect-safe reconstruction
+      was proven for this retained backing under current signed/typed uses, so
+      the outlier byte remains an explicit tradeoff rather than a forced win.
+
+      Fixed spill destinations were already sharing suffix storage, but a
+      measured byte-prefix blocker remained when a fixed spill used one byte:
+      unrelated non-overlapping prefix bytes were conservatively excluded from
+      reuse. Slot sharing now keeps fixed-destination safety while allowing
+      sharing for slots whose assigned range is entirely outside the fixed
+      destination span. Existing destination validation and immutable failure
+      behavior remain fail-closed; no transfer representation or post-layout
+      indirection was added.
+
+      The allocator core verifier now locks three fixed-destination controls in
+      one fixture: unchanged two-byte fixed-prefix behavior, existing shared
+      suffix reuse, and newly allowed non-overlapping byte-prefix reuse. Five
+      invalid fixed-destination cases remain immutable failures with unchanged
+      TAC/temp metadata. The checker assertion was updated to require the new
+      `shared_nonoverlap_prefix=yes` coverage marker while preserving existing
+      accepted/rejected counts and lifecycle checks. No broad spill-policy
+      relaxation was introduced.
 
 ### Batch 352-354: Strengthen Decision Tests And Consolidate Implementation
 

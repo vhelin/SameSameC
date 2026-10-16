@@ -11283,7 +11283,8 @@ static int run_register_allocator(struct tree_node *function_node) {
 static int assign_spill_slot_offsets(struct tree_node *function_node, int *offset) {
 
   int j, count = function_node->local_variables->temp_registers_count;
-  int block_count = 0, edge_count = 0, iterations, status = FAILED, fixed_limit = 0;
+  int block_count = 0, edge_count = 0, iterations, status = FAILED;
+  int fixed_floor = 0, fixed_ceiling = -1, fixed_present = NO;
   struct register_allocator_basic_block *blocks = NULL;
   struct register_allocator_cfg_edge *edges = NULL;
   struct register_allocator_liveness_storage storage;
@@ -11293,11 +11294,23 @@ static int assign_spill_slot_offsets(struct tree_node *function_node, int *offse
   for (j = 0; g_allocator_enabled == YES && j < g_tacs_count; j++) {
     if (g_tacs[j].function_node == function_node && g_tacs[j].op == TAC_OP_REGISTER_SPILL) {
       double destination = g_tacs[j].result_d;
+      double bytes = g_tacs[j].arg2_d;
+      int byte_count;
+      int highest_destination;
       if (g_tacs[j].result_type != TAC_ARG_TYPE_CONSTANT ||
-          !(destination >= -32768 && destination < 0) || destination != (int)destination)
+          g_tacs[j].arg2_type != TAC_ARG_TYPE_CONSTANT ||
+          !(destination >= -32768 && destination < 0) || destination != (int)destination ||
+          !(bytes > 0 && bytes <= 32768) || bytes != (int)bytes)
         return FAILED;
-      if (destination < fixed_limit)
-        fixed_limit = (int)destination;
+      byte_count = (int)bytes;
+      highest_destination = (int)destination + (byte_count - 1);
+      if (highest_destination >= 0 || highest_destination < -32768)
+        return FAILED;
+      if (fixed_present == NO || destination < fixed_floor)
+        fixed_floor = (int)destination;
+      if (fixed_present == NO || highest_destination > fixed_ceiling)
+        fixed_ceiling = highest_destination;
+      fixed_present = YES;
     }
   }
   if (g_allocator_enabled == YES && g_allocator_force_all_spill == NO && count > 0) {
@@ -11319,7 +11332,9 @@ static int assign_spill_slot_offsets(struct tree_node *function_node, int *offse
 
     if (temp_register->spill_required == YES) {
       int candidate, instruction_index, writes = 0;
-      if (shareable != NULL && *offset < fixed_limit) {
+      int outside_fixed_span;
+      outside_fixed_span = fixed_present == NO || *offset > fixed_ceiling || *offset < fixed_floor;
+      if (shareable != NULL && outside_fixed_span == YES) {
         temp_register->live_start = g_tacs_count;
         temp_register->live_end = -1;
         for (instruction_index = 0; instruction_index < g_tacs_count; instruction_index++) {
