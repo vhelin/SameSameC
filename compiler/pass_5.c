@@ -4476,9 +4476,8 @@ static int _get_z80_register_allocator_address_materialization_mode(int location
   }
   if (address_target == RA_ADDRESS_TARGET_HL)
     return RA_ADDRESS_MODE_INVALID;
-  if (address_target == RA_ADDRESS_TARGET_IY && location_kind == RA_LOCATION_CONST)
-    return RA_ADDRESS_MODE_NONE;
-  if (location_kind == RA_LOCATION_PHY_A ||
+  if ((address_target == RA_ADDRESS_TARGET_IY && location_kind == RA_LOCATION_CONST) ||
+      location_kind == RA_LOCATION_PHY_A ||
       location_kind == RA_LOCATION_PHY_HL || location_kind == RA_LOCATION_PHY_BC ||
       location_kind == RA_LOCATION_PHY_B || location_kind == RA_LOCATION_PHY_C)
     return RA_ADDRESS_MODE_NONE;
@@ -10306,19 +10305,13 @@ static int _run_basic_block_linear_scan(struct tree_node *function_node,
             transition_context.physical_register = trial;
             transition_context.split_action = trial_split;
             _observe_register_allocator_transition_preparation(&transition_context, &preparation);
-            if (best_found == NO) {
+            if (best_found == NO || (best_known == YES && transition_context.cost_known == YES &&
+                preparation.plan.linear_scan_decision != RA_LINEAR_SCAN_KEEP_ACTIVE &&
+                transition_context.saved_cycles > best_cycles && transition_context.saved_bytes >= best_bytes)) {
               best_found = YES;
               selected = trial;
               selected_split = trial_split;
               best_known = transition_context.cost_known;
-              best_cycles = transition_context.saved_cycles;
-              best_bytes = transition_context.saved_bytes;
-            }
-            else if (best_known == YES && transition_context.cost_known == YES &&
-                preparation.plan.linear_scan_decision != RA_LINEAR_SCAN_KEEP_ACTIVE &&
-                transition_context.saved_cycles > best_cycles && transition_context.saved_bytes >= best_bytes) {
-              selected = trial;
-              selected_split = trial_split;
               best_cycles = transition_context.saved_cycles;
               best_bytes = transition_context.saved_bytes;
             }

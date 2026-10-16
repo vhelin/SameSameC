@@ -10864,7 +10864,7 @@ counts identify audit targets, not dynamic savings or guaranteed opportunities.
 
 ### Batch 337-339: Consolidate And Requalify The Quality Work
 
-- [ ] **337. Remove superseded production machinery.** Review touched policy,
+- [x] **337. Remove superseded production machinery.** Review touched policy,
       cost, materialization, and orchestration paths for duplicated decisions,
       forwarding-only layers, and obsolete exceptions introduced or replaced
       by these batches. Consolidate within existing functions/modules when it
@@ -10872,7 +10872,7 @@ counts identify audit targets, not dynamic savings or guaranteed opportunities.
       abstractions solely for a future backend. Report net production lines,
       functions, public API, and test-code changes separately, with equivalence
       checks for output-preserving cleanup and no unrelated formatting churn.
-- [ ] **338. Requalify correctness across modes and toolchains.** Run focused
+- [x] **338. Requalify correctness across modes and toolchains.** Run focused
       actual-source verifier/layout tests, independent generated/real execution,
       strict C90/warnings, freshly staged Cygwin and native MSVC builds, both
       sequential full suites, and available sanitizer gates. Check corrected
@@ -10890,6 +10890,116 @@ counts identify audit targets, not dynamic savings or guaranteed opportunities.
       from remaining real misses whether broader value representation/global
       allocation is warranted, rather than precommitting to a rewrite. Keep
       `-ra` opt-in and leave unprofitable or unproven work explicitly open.
+
+      **337-339 implementation and measured results:** Consolidated identical
+      address-materialization returns and first/better placement-winner updates
+      inside the existing pass-5 functions. The first-candidate fallback,
+      unknown-cost rejection/fallback, strict cycle improvement, no-byte-growth
+      rule and active-owner checks are unchanged. Removed seven net production
+      lines (five added/12 removed); functions/public APIs/dependencies +0.
+      The existing measurement script adds seven net lines (14 added/seven
+      removed), reusing its loops/AWK to include ra_quiet, per-sample log bytes
+      and rejection-decision totals. No runner, fixture, helper or tracked file
+      was added. This is output-preserving cleanup, not an allocation gain or
+      a demonstrated compiler speed/RSS optimization.
+
+      **338 qualification:** Strict C90/Werror and actual-source traced
+      and quiet verifier/layout controls pass, including 350 lowering effects,
+      10200 endpoint cells, 25 register-unit pairs, seven accepts/32 immutable
+      rejects, ten layouts, five invalid fixed-layout cases and rollback.
+      Focused address/split execution passes 1280 cases per mode; the full
+      placement matrix passes 7296 at 64 seeds. Fresh Cygwin GCC, native MSVC
+      Release and native MSVC ASan compiler/verifier builds each pass 215040
+      cases per mode at 512 seeds (411 generated cohort entries plus nine real
+      routines, including the two extracted source loops). All 120 matched-336
+      ROM pairs, 80 cross-toolchain ROM pairs, 18 exact same-platform diagnostic
+      streams and all per-routine counters, static/coverage/quality summaries
+      match. Every current dynamic metric is identical across toolchains.
+      Default/-no-ra and traced/quiet identities remain mandatory; forced
+      all-spill and atomic-failure controls remain enabled. Both sequential
+      full suites pass all 173 tests with freshly staged, hash-matched Cygwin
+      and native binaries; all 19 protected user-file hashes are unchanged.
+
+      Intentional semantic differences from pre-316 remain the independently
+      tested word-to-byte truncation correction, signed-byte sign/overflow
+      relational ordering and strict unsigned equality-boundary correction.
+      These are baseline correctness repairs, not allocation wins; this batch
+      changes none of them. UBSan, Valgrind/leaks, upstream emulator tests,
+      exhaustive CFGs, signed-word relational qualification, SMS hardware/port
+      timing and bank switching remain unrun. The pre-existing default-mode
+      conditional-initializer bug remains outside this batch. `-ra` stays opt-in.
+
+      **339 bounded report, remaining attribution open:** Reused the existing
+      measurement script for eight isolated before/after rounds on both full
+      calculations builds, reversing the version order on alternating rounds.
+      Each mode/project has eight samples per version; compiler times below
+      sum compiler invocations within the build, not linker/make wall time.
+      Every sample produces the same ROM as its matched corrected-336 baseline.
+      GNU time reports actual maximum child-compiler RSS; cumulative workspace
+      trace fields are not peaks and quiet-mode zero trace activity does not
+      mean zero allocation. Raw per-sample logs and dispersion are retained.
+
+      | Project / Mode | Before Median Seconds (Range) | After Median Seconds (Range) | Before/After Median RSS KiB |
+      | --- | --- | --- | --- |
+      | calculations-1 / default | 0.345 (0.32..0.41) | 0.355 (0.32..0.37) | 12924/12924 |
+      | calculations-1 / ra | 1.625 (1.57..1.95) | 1.690 (1.58..1.96) | 13200/13200 |
+      | calculations-1 / ra_quiet | 0.240 (0.21..0.32) | 0.245 (0.22..0.29) | 13136/13136 |
+      | calculations-2 / default | 0.250 (0.23..0.30) | 0.260 (0.23..0.33) | 12866/12872 |
+      | calculations-2 / ra | 0.930 (0.91..1.25) | 0.950 (0.91..1.29) | 13056/13054 |
+      | calculations-2 / ra_quiet | 0.190 (0.18..0.22) | 0.200 (0.19..0.23) | 13008/13012 |
+
+      Timing ranges overlap; no speed or material RSS benefit is established.
+      Current traced/quiet build-log median bytes are 8473138/337992 for
+      calculations-1 and 4687288/283662 for calculations-2; before/after raw
+      build-log sizes vary, while the generated allocator traces match exactly.
+      Full no_ra/all_spill samples and all min/max values are in the artifact.
+      Rejection reasons remain eight clobber, one unprofitable and one unsupported
+      physical endpoint decisions in calculations-1; seven clobber and one
+      unprofitable decisions in calculations-2. These are static decisions,
+      not executed misses or evidence that rejected placements would win.
+
+      | Project | Default/RA Used ROM Bytes | Default/RA Total Frame Bytes | Default/RA Maximum Frame Bytes | Default/RA Static Copies |
+      | --- | ---: | ---: | ---: | ---: |
+      | calculations-1 | 24468/22649 | 283/269 | 101/102 | 545/779 |
+      | calculations-2 | 17510/16048 | 259/242 | 98/96 | 534/643 |
+
+      These bundled RA/default values are unchanged by this cleanup. Static
+      copies use the measurement script's existing register-LD definition,
+      distinct from the runner's executed byte-register-LD counter. The larger
+      calculations-1 maximum is in static calculateAndPrint in main.ssc; that
+      hardware-facing routine is compiled, not independently executed here.
+      Smaller total frames do not prove every routine's frame improves.
+
+      Representative per-function results below sum 512 independently checked
+      inputs. ROM is the WLA function-section size, not padded image bytes;
+      frames come from the existing emitted prologues. Complete values for all
+      420 cohort/routine entries, copies/transfers and rejection reasons are
+      retained alongside baseline/current per-function static equality checks.
+
+      | Routine | Default/RA Cycles | Default/RA Executed Moves | Default/RA Section Bytes | Default/RA Frame Bytes |
+      | --- | ---: | ---: | ---: | ---: |
+      | calculations-1/calculationAdd3 | 214528/136704 | 0/0 | 67/43 | 15/11 |
+      | calculations-1/calculationMultiplyAdd | 766182/727270 | 0/0 | 86/74 | 15/13 |
+      | calculations-1/convertNumbersToChars16 | 2864764/2462092 | 22016/28160 | 911/779 | 13/12 |
+      | extracted source for-loop | 37481984/33563648 | 102400/184320 | 2252/1849 | 18/18 |
+      | extracted pointer while-loop | 9873152/9324800 | 0/16128 | 126/121 | 9/9 |
+
+      Aggregate RA remains 20900785 instructions, 263026947 cycles, 5011186
+      frame reads, 2651836 writes, 1640646 register moves and 15360 bytes each
+      of explicit preservation/reloads. The 290 move-heavy cohort/routine
+      entries remain visible; none has increased summed cycles or frame
+      traffic over default in this corpus, not a guarantee for every input.
+      This new measurement compares cleanup with 336 and the bundled allocator
+      with corrected default. It does not retroactively isolate every earlier
+      optimization's copy/frame/timing effects, so 339 remains unchecked for
+      that historical per-optimization attribution. No broader value/global
+      allocation rewrite is justified by these bounded results. Further work
+      should first test the known maximum-frame outlier or a concrete clobber
+      endpoint with an independent oracle and a measured tradeoff; unproven
+      placement, caching and broader architecture changes stay deferred.
+      Evidence: /tmp/ra339-measured-results.json, /tmp/ra339-benchmark/samples.json,
+      /tmp/ra339-final-{cygwin,native-release,native-asan}, compiler-provenance.json,
+      and /tmp/ra339-{cygwin,native}-full.log.
 
 **Shared completion gates:** Each three-step batch gets its own local commit,
 with no push and no unrelated worktree changes included. Reuse existing
