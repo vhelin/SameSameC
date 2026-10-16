@@ -22,7 +22,7 @@ all: linked.sms
 	grep -q "resolve function=allocatorRaGetAddressBcBaseHlIndexHl operand=arg1 kind=PHY_BC" compiler.log
 	grep -q "get_address_base function=allocatorRaGetAddressBcBaseHlIndexA kind=PHY_HL memory_pointer_load=no" compiler.log
 	grep -q "get_address_base function=allocatorRaGetAddressBcBaseHlIndexHl kind=PHY_BC memory_pointer_load=no" compiler.log
-	grep -q "get_address_index function=allocatorRaGetAddressBcBaseHlIndexA kind=STACK_SPILL size=1" compiler.log
+	grep -q "get_address_index function=allocatorRaGetAddressBcBaseHlIndexA kind=PHY_C size=1 phy=C" compiler.log
 	grep -q "get_address_index function=allocatorRaGetAddressBcBaseHlIndexHl kind=PHY_HL" compiler.log
 	: && ! grep -q "stack offset requested for retained" compiler.log
 	grep -q "retained arg1 in BC" main.asm

@@ -217,8 +217,14 @@ static int _promote_register_allocator_local_values(void) {
           eligible = NO;
         for (argument_index = 0; argument_index < instruction->arguments_count; argument_index++) {
           if (instruction->arguments[argument_index].type == TAC_ARG_TYPE_LABEL &&
-              instruction->arguments[argument_index].node == variable)
-            eligible = NO;
+              instruction->arguments[argument_index].node == variable) {
+            if (pointer_base == YES || instruction_index <= producer_index || crossed_barrier == YES)
+              eligible = NO;
+            else {
+              reads++;
+              uses++;
+            }
+          }
         }
         if (pointer_base == YES && instruction_index > producer_index)
           crossed_barrier = YES;
@@ -249,7 +255,10 @@ static int _promote_register_allocator_local_values(void) {
             (instruction->op != TAC_OP_ASSIGNMENT && instruction->op != TAC_OP_ADD &&
             instruction->op != TAC_OP_SUB && instruction->op != TAC_OP_AND &&
             instruction->op != TAC_OP_OR && instruction->op != TAC_OP_XOR &&
-            instruction->op != TAC_OP_COMPLEMENT)) ||
+            instruction->op != TAC_OP_COMPLEMENT && instruction->op != TAC_OP_SHIFT_LEFT &&
+            instruction->op != TAC_OP_SHIFT_RIGHT && _is_register_allocator_jump_op(instruction->op) == NO &&
+            !(instruction->arg2_node == variable && (instruction->op == TAC_OP_ARRAY_READ ||
+            instruction->op == TAC_OP_ARRAY_WRITE || instruction->op == TAC_OP_GET_ADDRESS_ARRAY)))) ||
             instruction_index <= producer_index || crossed_barrier == YES ||
             (pointer_base == NO && instruction->arg1_node == variable && instruction->arg2_node == variable))
           eligible = NO;
@@ -288,6 +297,18 @@ static int _promote_register_allocator_local_values(void) {
         instruction->op = TAC_OP_DEAD;
         continue;
       }
+      if (pointer_base == NO && (instruction->op == TAC_OP_FUNCTION_CALL || instruction->op == TAC_OP_FUNCTION_CALL_USE_RETURN_VALUE)) {
+        int argument_index;
+        for (argument_index = 0; argument_index < instruction->arguments_count; argument_index++) {
+          if (instruction->arguments[argument_index].type != TAC_ARG_TYPE_LABEL || instruction->arguments[argument_index].node != variable)
+            continue;
+          free(instruction->arguments[argument_index].label);
+          instruction->arguments[argument_index].label = NULL;
+          instruction->arguments[argument_index].node = NULL;
+          instruction->arguments[argument_index].type = TAC_ARG_TYPE_TEMP;
+          instruction->arguments[argument_index].value = (double)next_temp;
+        }
+      }
       if (instruction->arg1_type == TAC_ARG_TYPE_LABEL && instruction->arg1_node == variable) {
         free(instruction->arg1_s);
         instruction->arg1_s = NULL;
@@ -305,7 +326,7 @@ static int _promote_register_allocator_local_values(void) {
         free(instruction->result_s);
         instruction->result_s = NULL;
         tac_set_result(instruction, TAC_ARG_TYPE_TEMP, (double)next_temp, NULL);
-        instruction->result_node = NULL;
+        instruction->result_node = pointer_base == NO ? variable : NULL;
       }
     }
     next_temp++;
@@ -3881,6 +3902,12 @@ int propagate_operand_types(void) {
       fprintf(stderr, "propagate_operand_sizes(): Unknown TAC op %d!\n", op);
       return FAILED;
     }
+    if (t->result_type == TAC_ARG_TYPE_TEMP && t->result_node != NULL &&
+        t->result_node->type == TREE_NODE_TYPE_CREATE_VARIABLE &&
+        get_variable_type_size(t->result_var_type) == get_variable_type_size(t->result_node->children[0]->value)) {
+      t->result_var_type = t->result_node->children[0]->value;
+      _set_temp_register_type((int)t->result_d, t->result_var_type);
+    }
   }
 
   return SUCCEEDED;
@@ -4733,10 +4760,11 @@ static int _active_physical_registers_overlap_candidate(char *function_name, int
 
 static int _is_register_allocator_bc_candidate(struct tac *producer, struct tac *consumer, struct temp_register *temp_register, int consumer_arg) {
 
-  if (temp_register->size != 16)
+  if (temp_register->size != 16 || _is_first_allocator_producer(producer->op) == NO)
     return NO;
   if (producer->op != TAC_OP_COMPLEMENT)
-    return NO;
+    return consumer_arg == TAC_USE_ARG2 && consumer->op != TAC_OP_COMPLEMENT &&
+      _is_first_allocator_producer(consumer->op) == YES ? YES : NO;
 
   if (consumer->op == TAC_OP_ASSIGNMENT && consumer_arg == TAC_USE_ARG1)
     return YES;
@@ -4821,6 +4849,11 @@ static int _is_z80_register_allocator_candidate_allowed_for_physical_register(st
       _is_register_allocator_bc_candidate(producer, consumer, temp_register, consumer_arg) : NO;
 
   if (producer->op == TAC_OP_ASSIGNMENT) {
+    if (producer->arg1_type != TAC_ARG_TYPE_CONSTANT && temp_register->size == 16 && physical_register == Z80_PHY_BC &&
+      (producer->arg1_var_type == VARIABLE_TYPE_UINT16 || producer->arg1_var_type == VARIABLE_TYPE_INT16) &&
+      (consumer->op == TAC_OP_ARRAY_READ || consumer->op == TAC_OP_ARRAY_WRITE || consumer->op == TAC_OP_GET_ADDRESS_ARRAY) &&
+      consumer_arg == TAC_USE_ARG2)
+      return YES;
     if (producer->arg1_type == TAC_ARG_TYPE_CONSTANT &&
         temp_register->size == 8 && physical_register == Z80_PHY_C &&
         consumer_arg == TAC_USE_ARG1 &&
@@ -4831,17 +4864,10 @@ static int _is_z80_register_allocator_candidate_allowed_for_physical_register(st
         consumer->op == TAC_OP_JUMP_LTE ||
         consumer->op == TAC_OP_JUMP_GTE))
       return YES;
-    if (consumer->op == TAC_OP_ARRAY_WRITE && consumer_arg == TAC_USE_RESULT && temp_register->size == 16 && physical_register == Z80_PHY_HL)
-      return YES;
-    if (consumer->op == TAC_OP_ARRAY_WRITE && consumer_arg == TAC_USE_RESULT && temp_register->size == 16 && physical_register == Z80_PHY_BC && consumer->arg2_physical_register == Z80_PHY_HL)
-      return YES;
-    if (consumer->op == TAC_OP_ARRAY_READ && consumer_arg == TAC_USE_ARG1 && temp_register->size == 16 && physical_register == Z80_PHY_HL)
-      return YES;
-    if (consumer->op == TAC_OP_ARRAY_READ && consumer_arg == TAC_USE_ARG1 && temp_register->size == 16 && physical_register == Z80_PHY_BC && consumer->arg2_physical_register == Z80_PHY_HL)
-      return YES;
-    if (consumer->op == TAC_OP_GET_ADDRESS_ARRAY && consumer_arg == TAC_USE_ARG1 && temp_register->size == 16 && physical_register == Z80_PHY_HL)
-      return YES;
-    if (consumer->op == TAC_OP_GET_ADDRESS_ARRAY && consumer_arg == TAC_USE_ARG1 && temp_register->size == 16 && physical_register == Z80_PHY_BC && consumer->arg2_physical_register == Z80_PHY_HL)
+    if (temp_register->size == 16 && (physical_register == Z80_PHY_HL ||
+        (physical_register == Z80_PHY_BC && consumer->arg2_physical_register == Z80_PHY_HL)) &&
+        ((consumer->op == TAC_OP_ARRAY_WRITE && consumer_arg == TAC_USE_RESULT) ||
+        ((consumer->op == TAC_OP_ARRAY_READ || consumer->op == TAC_OP_GET_ADDRESS_ARRAY) && consumer_arg == TAC_USE_ARG1)))
       return YES;
     if (physical_register == Z80_PHY_B)
       return _is_register_allocator_b_candidate(producer, consumer,
@@ -5387,6 +5413,11 @@ static int _is_z80_basic_block_transparent_tac_for_physical_register(struct tac 
       (t->arg1_var_type_promoted == VARIABLE_TYPE_UINT16 || t->arg1_var_type_promoted == VARIABLE_TYPE_INT16))
     scratch_units = RA_Z80_UNIT_A;
   else {
+    if ((t->op == TAC_OP_ADD || t->op == TAC_OP_SUB) && t->arg2_type == TAC_ARG_TYPE_CONSTANT && t->arg2_d == 1.0 &&
+        t->arg2_physical_register == Z80_PHY_NONE &&
+        (t->arg1_var_type_promoted == VARIABLE_TYPE_UINT16 || t->arg1_var_type_promoted == VARIABLE_TYPE_INT16) &&
+        (t->arg2_var_type_promoted == VARIABLE_TYPE_UINT16 || t->arg2_var_type_promoted == VARIABLE_TYPE_INT16))
+      scratch_units &= ~(RA_Z80_UNIT_B | RA_Z80_UNIT_C);
     if (_is_register_allocator_byte_transparent_tac(t, Z80_PHY_C) == YES)
       scratch_units &= ~RA_Z80_UNIT_C;
     if (_is_register_allocator_byte_transparent_tac(t, Z80_PHY_B) == YES)
@@ -5409,6 +5440,9 @@ static int _is_z80_basic_block_transparent_tac_for_physical_register(struct tac 
       scratch_units &= ~(read_units & (RA_Z80_UNIT_B | RA_Z80_UNIT_C));
     if (t->op == TAC_OP_ASSIGNMENT) {
       scratch_units &= ~(RA_Z80_UNIT_H | RA_Z80_UNIT_L);
+      if ((t->arg1_var_type == VARIABLE_TYPE_UINT16 || t->arg1_var_type == VARIABLE_TYPE_INT16) &&
+          (t->result_var_type == VARIABLE_TYPE_UINT16 || t->result_var_type == VARIABLE_TYPE_INT16))
+        scratch_units &= ~(RA_Z80_UNIT_B | RA_Z80_UNIT_C);
       if (t->arg1_type == TAC_ARG_TYPE_CONSTANT)
         scratch_units &= ~RA_Z80_UNIT_A;
     }
@@ -5930,6 +5964,11 @@ static void _observe_register_allocator_transition_preparation(void *context,
     byte_count = temp->size / 8;
     costs[choice][0] = byte_count * indexed_cycles;
     costs[choice][1] = byte_count * indexed_bytes;
+    if (physical_register == Z80_PHY_BC && g_tacs[producer].op != TAC_OP_COMPLEMENT &&
+        _is_first_allocator_producer(g_tacs[producer].op) == YES) {
+      costs[choice][0] -= 2 * move_cycles;
+      costs[choice][1] -= 2;
+    }
     if (byte_count == 1 && physical_register != Z80_PHY_A) {
       costs[choice][0] -= move_cycles;
       costs[choice][1]--;
@@ -5992,6 +6031,9 @@ static void _observe_register_allocator_transition_preparation(void *context,
       }
       if (_tac_writes_temp_register(&effect, temp_index) == YES)
         break;
+      if (physical_register == Z80_PHY_HL && effect.op == TAC_OP_COMPLEMENT && effect.result_physical_register == Z80_PHY_NONE &&
+          _is_intervening_bc_candidate_transparent_for_hl(transition_context->function_node, instruction_index, consumer) == YES)
+        effect.result_physical_register = Z80_PHY_BC;
       if (_get_register_allocator_target_policy()->is_tac_transparent_for_physical_register(&effect, physical_register) == NO)
         resident = NO;
     }

@@ -15,8 +15,10 @@ all: linked.sms
 	grep -q "linear_scan retain function=allocatorRaScalarCopyA.*8-bit in C.*ADD arg2" compiler.log
 	grep -q "scalar_copy_promotion function=allocatorRaScalarCopyFallback variable=repeated .*reads=2 " compiler.log
 	: && ! grep -E "scalar_copy_promotion function=allocatorRaScalarCopyFallback variable=(escaped|barrier|redefined) " compiler.log
-	for name in Bit Word BeforeCall AfterCall AcrossCall; do grep -q "scalar_copy_promotion function=allocatorRaScalar$$name " compiler.log || exit 1; done
-	: && ! grep -E "scalar_copy_promotion function=allocatorRaScalar(CallArgument|Narrow) " compiler.log
+	for name in Bit Word BeforeCall AfterCall AcrossCall CallArgument; do grep -q "scalar_copy_promotion function=allocatorRaScalar$$name " compiler.log || exit 1; done
+	grep -q "target_argument_transport function=allocatorRaScalarCallArgument .*argument=1 .*source_kind=STACK_SPILL transport=byte " compiler.log
+	grep -q "target_call_boundary function=allocatorRaScalarCallArgument .*spill_reason=function_call" compiler.log
+	: && ! grep -E "scalar_copy_promotion function=allocatorRaScalarNarrow " compiler.log
 
 
 linked.sms: $(OFILES) makefile

@@ -85,19 +85,53 @@ int main(int argc, char **argv) {
     {
       struct tac lowering;
       int source_index, register_index, op_index;
-      int operations[] = { TAC_OP_COMPLEMENT, TAC_OP_AND, TAC_OP_FUNCTION_CALL,
+      int operations[] = { TAC_OP_COMPLEMENT, TAC_OP_ADD, TAC_OP_SUB, TAC_OP_AND, TAC_OP_OR, TAC_OP_XOR, TAC_OP_FUNCTION_CALL,
         TAC_OP_FUNCTION_CALL_USE_RETURN_VALUE, TAC_OP_ASM };
       int checks = 0;
 
       memset(&lowering, 0, sizeof(lowering));
       lowering.result_physical_register = Z80_PHY_BC;
       lowering.arg1_var_type_promoted = lowering.arg2_var_type_promoted = VARIABLE_TYPE_UINT16;
-      for (op_index = 0; op_index < 5; op_index++) {
+      for (op_index = 0; op_index < (int)(sizeof(operations) / sizeof(operations[0])); op_index++) {
         lowering.op = operations[op_index];
         for (source_index = 0; source_index < 5; source_index++) {
           lowering.arg1_physical_register = physical_registers[source_index];
           for (register_index = 0; register_index < 5; register_index++) {
             int expected = op_index == 0 && register_index == 1 ? YES : NO;
+            if (_is_z80_basic_block_transparent_tac_for_physical_register(
+                &lowering, physical_registers[register_index]) != expected)
+              return 1;
+            checks++;
+          }
+        }
+      }
+      for (op_index = 0; op_index < 2; op_index++) {
+        lowering.op = op_index == 0 ? TAC_OP_ADD : TAC_OP_SUB;
+        lowering.arg2_physical_register = Z80_PHY_NONE;
+        for (source_index = 0; source_index < 4; source_index++) {
+          lowering.arg2_type = source_index < 2 ? TAC_ARG_TYPE_CONSTANT : TAC_ARG_TYPE_TEMP;
+          lowering.arg2_d = 1 + source_index % 2;
+          for (first_index = 1; first_index <= 2; first_index++) {
+            lowering.result_physical_register = physical_registers[first_index];
+            for (register_index = 0; register_index < 5; register_index++) {
+              int expected = source_index == 0 && first_index == 1 && register_index >= 2 ? YES : NO;
+              if (_is_z80_basic_block_transparent_tac_for_physical_register(
+                  &lowering, physical_registers[register_index]) != expected)
+                return 1;
+              checks++;
+            }
+          }
+        }
+      }
+      lowering.op = TAC_OP_ASSIGNMENT;
+      for (source_index = 0; source_index < 2; source_index++) {
+        lowering.arg1_var_type = source_index == 0 ? VARIABLE_TYPE_INT8 : VARIABLE_TYPE_UINT16;
+        lowering.result_var_type = VARIABLE_TYPE_UINT16;
+        for (first_index = 1; first_index <= 2; first_index++) {
+          lowering.result_physical_register = physical_registers[first_index];
+          for (register_index = 0; register_index < 5; register_index++) {
+            int expected = (first_index == 2 && register_index == 1) ||
+              (source_index == 1 && first_index == 1 && register_index >= 2) ? YES : NO;
             if (_is_z80_basic_block_transparent_tac_for_physical_register(
                 &lowering, physical_registers[register_index]) != expected)
               return 1;
@@ -141,11 +175,11 @@ int main(int argc, char **argv) {
         { TAC_OP_SHIFT_RIGHT, TAC_USE_ARG1, 17, 2, 16, 0, NO },
         { TAC_OP_SHIFT_RIGHT, TAC_USE_ARG2, 1, 4, 0, 0, NO },
         { TAC_OP_ARRAY_READ, TAC_USE_ARG1, 0, 2, 0, 2, NO },
-        { TAC_OP_ARRAY_READ, TAC_USE_ARG2, 25, 2, 24, 0, YES },
+        { TAC_OP_ARRAY_READ, TAC_USE_ARG2, 25, 2, 24, 4, YES },
         { TAC_OP_GET_ADDRESS_ARRAY, TAC_USE_ARG1, 0, 2, 0, 2, NO },
-        { TAC_OP_GET_ADDRESS_ARRAY, TAC_USE_ARG2, 25, 2, 24, 0, NO },
+        { TAC_OP_GET_ADDRESS_ARRAY, TAC_USE_ARG2, 25, 2, 24, 4, NO },
         { TAC_OP_ARRAY_WRITE, TAC_USE_ARG1, 1, 2, 0, 0, NO },
-        { TAC_OP_ARRAY_WRITE, TAC_USE_ARG2, 25, 2, 24, 0, NO },
+        { TAC_OP_ARRAY_WRITE, TAC_USE_ARG2, 25, 2, 24, 4, NO },
         { TAC_OP_JUMP_EQ, TAC_USE_ARG1, 17, 2, 16, 0, NO },
         { TAC_OP_JUMP_EQ, TAC_USE_ARG2, 9, 2, 8, 0, NO },
         { TAC_OP_JUMP_NEQ, TAC_USE_ARG1, 17, 2, 16, 0, NO },
@@ -178,6 +212,7 @@ int main(int argc, char **argv) {
           producer.op = producers[producer_index];
           for (type_index = 0; type_index < 4; type_index++) {
             temp.size = type_index < 2 ? 8 : 16;
+            producer.arg1_var_type = types[type_index];
             consumer.arg1_var_type_promoted = consumer.arg2_var_type_promoted = types[type_index];
             for (constant_source = 0; constant_source < (producer_index == 0 ? 2 : 1); constant_source++) {
               producer.arg1_type = constant_source ? TAC_ARG_TYPE_CONSTANT : TAC_ARG_TYPE_TEMP;
@@ -188,10 +223,16 @@ int main(int argc, char **argv) {
                   expected_mask |= 16;
                 else if (constant_source)
                   expected_mask &= ~16;
+                if (constant_source && endpoint->operand == TAC_USE_ARG2 &&
+                    (endpoint->op == TAC_OP_ARRAY_READ || endpoint->op == TAC_OP_ARRAY_WRITE || endpoint->op == TAC_OP_GET_ADDRESS_ARRAY))
+                  expected_mask &= ~4;
               }
               if (producer_index >= 10)
                 expected_mask &= ~8;
               if (producer.op == TAC_OP_COMPLEMENT && temp.size == 16 && endpoint->complement_bc == YES)
+                expected_mask |= 4;
+              if (producer_index >= 1 && producer_index <= 5 && temp.size == 16 && endpoint->operand == TAC_USE_ARG2 &&
+                  (endpoint->op == TAC_OP_ADD || endpoint->op == TAC_OP_SUB || endpoint->op == TAC_OP_AND || endpoint->op == TAC_OP_OR || endpoint->op == TAC_OP_XOR))
                 expected_mask |= 4;
               for (first_index = 0; first_index < 5; first_index++) {
                 int expected = (expected_mask & (1 << first_index)) != 0 ? YES : NO;

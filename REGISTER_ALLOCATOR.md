@@ -10451,7 +10451,7 @@ counts identify audit targets, not dynamic savings or guaranteed opportunities.
 
 ### Batch 325-327: Expand Evidence-Backed Value Coverage
 
-- [ ] **325. Audit assignments feeding array indexes first.** The retained
+- [x] **325. Audit assignments feeding array indexes first.** The retained
       two-project summaries contain 189 producer/next-use rejections: 174
       unsupported forms and 15 clobbers; 160 are assignment-to-array-index
       operands. Separate constants and copy chains better handled by existing
@@ -10460,7 +10460,7 @@ counts identify audit targets, not dynamic savings or guaranteed opportunities.
       pointer-base conflicts, and bounded aliasing execution controls. Recount
       rejections and measure actual real-routine benefit; eliminating a static
       rejection is not itself completion.
-- [ ] **326. Broaden profitable word placements in BC.** Audit the current
+- [x] **326. Broaden profitable word placements in BC.** Audit the current
       complement-only general BC producer rule against existing word emitters,
       especially ALU results consumed as right operands. Add supported forms
       only after their HL scratch and B/C interference are represented by the
@@ -10468,7 +10468,7 @@ counts identify audit targets, not dynamic savings or guaranteed opportunities.
       counts, simultaneous retained HL values, and displaced byte owners.
       Require a useful independently executed case for each expansion and
       retain rejection of incompatible live-register combinations.
-- [ ] **327. Promote more supported scalar uses.** Extend the existing
+- [x] **327. Promote more supported scalar uses.** Extend the existing
       single-definition, nonescaping scalar path to proven comparison, shift,
       index, and by-value call-argument uses currently excluded by its consumer
       allowlist. Materialize stack ABI arguments at the boundary; this does
@@ -10477,6 +10477,85 @@ counts identify audit targets, not dynamic savings or guaranteed opportunities.
       Keep multi-definition promotion and wider pointer scope deferred unless
       a measured case justifies a separately tested extension of existing
       reaching-definition machinery; do not silently relax those invariants.
+
+                        Qualification (325-327): Reused the existing candidate policy,
+                        effect contract, scalar promotion, type propagation, cost observer,
+                        and execution runner. No new production functions, public APIs,
+                        dependencies, or files. Consolidated three repeated pointer-base
+                        rules; net production growth is 42 lines. Runner/harness growth is
+                        145 lines, separately from fixture expectation/documentation edits.
+                        - Assignment audit: the corrected, matched pre-batch summaries now
+                        contain 77 rejections (62 unsupported, 15 clobbers), including 48
+                        assignment-to-write-index snapshots, not the older 189/160 counts.
+                        Constants/copy chains remain handled by existing propagation and
+                        rematerialization. Only nonconstant, already-word assignment sources
+                        may newly retain BC for read/write/address indexes; byte-to-word
+                        conversions are not silently admitted. Word increments/decrements
+                        by immediate one and word-to-word copies have their actual BC
+                        effects represented. Current summaries have 18 rejections: one
+                        unsupported, 15 clobbers, two negative-profitability decisions;
+                        none are assignment-index rejections.
+                        - BC expansion is limited to the five existing word ALU producers
+                        feeding ALU right operands, including SUB. Their existing emitters
+                        still clobber HL and overlapping B/C owners; no direct-BC ALU
+                        lowering or simultaneous-live-HL exemption was invented. Charge
+                        both actual HL-to-BC result moves, and reuse the existing proven
+                        pending-BC-complement path in HL costing. Each new producer has
+                        an independently executed SUB-right case saving 68 cycles and two
+                        frame reads/writes per call. Computed shifts, simultaneous HL
+                        values, displaced byte values, and rejected effects remain covered.
+                        - Single-definition, nonescaping scalar promotion now accepts
+                        comparison, shift, index, and by-value call uses. Same-width
+                        declaration metadata preserves signed extension without widening
+                        proven byte temporaries into unnecessary word slots. Call arguments
+                        still materialize stack ABI slots, with full call/asm barriers;
+                        call cases show no executed cycle gain. Definition/dominance,
+                        address-taking, asm, multi-definition, and narrowing exclusions
+                        remain; wider pointer/multi-definition promotion is not enabled.
+                        - Six bounded cohorts execute 405 generated functions plus nine
+                        original real routines at 512 seeds: 211,968 cases per executed
+                        mode/toolchain. New matrix_values coverage uses the existing cohort
+                        recursion because combining it with matrix exceeds bank-zero ROM.
+                        Literal-normalized shapes per cohort are 11/37/99/37/37/38, not
+                        global CFG counts. Independent full-buffer, DE/SP, signed/scaled
+                        index, alias, conversion, call, escape, and interference controls
+                        pass. Current Cygwin/native release/native ASan ROMs match in 80
+                        comparisons; all 24 default/no-ra/all-spill saved/current images
+                        match. Traced/quiet identity and per-routine counter identity pass.
+                        - Matched RA totals: cycles 206345219 -> 204174339; instructions
+                        16566193 -> 16468913; frame reads 3948274 -> 3888882 and writes
+                        2071740 -> 2012348. Sixty generated routines improve, none regress.
+                        This includes
+                        the unchanged software prefix of calculateAndPrint3, stopping
+                        before hardware I/O and calling the original formatter: 1824 fewer
+                        cycles and 48 fewer frame reads/writes per call, checked against
+                        an independent full-buffer text oracle. This is not full banked
+                        calculateAndPrint3 or hardware qualification. The original nine
+                        real-routine controls are unchanged.
+                        - Real-project payloads 23275 -> 22649 and 16128 -> 16048 bytes;
+                        frames total/max 290/105 -> 288/105 and 253/97 -> 253/97. Static
+                        register copies rise 769 -> 779 and 627 -> 643, so no global copy
+                        reduction is claimed. The first project's default frame 283/101
+                        remains smaller. Two get-address fixture tags each shrink
+                        five bytes through byte-index C retention; their source functions
+                        and word-index byte tags are unchanged. No timing/RSS improvement
+                        is claimed; this batch does not add a profiling framework.
+                        - Strict C90/Werror and editor checks pass; current-source native
+                        compiler/verifier ASan passes. The harness independently checks
+                        350 lowering effects, 10200 endpoints (2718 supported), 25 unit
+                        pairs, seven accepted/32 immutable rejections, eight layout and
+                        atomic rollback controls. Both sequential full suites pass all
+                        173 tests using fresh, hash-matched Cygwin and native binaries.
+                        All 19 protected user edits remain unchanged. Artifacts:
+                        `/tmp/ra327-final-{baseline,cygwin,native-release,native-asan}`,
+                        `/tmp/ra327-{cygwin,native}-full.log`, and measured summaries.
+                        A separate minimized default-mode branch-initializer dead-store
+                        defect also reproduces with the saved pre-batch compiler; retained
+                        under `/tmp/ra327-coverage-after/failure-reduced.ssc` and
+                        `/tmp/ra327-baseline-bug`, outside this promotion work. UBSan,
+                        Valgrind/leaks, exhaustive CFG/emitter coverage, signed-word
+                        relational ordering, and SMS hardware/bank switching remain
+                        unqualified. The allocator remains opt-in; no later batch started.
 
 ### Batch 328-330: Improve Loop Retention And Frame Storage
 

@@ -61,6 +61,8 @@ for (const flags of [[], ['-q']]) {
 }
 
 const programs = [];
+const realIndexBody = readFileSync(join(root, 'tests/z80/sms/calculations-1/bank_2.ssc'), 'utf8')
+  .split('void calculateAndPrint3(u8 *chars, u8 one, u8 zero) {')[1].split('__z80_out')[0];
 for (let variant = 0; variant < 12; variant++) {
   const constant = 1 + variant * 7;
   const operator = ['+', '-', '&', '|', '^'][variant % 5];
@@ -78,6 +80,38 @@ for (let variant = 0; variant < 12; variant++) {
     ['matrix_affinity', 'u16 a, u16 b, u16 c', `u16 live = a+b; return ${variant < 4 ? '(~c)' : 'live'} ${['+', '&', '|', '^'][variant % 4]} ${variant < 4 ? 'live' : '(~c)'};`, [2, 2, 2], 2],
     ['matrix_rank', 'u16 a, u16 b, u16 c', `u16 live = ~a; u16 saved = ~c; return live ${['+', '&', '|', '^'][variant % 4]} saved;`, [2, 2, 2], 2],
     ['matrix_index_affinity', 'u16 a', `${variant ? 'u8 *target = &ra_buffer[0]; ' : ''}u16 index = ~a; return ${variant ? 'target' : 'ra_buffer'}[index];`, [2], 1],
+    ['matrix_index_copy', variant === 9 ? 'u8 *target, u8 *alias, u16 a, u8 b' : `${variant === 5 ? 's8' : variant === 4 ? 'u8' : 'u16'} a, u8 b`, [
+      'u16 index = a; return ra_buffer[index];',
+      's16 index = a; u8 *target = &ra_buffer[32]; return target[index];',
+      'u16 index = a; return ra_words[index];',
+      's16 index = a; u16 *target = &ra_words[16]; return target[index];',
+      'u8 index = a; return ra_buffer[index];',
+      's8 index = a; u8 *target = &ra_buffer[32]; return target[index];',
+      'u16 index = a; ra_buffer[index] = b; return ra_buffer[index];',
+      'u16 index = a; u16 copied = index; return ra_buffer[copied];',
+      'u16 index = 7; return ra_buffer[index];',
+      'u16 index = a; target[index] = b; return alias[index];',
+      'u16 index = a; ra_buffer[index++] = b; return index;',
+      'u16 index = a; ra_words[index++] = b; return index;'
+    ][variant], variant === 9 ? [2, 2, 2, 1] : [variant === 4 || variant === 5 ? 1 : 2, 1], [2, 3, 10, 11].includes(variant) ? 2 : 1],
+    ['matrix_bc_alu', 'u16 a, u16 b, u16 c', variant < 10 ? `u16 saved = a${operator}b; return c${variant < 5 ? '-' : '+'}saved;` : variant === 10 ?
+      'u16 live = a+c; u16 saved = b+c; return (live-saved)^live;' :
+      'u8 small = a; u16 saved = b+c; return (saved+small)^small;', [2, 2, 2], 2],
+    ['matrix_scalar_uses', `${[4, 7, 9, 11].includes(variant) ? 'u8' : [6, 8].includes(variant) ? 's8' : 'u16'} a, ${[4, 7, 9, 11].includes(variant) ? 'u8' : [6, 8].includes(variant) ? 's8' : 'u16'} b, ${[4, 7, 9, 11].includes(variant) ? 'u8' : [6, 8].includes(variant) ? 's8' : 'u16'} c`, [
+      'u16 saved = a^b; if (saved < c) { return a; } return b;',
+      'u16 saved = a^b; return saved << (c&15);',
+      'u16 saved = a&15; return b << saved;',
+      'u16 saved = a&127; return ra_buffer[saved];',
+      'u8 saved = a^b; return ra_signed_helper(saved,b,c);',
+      'u16 saved = a^b; return calculationAdd3(saved,b,c);',
+      's8 saved = a^b; if (saved < c) { return 1; } return 0;',
+      'u8 saved = a^b; return saved >> (c&7);',
+      's8 saved = a; u8 *target = &ra_buffer[32]; return target[saved];',
+      'u8 saved = a^b; u8 called = ra_signed_helper(saved,b,c); return called^saved;',
+      'u16 saved; if (b&1) { saved = a; } else { saved = c; } return (saved+b)^saved;',
+      'u8 saved = a; ra_pointer_helper(&saved,b); return saved;'
+    ][variant], [4, 6, 7, 8, 9, 11].includes(variant) ? [1, 1, 1] : [2, 2, 2], 2],
+    ['matrix_real_index', 'u8 *chars, u8 one, u8 zero', `${realIndexBody} return index;`, [2, 1, 1], 2],
     ['matrix_compare_byte', 'u8 a, u8 b, u8 c', `u8 saved = ${comparisonForms === 2 ? 'a' : 'a^b'}; if (${variant < 6 ? 'saved' : byteComparison} ${comparison} ${variant < 6 ? byteComparison : 'saved'}) { return a; } return b;`, [1, 1, 1], 1],
     ['matrix_compare_word', 'u16 a, u16 b, u16 c', `u16 saved = ${comparisonForms === 2 ? 'a' : '~b'}; if (${variant < 6 ? 'saved' : wordComparison} ${comparison} ${variant < 6 ? wordComparison : 'saved'}) { return a; } return b;`, [2, 2, 2], 2],
     ['matrix_compare_signed', 's8 a, s8 b, s8 c', `s8 saved = ${comparisonForms === 2 ? 'a' : 'a^b'}; if (${variant < 6 ? 'saved' : signedComparison} ${comparison} ${variant < 6 ? signedComparison : 'saved'}) { return a; } return b;`, [1, 1, 1], 1],
@@ -143,21 +177,27 @@ for (let variant = 0; variant < 12; variant++) {
     if (variant >= 8 && !family.startsWith('matrix_')) continue;
     if (family.startsWith('matrix_') && variant >= ({matrix_byte: 10, matrix_word: 10,
       matrix_compare_byte: 12, matrix_compare_word: 12, matrix_compare_signed: 12,
-      matrix_low_byte: 10, matrix_structural: 8, matrix_sentinel: 10, matrix_affinity: 8, matrix_rank: 4}[family] || 2)) continue;
+      matrix_low_byte: 10, matrix_structural: 8, matrix_sentinel: 10, matrix_affinity: 8, matrix_rank: 4,
+      matrix_index_copy: 12, matrix_bc_alu: 12, matrix_scalar_uses: 12, matrix_real_index: 1}[family] || 2)) continue;
     if (comparisonForms && family !== 'arithmetic' && !family.startsWith('matrix_compare_')) continue;
     if (process.env.RA_FAMILIES && family !== 'arithmetic' && !process.env.RA_FAMILIES.split(',').includes(family)) continue;
+    if (family.startsWith('matrix_') && ['matrix_index_copy', 'matrix_bc_alu', 'matrix_scalar_uses', 'matrix_real_index'].includes(family) !==
+      (process.env.RA_VALUE_CASES === '1')) continue;
     const scalarFamily = family.startsWith('scalar_') || family === 'word_bc';
     if (family !== 'arithmetic' && (process.env.RA_MATRIX_CASES === '1' ?
       !family.startsWith('matrix_') : family.startsWith('matrix_') || scalarFamily !== (process.env.RA_SCALAR_CASES === '1'))) continue;
     if (scalarFamily && family !== 'word_bc' && variant > 1) continue;
     const name = `ra_${family}_${variant}`;
     programs.push({name, family, variant, constant, widths, returnWidth,
-      pointerParameters: family === 'matrix_structural' ? [0, 1] :
+      pointerParameters: family === 'matrix_real_index' ? [0] : family === 'matrix_structural' || (family === 'matrix_index_copy' && variant === 9) ? [0, 1] :
         ['pointer', 'walk', 'nested', 'join_call', 'scalar_remat_pointer'].includes(family) ? [0] : [],
       source: `${family.startsWith('scalar_signed') ? 's' : 'u'}${returnWidth * 8} ${name}(${parameters}) { ${body} }`});
   }
 }
-const preamble = 'u8 ra_buffer[128];\nu16 ra_words[64];\ns8 ra_signed_helper(u8 a, u8 b, u8 c) { return a+b+c; }\nu8 ra_pointer_helper(u8 *target, u8 value) { target[0] = value; return target[1]; }\nu8 ra_recursive_helper(u8 depth, u8 value) { if (depth) { u8 saved = value^depth; u8 nested = ra_recursive_helper(depth-1,value+1); return nested^saved; } return value; }\n';
+const preamble = 'u8 ra_buffer[128];\nu16 ra_words[64];\ns8 ra_signed_helper(u8 a, u8 b, u8 c) { return a+b+c; }\nu8 ra_pointer_helper(u8 *target, u8 value) { target[0] = value; return target[1]; }\nu8 ra_recursive_helper(u8 depth, u8 value) { if (depth) { u8 saved = value^depth; u8 nested = ra_recursive_helper(depth-1,value+1); return nested^saved; } return value; }\n' +
+  (programs.some(program => ['matrix_real_index', 'matrix_scalar_uses'].includes(program.family)) ?
+    readFileSync(join(root, 'tests/z80/sms/calculations-1/main.ssc'), 'utf8').match(/^void convertNumbersToChars16\([^;]+\) \{[\s\S]*?^\}/m)[0] + '\n' +
+    readFileSync(join(root, 'tests/z80/sms/calculations-1/main.ssc'), 'utf8').match(/^u16 calculationAdd3\([^;]+\) \{[\s\S]*?^\}/m)[0] + '\n' : '');
 const source = preamble + programs.map(program => program.source).join('\n') + '\nvoid main(void) {}\n';
 writeFileSync(join(output, 'generated.ssc'), source);
 const modes = [['default', []], ['no_ra', ['-no-ra']], ['all_spill', ['-ra-all-spill']],
@@ -197,6 +237,13 @@ if (!readFileSync(join(output, 'ra/main.asm')).equals(readFileSync(join(output, 
 const allocatorLog = readFileSync(join(output, 'ra/compiler.log'), 'utf8');
 for (const program of process.env.RA_BASELINE === '1' ? [] : programs) {
   const lines = allocatorLog.split(/\r?\n/).filter(line => line.includes(`function=${program.name} `));
+  if (program.family === 'matrix_bc_alu' && program.variant < 5 &&
+      !lines.some(line => /linear_scan retain .*16-bit in BC .*consumer_tac=\d+\(SUB arg2\)/.test(line)))
+    throw new Error(`BC ALU right operand not exercised: ${program.name}`);
+  if (program.family === 'matrix_scalar_uses' &&
+      ([0, 1, 2, 3, 4, 5, 6, 7, 9].includes(program.variant) !==
+       lines.some(line => /scalar_copy_promotion .*variable=saved /.test(line))) && program.variant !== 8)
+    throw new Error(`Scalar use promotion mismatch: ${program.name}`);
   if (program.family === 'matrix_index_affinity' && program.variant === 0 &&
       (!lines.some(line => /profitability .*phy=HL known=yes /.test(line)) ||
        !lines.some(line => /profitability .*phy=BC known=yes /.test(line)) ||
@@ -223,7 +270,7 @@ for (const program of process.env.RA_BASELINE === '1' ? [] : programs) {
       ['B', 'C'].some(register => !lines.some(line =>
         line.includes('loop_retention_apply_preflight') && line.includes(`selected=${register} `) && line.includes('application=applied'))))
     throw new Error(`Two-value loop retention missing: ${program.name}`);
-  if (['scalar_region_escape', 'scalar_call_argument', 'scalar_narrow'].includes(program.family) &&
+  if (['scalar_region_escape', 'scalar_narrow'].includes(program.family) &&
       lines.some(line => /scalar_copy_promotion .*variable=saved /.test(line)))
     throw new Error(`Unsafe scalar promoted: ${program.name}`);
   if (program.family === 'scalar_loop_call' && lines.some(line =>
@@ -359,6 +406,60 @@ for (const program of programs) {
         parameters = [65535 - seed % buffer.length];
         expected = buffer[seed % buffer.length];
         break;
+      case 'matrix_index_copy': {
+        const word = [2, 3, 11].includes(program.variant);
+        const signed = [1, 3, 5].includes(program.variant);
+        const offset = signed ? word ? 16 : 32 : 0;
+        const index = program.variant === 8 ? 7 : signed ? seed % (offset * 2 - 1) - offset + 1 : seed % (word ? 64 : 128);
+        parameters = [index & (program.variant === 5 ? 255 : 65535), other];
+        if (program.variant === 9) {
+          parameters = [0, seed & 1 ? 0 : 16, seed % 64, other];
+          expectedBuffer[parameters[2]] = other;
+          expected = expectedBuffer[parameters[1] + parameters[2]];
+        } else {
+          if (program.variant === 6) expectedBuffer[index] = other;
+          if (program.variant >= 10) {
+            expectedBuffer[index * (word ? 2 : 1)] = other;
+            if (word) expectedBuffer[index * 2 + 1] = 0;
+            expected = index + 1;
+          } else expected = word ? buffer[(offset + index) * 2] + buffer[(offset + index) * 2 + 1] * 256 : expectedBuffer[offset + index];
+        }
+        break;
+      }
+      case 'matrix_bc_alu': {
+        const edges = [0, 1, 127, 128, 255, 256, 32768, 65535];
+        parameters = seed < 64 ? [edges[Math.floor(seed / 8)], edges[seed % 8], edges[(seed + 3) % 8]] :
+          [(seed * 7919) & 65535, (seed * 5113 + 65535) & 65535, (seed * 3571 + 32767) & 65535];
+        const [first, second, last] = parameters;
+        const saved = [first + second, first - second, first & second, first | second, first ^ second][program.variant % 5] & 65535;
+        expected = program.variant < 10 ? (program.variant < 5 ? last - saved : last + saved) & 65535 :
+          program.variant === 10 ? ((((first + last) & 65535) - ((second + last) & 65535)) & 65535) ^ ((first + last) & 65535) :
+          ((second + last + (first & 255)) & 65535) ^ (first & 255);
+        break;
+      }
+      case 'matrix_scalar_uses': {
+        if (program.widths[0] === 2) parameters = [(seed * 7919) & 65535, (seed * 5113 + 65535) & 65535, (seed * 3571 + 32767) & 65535];
+        if (program.variant === 8) parameters[0] = ((seed % 63) - 31) & 255;
+        const [first, second, last] = parameters;
+        const saved = first ^ second, called = (saved + second + last) & 255;
+        expected = [saved < last ? first : second, (saved << (last & 15)) & 65535, (second << (first & 15)) & 65535,
+          buffer[first & 127], (called >= 128 ? called - 256 : called) & 65535, (saved + second + last) & 65535,
+          (saved >= 128 ? saved - 256 : saved) < (last >= 128 ? last - 256 : last) ? 1 : 0,
+          saved >>> (last & 7), buffer[32 + (first >= 128 ? first - 256 : first)], called ^ saved,
+          ((((second & 1) ? first : last) + second) & 65535) ^ ((second & 1) ? first : last), second][program.variant];
+        break;
+      }
+      case 'matrix_real_index': {
+        parameters = [0, 1, 0];
+        const text = '$0115 = $0115 = $0115 = $0115';
+        for (let index = 0; index < text.length; index++) {
+          const character = text[index];
+          expectedBuffer[index * 2] = character === '$' ? 4 : character === '=' ? 0x1d : character === ' ' ? 0 : parseInt(character, 16) + 0x10;
+          expectedBuffer[index * 2 + 1] = 0;
+        }
+        expected = text.length * 2;
+        break;
+      }
       case 'matrix_rank':
       case 'matrix_affinity': {
         const edges = [0, 1, 127, 128, 255, 256, 32768, 65535];
@@ -608,7 +709,8 @@ for (const program of programs) {
     uniqueInputs.add(JSON.stringify([shapes.get(program.name), parameters, Buffer.from(buffer).toString('base64')]));
     for (const mode of Object.keys(totals)) {
       const image = compiled.get(mode);
-      const bufferAddress = image.symbols.get(program.family === 'scalar_remat_word' ? 'ra_words' : 'ra_buffer');
+      const bufferAddress = image.symbols.get(program.family === 'scalar_remat_word' ||
+        (program.family === 'matrix_index_copy' && [2, 3, 11].includes(program.variant)) ? 'ra_words' : 'ra_buffer');
       const args = parameters.slice();
       for (const index of program.pointerParameters) args[index] += bufferAddress;
       try {
@@ -638,7 +740,8 @@ for (const program of programs) {
               '-o', 'main.asm', 'main.ssc'], directory, 'compiler.log');
             run(linker, ['-lsms', '-v', '-o', 'linked.sms', 'main.asm'], directory, 'linker.log');
             const replay = readImage(directory);
-            const address = replay.symbols.get(program.family === 'scalar_remat_word' ? 'ra_words' : 'ra_buffer');
+            const address = replay.symbols.get(program.family === 'scalar_remat_word' ||
+              (program.family === 'matrix_index_copy' && [2, 3, 11].includes(program.variant)) ? 'ra_words' : 'ra_buffer');
             const replayArgs = parameters.slice();
             for (const index of program.pointerParameters) replayArgs[index] += address;
             const result = execute(replay.rom, replay.symbols.get(program.name), replayArgs,
@@ -762,9 +865,10 @@ if (process.env.RA_REAL_PROJECTS !== '0') {
 
 if (process.env.RA_SCALAR_CASES !== '1' && process.env.RA_MATRIX_CASES !== '1') {
   for (const cohort of process.env.RA_MATRIX_CASES === '0' ? ['scalar'] :
-    ['scalar', 'matrix', 'matrix_literals', 'matrix_memory']) {
+    ['scalar', 'matrix', 'matrix_literals', 'matrix_memory', 'matrix_values']) {
     Object.assign(process.env, {RA_SCALAR_CASES: cohort === 'scalar' ? '1' : '0',
       RA_MATRIX_CASES: cohort === 'scalar' ? '0' : '1', RA_REAL_PROJECTS: '0',
+      RA_VALUE_CASES: cohort === 'matrix_values' ? '1' : '0',
       RA_COMPARISON_FORMS: cohort === 'matrix_literals' ? '1' : cohort === 'matrix_memory' ? '2' : '0',
       RA_EXECUTION_DIR: join(output, cohort), RA_VERIFIER: harness});
     run(process.execPath, [fileURLToPath(import.meta.url)], output, `${cohort}-execution.log`);
