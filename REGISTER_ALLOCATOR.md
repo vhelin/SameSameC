@@ -10566,14 +10566,14 @@ counts identify audit targets, not dynamic savings or guaranteed opportunities.
       competing BC versus B/C ownership. Require actual loop execution with
       zero/one/multiple iterations and cold-path controls; avoid moving spill
       work into a hot loop or adding per-iteration copies for a static win.
-- [ ] **329. Diagnose and reduce the measured frame regression.** Trace the
+- [x] **329. Diagnose and reduce the measured frame regression.** Trace the
       first calculations project's default/RA frame totals 283/291 and maxima
       101/105 to individual functions, promoted values, and storage lifetimes.
       Do not assume spill-slot reuse restrictions caused this regression.
       Remove demonstrated unnecessary slots/lifetime expansion while retaining
       ABI storage and valid preservation destinations. Report per-function
       maximum frame size alongside cycles/ROM; explain any retained tradeoff.
-- [ ] **330. Share spill storage using proven memory interference.** Improve
+- [x] **330. Share spill storage using proven memory interference.** Improve
       existing CFG-adjusted enclosing lifetime bounds where mutually exclusive
       paths or dead segments demonstrably permit safe sharing. Address the
       current whole-function sharing opt-out when a REGISTER_SPILL TAC exists:
@@ -10581,6 +10581,93 @@ counts identify audit targets, not dynamic savings or guaranteed opportunities.
       layout, before allowing reuse. Test branches, loops, calls, reused
       definitions, byte/word widths, and immutable failed layout validation.
       Require an actual frame reduction without added incorrect transfers.
+
+      Qualification (328-330): The layout changes reuse the existing CFG,
+      liveness, operand-read/write predicates, and slot allocator. No production
+      functions, APIs, dependencies, files, or transfer instructions were added;
+      production grows by 35 net lines. Existing enclosing bounds remain a fast
+      conservative filter; overlapping bounds now require actual interference
+      in a common block, including live-in/live-out and same-instruction uses.
+      Repeated definitions may share only under the same proof. Existing width,
+      unsupported-boundary, and initial-read exclusions remain in force.
+
+      REGISTER_SPILL no longer disables sharing for its entire function. Layout
+      through the deepest absolute spill destination remains unchanged, including
+      every preceding slot; only the suffix can share. No transfer is retargeted.
+      Invalid fixed destinations fail before modifying TACs, temporary metadata,
+      or the layout offset. The existing actual-source harness now checks ten
+      layouts (exclusive branches, interference, loops, calls, repeated
+      definitions, byte/word widths, forced-all-spill, fixed transfers), a
+      two-byte suffix reduction behind an unchanged fixed destination, and five
+      immutable invalid-offset/type cases. The new sharing cases failed with
+      the old restrictions before the corresponding production changes.
+
+      The old first-project 283/291 frame comparison predates recent batches;
+      the matched pre-batch baseline is default 283/101 and RA 288/105 total/max.
+      Individual function frames below include ABI and local storage, not just
+      temporary slots. Names omit randomized static-symbol suffixes.
+
+      | calculations-1 function | Default | Before RA | After RA |
+      | --- | ---: | ---: | ---: |
+      | calculateAndPrint5 | 23 | 25 | 23 |
+      | calculateAndPrint3 | 22 | 24 | 22 |
+      | calculateAndPrint4 | 22 | 24 | 22 |
+      | main | 3 | 3 | 3 |
+      | init | 7 | 13 | 7 |
+      | calculateAndPrintTrampoline (static) | 3 | 3 | 3 |
+      | calculateAndPrint (static) | 101 | 105 | 102 |
+      | convertNumbersToChars16 | 13 | 15 | 12 |
+      | convertNumbersToChars16QUICK | 12 | 10 | 10 |
+      | printCalculationLine | 19 | 20 | 19 |
+      | calculationAdd3 | 15 | 11 | 11 |
+      | calculationMultiplyAdd | 15 | 13 | 13 |
+      | calculationXorRoundTrip | 13 | 9 | 9 |
+      | calculationQuotientRoundTrip | 15 | 13 | 13 |
+      | Total / maximum | 283 / 101 | 288 / 105 | 269 / 102 |
+
+      In init, four disjoint two-byte comparison temporaries had separate slots
+      solely because their boolean construction has multiple definitions. They
+      now share one slot, explaining the six-byte reduction without changing
+      the hardware-facing loop instructions. The maximal function reuses three
+      unnecessary bytes, but its promoted byte zero (r106) remains live across
+      scalar computations and still needs backing under this proof. Its maximum
+      is therefore still one byte above default; no universal frame superiority
+      is claimed. ABI storage and live preservation destinations are retained.
+
+      calculations-2 RA total/max falls 253/97 -> 242/96 (default 259/98).
+      Per-function changes: init 13 -> 7, convertNumbersToChars16 15 -> 12,
+      printCalculationLine 20 -> 19, static calculateAndPrintComplex 97 -> 96;
+      every other function is unchanged. Real payloads remain 22649 and 16048
+      bytes; static copies remain 779 and 643. The nine executed original real
+      routines and all 405 generated routines retain exactly the pre-batch
+      instruction/cycle/frame-access counters: no cycle gain or regression and
+      no added transfers. Generated RA cycles stay 191824381 over 207360 calls;
+      including the nine real routines gives 211968 cases per mode/toolchain.
+      Real frame reductions cover compiled whole projects, not execution of
+      SMS hardware or bank-switched driver functions.
+
+      Step 328 remains open after audit: full-loop retention uses the existing
+      path/reservation-compatible selector, whereas ordinary split placement
+      uses the bounded weighted observer. No joint retention/split/rematerialize
+      cost policy was enabled or qualified here. Existing zero/one/multiple
+      iteration, pressure, nested-loop, exit, branch and call controls execute
+      unchanged; this is not evidence of a new joint-placement benefit. Adding
+      a second cost model without such evidence would add unqualified code.
+
+      Cygwin, native Release, and native ASan execute all 211968 cases per mode
+      at 512 seeds with identical counters, 80 cross-toolchain ROM comparisons,
+      and 24 unchanged pre-batch default/no-ra/all-spill ROMs. Strict C90/Werror,
+      editor diagnostics, current-source ASan verifier and compiler checks pass.
+      Existing 350 lowering-effect, 10200 endpoint, 25 overlap, seven accepted /
+      32 immutable rejected allocation and rollback controls pass. Both sequential
+      full suites pass all 173 tests using fresh, hash-matched Cygwin and native
+      binaries.
+      Artifacts: /tmp/ra330-final-{cygwin,native-release,
+      native-asan}, /tmp/ra330-measured-results.json, /tmp/ra330-verifier.log and
+      /tmp/ra330-{cygwin,native}-full.log. UBSan, Valgrind/leaks, upstream emulator
+      tests, exhaustive CFGs, compile-time/RSS profiling, hardware/bank switching
+      and signed-word relational qualification remain unrun. The pre-existing
+      default conditional-initializer bug recorded in 325-327 is not changed.
 
 ### Batch 331-333: Reduce Compiler Work And Diagnostic Overhead
 

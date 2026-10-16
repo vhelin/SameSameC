@@ -11245,7 +11245,7 @@ static int run_register_allocator(struct tree_node *function_node) {
 static int assign_spill_slot_offsets(struct tree_node *function_node, int *offset) {
 
   int j, count = function_node->local_variables->temp_registers_count;
-  int block_count = 0, edge_count = 0, iterations, status = FAILED, fixed_transfers = NO;
+  int block_count = 0, edge_count = 0, iterations, status = FAILED, fixed_limit = 0;
   struct register_allocator_basic_block *blocks = NULL;
   struct register_allocator_cfg_edge *edges = NULL;
   struct register_allocator_liveness_storage storage;
@@ -11254,11 +11254,15 @@ static int assign_spill_slot_offsets(struct tree_node *function_node, int *offse
 
   for (j = 0; g_allocator_enabled == YES && j < g_tacs_count; j++) {
     if (g_tacs[j].function_node == function_node && g_tacs[j].op == TAC_OP_REGISTER_SPILL) {
-      fixed_transfers = YES;
-      break;
+      double destination = g_tacs[j].result_d;
+      if (g_tacs[j].result_type != TAC_ARG_TYPE_CONSTANT ||
+          !(destination >= -32768 && destination < 0) || destination != (int)destination)
+        return FAILED;
+      if (destination < fixed_limit)
+        fixed_limit = (int)destination;
     }
   }
-  if (g_allocator_enabled == YES && g_allocator_force_all_spill == NO && fixed_transfers == NO && count > 0) {
+  if (g_allocator_enabled == YES && g_allocator_force_all_spill == NO && count > 0) {
     if (_rebuild_register_allocator_control_flow(function_node, &blocks, &edges, &block_count, &edge_count) == FAILED ||
         register_allocator_plan_liveness_storage(function_node->children[1]->label, block_count, count, &storage) == FAILED)
       goto cleanup;
@@ -11277,7 +11281,7 @@ static int assign_spill_slot_offsets(struct tree_node *function_node, int *offse
 
     if (temp_register->spill_required == YES) {
       int candidate, instruction_index, writes = 0;
-      if (shareable != NULL) {
+      if (shareable != NULL && *offset < fixed_limit) {
         temp_register->live_start = g_tacs_count;
         temp_register->live_end = -1;
         for (instruction_index = 0; instruction_index < g_tacs_count; instruction_index++) {
@@ -11294,7 +11298,7 @@ static int assign_spill_slot_offsets(struct tree_node *function_node, int *offse
             writes += written == YES;
           }
         }
-        if (writes == 1 && temp_register->live_end >= 0 &&
+        if (writes > 0 && temp_register->live_end >= 0 &&
             _tac_reads_temp_register(&g_tacs[temp_register->live_start], temp_register->register_index) == NO) {
           shareable[j] = YES;
           for (instruction_index = temp_register->live_start; instruction_index <= temp_register->live_end; instruction_index++) {
@@ -11325,8 +11329,35 @@ static int assign_spill_slot_offsets(struct tree_node *function_node, int *offse
           for (owner = 0; owner < j; owner++) {
             struct temp_register *previous = &function_node->local_variables->temp_registers[owner];
             if (previous->spill_required == YES && previous->offset_to_fp == slot->offset_to_fp &&
-                previous->live_start <= temp_register->live_end && temp_register->live_start <= previous->live_end)
-              break;
+                previous->live_start <= temp_register->live_end && temp_register->live_start <= previous->live_end) {
+              int block_index;
+              for (block_index = 0; block_index < block_count; block_index++) {
+                int first[2], last[2], value;
+                for (value = 0; value < 2; value++) {
+                  int temp_index = value == 0 ? j : owner;
+                  int register_index = function_node->local_variables->temp_registers[temp_index].register_index;
+                  int set_index = block_index * count + temp_index;
+                  first[value] = live_sets[storage.buffer_bytes * 2 + set_index] != NO ?
+                    blocks[block_index].start_tac : blocks[block_index].end_tac + 1;
+                  last[value] = live_sets[storage.buffer_bytes * 3 + set_index] != NO ?
+                    blocks[block_index].end_tac : blocks[block_index].start_tac - 1;
+                  for (instruction_index = blocks[block_index].start_tac;
+                      instruction_index <= blocks[block_index].end_tac; instruction_index++) {
+                    struct tac *instruction = &g_tacs[instruction_index];
+                    if (instruction->op != TAC_OP_DEAD &&
+                        (_tac_reads_temp_register(instruction, register_index) == YES ||
+                         _tac_writes_temp_register(instruction, register_index) == YES)) {
+                      if (instruction_index < first[value]) first[value] = instruction_index;
+                      if (instruction_index > last[value]) last[value] = instruction_index;
+                    }
+                  }
+                }
+                if (first[0] <= last[1] && first[1] <= last[0])
+                  break;
+              }
+              if (block_index < block_count)
+                break;
+            }
           }
           if (owner == j) {
             temp_register->offset_to_fp = slot->offset_to_fp;
