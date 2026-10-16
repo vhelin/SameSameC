@@ -10989,17 +10989,81 @@ counts identify audit targets, not dynamic savings or guaranteed opportunities.
       of explicit preservation/reloads. The 290 move-heavy cohort/routine
       entries remain visible; none has increased summed cycles or frame
       traffic over default in this corpus, not a guarantee for every input.
-      This new measurement compares cleanup with 336 and the bundled allocator
-      with corrected default. It does not retroactively isolate every earlier
-      optimization's copy/frame/timing effects, so 339 remains unchecked for
-      that historical per-optimization attribution. No broader value/global
-      allocation rewrite is justified by these bounded results. Further work
+      **339 historical batch attribution:** Rebuilt boundaries 318, 321, 324,
+      327, 330, 333 and 339 with every compiler module changed between them
+      (pass_5.c, pass_6_z80.c, register_allocator.c) taken from that commit.
+      Unchanged common sources, including protected user edits, headers, tools
+      and strict C90/Werror repository -g/-O0 flags are held fixed. Manifests
+      record commits and source/compiler/runner/linker/verifier hashes. This
+      attributes historical allocator/emitter changes against current common
+      code, not exact historical releases or individual interacting features.
+      An earlier pass-5-only pilot is not the whole-batch cost comparison.
+
+      All seven builds pass the same current 420-entry independent corpus at
+      512 seeds (215040 cases per mode), including full-buffer/DE/SP guards and
+      both source loops. All 168 flags-off ROM comparisons pass; all 40 rebuilt
+      current/qualified-current images and every current per-routine counter,
+      section size and frame match. The current verifier is a separate control,
+      not evidence that old pass-5 internals pass today's structural tests.
+
+      Deltas below use identical inputs, not the smaller historical corpora.
+      Frame accesses count executed byte reads plus writes, including ABI;
+      ROM is whole-project used bytes. C1/C2 denote calculations-1/2.
+
+      | Boundaries | RA Cycle Delta | Executed Move Delta | Frame Access Delta | ROM Delta C1/C2 | Frame Total/Max Delta C1; C2 |
+      | --- | ---: | ---: | ---: | ---: | --- |
+      | 318 -> 321 | 0 | 0 | 0 | 0/0 | 0/0; 0/0 |
+      | 321 -> 324 | -1552384 | +39936 | -90112 | -400/-160 | -1/0; -1/0 |
+      | 324 -> 327 | -3104768 | +21504 | -167936 | -626/-80 | -2/0; 0/0 |
+      | 327 -> 330 | 0 | 0 | 0 | 0/0 | -19/-3; -11/-1 |
+      | 330 -> 333 | 0 | 0 | 0 | 0/0 | 0/0; 0/0 |
+      | 333 -> 339 | 0 | 0 | 0 | 0/0 | 0/0; 0/0 |
+
+      Ranking and value coverage improve nine and 61 cohort/routine entries;
+      none has increased summed cycles. More moves are an explained tradeoff,
+      not a copy-reduction claim. Static project rejections C1/C2 fall from
+      142/47 (318/321) to 62/15 (324) and 10/8 (327 onward); full reason records,
+      per-routine counters/sections/frames and maximum-frame owners are retained.
+      Missing old transfer-begin annotations prevent complete historical
+      preservation/reload classification; total frame accesses remain measured.
+
+      Eight isolated rounds reverse revision order on alternating rounds:
+      560 full-build samples across seven versions, two projects and five modes.
+      Every version/mode/project ROM is stable across repeats. Times are summed
+      child-compiler seconds, median (min..max); they exclude make/linker time.
+
+      | Boundary | C1 Quiet | C2 Quiet | C1 Traced | C2 Traced |
+      | --- | ---: | ---: | ---: | ---: |
+      | 318 | 0.310 (0.29..0.37) | 0.235 (0.23..0.30) | 1.215 (1.18..1.30) | 0.805 (0.76..0.97) |
+      | 321 | 0.300 (0.29..0.32) | 0.225 (0.22..0.24) | 1.210 (1.18..1.29) | 0.795 (0.74..0.94) |
+      | 324 | 0.330 (0.29..0.36) | 0.240 (0.23..0.28) | 1.495 (1.42..1.78) | 0.925 (0.89..1.23) |
+      | 327 | 0.320 (0.30..0.36) | 0.260 (0.23..0.27) | 1.585 (1.54..2.07) | 0.920 (0.90..1.00) |
+      | 330 | 0.330 (0.30..0.38) | 0.245 (0.23..0.30) | 1.595 (1.54..1.86) | 0.955 (0.90..1.17) |
+      | 333 | 0.240 (0.23..0.25) | 0.195 (0.18..0.21) | 1.570 (1.52..1.78) | 0.925 (0.90..1.14) |
+      | 339 | 0.250 (0.24..0.29) | 0.210 (0.19..0.29) | 1.615 (1.53..2.02) | 0.920 (0.89..1.19) |
+
+      Logging-only 330 -> 333 reduces median quiet log bytes C1/C2 from
+      1046494/645763 to 337992/283661, with disjoint quiet timing ranges.
+      Quiet median peak RSS changes 13312/13168 -> 13288/13160 KiB; this is not
+      a material memory improvement. Traced ranges overlap; no traced-throughput
+      gain is established. Full RSS/log distributions and default/no-ra/all-spill
+      samples are retained. Added ranking work increases traced compilation
+      cost; smaller/faster target code is not a compiler-throughput benefit.
+      No additional production/test code, helper, dependency or tracked file
+      was added for this historical report. Only existing scripts were reused.
+
+      Step 339 remains unchecked for individual-feature ablation within the
+      interacting batches; historical native/ASan cost reruns and complete old
+      transfer classification are not claimed. Current cross-toolchain/ASan
+      qualification above is unchanged, not a new historical qualification.
+      No broader value/global allocation rewrite is justified. Further work
       should first test the known maximum-frame outlier or a concrete clobber
       endpoint with an independent oracle and a measured tradeoff; unproven
       placement, caching and broader architecture changes stay deferred.
       Evidence: /tmp/ra339-measured-results.json, /tmp/ra339-benchmark/samples.json,
       /tmp/ra339-final-{cygwin,native-release,native-asan}, compiler-provenance.json,
-      and /tmp/ra339-{cygwin,native}-full.log.
+      /tmp/ra339-{cygwin,native}-full.log, and
+      /tmp/ra339-historical-all-modules-{results.json,builds,execution,timing}.
 
 **Shared completion gates:** Each three-step batch gets its own local commit,
 with no push and no unrelated worktree changes included. Reuse existing
