@@ -497,7 +497,7 @@ int register_allocator_find_next_use(char *function_name, int temp_index, int st
     if (is_active(context, instruction_index, temp_index) == NO)
       continue;
     if (reads_temp(context, instruction_index, temp_index) == YES) {
-      fprintf(stderr, "register_allocator_core: next_use function=%s temp=r%d range=%d..%d next=%d stop=read status=found\n", function_name, temp_index, start_instruction, end_instruction, instruction_index);
+      RA_TRACE((stderr, "register_allocator_core: next_use function=%s temp=r%d range=%d..%d next=%d stop=read status=found\n", function_name, temp_index, start_instruction, end_instruction, instruction_index));
       return instruction_index;
     }
     if (writes_temp(context, instruction_index, temp_index) == YES) {
@@ -543,23 +543,23 @@ int register_allocator_discover_candidate(char *function_name, int producer_inst
 
   temp_index = get_produced_temp(context, producer_instruction, -1);
   if (temp_index < 0) {
-    fprintf(stderr, "register_allocator_core: candidate_discover function=%s producer=%d block_end=%d status=not_found reason=not_temp_definition\n",
-        function_name, producer_instruction, block_end_instruction);
+    RA_TRACE((stderr, "register_allocator_core: candidate_discover function=%s producer=%d block_end=%d status=not_found reason=not_temp_definition\n",
+      function_name, producer_instruction, block_end_instruction));
     return SUCCEEDED;
   }
 
   consumer_instruction = register_allocator_find_next_use(function_name, temp_index, producer_instruction + 1,
       block_end_instruction, instruction_count, context, is_active, reads_temp, writes_temp);
   if (consumer_instruction < 0) {
-    fprintf(stderr, "register_allocator_core: candidate_discover function=%s producer=%d temp=r%d block_end=%d status=not_found reason=no_next_read\n",
-        function_name, producer_instruction, temp_index, block_end_instruction);
+    RA_TRACE((stderr, "register_allocator_core: candidate_discover function=%s producer=%d temp=r%d block_end=%d status=not_found reason=no_next_read\n",
+      function_name, producer_instruction, temp_index, block_end_instruction));
     return SUCCEEDED;
   }
 
   consumer_operand = get_consumer_operand(context, consumer_instruction, temp_index);
   if (consumer_operand < 0) {
-    fprintf(stderr, "register_allocator_core: candidate_discover function=%s producer=%d temp=r%d consumer=%d status=not_found reason=unsupported_consumer\n",
-        function_name, producer_instruction, temp_index, consumer_instruction);
+    RA_TRACE((stderr, "register_allocator_core: candidate_discover function=%s producer=%d temp=r%d consumer=%d status=not_found reason=unsupported_consumer\n",
+      function_name, producer_instruction, temp_index, consumer_instruction));
     return SUCCEEDED;
   }
 
@@ -583,9 +583,9 @@ int register_allocator_discover_candidate(char *function_name, int producer_inst
     }
   }
 
-    fprintf(stderr, "register_allocator_core: candidate_discover function=%s producer=%d temp=r%d consumer=%d operand=%d single_read=%s block_end=%d read_scope=definition algorithm=definition_next_read status=found\n",
+  RA_TRACE((stderr, "register_allocator_core: candidate_discover function=%s producer=%d temp=r%d consumer=%d operand=%d single_read=%s block_end=%d read_scope=definition algorithm=definition_next_read status=found\n",
       function_name, producer_instruction, temp_index, consumer_instruction, consumer_operand,
-      candidate->has_single_read == YES ? "yes" : "no", block_end_instruction);
+      candidate->has_single_read == YES ? "yes" : "no", block_end_instruction));
   return SUCCEEDED;
 }
 
@@ -991,8 +991,8 @@ int register_allocator_expire_active_slots(char *function_name, int block_index,
     if (slot->next_use > instruction_index)
       continue;
 
-    fprintf(stderr, "register_allocator_core: active_slot_expire function=%s block=%d instruction=%d slot=%d temp=r%d next=%d status=expired\n",
-        function_name, block_index, instruction_index, slot_index, slot->temp_index, slot->next_use);
+    RA_TRACE((stderr, "register_allocator_core: active_slot_expire function=%s block=%d instruction=%d slot=%d temp=r%d next=%d status=expired\n",
+      function_name, block_index, instruction_index, slot_index, slot->temp_index, slot->next_use));
     _clear_active_slot(slot);
     expired_count++;
   }
@@ -1891,7 +1891,8 @@ int register_allocator_approve_join_spill_sites(char *function_name,
           sites[site_index].placement));
       return FAILED;
     }
-    fprintf(stderr, "register_allocator_core: join_spill_approval function=%s block=%d site=%d predecessor=%d edge=%s anchor=%d placement=%s approved=%s status=%s\n",
+    if (g_register_allocator_trace || approval == NO)
+      fprintf(stderr, "register_allocator_core: join_spill_approval function=%s block=%d site=%d predecessor=%d edge=%s anchor=%d placement=%s approved=%s status=%s\n",
         function_name, join_block_index, site_index,
         sites[site_index].predecessor_block,
         _register_allocator_join_edge_name(sites[site_index].edge_kind),
@@ -2623,13 +2624,13 @@ int register_allocator_resolve_reaching_definition(char *function_name,
     result->definition_instruction = definitions[predecessor_block];
     result->path_transparent = transparent[predecessor_block];
   }
-  fprintf(stderr, "register_allocator_core: reaching_definition function=%s predecessor=%d temp=r%d blocks=%d instructions=%d edges=%d definition=%d transparent=%s iterations=%d status=%s\n",
+  RA_TRACE((stderr, "register_allocator_core: reaching_definition function=%s predecessor=%d temp=r%d blocks=%d instructions=%d edges=%d definition=%d transparent=%s iterations=%d status=%s\n",
       function_name, predecessor_block, temp_index, block_count,
       instruction_count, edge_count, result->definition_instruction,
       result->path_transparent == YES ? "yes" : "no", result->iterations,
       result->status == RA_REACHING_DEFINITION_UNIQUE ? "unique" :
       (result->status == RA_REACHING_DEFINITION_AMBIGUOUS ? "ambiguous" :
-      "missing"));
+      "missing")));
   free(definitions);
   free(transparent);
   return SUCCEEDED;
@@ -4330,16 +4331,16 @@ int register_allocator_plan_loop_join_definition(char *function_name,
   }
   if (entry_definition < 0) {
     definition->reason = RA_LOOP_DEFINITION_REASON_MISSING_ENTRY;
-    fprintf(stderr, "register_allocator_core: loop_join_definition function=%s block=%d temp=r%d live_in=yes entry=%d latch=%d consumer=%d operand=%d definition=ineligible reason=missing_entry status=complete\n",
+    RA_TRACE((stderr, "register_allocator_core: loop_join_definition function=%s block=%d temp=r%d live_in=yes entry=%d latch=%d consumer=%d operand=%d definition=ineligible reason=missing_entry status=complete\n",
         function_name, join_block_index, temp_index, entry_definition,
-        latch_definition, consumer_instruction, consumer_operand);
+      latch_definition, consumer_instruction, consumer_operand));
     return SUCCEEDED;
   }
   if (latch_definition < 0) {
     definition->reason = RA_LOOP_DEFINITION_REASON_MISSING_LATCH;
-    fprintf(stderr, "register_allocator_core: loop_join_definition function=%s block=%d temp=r%d live_in=yes entry=%d latch=%d consumer=%d operand=%d definition=ineligible reason=missing_latch status=complete\n",
+    RA_TRACE((stderr, "register_allocator_core: loop_join_definition function=%s block=%d temp=r%d live_in=yes entry=%d latch=%d consumer=%d operand=%d definition=ineligible reason=missing_latch status=complete\n",
         function_name, join_block_index, temp_index, entry_definition,
-        latch_definition, consumer_instruction, consumer_operand);
+      latch_definition, consumer_instruction, consumer_operand));
     return SUCCEEDED;
   }
   if (consumer_instruction < 0) {
@@ -5356,9 +5357,9 @@ int register_allocator_apply_join_path_reservations(char *function_name,
       reservation->status == RA_JOIN_RESERVATION_INELIGIBLE &&
       reservation->slot_index == -1 && reservation->live_start == -1 &&
       reservation->live_end == -1 && reservation->conflict_temp == -1) {
-    fprintf(stderr, "register_allocator_core: join_path_reservation_apply function=%s temp=r%d blocks=%d instructions=%d reservations=0 capacity=%d applied=0 failed_block=-1 application=ineligible status=complete\n",
+    RA_TRACE((stderr, "register_allocator_core: join_path_reservation_apply function=%s temp=r%d blocks=%d instructions=%d reservations=0 capacity=%d applied=0 failed_block=-1 application=ineligible status=complete\n",
         function_name, temp_index, block_count, instruction_count,
-        block_reservation_capacity);
+      block_reservation_capacity));
     return SUCCEEDED;
   }
   if (path_reservation->status != RA_JOIN_PATH_RESERVATION_READY ||
@@ -5425,10 +5426,10 @@ int register_allocator_apply_join_path_reservations(char *function_name,
   }
   application->status = RA_JOIN_PATH_APPLICATION_APPLIED;
   application->applied_count = path_reservation->block_count;
-  fprintf(stderr, "register_allocator_core: join_path_reservation_apply function=%s temp=r%d blocks=%d instructions=%d reservations=%d capacity=%d applied=%d failed_block=-1 application=applied status=complete\n",
+    RA_TRACE((stderr, "register_allocator_core: join_path_reservation_apply function=%s temp=r%d blocks=%d instructions=%d reservations=%d capacity=%d applied=%d failed_block=-1 application=applied status=complete\n",
       function_name, temp_index, block_count, instruction_count,
       path_reservation->block_count, block_reservation_capacity,
-      application->applied_count);
+      application->applied_count));
   return SUCCEEDED;
 }
 
@@ -5811,8 +5812,8 @@ int register_allocator_apply_join_spill_emission(char *function_name,
   }
 
   if (emission->emit == NO) {
-    fprintf(stderr, "register_allocator_core: join_spill_emission_apply function=%s block=%d emit=no status=skipped reason=empty_plan\n",
-        function_name, join_block_index);
+    RA_TRACE((stderr, "register_allocator_core: join_spill_emission_apply function=%s block=%d emit=no status=skipped reason=empty_plan\n",
+      function_name, join_block_index));
     return SUCCEEDED;
   }
 
@@ -6424,8 +6425,8 @@ int register_allocator_apply_spill_mutation(char *function_name, int block_index
   }
 
   if (mutation->apply == NO) {
-    fprintf(stderr, "register_allocator_core: spill_mutation_apply function=%s block=%d apply=no status=skipped reason=empty_plan\n",
-        function_name, block_index);
+    RA_TRACE((stderr, "register_allocator_core: spill_mutation_apply function=%s block=%d apply=no status=skipped reason=empty_plan\n",
+      function_name, block_index));
     return SUCCEEDED;
   }
 
@@ -7214,9 +7215,9 @@ int register_allocator_reconcile_stack_only_joins(char *function_name, int block
   int temp_index;
 
   if (block_count <= 0 || temp_count <= 0) {
-    fprintf(stderr, "register_allocator_core: join_reconcile function=%s blocks=%d edges=%d temps=%d joins=0 live_temps=0 policy=stack_only status=empty\n",
+    RA_TRACE((stderr, "register_allocator_core: join_reconcile function=%s blocks=%d edges=%d temps=%d joins=0 live_temps=0 policy=stack_only status=empty\n",
         function_name != NULL ? function_name : "<null>", block_count,
-        edge_count, temp_count);
+      edge_count, temp_count));
     return SUCCEEDED;
   }
 
@@ -7286,7 +7287,8 @@ int register_allocator_reconcile_stack_only_joins(char *function_name, int block
       if (register_allocator_plan_join_action(function_name, block_index,
           predecessor_count, temp_index, result, &action) == FAILED)
         return FAILED;
-      fprintf(stderr, "register_allocator_core: join_reconcile function=%s block=%d predecessors=%d temp=%d live_in=yes state=%s action=%s policy=stack_only status=%s\n",
+      if (g_register_allocator_trace || action == RA_JOIN_ACTION_SPILL_PREDECESSORS)
+        fprintf(stderr, "register_allocator_core: join_reconcile function=%s block=%d predecessors=%d temp=%d live_in=yes state=%s action=%s policy=stack_only status=%s\n",
           function_name, block_index, predecessor_count, temp_index,
           result == YES ? "stack" : "retained",
           action == RA_JOIN_ACTION_RELOAD_ON_DEMAND ? "reload_on_demand" :
@@ -7315,7 +7317,7 @@ int register_allocator_solve_liveness(char *function_name, int block_count, int 
     *iterations = 0;
 
   if (block_count <= 0 || temp_count <= 0) {
-    fprintf(stderr, "register_allocator_core: liveness_solve function=%s blocks=%d edges=%d temps=%d iterations=0 algorithm=backward_fixed_point status=empty\n", function_name, block_count, edge_count, temp_count);
+    RA_TRACE((stderr, "register_allocator_core: liveness_solve function=%s blocks=%d edges=%d temps=%d iterations=0 algorithm=backward_fixed_point status=empty\n", function_name, block_count, edge_count, temp_count));
     return SUCCEEDED;
   }
 
@@ -7388,7 +7390,7 @@ int register_allocator_solve_liveness(char *function_name, int block_count, int 
     }
   }
 
-  fprintf(stderr, "register_allocator_core: liveness_solve function=%s blocks=%d edges=%d temps=%d iterations=%d algorithm=backward_fixed_point status=converged\n", function_name, block_count, edge_count, temp_count, *iterations);
+  RA_TRACE((stderr, "register_allocator_core: liveness_solve function=%s blocks=%d edges=%d temps=%d iterations=%d algorithm=backward_fixed_point status=converged\n", function_name, block_count, edge_count, temp_count, *iterations));
 
   return SUCCEEDED;
 }
@@ -7907,10 +7909,10 @@ int register_allocator_finalize_candidate_selection(char *function_name, int blo
     reason = finalization->decision.plan == RA_CANDIDATE_PLAN_REJECT_UNSUPPORTED ||
         finalization->decision.plan == RA_CANDIDATE_PLAN_FALLBACK_UNSUPPORTED ?
         "unsupported_physical_register" : "clobber_between";
-    fprintf(stderr, "register_allocator_core: candidate_selection_finalize function=%s block=%d temp=r%d producer=%d consumer=%d plan=%d dispatch=%d proceed=no selected=%d split=failed reason=%s status=complete\n",
+    RA_TRACE((stderr, "register_allocator_core: candidate_selection_finalize function=%s block=%d temp=r%d producer=%d consumer=%d plan=%d dispatch=%d proceed=no selected=%d split=failed reason=%s status=complete\n",
         function_name, block_index, temp_index, producer_instruction, consumer_instruction,
         finalization->decision.plan, finalization->dispatch.action,
-        finalization->dispatch.physical_register, reason);
+      finalization->dispatch.physical_register, reason));
     return SUCCEEDED;
   }
 
@@ -9600,9 +9602,9 @@ int register_allocator_discover_reload_graph(char *function_name,
         }
         reload_instructions[reload_chain->count] = instruction;
         reload_chain->count++;
-        fprintf(stderr, "register_allocator_core: reload_graph_site function=%s block=%d temp=r%d instruction=%d ordinal=%d status=found\n",
+        RA_TRACE((stderr, "register_allocator_core: reload_graph_site function=%s block=%d temp=r%d instruction=%d ordinal=%d status=found\n",
             function_name, block_index, temp_index, instruction,
-            reload_chain->count);
+          reload_chain->count));
       }
       if (writes_temp(context, instruction, temp_index) == YES) {
         stop_path = YES;

@@ -45,6 +45,8 @@ for (const flags of [[], ['-q']]) {
   const log = flags.length ? 'verifier-quiet.log' : 'verifier.log';
   run(harness, flags, output, log);
   const verifierLog = readFileSync(join(output, log), 'utf8');
+  if (!verifierLog.includes('status=missing_or_clobbered_definition'))
+    throw new Error('Verifier failure diagnostics missing');
   verifierFailures = (verifierLog.match(/result=rejected unchanged=yes status=complete/g) || []).length;
   if (verifierFailures !== 32 ||
     (verifierLog.match(/result=accepted unchanged=yes status=complete/g) || []).length !== 7 ||
@@ -236,6 +238,16 @@ if (!compiled.get('ra').rom.equals(compiled.get('ra_quiet').rom))
 if (!readFileSync(join(output, 'ra/main.asm')).equals(readFileSync(join(output, 'ra_quiet/main.asm'))))
   throw new Error('Traced/quiet allocator assembly mismatch');
 const allocatorLog = readFileSync(join(output, 'ra/compiler.log'), 'utf8');
+if (process.env.RA_BASELINE !== '1') {
+  const quietAllocatorLines = readFileSync(join(output, 'ra_quiet/compiler.log'), 'utf8')
+    .split(/\r?\n/).filter(line => /^register_allocator_core: |^register_allocator: (?:rejection_summary|loop_retention_coverage|target_active_slots_release|join_path_state_release|post_promotion_reconciliation) /.test(line));
+  if (quietAllocatorLines.join('\n') !==
+      (allocatorLog.match(/^register_allocator: rejection_summary .+$/gm) || []).join('\n'))
+    throw new Error('Quiet allocator lifecycle output or rejection summary mismatch');
+  if (!/^register_allocator_core: next_use .+status=found$/m.test(allocatorLog) ||
+      !/^register_allocator_core: liveness_solve .+status=converged$/m.test(allocatorLog))
+    throw new Error('Allocator lifecycle trace coverage missing');
+}
 for (const program of process.env.RA_BASELINE === '1' ? [] : programs) {
   const lines = allocatorLog.split(/\r?\n/).filter(line => line.includes(`function=${program.name} `));
   if (program.family === 'matrix_bc_alu' && program.variant < 5 &&

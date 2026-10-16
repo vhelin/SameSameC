@@ -10671,14 +10671,15 @@ counts identify audit targets, not dynamic savings or guaranteed opportunities.
 
 ### Batch 331-333: Reduce Compiler Work And Diagnostic Overhead
 
-- [ ] **331. Make quiet mode quiet and profile matched builds.** Move successful
-      discovery/next-use and lifecycle diagnostics behind existing trace
-      control while preserving errors and intentional user-facing reports.
-      Retained quiet generated-cohort logs still contain roughly 0.6-0.8 MB
-      each; verify suppression and traced/quiet assembly/ROM identity. Then
-      profile quiet and traced compilation separately on identical sources,
-      retaining log sizes, wall-time dispersion, and actual peak RSS. Do not
-      attribute the previous noisy RA/default timing gap to a guessed hotspot.
+- [x] **331. Make quiet mode quiet and profile matched builds.** Successful
+      allocator discovery/next-use, reload-site, loop-definition and lifecycle
+      diagnostics now use existing trace control. Errors, rejected approval /
+      reconciliation failures, incomplete coverage and intentional rejection
+      summaries remain visible. Existing runner checks owned lifecycle output,
+      identical rejection summaries, retained verifier failure diagnostics and
+      literal same-basename traced/quiet assembly plus ROM identity. Other
+      compiler debug output and pre-existing address/Z80 transport diagnostics
+      in user-edited files are deliberately untouched; quiet logs are not empty.
 - [ ] **332. Reuse per-definition use information within function bounds.**
       If profiling confirms repeated next-use/path scans are material, build
       or reuse ordered use/definition observations in the existing analysis
@@ -10687,6 +10688,11 @@ counts identify audit targets, not dynamic savings or guaranteed opportunities.
       deterministic candidate ordering. Invalidate/rebuild observations after
       mutations using the existing rebuild boundary; retain allocation/ROM
       equivalence and demonstrate a compile-time benefit without excess memory.
+      **Deferred after profiling:** ten matched instrumented matrix compilations
+      per mode accumulated only 0.40 / 0.50 seconds of sampled CPU, with
+      substantial instrumentation overhead. Active-instruction checks appeared
+      in samples, but next-use/path scanning was not established as a material
+      cost. No ordered-use cache, new storage or invalidation machinery added.
 - [ ] **333. Consolidate redundant analysis and workspace work.** Use measured
       profiles to remove duplicate CFG/liveness reconstruction or temporary
       allocations when the analyzed TACs and metadata are unchanged. Reuse
@@ -10695,6 +10701,50 @@ counts identify audit targets, not dynamic savings or guaranteed opportunities.
       verification and fail-closed checks. If no material duplication is found,
       revise/defer this item explicitly instead of adding infrastructure to
       satisfy it; require measured time/RSS benefit for retained changes.
+      **Deferred after measured trials:** a direct TAC-index lookup with generic
+      fallback did not improve matched wall time and was removed. Sharing one
+      instruction table between basic-block and CFG collection and reusing the
+      existing rebuild owner removed two helpers, but 40 alternating quiet
+      samples were slower: original median 119.06 -> 123.51 ms (ranges
+      115.63-136.62 / 119.16-147.43), matrix 124.01 -> 129.27 ms
+      (121.71-141.78 / 125.38-148.68). Peak RSS was effectively unchanged
+      (13484 / 13484 and 12740 / 12736 KiB). Trial assembly matched, but the
+      consolidation was removed rather than retaining an unproven optimization.
+
+      Qualification for 331-333: twelve alternating, isolated, uninstrumented
+      Cygwin samples compare saved 330 and logging-only compilers on identical
+      original/matrix sources. Wall values below are process wall milliseconds,
+      including launch overhead; peak RSS is GNU time %M, not cumulative planned
+      allocations. No throughput claim is made for traced mode or either trial.
+
+      | Source / Mode | Median Before -> After (Range Before / After), ms | Log Bytes Before -> After | Peak RSS Before -> After, KiB |
+      | --- | --- | --- | --- |
+      | Original quiet | 211.35 -> 118.19 (200.24-231.84 / 114.46-151.17) | 899285 -> 186137 | 13768 -> 13728 |
+      | Matrix quiet | 224.13 -> 123.15 (221.35-301.30 / 119.43-156.75) | 1098777 -> 176831 | 12776 -> 12744 |
+      | Original traced | 1827.65 -> 1833.33 (1804.06-1848.13 / 1797.33-1852.01) | 9874723 -> 9874723 | 13540 -> 13544 |
+      | Matrix traced | 1929.45 -> 1936.44 (1910.71-2061.48 / 1914.76-1979.83) | 11220609 -> 11220609 | 12804 -> 12808 |
+
+      All measured assembly outputs match. Actual quiet/traced profiles are
+      retained separately; their instrumented timings are not throughput data.
+      Final 512-seed Cygwin, native Release and current-source ASan execution
+      runs pass 211968 cases per mode/toolchain (405 generated functions and
+      nine original real routines). All 120 saved-330/current ROM comparisons,
+      80 cross-toolchain comparisons, 18 complete same-toolchain allocator
+      traces and execution counters match; RA remains
+      16468913 instructions, 204174339 cycles, 3888882 frame reads and 2012348
+      writes. Strict C90/Werror, editor diagnostics, native warning-free builds
+      and actual-source traced/quiet verifier controls pass. Both sequential
+      full suites pass all 173 tests using fresh, hash-matched Cygwin/native
+      staged compilers; logs: /tmp/ra333-{cygwin,native}-full.log. Net production
+      change is +5 lines; runner +12, functions/APIs/dependencies/files +0.
+      No allocation, lowering, frame-layout or mutation policy changed.
+      Artifacts: /tmp/ra333-profile/{quiet,trace}, /tmp/ra333-timing/samples.json,
+      /tmp/ra333-consolidation-timing/samples.json,
+      /tmp/ra333-final-{cygwin,native-release,native-asan} and
+      /tmp/ra333-measured-results.json. UBSan, Valgrind/leaks, upstream emulator
+      tests, exhaustive CFGs, hardware/bank switching and signed-word relational
+      qualification remain unrun; the pre-existing default initializer bug is
+      untouched. Step 328 remains open and 334+ is not started.
 
 ### Batch 334-336: Measure Quality Beyond Static Retention Counts
 

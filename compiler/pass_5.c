@@ -9369,7 +9369,8 @@ loop_register_candidate_retry:
                 }
               }
             }
-            fprintf(stderr, "register_allocator: loop_retention_coverage function=%s block=%d temp=r%d live_start=%d live_end=%d assignments=%d uncovered=%d first_instruction=%d first_operand=%d status=%s\n",
+            if (g_register_allocator_trace || uncovered_operand_count > 0)
+              fprintf(stderr, "register_allocator: loop_retention_coverage function=%s block=%d temp=r%d live_start=%d live_end=%d assignments=%d uncovered=%d first_instruction=%d first_operand=%d status=%s\n",
                 function_node->children[1]->label, block_index,
                 loop_candidate.temp_index, loop_temp->live_start,
                 loop_temp->live_end, loop_plan.assignment_count,
@@ -10462,7 +10463,8 @@ rejected_candidate:
   status = SUCCEEDED;
 
 cleanup:
-  fprintf(stderr, "register_allocator: target_active_slots_release function=%s target=%s slots=%d bytes=%lu status=%s\n",
+  if (g_register_allocator_trace || status == FAILED)
+    fprintf(stderr, "register_allocator: target_active_slots_release function=%s target=%s slots=%d bytes=%lu status=%s\n",
       function_node->children[1]->label, _get_register_allocator_target_policy()->name,
       active_slot_count, (unsigned long)active_slot_bytes, status == SUCCEEDED ? "complete" : "failed");
   free(active_slots);
@@ -10802,9 +10804,9 @@ static int _scan_register_allocator_basic_blocks(struct tree_node *function_node
       path_state_storage = resized_path_state_storage;
     }
     if (reconciliation_pass > 1 || added_temp_count > 0)
-      fprintf(stderr, "register_allocator: post_promotion_reconciliation function=%s inserted=%d rewritten=%d added_temps=%d state_count=%d status=additional_mutation\n",
+      RA_TRACE((stderr, "register_allocator: post_promotion_reconciliation function=%s inserted=%d rewritten=%d added_temps=%d state_count=%d status=additional_mutation\n",
           function_node->children[1]->label, inserted_instruction_count,
-          rewritten_operand_count, added_temp_count, path_state_count);
+          rewritten_operand_count, added_temp_count, path_state_count));
   } while (rebuild_required == YES);
   if (reconciliation_pass > 1)
     RA_TRACE((stderr, "register_allocator: post_promotion_reconciliation function=%s inserted=0 rewritten=0 added_temps=0 state_count=%d status=complete\n",
@@ -10836,7 +10838,8 @@ static int _scan_register_allocator_basic_blocks(struct tree_node *function_node
   status = SUCCEEDED;
 
 cleanup:
-  fprintf(stderr, "register_allocator: join_path_state_release function=%s capacity=%d count=%d bytes=%lu ownership=function_scan mode=observe_only status=%s\n",
+  if (g_register_allocator_trace || status == FAILED)
+    fprintf(stderr, "register_allocator: join_path_state_release function=%s capacity=%d count=%d bytes=%lu ownership=function_scan mode=observe_only status=%s\n",
       function_node->children[1]->label, path_state_storage.entry_capacity,
       path_state_count, (unsigned long)path_state_storage.entry_bytes,
       status == SUCCEEDED ? "complete" : "failed");
