@@ -11182,14 +11182,20 @@ logs are /tmp/ra342-{cygwin,native}-full.log. Steps
 
 ### Batch 343-345: Improve Lowering And Remove Avoidable Copies
 
-- [ ] **343. Select a real clobber bottleneck by executed cost.** Audit the
+- [x] **343. Select a real clobber bottleneck by executed cost.** Audit the
       recorded 15 clobber decisions among 18 static project rejections against
       actual intervening lowering, use frequency and transfer costs. Static
       counts are not executed misses or proof of recoverable savings. Pick one
       useful sequence, retaining its matched baseline and independent oracle;
       extract hardware-free source when necessary and explicitly distinguish
       compiled banked/hardware routines from independently executed code.
-- [ ] **344. Remove one demonstrated unnecessary lowering clobber.** Improve
+      Selected the nested OR expression in calculations-1's calculateAndPrint5
+      after matching lowering and copies to the 15 recorded decisions. Its
+      hardware-free arithmetic extraction and commuted variant each save 256
+      cycles, eight register moves and 12 frame-byte accesses per call over
+      512 matched inputs. The banked hardware routine is compiled, not executed.
+      Static clobber decisions fall from 15 to 13, not 15 executed misses.
+- [x] **344. Remove one demonstrated unnecessary lowering clobber.** Improve
       existing emitters through legal operand ordering or scratch-register
       selection for the selected sequence. Update the existing lowering-effect,
       legality and cost contracts together; never admit a placement merely by
@@ -11197,7 +11203,15 @@ logs are /tmp/ra342-{cygwin,native}-full.log. Steps
       noncommutative operands, address caches, partial registers and BC/B/C
       interference. Require fewer executed cycles or transfers in the selected
       real case, with rejection controls for incompatible owners unchanged.
-- [ ] **345. Coalesce a proven source/result or copy-chain placement.** Reuse
+      Word AND/OR/XOR now form a selected BC result without using HL, reusing
+      existing location/address materializers. The existing pending-BC proof
+      consults the target effect contract, letting an earlier HL value survive.
+      Signed-right and BC-overlap forms retain conservative effects; ADD/SUB,
+      calls and asm barriers are unchanged. Costing charges only copies still
+      emitted under the same contract. The actual-source harness checks 410
+      lowering effects and preserves 32 immutable failures. Its scratch-clobber
+      negative uses ADD, since constant AND now genuinely preserves HL.
+- [x] **345. Coalesce a proven source/result or copy-chain placement.** Reuse
       existing operand metadata and affinity to keep a dying source/result in
       a compatible register and avoid redundant materialization. Price moves
       introduced elsewhere; more register moves can still be a valid tradeoff
@@ -11205,6 +11219,53 @@ logs are /tmp/ra342-{cygwin,native}-full.log. Steps
       semantics, frame-pointer ownership, call ABI and overlapping units. Show
       an independently executed reduction; do not add a separate copy planner
       or expand the register pool without a demonstrated lowering contract.
+      Replaced three word-bitwise helpers with one and emit selected results
+      directly into BC instead of copying them back from HL. No extra planner
+      or pool expansion; net production growth is 24 lines, with two fewer
+      functions and no new APIs, dependencies or repository files. An
+      emitter-only ablation holds pass_5.c at the preceding commit: 73,728
+      fewer cycles and 22,528 fewer register moves across the matched corpus.
+      Each source-extracted variant saves 12 cycles/four moves per call from
+      emission alone; allocation integration saves the other 244 cycles/four
+      moves and all 12 frame-byte accesses. Signed fallbacks keep their true
+      scratch effects even when their final result copies are eliminated.
+
+Static audit (counts are producer/next-use decisions, not dynamic frequency):
+
+| Project / Function | Baseline Decisions | Current | Remaining Boundary |
+| --- | --- | --- | --- |
+| calculations-1 / calculateAndPrint5 | OR->OR, OR->MOD, SHIFT_LEFT->SUB (3) | 1 | OR->MOD |
+| calculations-1 / calculateAndPrint3 | SUB->DIV, DIV->OR (2) | 2 | Unchanged |
+| calculations-1 / static calculateAndPrint | ADD->MUL byte A, ADD->SUB HL, MUL->SUB HL (3) | 3 | Unchanged |
+| calculations-2 / complex bank 1 | ADD->DIV (2) | 2 | Unchanged |
+| calculations-2 / complex banks 2/3 | ADD->DIV (1 each) | 2 | Unchanged |
+| calculations-2 / static complex | ADD->DIV (3) | 3 | Unchanged |
+
+No execution-frequency or recoverability claim is made for the remaining 13.
+The selected case executes original arithmetic with an independent numeric
+oracle, not the hardware/bank-switching routine. All previous executed source
+loops, signed/partial-register, noncommutative, address and ABI controls remain.
+
+Batch evidence: 417 generated entries plus nine real routines, 218,112 cases
+per mode at 512 inputs, pass on Cygwin GCC, native Release and native ASan.
+All seven execution summaries and 80 ROMs match across toolchains; 48 saved
+default/-no-ra/forced-spill control ROMs are unchanged. Fifteen entries improve,
+with no sampled cycle/frame-traffic regression: 612,352 fewer cycles, 30,720
+fewer register moves and 26,624 fewer frame-byte accesses. The nine existing
+real routines have unchanged counters. calculateAndPrint5 shrinks 3,033->3,005
+bytes; project used ROM is 22,589->22,561 bytes, while calculations-2 stays
+15,988. No function frame grows; project total/maximum stay 269/102 and 242/96.
+The existing shift-result fixture asserts the improved HL/BC plan and exact
+shorter bytes, retaining its other spill controls and both shift-loop counts.
+Strict C89/Werror and traced/quiet actual-source checks pass on three
+toolchains: seven accepts, 32 unchanged rejects. All 220 ASan logs are clean;
+compiler and verifier runtime imports are verified. Both final sequential
+full suites pass 173 tests each on freshly staged Cygwin and native Windows
+compilers; logs are /tmp/ra343-{cygwin,native}-full.log. Evidence:
+/tmp/ra343-measured-results.json, /tmp/ra343-final-{before,emitter-only,after}
+and /tmp/ra343-final-native-{release,asan}. No compile-time/RSS, UBSan,
+Valgrind or hardware-execution claim is made. Steps 328, 332, 333, 339, 341
+and 342 remain open; RA remains opt-in.
 
 ### Batch 346-348: Improve Definition And Lifetime Information
 

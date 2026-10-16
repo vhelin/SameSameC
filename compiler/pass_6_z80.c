@@ -929,25 +929,15 @@ static void _xor_from_ix_to_a(int offset, FILE *file_out) {
 }
 
 
-static void _or_bc_to_hl(FILE *file_out) {
+static void _bitwise_bc_hl(FILE *file_out, int op, int result_in_bc) {
 
+  char *mnemonic = op == TAC_OP_OR ? "OR " : op == TAC_OP_XOR ? "XOR" : "AND";
   fprintf(file_out, "      LD  A,B\n");
-  fprintf(file_out, "      OR  A,H\n");
-  fprintf(file_out, "      LD  H,A\n");
+  fprintf(file_out, "      %s A,H\n", mnemonic);
+  fprintf(file_out, "      LD  %s,A\n", result_in_bc == YES ? "B" : "H");
   fprintf(file_out, "      LD  A,C\n");
-  fprintf(file_out, "      OR  A,L\n");
-  fprintf(file_out, "      LD  L,A\n");
-}
-
-
-static void _xor_bc_to_hl(FILE *file_out) {
-
-  fprintf(file_out, "      LD  A,B\n");
-  fprintf(file_out, "      XOR A,H\n");
-  fprintf(file_out, "      LD  H,A\n");
-  fprintf(file_out, "      LD  A,C\n");
-  fprintf(file_out, "      XOR A,L\n");
-  fprintf(file_out, "      LD  L,A\n");
+  fprintf(file_out, "      %s A,L\n", mnemonic);
+  fprintf(file_out, "      LD  %s,A\n", result_in_bc == YES ? "C" : "L");
 }
 
 
@@ -990,17 +980,6 @@ static void _and_from_ix_from_a(int offset, FILE *file_out) {
     fprintf(file_out, "      AND A,(IX+%d)\n", offset);
   else
     fprintf(file_out, "      AND A,(IX%d)\n", offset);
-}
-
-
-static void _and_bc_to_hl(FILE *file_out) {
-
-  fprintf(file_out, "      LD  A,B\n");
-  fprintf(file_out, "      AND A,H\n");
-  fprintf(file_out, "      LD  H,A\n");
-  fprintf(file_out, "      LD  A,C\n");
-  fprintf(file_out, "      AND A,L\n");
-  fprintf(file_out, "      LD  L,A\n");
 }
 
 
@@ -2823,6 +2802,41 @@ static int _aaa_generate_asm_add_sub_or_xor_and_z80_16bit(struct tac *t, FILE *f
   arg2_in_bc = arg2_location.kind == LOC_PHY_BC ? YES : NO;
   result_in_bc = result_location.kind == LOC_PHY_BC ? YES : NO;
 
+  if (result_in_bc == YES && (op == TAC_OP_AND || op == TAC_OP_OR || op == TAC_OP_XOR) &&
+      (arg1_location.kind == LOC_CONST || arg1_location.kind == LOC_PHY_HL || arg1_location.kind == LOC_PHY_BC ||
+       arg1_location.kind == LOC_GLOBAL || arg1_location.kind == LOC_STACK_LOCAL || arg1_location.kind == LOC_STACK_SPILL) &&
+      (t->arg2_physical_register == Z80_PHY_NONE || arg2_in_hl == YES) &&
+      (t->arg2_type == TAC_ARG_TYPE_CONSTANT || t->arg2_var_type == VARIABLE_TYPE_UINT8 ||
+       t->arg2_var_type == VARIABLE_TYPE_INT16 || t->arg2_var_type == VARIABLE_TYPE_UINT16)) {
+    int byte_offset;
+    char *mnemonic = op == TAC_OP_OR ? "OR " : op == TAC_OP_XOR ? "XOR" : "AND";
+    if ((arg1_location.kind == LOC_GLOBAL || arg1_location.kind == LOC_STACK_LOCAL || arg1_location.kind == LOC_STACK_SPILL) &&
+      _load_location_address_to_ix(&arg1_location, &ix_offset, file_out) == FAILED)
+      return FAILED;
+    if (arg1_location.kind == LOC_CONST)
+      _load_value_to_bc(arg1_location.value, file_out);
+    else if (arg1_in_hl == YES)
+      _load_hl_to_bc(file_out);
+    else if (arg1_in_bc == NO && _materialize_array_index_to_bc(&arg1_location, t->arg1_var_type, ix_offset, NO, file_out) == FAILED)
+      return FAILED;
+    if (arg1_in_hl == YES || arg1_in_bc == YES)
+      fprintf(file_out, "      ; retained arg1 in %s\n", arg1_in_hl == YES ? "HL" : "BC");
+    if ((arg2_location.kind == LOC_GLOBAL || arg2_location.kind == LOC_STACK_LOCAL || arg2_location.kind == LOC_STACK_SPILL) &&
+        _load_location_address_to_ix(&arg2_location, &ix_offset, file_out) == FAILED)
+      return FAILED;
+    for (byte_offset = 1; byte_offset >= 0; byte_offset--) {
+      if (byte_offset == 1 && t->arg2_var_type == VARIABLE_TYPE_UINT8 && arg2_location.kind != LOC_CONST)
+        _load_value_to_a(0, file_out);
+      else if (arg2_location.kind == LOC_GLOBAL || arg2_location.kind == LOC_STACK_LOCAL || arg2_location.kind == LOC_STACK_SPILL)
+        _load_from_ix_to_a(ix_offset + byte_offset, file_out);
+      else if (_materialize_to_a(&arg2_location, byte_offset, file_out) == FAILED)
+        return FAILED;
+      fprintf(file_out, "      %s A,%s\n      LD  %s,A\n", mnemonic, byte_offset == 1 ? "B" : "C", byte_offset == 1 ? "B" : "C");
+    }
+    fprintf(file_out, "      ; retained result in BC\n");
+    return SUCCEEDED;
+  }
+
   /* generate asm */
 
   /******************************************************************************************************/
@@ -2969,12 +2983,8 @@ static int _aaa_generate_asm_add_sub_or_xor_and_z80_16bit(struct tac *t, FILE *f
     else
       _sub_bc_from_hl(file_out);
   }
-  else if (op == TAC_OP_OR)
-    _or_bc_to_hl(file_out);
-  else if (op == TAC_OP_XOR)
-    _xor_bc_to_hl(file_out);
-  else if (op == TAC_OP_AND)
-    _and_bc_to_hl(file_out);
+  else if (op == TAC_OP_OR || op == TAC_OP_XOR || op == TAC_OP_AND)
+    _bitwise_bc_hl(file_out, op, result_in_bc);
   else {
     fprintf(stderr, "_aaa_generate_asm_add_sub_or_xor_and_z80_16bit(): Unsupported TAC op %d! Please submit a bug report!\n", op);
     return FAILED;
@@ -2989,7 +2999,8 @@ static int _aaa_generate_asm_add_sub_or_xor_and_z80_16bit(struct tac *t, FILE *f
     return SUCCEEDED;
   }
   if (result_in_bc == YES) {
-    if (_store_from_hl(&result_location, ix_offset, file_out) == FAILED)
+    if (op != TAC_OP_OR && op != TAC_OP_XOR && op != TAC_OP_AND &&
+        _store_from_hl(&result_location, ix_offset, file_out) == FAILED)
       return FAILED;
     fprintf(file_out, "      ; retained result in BC\n");
     return SUCCEEDED;

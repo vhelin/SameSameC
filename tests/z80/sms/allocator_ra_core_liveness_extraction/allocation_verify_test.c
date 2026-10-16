@@ -91,13 +91,15 @@ int main(int argc, char **argv) {
 
       memset(&lowering, 0, sizeof(lowering));
       lowering.result_physical_register = Z80_PHY_BC;
+      lowering.arg2_var_type = VARIABLE_TYPE_UINT16;
       lowering.arg1_var_type_promoted = lowering.arg2_var_type_promoted = VARIABLE_TYPE_UINT16;
       for (op_index = 0; op_index < (int)(sizeof(operations) / sizeof(operations[0])); op_index++) {
         lowering.op = operations[op_index];
         for (source_index = 0; source_index < 5; source_index++) {
           lowering.arg1_physical_register = physical_registers[source_index];
           for (register_index = 0; register_index < 5; register_index++) {
-            int expected = op_index == 0 && register_index == 1 ? YES : NO;
+            int expected = register_index == 1 && (op_index == 0 ||
+              (op_index >= 3 && op_index <= 5 && source_index >= 1 && source_index <= 2)) ? YES : NO;
             if (_is_z80_basic_block_transparent_tac_for_physical_register(
                 &lowering, physical_registers[register_index]) != expected)
               return 1;
@@ -105,6 +107,22 @@ int main(int argc, char **argv) {
           }
         }
       }
+      for (op_index = 3; op_index <= 5; op_index++) {
+        lowering.op = operations[op_index];
+        lowering.arg1_physical_register = Z80_PHY_NONE;
+        lowering.arg2_type = TAC_ARG_TYPE_TEMP;
+        for (source_index = 0; source_index < 4; source_index++) {
+          lowering.arg2_var_type = source_index % 2 == 0 ? VARIABLE_TYPE_UINT8 : VARIABLE_TYPE_INT8;
+          lowering.arg2_physical_register = source_index < 2 ? Z80_PHY_NONE : Z80_PHY_BC;
+          for (register_index = 0; register_index < 5; register_index++) {
+            int expected = source_index == 0 && register_index == 1 ? YES : NO;
+            if (_is_z80_basic_block_transparent_tac_for_physical_register(&lowering, physical_registers[register_index]) != expected)
+              return 1;
+            checks++;
+          }
+        }
+      }
+      lowering.arg2_var_type = VARIABLE_TYPE_UINT16;
       for (op_index = 0; op_index < 2; op_index++) {
         lowering.op = op_index == 0 ? TAC_OP_ADD : TAC_OP_SUB;
         lowering.arg2_physical_register = Z80_PHY_NONE;
@@ -153,6 +171,7 @@ int main(int argc, char **argv) {
         }
       }
       fprintf(stderr, "allocation_policy_test: lowering_effects=%d direct_bc_complement=yes scratch_hl_rejected=yes full_barriers=yes status=complete\n", checks);
+      fprintf(stderr, "allocation_policy_test: direct_bc_bitwise=yes unsigned_widening=yes signed_right_fallback=yes bc_overlap_rejected=yes status=complete\n");
     }
     {
       struct endpoint_case {
@@ -785,7 +804,7 @@ int main(int argc, char **argv) {
     }
     instructions[0].op = TAC_OP_COMPLEMENT;
     instructions[0].result_physical_register = Z80_PHY_HL;
-    instructions[1].op = TAC_OP_AND;
+    instructions[1].op = TAC_OP_ADD;
     instructions[1].arg2_type = TAC_ARG_TYPE_CONSTANT;
     instructions[1].result_d = 1;
     instructions[1].result_physical_register = Z80_PHY_BC;

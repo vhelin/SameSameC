@@ -5419,7 +5419,14 @@ static int _is_z80_basic_block_transparent_tac_for_physical_register(struct tac 
   if (_z80_tac_may_clobber_bc(t->op) == YES)
     scratch_units |= RA_Z80_UNIT_B | RA_Z80_UNIT_C;
 
-  if (t->op == TAC_OP_COMPLEMENT && t->result_physical_register == Z80_PHY_BC &&
+  if (t->result_physical_register == Z80_PHY_BC &&
+      (t->op == TAC_OP_COMPLEMENT ||
+       ((t->op == TAC_OP_AND || t->op == TAC_OP_OR || t->op == TAC_OP_XOR) &&
+        (t->arg2_var_type_promoted == VARIABLE_TYPE_UINT16 || t->arg2_var_type_promoted == VARIABLE_TYPE_INT16) &&
+        (t->arg1_physical_register == Z80_PHY_NONE || t->arg1_physical_register == Z80_PHY_HL || t->arg1_physical_register == Z80_PHY_BC) &&
+        (t->arg2_physical_register == Z80_PHY_NONE || t->arg2_physical_register == Z80_PHY_HL) &&
+        (t->arg2_type == TAC_ARG_TYPE_CONSTANT || t->arg2_var_type == VARIABLE_TYPE_UINT8 ||
+         t->arg2_var_type == VARIABLE_TYPE_INT16 || t->arg2_var_type == VARIABLE_TYPE_UINT16))) &&
       (t->arg1_var_type_promoted == VARIABLE_TYPE_UINT16 || t->arg1_var_type_promoted == VARIABLE_TYPE_INT16))
     scratch_units = RA_Z80_UNIT_A;
   else {
@@ -5710,8 +5717,12 @@ static int _is_nearer_competing_candidate(struct tree_node *function_node, int t
 static int _is_intervening_bc_candidate_transparent_for_hl(struct tree_node *function_node, int tac_index, int end_tac) {
 
   struct register_allocator_candidate_probe probe;
+  struct tac effect = g_tacs[tac_index];
 
-  if (g_tacs[tac_index].op != TAC_OP_COMPLEMENT)
+  if (tac_index >= end_tac || _is_first_allocator_producer(effect.op) == NO)
+    return NO;
+  effect.result_physical_register = Z80_PHY_BC;
+  if (_get_register_allocator_target_policy()->is_tac_transparent_for_physical_register(&effect, Z80_PHY_HL) == NO)
     return NO;
   if (_probe_competing_candidate(function_node, tac_index, end_tac,
       RA_CANDIDATE_RANGE_WITHIN_BLOCK, Z80_PHY_BC, &probe) == FAILED ||
@@ -5975,6 +5986,7 @@ static void _observe_register_allocator_transition_preparation(void *context,
     costs[choice][0] = byte_count * indexed_cycles;
     costs[choice][1] = byte_count * indexed_bytes;
     if (physical_register == Z80_PHY_BC && g_tacs[producer].op != TAC_OP_COMPLEMENT &&
+      g_tacs[producer].op != TAC_OP_AND && g_tacs[producer].op != TAC_OP_OR && g_tacs[producer].op != TAC_OP_XOR &&
         _is_first_allocator_producer(g_tacs[producer].op) == YES) {
       costs[choice][0] -= 2 * move_cycles;
       costs[choice][1] -= 2;
@@ -6011,7 +6023,8 @@ static void _observe_register_allocator_transition_preparation(void *context,
         if (byte_count == 1)
           transfer_bytes = operand == TAC_USE_ARG1 && physical_register != Z80_PHY_A ? 1 : 0;
         else if (physical_register == Z80_PHY_BC && operand == TAC_USE_ARG1 &&
-            effect.arg2_physical_register != Z80_PHY_HL)
+          effect.arg2_physical_register != Z80_PHY_HL &&
+          _get_register_allocator_target_policy()->is_tac_transparent_for_physical_register(&effect, Z80_PHY_HL) == NO)
           transfer_bytes = 2;
         else if (physical_register == Z80_PHY_HL && effect.op == TAC_OP_ARRAY_READ && operand == TAC_USE_ARG2)
           transfer_bytes = 2;
@@ -6041,7 +6054,7 @@ static void _observe_register_allocator_transition_preparation(void *context,
       }
       if (_tac_writes_temp_register(&effect, temp_index) == YES)
         break;
-      if (physical_register == Z80_PHY_HL && effect.op == TAC_OP_COMPLEMENT && effect.result_physical_register == Z80_PHY_NONE &&
+      if (physical_register == Z80_PHY_HL && effect.result_physical_register == Z80_PHY_NONE &&
           _is_intervening_bc_candidate_transparent_for_hl(transition_context->function_node, instruction_index, consumer) == YES)
         effect.result_physical_register = Z80_PHY_BC;
       if (_get_register_allocator_target_policy()->is_tac_transparent_for_physical_register(&effect, physical_register) == NO)

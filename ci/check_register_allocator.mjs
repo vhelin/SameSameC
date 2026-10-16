@@ -54,6 +54,7 @@ for (const flags of [[], ['-q']]) {
     !verifierLog.includes('allocation_mutation_test: displaced_arg2 cleared=yes status=complete') ||
     !verifierLog.includes('allocation_policy_test: register_pairs=25 independent_units=yes status=complete') ||
     !/allocation_policy_test: lowering_effects=\d+ direct_bc_complement=yes scratch_hl_rejected=yes full_barriers=yes status=complete/.test(verifierLog) ||
+    !/allocation_policy_test: direct_bc_bitwise=yes unsigned_widening=yes signed_right_fallback=yes bc_overlap_rejected=yes status=complete/.test(verifierLog) ||
     !/allocation_policy_test: endpoints=10200 supported=\d+ rejected=\d+ independent_table=yes status=complete/.test(verifierLog) ||
     !verifierLog.includes('spill_slot_test: cases=10 overlap_width_boundary_redefinition_controls=yes tacs_unchanged=yes status=complete') ||
     !verifierLog.includes('spill_slot_test: fixed_prefix=yes shared_suffix=yes invalid_fixed=5 immutable=yes status=complete') ||
@@ -146,6 +147,7 @@ for (let variant = 0; variant < 12; variant++) {
     ['scalar_signed_word', 's16 a, s16 b, s16 c', 's16 saved = a^b; return (c|7)^saved;', [2, 2, 2], 2],
     ['scalar_widen', 'u8 a, u8 b, u8 c', 'u16 saved = a+b; return (c+c)+saved;', [1, 1, 1], 2],
     ['scalar_word', 'u16 a, u16 b, u16 c', 'u16 saved = a^b; return (c+c)+saved;', [2, 2, 2], 2],
+    ['scalar_source_bitwise', 'u16 a, u8 b, u8 c', `return ((((${variant ? '(c|a)|(b|c)' : '(a|c)|(c|b)'}) % 0x1001) << 4) - (c|10000)) ^ (0x4321|c);`, [2, 1, 1], 2],
     ['scalar_copy', 'u16 a, u16 b, u16 c', 'u16 saved = a; return (b+c)+saved;', [2, 2, 2], 2],
     ['scalar_complement_sub', 'u16 a, u16 b, u16 c', 'return (a+b)-(~c);', [2, 2, 2], 2],
     ['scalar_multi_word', 'u16 a, u16 b, u16 c', 'u16 left = a+b; u16 saved = ~c; return ((left+saved)^saved)-saved;', [2, 2, 2], 2],
@@ -780,6 +782,13 @@ for (const program of programs) {
         break;
       }
       case 'scalar_byte': expected = (2 * third + (byte ^ other)) & 255; break;
+      case 'scalar_source_bitwise': {
+        parameters = [(seed * 7919 + 32767) & 65535, other, third];
+        if (seed < 4) parameters = [[0, 65535, 0x6543, 32768][seed], [0, 255, 0x95, 128][seed], [0, 255, 0, 1][seed]];
+        const [first, second, last] = parameters;
+        expected = ((((((first | last) | (last | second)) % 0x1001) << 4) - (last | 10000)) ^ (0x4321 | last)) & 65535;
+        break;
+      }
       case 'scalar_frequency_loop': {
         if (seed < 4) parameters = [[255, 0, 252, 247][seed] ^ program.constant, [0, 1, 255, 255][seed], third];
         expected = Math.max(parameters[0] ^ program.constant, parameters[1]);
