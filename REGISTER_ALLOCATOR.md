@@ -11109,11 +11109,14 @@ Prefer changes to existing decision paths over another allocator framework.
       selected plan, plus zero-trip, nested-loop and unknown-cost controls.
       Require independently executed improvement; numerical scaling alone
       does not qualify this step or justify a new profiling subsystem.
-      Still open: a per-operation prototype changed a synthetic hot/cold
-      decision but did not establish an emitted production benefit. Removed
-      that prototype and its extra CFG/context fields rather than retaining
-      unproven code. Ordinary block-local candidates generally share a region;
-      the existing common-frequency estimate remains unchanged.
+      Still open after a second measured attempt: per-operation CFG weighting
+      changed a synthetic hot/cold decision, but not emitted counters or ROMs
+      across 415 generated entries and nine real routines at 64 inputs each.
+      The ordinary scan resets active slots at each block, so its competing
+      block-local candidates share a region. Removed the unproven weighting
+      and its extra context fields; common-frequency estimation is unchanged.
+      Retained two independently executed loop variants with explicit zero,
+      one, three and eight iterations and per-input backedge assertions.
 - [ ] **342. Cost one loop-retention versus split/rematerialize choice.** Reuse
       the same observer to compare whole-loop retention with existing legal
       alternatives, including entry, backedge, exit and competing-owner costs.
@@ -11123,10 +11126,36 @@ Prefer changes to existing decision paths over another allocator framework.
       require an actual cycle/transfer benefit without an unexplained frame or
       ROM regression. Leave broader step 328 open if the joint policy remains
       limited or unproven; do not add a parallel loop cost model.
-      Still open: loop plans cover entry/latch definitions and all-path
-      reservations, while the current observer stops at a redefinition. A
-      lexical scan is not a justified joint cost comparison. No loop-selection
-      behavior, new cost model, profiling layer or production helper was added.
+      Still open: an assignment-list mode in the shared observer priced entry,
+      latch and consumer operations against existing split annotations, but
+      produced no executed benefit in that matched corpus. In the new loop,
+      only C passed all-path legality; A also conflicts with the separate
+      Boolean loop-condition test, which really loads/clobbers A. Changing
+      labels or replacing the first comparison with CP did not resolve that
+      interference. Removed the trial observer/selection integration and the
+      unhelpful lowering experiment, rather than keeping 133 net production
+      lines without a justified choice. Compiler and actual-source harness
+      match the preceding commit; no production helper, API or dependency was
+      retained. An eight-update body probe also leaves seven uses uncovered
+      under existing full-definition coverage and cannot apply retention.
+      A useful competing legal plan or correctly priced competing owner is
+      still required; broader step 328 remains open.
+
+Follow-up evidence for 341/342: the no-gain comparison executed 27,136 cases
+per mode at 64 inputs, with identical complete per-routine metrics and all 80
+ROMs. The retained regression passes strict C89/Werror actual-source checks
+and 217,088 cases per mode at 512 inputs under fresh Cygwin/native Release
+compilers and the hash-verified, previously qualified ASan compiler for the
+unchanged source. All three toolchains emit identical counters and ROMs;
+218 sanitizer-run logs are clean and the ASan runtime import is verified.
+Final traced/quiet verifiers pass on all three toolchains. Both sequential
+full suites pass 173 tests with freshly staged, hash-verified compilers;
+all 19 protected files and the pre-existing generated ROM are preserved.
+No frequency-driven production decision or new allocation gain is claimed.
+Evidence: /tmp/ra341-full-{before,after}, /tmp/ra341-loop-regression,
+/tmp/ra341-final-{cygwin,native-release,native-asan}, and
+/tmp/ra341-final-measured-results.json. Full-suite logs:
+/tmp/ra341-{cygwin,native}-full.log.
 
 Batch evidence: strict C89/Werror actual-source checks and the independent
 corpus pass under Cygwin GCC, native Release and native ASan: 413 generated

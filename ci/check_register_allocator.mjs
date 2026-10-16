@@ -152,6 +152,7 @@ for (let variant = 0; variant < 12; variant++) {
     ['scalar_multi_rmw', 'u16 a, u16 b, u16 c', 'u16 saved = ~c; return ((a+saved)^saved)+b;', [2, 2, 2], 2],
     ['scalar_multi_byte', 'u8 a, u8 b, u8 c', 'u8 saved = a^b; return ((c+saved)^saved)+saved;', [1, 1, 1], 1],
     ['scalar_rank_fallback', `u16 a, u16 b, ${variant ? 'u8' : 'u16'} c`, `u16 saved = ~a; u16 first = saved+b; u16 second = saved+first; if (c&${1 << variant}) { ${variant ? 'return second+saved;' : 'second = second+saved;'} } return second;`, [2, 2, variant ? 1 : 2], 2],
+    ['scalar_frequency_loop', 'u8 a, u8 b, u8 c', `u8 value = a^${constant}; while (value < b) { value = value+1; } return value;`, [1, 1, 1], 1],
     ['scalar_split_byte', 'u8 a, u8 b, u8 c', 'u8 saved = a^b; u8 first = c+saved; u8 loaded = ra_buffer[1]; return ((((first+loaded)^saved)+saved)^saved)+saved;', [1, 1, 1], 1],
     ['scalar_region', 'u8 a, u8 b, u8 c', `u8 saved = a^b; u8 first = c+saved; u8 loaded = ra_buffer[1]; u8 out = ((((first+loaded)^saved)+saved)^saved)+saved; if (a < b) { ${variant === 1 ? 'ra_buffer[2] = out;' : ''} out = out+1; } return ((out^saved)+saved)^saved;`, [1, 1, 1], 1],
     ['scalar_region_escape', 'u8 a, u8 b, u8 c', 'u8 saved = a^b; if (a < b) { ra_pointer_helper(&saved,c); } return saved+b;', [1, 1, 1], 1],
@@ -779,6 +780,11 @@ for (const program of programs) {
         break;
       }
       case 'scalar_byte': expected = (2 * third + (byte ^ other)) & 255; break;
+      case 'scalar_frequency_loop': {
+        if (seed < 4) parameters = [[255, 0, 252, 247][seed] ^ program.constant, [0, 1, 255, 255][seed], third];
+        expected = Math.max(parameters[0] ^ program.constant, parameters[1]);
+        break;
+      }
       case 'scalar_multi_byte': {
         const saved = byte ^ other;
         expected = ((((third + saved) & 255) ^ saved) + saved) & 255;
@@ -879,6 +885,8 @@ for (const program of programs) {
         if (result.unmapped_instructions) throw new Error(`${program.name}: unmapped executed instructions`);
         if (program.family === 'matrix_source_loop' && result.entry_backedges !== (program.variant ? seed % 64 : expected))
           throw new Error(`${program.name}: source-loop backedges=${result.entry_backedges}, expected=${program.variant ? seed % 64 : expected}`);
+        if (program.family === 'scalar_frequency_loop' && result.entry_backedges !== expected - (parameters[0] ^ program.constant))
+          throw new Error(`${program.name}: frequency-loop backedges=${result.entry_backedges}, expected=${expected - (parameters[0] ^ program.constant)}`);
         if (mode === 'ra' && process.env.RA_BASELINE !== '1' &&
             ['scalar_split_byte', 'scalar_split_word', 'scalar_call_region'].includes(program.family)) {
           const bytes = program.family === 'scalar_split_word' ? [2, 4] : program.family === 'scalar_call_region' ? [1, 2] : [1, 1];
