@@ -4,6 +4,13 @@ u16 calculationProductRestore(u16 value, u16 multiplier, u16 remainder);
 u16 calculationShiftRestore(u16 value, u16 shift, u16 mask);
 u16 calculationPartitionRestore(u16 value, u16 divisor, u16 mask);
 
+struct CalculationReading {
+  u16 value;
+  u16 weight;
+  u8 category;
+  u8 enabled;
+};
+
 void calculateAndPrintComplexBank3(u8 *chars, u8 one, u8 zero) {
 
   u16 extra1;
@@ -20,8 +27,57 @@ void calculateAndPrintComplexBank3(u8 *chars, u8 one, u8 zero) {
   extra3 = calculationShiftRestore(extra2, one, 0x0F3C);
   printCalculationLine(chars, 0x80, 0x7C, 0x27D5, extra1, extra2, extra3);
 
-  extra1 = (((((0x5A13 * (one + one)) + one) / (one + one)) ^ 0x66C3) ^ 0x66C3) + zero;
-  extra2 = calculationProductRestore(extra1, 2, 1);
+  extra1 = calculationRecordWorkload(0x5A13, 16, chars);
+  extra2 = calculationProductRestore(extra1, 3, 2);
   extra3 = calculationPartitionRestore(extra2, 59, 0x32E7);
-  printCalculationLine(chars, 0xC0, 0x7C, 0x5A13, extra1, extra2, extra3);
+  printCalculationLine(chars, 0xC0, 0x7C, 0x12EA, extra1, extra2, extra3);
+}
+
+u16 calculationRecordWorkload(u16 seed, u16 count, u8 *bytes) {
+
+  struct CalculationReading readings[16];
+  u16 i;
+  u16 pass;
+  u16 checksum = seed & 0x1FFF;
+  u8 flags;
+
+  for (i = 0; i < count; i++) {
+    readings[i].value = (seed + i * 97) & 0x1FFF;
+    readings[i].weight = 1 + i % 7;
+    readings[i].category = (seed + i) & 3;
+    readings[i].enabled = (seed + i * 3) & 7;
+  }
+
+  for (pass = 0; pass < 2; pass++) {
+    for (i = 0; i < count; i++) {
+      if (readings[i].enabled == 0)
+        continue;
+      switch (readings[i].category) {
+      case 0:
+        readings[i].value = (readings[i].value + readings[i].weight * (pass + 1)) & 0x1FFF;
+        break;
+      case 1:
+        readings[i].value = (readings[i].value ^ (seed >> pass)) & 0x1FFF;
+        break;
+      case 2:
+        readings[i].value = (readings[i].value * 3 + readings[i].weight) / 4;
+        break;
+      default:
+        readings[i].value = calculationPartitionRestore(readings[i].value, readings[i].weight, seed);
+        break;
+      }
+      readings[i].weight = 1 + ((readings[i].weight + readings[i].value) & 7);
+    }
+  }
+
+  for (i = 0; i < count; i++) {
+    bytes[i * 2] = readings[i].value;
+    bytes[i * 2 + 1] = readings[i].value >> 8;
+    flags = readings[i].category;
+    if (readings[i].enabled != 0)
+      flags |= 0x10;
+    bytes[32 + i] = flags;
+    checksum = (checksum + readings[i].value * readings[i].weight) & 0x1FFF;
+  }
+  return checksum;
 }

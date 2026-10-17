@@ -63,6 +63,7 @@ for (const flags of [[], ['-q']]) {
     !verifierLog.includes('allocation_cost_test: weighted_cycles=yes static_bytes=yes instruction_bound=256 fallback=next_use immutable=yes status=complete') ||
     !verifierLog.includes('allocation_cost_test: split_reload_overlap_controls=4 status=complete') ||
     !verifierLog.includes('allocation_cost_test: rejected_first_alternative=yes known_alternative_over_unknown_fallback=yes status=complete') ||
+    !verifierLog.includes('allocation_loop_stack_test: body_controls=8 boundary_rewrites_complete=yes immutable=yes status=complete') ||
     !verifierLog.includes('candidate_definition_test: read_before_write=yes previous_definition_excluded=yes status=complete'))
     throw new Error('Verifier coverage count mismatch');
 }
@@ -224,11 +225,14 @@ const modes = [['default', []], ['no_ra', ['-no-ra']], ['all_spill', ['-ra-all-s
   ['ra', ['-ra']], ['ra_quiet', ['-ra', '-q']]];
 
 function readImage(directory) {
-  const symbols = new Map(), sectionSizes = new Map();
+  const symbols = new Map(), banks = new Map(), sectionSizes = new Map();
   const staticSuffix = /(__static__\w+_ssc_)\d+/g;
   for (const line of readFileSync(join(directory, 'linked.sym'), 'utf8').split(/\r?\n/)) {
-    const match = line.match(/^00:([0-9a-f]+)\s+(\S+)$/i);
-    if (match) symbols.set(match[2], parseInt(match[1], 16));
+    const match = line.match(/^([0-9a-f]+):([0-9a-f]+)\s+(\S+)$/i);
+    if (match) {
+      symbols.set(match[3], parseInt(match[2], 16));
+      banks.set(match[3], parseInt(match[1], 16));
+    }
     const section = line.match(/^[0-9a-f]{8}\s+[0-9a-f]+:[0-9a-f]+\s+[0-9a-f]+\s+([0-9a-f]+)\s+(\S+)$/i);
     if (section) sectionSizes.set(section[2], parseInt(section[1], 16));
   }
@@ -297,14 +301,13 @@ function readImage(directory) {
     const opcode = rom[parseInt(address[3], 16)];
     if ((opcode & 0xc0) === 0x40 && (opcode & 7) !== 6 && ((opcode >> 3) & 7) !== 6)
       staticMetrics.register_move_sites++;
-    if (parseInt(address[1], 16) === 0)
-      transfers.set(parseInt(address[2], 16), {cause, argumentsInFrame, section,
-        branch: tacCause === 'other_frame' && /^(?:JP|JR)\s+(?:[A-Z]+,\s*)?_label_/.test(source)});
+    transfers.set((parseInt(address[1], 16) << 16) | parseInt(address[2], 16), {cause, argumentsInFrame, section,
+      branch: tacCause === 'other_frame' && /^(?:JP|JR)\s+(?:[A-Z]+,\s*)?_label_/.test(source)});
   }
   if (framePending || !Object.keys(staticMetrics.functions).length)
     throw new Error(`Incomplete function-frame measurements in ${directory}`);
   if (transferOpen || !transfers.size) throw new Error('Incomplete execution attribution map');
-  return {rom, symbols, transfers, staticMetrics};
+  return {rom, symbols, banks, transfers, staticMetrics};
 }
 
 const compiled = new Map();
@@ -409,7 +412,8 @@ const transferCauses = ['allocator_preserve', 'allocator_reload', 'abi_argument'
 const executionMetrics = ['instructions', 'cycles', 'frame_reads', 'frame_writes', 'register_moves', 'unmapped_instructions', 'entry_backedges', 'callee_backedges',
   ...transferCauses.flatMap(cause => [`${cause}_reads`, `${cause}_writes`])];
 
-function execute(code, entry, parameters, widths, buffer, bufferAddress, returnWidth, transfers = new Map(), portsAllowed = false) {
+function execute(code, entry, parameters, widths, buffer, bufferAddress, returnWidth, transfers = new Map(),
+  portsAllowed = false, instructionLimit = 20000, frameBytes = 256) {
   const memory = new Uint8Array(65536).fill(0xa5);
   memory.set(code.subarray(0, 0xc000));
   memory.set(buffer, bufferAddress);
@@ -431,7 +435,7 @@ function execute(code, entry, parameters, widths, buffer, bufferAddress, returnW
     tStateCount: 0,
     readMemory: address => {
       address &= 65535;
-      if (address >= frame - 256 && address < frame - 1) {
+      if (address >= frame - frameBytes && address < frame - 1) {
         frameReads++;
         let cause = instructionMetadata?.cause || 'other_frame';
         if (cause === 'other_frame' && instructionMetadata?.argumentsInFrame.some(([offset, size]) =>
@@ -442,10 +446,10 @@ function execute(code, entry, parameters, widths, buffer, bufferAddress, returnW
     },
     writeMemory: (address, value) => {
       address &= 65535;
-      if (!(address >= frame - 256 && address < frame - 1) &&
+      if (!(address >= frame - frameBytes && address < frame - 1) &&
           !(address >= bufferAddress && address < bufferAddress + buffer.length))
         throw new Error(`Out-of-bounds write ${address.toString(16)}`);
-      if (address >= frame - 256 && address < frame - 1) {
+      if (address >= frame - frameBytes && address < frame - 1) {
         frameWrites++;
         traffic[`${instructionMetadata?.cause || 'other_frame'}_writes`]++;
       }
@@ -464,7 +468,7 @@ function execute(code, entry, parameters, widths, buffer, bufferAddress, returnW
   cpu.regs.sp = frame - 1;
   let instructions = 0, registerMoves = 0, unmappedInstructions = 0, entryBackedges = 0, calleeBackedges = 0;
   while (cpu.regs.pc !== sentinel) {
-    if (++instructions > 20000 || cpu.regs.pc >= 0xc000) throw new Error('Instruction bound/PC escape');
+    if (++instructions > instructionLimit || cpu.regs.pc >= 0xc000) throw new Error('Instruction bound/PC escape');
     instructionMetadata = transfers.get(cpu.regs.pc);
     if (!instructionMetadata) unmappedInstructions++;
     const opcode = memory[cpu.regs.pc];
@@ -1072,7 +1076,8 @@ if (process.env.RA_REAL_PROJECTS !== '0') {
   const realTotals = {};
   for (const [project, routines] of [
     ['calculations-1', ['calculationAdd3', 'calculationMultiplyAdd', 'calculationXorRoundTrip', 'calculationQuotientRoundTrip', 'convertNumbersToChars16']],
-    ['calculations-2', ['calculationProductRestore', 'calculationShiftRestore', 'calculationPartitionRestore', 'convertNumbersToChars16']]
+    ['calculations-2', ['calculationProductRestore', 'calculationShiftRestore', 'calculationPartitionRestore', 'convertNumbersToChars16',
+      'calculationArrayWorkload', 'calculationSortWorkload', 'calculationStencilWorkload', 'calculationRecordWorkload']]
   ]) {
     const images = new Map();
     for (const [mode, flags] of modes) {
@@ -1087,7 +1092,7 @@ if (process.env.RA_REAL_PROJECTS !== '0') {
       run(linker, ['-lsms', '-ro', '4', '-v', '-o', 'linked.sms', ...sources.map(name => `${name}.asm`)], directory, 'linker.log');
       const image = readImage(directory);
       for (const name of routines)
-        if (!image.symbols.has(name)) throw new Error(`Missing bank-zero routine ${project}/${name}/${mode}`);
+        if (!image.symbols.has(name)) throw new Error(`Missing routine ${project}/${name}/${mode}`);
       images.set(mode, image);
     }
     if (!images.get('default').rom.equals(images.get('no_ra').rom)) throw new Error(`${project}: default/-no-ra ROM mismatch`);
@@ -1100,14 +1105,98 @@ if (process.env.RA_REAL_PROJECTS !== '0') {
         Object.fromEntries(['cases', ...executionMetrics].map(metric => [metric, 0]))]));
       realTotals[project][name] = routineTotals;
       qualityTotals[`${project}/${name}`] = routineTotals;
-      for (let seed = 0; seed < cases; seed++) {
-        const value = (seed * 7919 + 32767) & 65535;
+      const workload = name.endsWith('Workload');
+      const displaySeed = {calculationArrayWorkload: 0x47c1, calculationSortWorkload: 0x253a,
+        calculationStencilWorkload: 0x36b9, calculationRecordWorkload: 0x5a13}[name];
+      const routineImages = new Map(Array.from(images, ([mode, image]) => {
+        const bank = image.banks.get(name), address = image.symbols.get(name);
+        if (bank === 0) return [mode, image];
+        if (bank < 1 || bank > 3 || address < 0x8000 || address >= 0xc000)
+          throw new Error(`Unsupported mapped routine ${project}/${name}/${mode}`);
+        const rom = Buffer.from(image.rom);
+        rom.set(image.rom.subarray(bank * 0x4000, (bank + 1) * 0x4000), 0x8000);
+        const transfers = new Map(Array.from(image.transfers).filter(([key]) => key < 65536 || key >>> 16 === bank)
+          .map(([key, metadata]) => [key & 65535, metadata]));
+        return [mode, {...image, rom, transfers}];
+      }));
+      for (let seed = 0; seed < cases + (workload ? 1 : 0); seed++) {
+        const value = seed === cases ? displaySeed : (seed * 7919 + 32767) & 65535;
         const other = (seed * 5113 + 17) & 65535;
         const third = (seed * 3571 + 3) & 65535;
         let parameters;
         let expected;
         let buffer = new Uint8Array(0), expectedBuffer = buffer, bufferAddress = 0, returnWidth = 2;
         switch (name) {
+          case 'calculationArrayWorkload':
+          case 'calculationSortWorkload':
+          case 'calculationStencilWorkload':
+          case 'calculationRecordWorkload': {
+            const count = seed === cases ? 16 : seed % 17;
+            bufferAddress = 0xc100;
+            buffer = Uint8Array.from({length: 128}, (_, index) => (index * 47 + seed * 11) & 255);
+            expectedBuffer = buffer.slice();
+            parameters = [value, count, bufferAddress];
+            expected = value & 8191;
+            if (name === 'calculationArrayWorkload') {
+              const values = Array.from({length: count}, (_, index) => (value + index * 73) & 8191);
+              for (let index = 0; index < count; index++) expectedBuffer[index] = (value >> 3) + index * 11;
+              for (let pass = 0; pass < 3; pass++) {
+                for (let index = 0; index < count; index++) {
+                  const other = (index + pass + 1) % count, mixed = values[other] + expectedBuffer[index];
+                  values[index] = ((mixed & 1) ? (mixed ^ value) + index * 7 : (mixed >> 1) + values[index]) & 8191;
+                  expectedBuffer[index] = values[index] ^ (values[index] >> 8) ^ expectedBuffer[other];
+                }
+              }
+              expected = (expected + values.reduce((sum, item, index) => sum + item + expectedBuffer[index], 0)) & 8191;
+            } else if (name === 'calculationSortWorkload') {
+              const values = Array.from({length: count}, (_, index) => ((value ^ (index * 131)) + count * 19) & 8191);
+              const histogram = Array(8).fill(0);
+              for (const item of values) histogram[(item >> 3) & 7]++;
+              values.sort((left, right) => left - right);
+              values.forEach((item, index) => {
+                expectedBuffer[index * 2] = item;
+                expectedBuffer[index * 2 + 1] = item >> 8;
+                expected = (expected + item * (index + 1)) & 8191;
+              });
+              histogram.forEach((item, index) => {
+                expectedBuffer[32 + index] = item;
+                expected = (expected + item * (index + 1)) & 8191;
+              });
+            } else if (name === 'calculationStencilWorkload') {
+              let grid = Array.from({length: count}, (_, index) => (value + index * index + index * 17) & 8191);
+              for (let pass = 0; pass < 3; pass++)
+                grid = grid.map((item, index) => {
+                  const neighbours = [index % 4 ? index - 1 : index,
+                    index % 4 < 3 && index + 1 < count ? index + 1 : index,
+                    index >= 4 ? index - 4 : index, index + 4 < count ? index + 4 : index];
+                  return (Math.floor((item * 2 + neighbours.reduce((sum, neighbour) => sum + grid[neighbour], 0)) / 6) +
+                    ((value >> pass) & 31)) & 8191;
+                });
+              grid.forEach((item, index) => {
+                expectedBuffer[index * 2] = item;
+                expectedBuffer[index * 2 + 1] = item >> 8;
+                expected = (expected + item) & 8191;
+              });
+            } else {
+              const readings = Array.from({length: count}, (_, index) => ({value: (value + index * 97) & 8191,
+                weight: 1 + index % 7, category: (value + index) & 3, enabled: (value + index * 3) & 7}));
+              for (let pass = 0; pass < 2; pass++) {
+                for (const reading of readings.filter(reading => reading.enabled)) {
+                  if (reading.category === 0) reading.value = (reading.value + reading.weight * (pass + 1)) & 8191;
+                  else if (reading.category === 1) reading.value = (reading.value ^ (value >> pass)) & 8191;
+                  else if (reading.category === 2) reading.value = Math.floor((reading.value * 3 + reading.weight) / 4);
+                  reading.weight = 1 + ((reading.weight + reading.value) & 7);
+                }
+              }
+              readings.forEach((reading, index) => {
+                expectedBuffer[index * 2] = reading.value;
+                expectedBuffer[index * 2 + 1] = reading.value >> 8;
+                expectedBuffer[32 + index] = reading.category | (reading.enabled ? 16 : 0);
+                expected = (expected + reading.value * reading.weight) & 8191;
+              });
+            }
+            break;
+          }
           case 'convertNumbersToChars16': {
             bufferAddress = 0xc100;
             buffer = Uint8Array.from({length: 128}, (_, index) => (index * 47 + seed * 11) & 255);
@@ -1140,15 +1229,18 @@ if (process.env.RA_REAL_PROJECTS !== '0') {
           default: throw new Error('Unknown real routine');
         }
         for (const mode of Object.keys(totals)) {
-          const image = images.get(mode);
+          const image = routineImages.get(mode);
+          let result;
           try {
-            const result = execute(image.rom, image.symbols.get(name), parameters, parameters.map(() => 2), buffer, bufferAddress, returnWidth, image.transfers);
+            result = execute(image.rom, image.symbols.get(name), parameters, parameters.map(() => 2),
+              buffer, bufferAddress, returnWidth, image.transfers, false, workload ? 250000 : 20000, workload ? 512 : 256);
             if ((returnWidth && result.value !== expected) || !Buffer.from(result.buffer).equals(Buffer.from(expectedBuffer)))
               throw new Error(`Expected ${expected}, got ${result.value}; buffer_equal=${Buffer.from(result.buffer).equals(Buffer.from(expectedBuffer))}`);
             routineTotals[mode].cases++;
             for (const metric of executionMetrics) routineTotals[mode][metric] += result[metric];
           } catch (error) {
-            writeFileSync(join(output, 'failure.json'), JSON.stringify({project, name, mode, seed, parameters, expected, error: String(error)}, null, 2));
+            writeFileSync(join(output, 'failure.json'), JSON.stringify({project, name, mode, seed, parameters, expected,
+              expected_buffer: Array.from(expectedBuffer), actual: result, error: String(error)}, null, 2));
             throw new Error(`Failure ${project}/${name} seed=${seed} mode=${mode}: ${error}; artifacts=${output}`);
           }
         }
@@ -1157,7 +1249,7 @@ if (process.env.RA_REAL_PROJECTS !== '0') {
     }
   }
   writeFileSync(join(output, 'real-execution-summary.json'), JSON.stringify(realTotals, null, 2));
-  console.log(`PASS:real_routines=${Object.values(realTotals).reduce((count, routines) => count + Object.keys(routines).length, 0)} cases_per_routine=${cases} default_no_ra=identical artifacts=${output}`);
+  console.log(`PASS:real_routines=${Object.values(realTotals).reduce((count, routines) => count + Object.keys(routines).length, 0)} cases_per_routine=${cases} extra_display_cases=4 default_no_ra=identical artifacts=${output}`);
 }
 
 const qualityRows = Object.entries(qualityTotals).map(([routine, modes]) => ({routine,

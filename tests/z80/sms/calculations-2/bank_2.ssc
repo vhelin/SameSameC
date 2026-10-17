@@ -19,8 +19,62 @@ void calculateAndPrintComplexBank2(u8 *chars, u8 one, u8 zero) {
   extra3 = calculationProductRestore(extra2, 5, 3);
   printCalculationLine(chars, 0x80, 0x7B, 0x13ED, extra1, extra2, extra3);
 
-  extra1 = (((((0x36B9 * (one + 2)) + 2) / (one + 2)) ^ 0x55AA) ^ 0x55AA) + zero;
-  extra2 = calculationPartitionRestore(extra1, 47, 0x4E71);
-  extra3 = calculationShiftRestore(extra2, one, 0x2492);
-  printCalculationLine(chars, 0xC0, 0x7B, 0x36B9, extra1, extra2, extra3);
+  extra1 = calculationStencilWorkload(0x36B9, 16, chars);
+  extra2 = calculationShiftRestore(extra1, one, 0x2492);
+  extra3 = calculationPartitionRestore(extra2, 47, 0x4E71);
+  printCalculationLine(chars, 0xC0, 0x7B, 0x1334, extra1, extra2, extra3);
+}
+
+u16 calculationStencilWorkload(u16 seed, u16 count, u8 *bytes) {
+
+  u16 grid[16];
+  u16 next[16];
+  u16 row;
+  u16 column;
+  u16 i;
+  u16 pass;
+  u16 sum;
+  u16 neighbour;
+  u16 checksum = seed & 0x1FFF;
+
+  for (i = 0; i < count; i++)
+    grid[i] = (seed + i * i + i * 17) & 0x1FFF;
+  for (pass = 0; pass < 3; pass++) {
+    for (row = 0; row < 4; row++) {
+      for (column = 0; column < 4; column++) {
+        i = row * 4 + column;
+        if (i >= count)
+          continue;
+        sum = grid[i] * 2;
+        if (column > 0)
+          sum += grid[i - 1];
+        else
+          sum += grid[i];
+        neighbour = i;
+        if (column < 3) {
+          if (i + 1 < count)
+            neighbour = i + 1;
+        }
+        sum += grid[neighbour];
+        if (row > 0)
+          sum += grid[i - 4];
+        else
+          sum += grid[i];
+        if (i + 4 < count)
+          sum += grid[i + 4];
+        else
+          sum += grid[i];
+        next[i] = ((sum / 6) + ((seed >> pass) & 31)) & 0x1FFF;
+      }
+    }
+    for (i = 0; i < count; i++)
+      grid[i] = calculationShiftRestore(next[i], 1, seed);
+  }
+
+  for (i = 0; i < count; i++) {
+    bytes[i * 2] = grid[i];
+    bytes[i * 2 + 1] = grid[i] >> 8;
+    checksum = (checksum + calculationPartitionRestore(grid[i], 29, seed)) & 0x1FFF;
+  }
+  return checksum;
 }

@@ -1,7 +1,8 @@
 
 // assets/data/asm code taken from https://www.smspower.org/maxim/HowToProgram/Lesson1AllOnOnePage (helloworld.zip)
 
-// in this app we make calculations and print the results on screen
+// Exercise scalar arithmetic, array processing, sorting, grid filtering and records.
+// Each displayed row compares an expected result with three calculated results.
 
 // ROM header
 __asm(".sdsctag 1.0, \"TEST\", \"Calculations 2\", \"Ville Helin\"");
@@ -321,10 +322,10 @@ static void calculateAndPrintComplex(u8 one) {
   extra3 = calculationProductRestore(extra2, 2, 1);
   printCalculationLine(chars, 0x80, 0x7A, 0x2D34, extra1, extra2, extra3);
 
-  extra1 = (((((0x47C1 * (one + one)) + one) / (one + one)) ^ 0x28E5) ^ 0x28E5) + zero;
-  extra2 = calculationPartitionRestore(extra1, 37, 0x713A);
-  extra3 = calculationShiftRestore(extra2, one, 0x0D96);
-  printCalculationLine(chars, 0xC0, 0x7A, 0x47C1, extra1, extra2, extra3);
+  extra1 = calculationArrayWorkload(0x47C1, 16, chars);
+  extra2 = calculationShiftRestore(extra1, one, 0x0D96);
+  extra3 = calculationProductRestore(extra2, 3, 2);
+  printCalculationLine(chars, 0xC0, 0x7A, 0x1FE6, extra1, extra2, extra3);
 
   u8 *reg = 0xffff;
 
@@ -483,4 +484,36 @@ u16 calculationPartitionRestore(u16 value, u16 divisor, u16 mask) {
   return restored ^ mask;
 }
 
+// Workload kernels accept 0..16 elements; the shared display buffer has 80 bytes.
+u16 calculationArrayWorkload(u16 seed, u16 count, u8 *bytes) {
 
+  u16 values[16];
+  u16 i;
+  u16 j;
+  u16 pass;
+  u16 mixed;
+  u16 checksum = seed & 0x1FFF;
+
+  for (i = 0; i < count; i++) {
+    values[i] = (seed + i * 73) & 0x1FFF;
+    bytes[i] = (seed >> 3) + i * 11;
+  }
+
+  for (pass = 0; pass < 3; pass++) {
+    for (i = 0; i < count; i++) {
+      j = (i + pass + 1) % count;
+      mixed = calculationPartitionRestore(values[j] + bytes[i], 17 + pass, seed);
+      if ((mixed & 1) == 0)
+        mixed = (mixed >> 1) + values[i];
+      else
+        mixed = (mixed ^ seed) + i * 7;
+      values[i] = calculationProductRestore(mixed & 0x1FFF, 3, pass);
+      values[i] = calculationShiftRestore(values[i], 1, seed);
+      bytes[i] = values[i] ^ (values[i] >> 8) ^ bytes[j];
+    }
+  }
+
+  for (i = 0; i < count; i++)
+    checksum = (checksum + values[i] + bytes[i]) & 0x1FFF;
+  return checksum;
+}

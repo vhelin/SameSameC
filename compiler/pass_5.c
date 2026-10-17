@@ -7430,6 +7430,7 @@ static int _collect_register_allocator_loop_stack_roles(
   int edge_index;
   int identity_index;
   int instruction_index;
+  int uncovered_body_role = RA_LOOP_STACK_ROLE_REQUIRED + 1;
   char *exit_blocks;
   char *loop_blocks;
 
@@ -7546,6 +7547,10 @@ static int _collect_register_allocator_loop_stack_roles(
           block_role = RA_LOOP_STACK_ROLE_EXIT_READ;
           break;
         }
+        if (loop_blocks[block_index] == YES) {
+          block_role = uncovered_body_role;
+          break;
+        }
       }
     }
     if (block_role == 0)
@@ -7558,6 +7563,31 @@ static int _collect_register_allocator_loop_stack_roles(
         instruction->arg2_node);
     for (identity_index = 0; identity_index < identity_count;
         identity_index++) {
+      if (block_role == uncovered_body_role) {
+        int uncovered = instruction->op == TAC_OP_ASM ||
+            (instruction->result_type == TAC_ARG_TYPE_LABEL &&
+            result_identity == identities[identity_index]) ||
+            (instruction->arg1_type == TAC_ARG_TYPE_LABEL &&
+            arg1_identity == identities[identity_index]) ||
+            (instruction->arg2_type == TAC_ARG_TYPE_LABEL &&
+            arg2_identity == identities[identity_index]);
+        int argument_index;
+
+        for (argument_index = 0;
+            argument_index < instruction->arguments_count; argument_index++) {
+          if (instruction->arguments[argument_index].type == TAC_ARG_TYPE_LABEL &&
+              _find_register_allocator_local_identity(function_node,
+              instruction->arguments[argument_index].node) == identities[identity_index])
+            uncovered = YES;
+        }
+        if (uncovered) {
+          values[identity_index].role_mask |= uncovered_body_role;
+          RA_TRACE((stderr, "register_allocator: loop_stack_value_rejected function=%s block=%d identity=%d instruction=%d reason=uncovered_body_access action=preserve_stack status=complete\n",
+              function_node->children[1]->label, join_block_index,
+              identities[identity_index], instruction_index));
+        }
+        continue;
+      }
       if ((block_role & RA_LOOP_STACK_ROLE_ENTRY_WRITE) != 0 &&
           instruction->op != TAC_OP_ARRAY_WRITE &&
           instruction->result_type == TAC_ARG_TYPE_LABEL &&
@@ -7711,6 +7741,11 @@ static int _collect_register_allocator_loop_stack_roles(
         }
       }
     }
+  }
+  /* Boundary rewrites cannot leave loop-body accesses on the old stack slot. */
+  for (identity_index = 0; identity_index < identity_count; identity_index++) {
+    if ((values[identity_index].role_mask & uncovered_body_role) != 0)
+      values[identity_index].role_mask = 0;
   }
   free(loop_blocks);
   free(exit_blocks);

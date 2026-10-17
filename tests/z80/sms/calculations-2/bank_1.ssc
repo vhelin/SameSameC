@@ -45,8 +45,49 @@ void calculateAndPrintComplexBank1(u8 *chars, u8 one, u8 zero) {
   extra3 = calculationPartitionRestore(extra2, 79, 0x47A5);
   printCalculationLine(chars, 0x00, 0x7C, 0x1BC7, extra1, extra2, extra3);
 
-  extra1 = (((((0x253A + 0x03E7) ^ 0x6B14) ^ 0x6B14) - 0x03E7) | zero) + one - one;
-  extra2 = calculationShiftRestore(extra1, one, 0x30D9);
-  extra3 = calculationProductRestore(extra2, 2, 1);
-  printCalculationLine(chars, 0x00, 0x7D, 0x253A, extra1, extra2, extra3);
+  extra1 = calculationSortWorkload(0x253A, 16, chars);
+  extra2 = calculationProductRestore(extra1, 3, 2);
+  extra3 = calculationPartitionRestore(extra2, 79, 0x47A5);
+  printCalculationLine(chars, 0x00, 0x7D, 0x0724, extra1, extra2, extra3);
+}
+
+u16 calculationSortWorkload(u16 seed, u16 count, u8 *bytes) {
+
+  u16 values[16];
+  u8 histogram[8];
+  u16 i;
+  u16 j;
+  u16 value;
+  u16 checksum = seed & 0x1FFF;
+
+  for (i = 0; i < 8; i++)
+    histogram[i] = 0;
+  for (i = 0; i < count; i++) {
+    values[i] = ((seed ^ (i * 131)) + count * 19) & 0x1FFF;
+    j = (values[i] >> 3) & 7;
+    histogram[j] = histogram[j] + 1;
+  }
+
+  for (i = 1; i < count; i++) {
+    value = values[i];
+    j = i;
+    while (j > 0) {
+      if (values[j - 1] <= value)
+        break;
+      values[j] = values[j - 1];
+      j--;
+    }
+    values[j] = calculationPartitionRestore(value, 31, seed);
+  }
+
+  for (i = 0; i < count; i++) {
+    bytes[i * 2] = values[i];
+    bytes[i * 2 + 1] = values[i] >> 8;
+    checksum = (checksum + values[i] * (i + 1)) & 0x1FFF;
+  }
+  for (i = 0; i < 8; i++) {
+    bytes[32 + i] = histogram[i];
+    checksum = (checksum + histogram[i] * (i + 1)) & 0x1FFF;
+  }
+  return checksum;
 }

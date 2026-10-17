@@ -11695,6 +11695,66 @@ compiler-process peak:
   not retroactively complete wider attribution or hot/cold loop placement.
   RA stays opt-in.
 
+### Calculations-2 Application Workload Expansion
+
+This fixture expansion is separate from optional steps 358-360. Four existing
+display rows now summarize bounded application-style kernels instead of scalar
+round trips; the other rows and the existing display/restoration helpers remain.
+The kernels accept 0-16 elements and reuse the 80-byte display buffer:
+
+| Kernel | Work | Buffer output | Display checksum |
+|---|---|---|---|
+| Array | Three passes of indirect word/byte reads, mutations, arithmetic and calls | First `count` bytes | `0x1FE6` |
+| Sort | Insertion sort, array shifts/inserts, eight-bin histogram and weighted sum | Words at `2*i`, histogram at 32-39 | `0x0724` |
+| Stencil | Three snapshot-based 4x4 filtering passes, nested loops and boundary handling | Words at `2*i` | `0x1334` |
+| Records | Indexed struct fields, two update passes, switch, continue and weighted sum | Words at `2*i`, flags at `32+i` | `0x12EA` |
+
+Insertion sorting exposed an incomplete loop-stack promotion: boundary accesses
+to `j` were rewritten to a temp while a body read still used the old stack slot.
+The existing role collector now rejects candidates with unmodeled body label
+accesses, call arguments or inline assembly, preserving stack-backed semantics
+instead of extending the rewrite framework. Eight actual-source controls cover
+body reads/writes, call/array operands, asm and unrelated accesses, requiring five
+boundary observations and immutable TAC. No production function, type or API was
+added. The four workload entry points reuse existing helpers and the execution
+runner; their display rows replace rather than duplicate the previous rows.
+
+Independent runner oracles use host arithmetic, numeric sorting, immutable grid
+snapshots and layout-independent records. Every case checks the return, entire
+128-byte guarded buffer, DE/SP restoration and bounded stack writes. The four
+exact display seeds/counts are additional cases. Banked kernels execute with
+their fixed 16-KiB bank mapped at `0x8000`, including calls back to bank zero;
+this is not hardware mapper or full boot/display execution.
+
+Fresh optimized GCC, native MSVC Release and native ASan executions each pass
+427 generated entries plus 13 real routines: 225,284 cases per mode, including
+512 inputs per entry and four extra display cases. Default/-no-ra ROMs and
+traced/quiet RA outputs match. Native Release and ASan each match GCC's 80 ROMs,
+27 metric reports and 9,988 selected decision lines; 30 real-project traced/quiet
+assembly pairs match after normalizing static-symbol IDs. All 217 ASan-run logs
+are free of sanitizer reports, with real compiler/verifier ASan runtime imports.
+Strict C89/pedantic/Wall/Werror compiler and verifier builds pass without
+optimization flags, retaining the existing calloc warning exemption. An
+additional strict `-O2` build encounters pre-existing warnings in unchanged
+`main.c`, `stack.c` and `token.c`; it is not claimed clean.
+Both full standard suites pass sequentially, 173 tests each, in an isolated
+tracked-input mirror with fresh staged compiler/linker hashes checked before
+and after. The final replacement display rows also pass the unchanged fixture
+makefile with both toolchains. Unrelated worktree changes/artifacts are preserved.
+
+Baseline limitations discovered during development remain separate: forwarding
+a pointer-based struct field read produced invalid assembly, and a compound
+`&&` with a computed comparison selected an uninitialized stencil neighbour.
+The final equivalent workloads use indexed struct fields and nested comparisons;
+no compiler support for those failing forms is claimed. Exact failed sources,
+ROMs/logs and the stencil trace remain in `/tmp/calculations2-expanded/smoke`
+and `smoke3`. Older calculations-2 ROM/frame/time measurements above describe
+the smaller historical application, not allocator regressions in this expansion.
+Current source/binary manifests and complete qualification outputs are under
+`/tmp/calculations2-expanded`. The MSVC build caches in `/tmp/ra355/native-*`
+were rebuilt during this task; older manifests do not qualify those overwritten
+cache executables. Their current copies/hashes are in the new evidence directory.
+
 ### Batch 358-360: Bound One Remaining Source-Loop Miss
 
 - [ ] **358. Identify one executed lowering opportunity.** Reuse the existing

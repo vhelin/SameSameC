@@ -70,6 +70,98 @@ int main(int argc, char **argv) {
   locals.temp_registers_count = 2;
   g_backend = BACKEND_Z80;
   {
+    struct register_allocator_basic_block blocks[5];
+    struct register_allocator_cfg_edge edges[5];
+    struct register_allocator_loop_join join;
+    struct register_allocator_loop_stack_value_roles roles[1];
+    struct register_allocator_loop_stack_value_selection selection;
+    struct register_allocator_loop_stack_rewrite_observation observations[15];
+    struct local_variables saved_locals;
+    struct local_variable variable_storage;
+    struct tree_node variable, unrelated;
+    struct function_argument argument;
+    struct tac body[5], before[5], *saved_tacs;
+    int identities[1] = { 0 };
+    int saved_count, variant, count;
+
+    saved_tacs = g_tacs;
+    saved_count = g_tacs_count;
+    saved_locals = locals;
+    memset(blocks, 0, sizeof(blocks));
+    memset(edges, 0, sizeof(edges));
+    memset(&join, 0, sizeof(join));
+    memset(&variable_storage, 0, sizeof(variable_storage));
+    memset(&variable, 0, sizeof(variable));
+    memset(&unrelated, 0, sizeof(unrelated));
+    memset(&argument, 0, sizeof(argument));
+    variable_storage.node = &variable;
+    locals.local_variables = &variable_storage;
+    locals.local_variables_count = 1;
+    join.status = RA_LOOP_JOIN_READY;
+    join.entry_predecessor = 0;
+    join.latch_predecessor = 3;
+    for (index = 0; index < 5; index++) {
+      blocks[index].start_tac = blocks[index].end_tac = index;
+      edges[index].from_block = index < 4 ? index : 1;
+      edges[index].to_block = index < 3 ? index + 1 : (index == 3 ? 1 : 4);
+    }
+    for (variant = 0; variant < 8; variant++) {
+      int eligible = variant == 0 || variant == 6;
+      memset(body, 0, sizeof(body));
+      for (index = 0; index < 5; index++)
+        body[index].function_node = &function;
+      body[0].op = TAC_OP_ASSIGNMENT;
+      body[0].result_type = TAC_ARG_TYPE_LABEL;
+      body[0].result_node = &variable;
+      body[1].op = TAC_OP_JUMP_GT;
+      body[1].arg1_type = TAC_ARG_TYPE_LABEL;
+      body[1].arg1_node = &variable;
+      body[2].op = TAC_OP_ASSIGNMENT;
+      body[3].op = TAC_OP_SUB;
+      body[3].arg1_type = body[3].result_type = TAC_ARG_TYPE_LABEL;
+      body[3].arg1_node = body[3].result_node = &variable;
+      body[4].op = TAC_OP_RETURN_VALUE;
+      body[4].arg1_type = TAC_ARG_TYPE_LABEL;
+      body[4].arg1_node = &variable;
+      if (variant == 1 || variant == 6) {
+        body[2].arg1_type = TAC_ARG_TYPE_LABEL;
+        body[2].arg1_node = variant == 1 ? &variable : &unrelated;
+      }
+      if (variant == 2) {
+        body[2].arg2_type = TAC_ARG_TYPE_LABEL;
+        body[2].arg2_node = &variable;
+      }
+      if (variant == 3 || variant == 7) {
+        body[2].result_type = TAC_ARG_TYPE_LABEL;
+        body[2].result_node = &variable;
+        if (variant == 7)
+          body[2].op = TAC_OP_ARRAY_WRITE;
+      }
+      if (variant == 4) {
+        body[2].op = TAC_OP_FUNCTION_CALL;
+        argument.type = TAC_ARG_TYPE_LABEL;
+        argument.node = &variable;
+        body[2].arguments = &argument;
+        body[2].arguments_count = 1;
+      }
+      if (variant == 5)
+        body[2].op = TAC_OP_ASM;
+      memcpy(before, body, sizeof(body));
+      g_tacs = body;
+      g_tacs_count = 5;
+      if (_collect_register_allocator_loop_stack_roles(&function, blocks, 5, 1,
+          &join, edges, 5, identities, 1, roles, observations, 15, &count) == FAILED ||
+          register_allocator_select_loop_stack_value(name.label, 1, roles, 1, &selection) == FAILED ||
+          selection.candidate_count != eligible || count != 5 ||
+          memcmp(body, before, sizeof(body)) != 0)
+        return 1;
+    }
+    g_tacs = saved_tacs;
+    g_tacs_count = saved_count;
+    locals = saved_locals;
+    fprintf(stderr, "allocation_loop_stack_test: body_controls=8 boundary_rewrites_complete=yes immutable=yes status=complete\n");
+  }
+  {
     int physical_registers[5] = { Z80_PHY_A, Z80_PHY_HL, Z80_PHY_BC, Z80_PHY_B, Z80_PHY_C };
     int units[5] = { 1, 2, 12, 4, 8 };
     int first_index, second_index;
