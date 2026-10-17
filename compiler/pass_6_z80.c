@@ -3343,15 +3343,6 @@ static int _base_needs_memory_pointer_load(int base_type, struct tree_node *base
 }
 
 
-static void _load_pointer_value_at_hl_to_hl(FILE *file_out) {
-
-  fprintf(file_out, "      LD  A,(HL)\n");
-  fprintf(file_out, "      INC HL\n");
-  fprintf(file_out, "      LD  H,(HL)\n");
-  fprintf(file_out, "      LD  L,A\n");
-}
-
-
 static int _generate_asm_get_address_z80(struct tac *t, FILE *file_out, struct tree_node *function_node, int op) {
 
   struct z80_location result_location;
@@ -3439,8 +3430,12 @@ static int _generate_asm_get_address_z80(struct tac *t, FILE *file_out, struct t
                                                     &arg1_location, RA_ADDRESS_TARGET_HL, 0);
   }
 
-  if (base_memory_pointer_load == YES)
-    _load_pointer_value_at_hl_to_hl(file_out);
+  if (base_memory_pointer_load == YES) {
+    fprintf(file_out, "      LD  A,(HL)\n");
+    _inc_hl(file_out);
+    fprintf(file_out, "      LD  H,(HL)\n");
+    fprintf(file_out, "      LD  L,A\n");
+  }
 
   if (op == TAC_OP_GET_ADDRESS_ARRAY) {
     int var_type;
@@ -3696,6 +3691,16 @@ static int _materialize_array_base_to_iy(struct tac *tac, struct z80_location *b
       _load_bc_to_iy(file_out);
     }
     fprintf(file_out, "      ; retained %s in %s\n", operand_name, base_location->kind == LOC_PHY_HL ? "HL" : "BC");
+  }
+  else if (base_memory_pointer_load == YES && is_write == NO && arg2_is_zero == NO &&
+           g_allocator_enabled == YES && g_allocator_force_all_spill == NO && g_is_ix_de == YES &&
+           get_register_allocator_address_materialization_mode(base_location->kind, RA_ADDRESS_TARGET_IX,
+             base_location->offset) == RA_ADDRESS_MODE_FRAME_DISPLACEMENT) {
+    _trace_z80_specialized_address_materialization(function_node, "array_read_base_address",
+        operand_name, base_location, RA_ADDRESS_TARGET_IX, base_location->offset);
+    _load_from_ix_to_l(base_location->offset, file_out);
+    _load_from_ix_to_h(base_location->offset + 1, file_out);
+    _load_hl_to_iy(file_out);
   }
   else {
     if (_load_location_address_to_iy(base_location, file_out) == FAILED)

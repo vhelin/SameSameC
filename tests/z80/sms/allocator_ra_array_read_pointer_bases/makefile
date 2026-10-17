@@ -25,7 +25,7 @@ all: linked.sms
 	grep -q "resolve function=allocatorRaArrayReadPointerBaseHl operand=arg1 kind=PHY_BC" compiler.log
 	grep -q "array_read_base function=allocatorRaArrayReadPointerBaseA kind=STACK_LOCAL memory_pointer_load=yes" compiler.log
 	grep -q "array_read_base function=allocatorRaArrayReadPointerBaseHl kind=PHY_BC memory_pointer_load=no" compiler.log
-	grep -q "function=allocatorRaArrayReadPointerBaseA emitter=array_read_base_address operand=arg1 kind=STACK_LOCAL offset=-6 mode=frame_address folded_offset=0 address_target=IY target=z80" compiler.log
+	grep -q "function=allocatorRaArrayReadPointerBaseA emitter=array_read_base_address operand=arg1 kind=STACK_LOCAL offset=-6 mode=frame_displacement folded_offset=-6 address_target=IX target=z80" compiler.log
 	: && ! grep -q "function=allocatorRaArrayReadPointerBaseHl emitter=array_read_base_address" compiler.log
 	grep -q "array_read_index function=allocatorRaArrayReadPointerBaseA kind=PHY_A" compiler.log
 	grep -q "array_read_index function=allocatorRaArrayReadPointerBaseHl kind=PHY_HL" compiler.log

@@ -12178,16 +12178,99 @@ Qualification and measured outcome:
 
 ### Batch 367-369: Bound Remaining Address-Setup Work
 
-- [ ] **367. Attribute one executed address-setup cost.** Follow remaining
-      IX/IY setup in unchanged real-source controls. Separate required
-      pointer/index/ABI work from a demonstrably redundant transfer.
-- [ ] **368. Reuse one existing path if profitable.** Try at most one bounded
-      address-lowering simplification, preserving live payloads, carry and
-      alias/call boundaries. Retain only a measured, independently verified
-      improvement; do not add pointer/index caches or a new policy framework.
-- [ ] **369. Consolidate and requalify.** Remove superseded code, report
-      production/test complexity and isolated cycle/traffic/ROM/frame
-      tradeoffs, then apply the shared gates before a local-only commit.
+- [x] **367. Attribute one executed address-setup cost.** The unchanged
+      58-read source loop rebuilds IY from DE for its pointer slot even
+      though IX already equals DE. Required index/pointer loads remain.
+- [x] **368. Reuse one existing path if profitable.** Use existing IX loads
+      and HL-to-IY transfer only for RA nonzero-index memory-pointer reads
+      with a valid existing IX frame-base cache and a policy-approved
+      displacement. No new cache, policy, helper or API is introduced.
+- [x] **369. Consolidate and requalify.** Remove one single-use address
+      helper, prove pre-consolidation output identity and pass the full
+      execution, native/sanitizer and standard-suite gates below.
+
+Qualification and measured outcome:
+
+- Replace `LD IY,offset; ADD IY,DE; LD L,(IY+0); LD H,(IY+1)` with
+  `LD L,(IX+offset); LD H,(IX+offset+1)`: **29 cycles and six ROM bytes
+  saved per eligible read site**, without changing memory accesses or
+  byte-register moves. Reuse `g_is_ix_de` and the current target's
+  `FRAME_DISPLACEMENT` decision, not a second validity/bounds implementation.
+  IX is neither modified nor initialized by the new path. BC retains the
+  index; HL is already ARRAY_READ scratch. The final ADD IY,BC computes the
+  same address/carry and does not consume flags from the removed setup.
+- Writes, constant-zero indices, invalid/uncached IX, global pointers,
+  out-of-range pointer slots and physical pointer bases retain existing
+  paths. Default/`-no-ra` and forced-spill remain byte-identical to the
+  frozen `cf38104` compiler. No value is retained across aliasing stores,
+  calls, labels or port operations beyond existing allocator contracts.
+
+| Unchanged real-source control, one call | Executed cycles | Frame byte accesses | Byte-register moves | Function ROM | Frame bytes |
+|---|---|---|---|---|---|
+| `matrix_real_index_0` | 29,927 -> 29,927 | 834 -> 834 | 302 -> 302 | 1,692 -> 1,692 | 15 -> 15 |
+| `matrix_source_loop_0` | 63,985 -> 62,303 | 1,886 -> 1,886 | 360 -> 360 | 1,823 -> 1,817 | 16 -> 16 |
+
+- The output loop saves **1,682 cycles** by removing two setup instructions
+  per iteration. Its 58 index bytes, 116 pointer bytes and 232 HL-to-IY
+  transfer bytes remain; this is not a spill/stack-traffic reduction.
+  Calculations-1 used ROM falls 22,572->22,548; calculations-2 falls
+  41,059->41,017. Total/maximum frames remain 267/102 and 1,234/225.
+  Across common sources, 69 generated entries and five real routines improve,
+  including the RAM-manager workload by 119,741 aggregate cycles. No isolated
+  cycle/ROM/frame-size regression or executed frame-traffic/move change is
+  measured. Real-routine totals are aggregate case measurements, not per-call
+  gains.
+- Extend the existing index-copy family from 22 to 25 variants with 114/115/
+  116-byte workspaces. Actual pointer slots **-127/-128 use IX; -129 uses IY**,
+  with unchanged frames of 129/130/131 bytes. Runner assertions require the
+  exact slot/mode/folded-offset trace and reject IX use in zero-index,
+  initially uncached and global-pointer fallbacks. Independent buffer/return
+  arithmetic covers these boundaries plus existing aliases, mutating calls,
+  signed/full-width indices, word elements and low-address carry.
+- Fold the single-use HL pointer-dereference wrapper into its caller, reusing
+  `_inc_hl`. Production changes are **+16/-11 lines, five net added and one
+  fewer function**; no production function is added. The runner grows by ten
+  net lines (+15/-5). Seven exact read-opcode goldens in six existing fixtures
+  save six bytes each; executable SSC source and all other tag bytes match.
+  Two existing trace assertions now require IX displacement rather than IY.
+- Fresh optimized GCC, native Release and native ASan compiler/verifier
+  pairs and strict unoptimized GCC C89/pedantic/Wall/Werror builds pass, with
+  the established calloc exemption. Immutable verifier failures, fixed-prefix/
+  shared-suffix slots and atomic rollback remain qualified. Each final
+  toolchain executes **460 generated entries and 22 real routines:
+  235,520 generated + 9,755 real = 245,275 cases per mode**, in default/
+  all-spill/RA modes. All six cohorts are fresh full runs, with independent
+  return/buffer/ports/DE/SP/stack guards and all 14 exact VDP display rows.
+- Native Release and ASan each match GCC's 80 ROMs, 30 reports and 12,090
+  selected decisions; pre-consolidation cleanup matches 80 ROMs, eight static
+  reports and 12,090 decisions. All 86 common SSC sources, 48 flags-off
+  ROMs/execution metrics and 30 traced/quiet real-project assembly pairs
+  match their controls. All 217 final ASan logs are clean and real compiler/
+  verifier runtime imports are verified. ASan linker execution, leaks, other
+  sanitizers, exhaustive paths and mapper/full-boot/rendering/hardware timing
+  remain unqualified; banked kernels use fixed mapping.
+- Both complete standard suites pass sequentially, **173 tests each**, with
+  six staged compiler/linker hashes unchanged before/after each run.
+  Qualification artifacts under `/tmp/ra367` retain baseline/trial snapshots,
+  60-input/13-binary manifests,
+  exact owner profiles, golden proofs, comparison reports and suite staging
+  hashes. Use the pinned 2.3.0 emulator and `RA_CASES=512`; control-only
+  `RA_BASELINE=1` relaxes quality gates, never execution correctness.
+  The redundant suite mirror is removed; logs and staging hashes remain.
+  Fixed-spill-prefix rules, alias safety and BC/DIV legality are unchanged.
+  RA remains opt-in.
+
+### Batch 370-372: Bound One Remaining Memory-to-Register Copy
+
+- [ ] **370. Attribute one executed copy cost.** Follow ordinary assignments
+      in the unchanged real-source prefix before the output loop. Separate
+      required pointer/ABI work from redundant setup or scratch transfers.
+- [ ] **371. Reuse existing assignment/materialization logic if profitable.**
+      Retain at most one bounded trial, proving width, overlap, carry and
+      alias/call safety without adding caches or a new lowering framework.
+- [ ] **372. Consolidate and requalify.** Remove superseded wrappers/paths,
+      prove cleanup identity and isolated tradeoffs, and apply the shared
+      gates before a local-only commit.
 
 **Shared completion gates:** Each three-step batch gets its own local commit,
 with no push and no unrelated worktree changes included. Reuse existing

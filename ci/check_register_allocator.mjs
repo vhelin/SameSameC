@@ -88,7 +88,7 @@ for (let variant = 0; variant < 30; variant++) {
   const call = `u8 called = ra_signed_helper(${variant & 1 ? 'previous' : `alias[start+row+${inner}]`},selector,row);`;
   const scalarType = variant >= 12 || [4, 7, 9, 11].includes(variant) ? 'u8' : [6, 8].includes(variant) ? 's8' : 'u16';
   const pointerIndex = variant === 9 || variant >= 12;
-  const byteIndex = [14, 15, 16, 20, 21].includes(variant);
+  const byteIndex = [14, 15, 16, 20, 21, 22, 23, 24].includes(variant);
   const functions = [
     ['matrix_byte', 'u8 a, u8 b, u8 c', `u8 saved = a^b; return ${expression};`, [1, 1, 1], 1],
     ['matrix_word', 'u16 a, u16 b, u16 c', `u16 saved = ~b; return ${expression};`, [2, 2, 2], 2],
@@ -117,8 +117,9 @@ for (let variant = 0; variant < 30; variant++) {
       's8 index = a; return target[index];',
       's16 index = a; return target[index];',
       'return target[a];',
-      'ra_index_pointer = target; u16 first = ra_index_pointer[a]; ra_index_pointer = alias; return first+ra_index_pointer[a];'
-    ][variant], pointerIndex ? [2, 2, byteIndex ? 1 : 2, 1] : [variant === 4 || variant === 5 ? 1 : 2, 1], [2, 3, 10, 11, 14, 15, 16, 17, 20, 21].includes(variant) ? 2 : 1],
+      'ra_index_pointer = target; u16 first = ra_index_pointer[a]; ra_index_pointer = alias; return first+ra_index_pointer[a];',
+      ...[114, 115, 116].map(size => `u8 workspace[${size}]; u8 *local = target; workspace[a&63] = b; u16 loaded = local[a]; return loaded+workspace[a&63];`)
+    ][variant], pointerIndex ? [2, 2, byteIndex ? 1 : 2, 1] : [variant === 4 || variant === 5 ? 1 : 2, 1], [2, 3, 10, 11, 14, 15, 16, 17, 20, 21, 22, 23, 24].includes(variant) ? 2 : 1],
     ['matrix_bc_alu', 'u16 a, u16 b, u16 c', variant < 10 ? `u16 saved = a${operator}b; return c${variant < 5 ? '-' : '+'}saved;` : variant === 10 ?
       'u16 live = a+c; u16 saved = b+c; return (live-saved)^live;' :
       'u8 small = a; u16 saved = b+c; return (saved+small)^small;', [2, 2, 2], 2],
@@ -223,7 +224,7 @@ for (let variant = 0; variant < 30; variant++) {
     if (family.startsWith('matrix_') && variant >= ({matrix_byte: 10, matrix_word: 10,
       matrix_compare_byte: 12, matrix_compare_word: 12, matrix_compare_signed: 12,
       matrix_low_byte: 10, matrix_structural: 12, matrix_sentinel: 10, matrix_affinity: 8, matrix_rank: 4,
-      matrix_index_copy: 22, matrix_bc_alu: 12, matrix_scalar_uses: 30, matrix_real_index: 1}[family] || 2)) continue;
+      matrix_index_copy: 25, matrix_bc_alu: 12, matrix_scalar_uses: 30, matrix_real_index: 1}[family] || 2)) continue;
     if (comparisonForms && family !== 'arithmetic' && !family.startsWith('matrix_compare_')) continue;
     if (process.env.RA_FAMILIES && family !== 'arithmetic' && !process.env.RA_FAMILIES.split(',').includes(family)) continue;
     if (family.startsWith('matrix_') && ['matrix_index_copy', 'matrix_bc_alu', 'matrix_scalar_uses', 'matrix_real_index', 'matrix_source_loop'].includes(family) !==
@@ -395,6 +396,15 @@ for (const program of process.env.RA_BASELINE === '1' ? [] : programs) {
        !lines.some(line => /profitability .*phy=BC known=yes /.test(line)) ||
        !lines.some(line => /placement_rank .*original=HL selected=BC known=yes .*mutation=no$/.test(line))))
     throw new Error(`Cost-ranked word-index affinity missing: ${program.name}`);
+  if (program.family === 'matrix_index_copy' && program.variant >= 22) {
+    const offset = -105 - program.variant, useIx = program.variant < 24;
+    const address = `offset=${offset} mode=${useIx ? 'frame_displacement' : 'frame_address'} folded_offset=${useIx ? offset : 0} address_target=${useIx ? 'IX' : 'IY'} target=z80`;
+    if (!lines.some(line => line.includes('emitter=array_read_base_address operand=arg1 kind=STACK_LOCAL ') && line.endsWith(address)))
+      throw new Error(`Pointer-slot displacement boundary not exercised: ${program.name}`);
+  }
+  if (program.family === 'matrix_index_copy' && [12, 13, 21].includes(program.variant) &&
+      lines.some(line => line.includes('emitter=array_read_base_address ') && line.includes('address_target=IX ')))
+    throw new Error(`Zero-index, uncached or global pointer fallback changed: ${program.name}`);
   if (program.family === 'scalar_split_byte' &&
       (lines.filter(line => line.includes('scalar_split_transfer') && line.endsWith('kind=store')).length !== 1 ||
        lines.filter(line => line.includes('scalar_split_transfer') && line.endsWith('kind=reload')).length !== 1 ||
@@ -639,7 +649,7 @@ for (const program of programs) {
           const previous = word ? buffer[(offset + index) * 2] + buffer[(offset + index) * 2 + 1] * 256 : buffer[offset + index];
           if (program.variant === 12) expected = buffer[offset];
           else if (program.variant === 13) expected = buffer[offset + 7];
-          else if (program.variant === 14) expected = previous + other;
+          else if (program.variant === 14 || program.variant >= 22) expected = previous + other;
           else if (program.variant === 15 || program.variant === 16) {
             expectedBuffer[(program.variant === 15 ? parameters[1] : offset) + index] = other;
             expected = previous + expectedBuffer[offset + index];
