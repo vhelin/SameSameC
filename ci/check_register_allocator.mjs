@@ -1077,7 +1077,10 @@ if (process.env.RA_REAL_PROJECTS !== '0') {
   for (const [project, routines] of [
     ['calculations-1', ['calculationAdd3', 'calculationMultiplyAdd', 'calculationXorRoundTrip', 'calculationQuotientRoundTrip', 'convertNumbersToChars16']],
     ['calculations-2', ['calculationProductRestore', 'calculationShiftRestore', 'calculationPartitionRestore', 'convertNumbersToChars16',
-      'calculationArrayWorkload', 'calculationSortWorkload', 'calculationStencilWorkload', 'calculationRecordWorkload']]
+      'calculationArrayWorkload', 'calculationSortWorkload', 'calculationStencilWorkload', 'calculationRecordWorkload',
+      'gameRamAllocate', 'gameRamRelease',
+      'calculationHeapWorkload', 'calculationActorWorkload', 'calculationTileWorkload', 'calculationPathWorkload',
+      'calculateAndPrintComplexBank1', 'calculateAndPrintComplexBank2', 'calculateAndPrintComplexBank3']]
   ]) {
     const images = new Map();
     for (const [mode, flags] of modes) {
@@ -1106,8 +1109,11 @@ if (process.env.RA_REAL_PROJECTS !== '0') {
       realTotals[project][name] = routineTotals;
       qualityTotals[`${project}/${name}`] = routineTotals;
       const workload = name.endsWith('Workload');
+      const display = name.startsWith('calculateAndPrintComplexBank');
       const displaySeed = {calculationArrayWorkload: 0x47c1, calculationSortWorkload: 0x253a,
-        calculationStencilWorkload: 0x36b9, calculationRecordWorkload: 0x5a13}[name];
+        calculationStencilWorkload: 0x36b9, calculationRecordWorkload: 0x5a13,
+        calculationHeapWorkload: 0x4219, calculationActorWorkload: 0x2d57,
+        calculationTileWorkload: 0x3b6d, calculationPathWorkload: 0x17a6}[name];
       const routineImages = new Map(Array.from(images, ([mode, image]) => {
         const bank = image.banks.get(name), address = image.symbols.get(name);
         if (bank === 0) return [mode, image];
@@ -1119,19 +1125,26 @@ if (process.env.RA_REAL_PROJECTS !== '0') {
           .map(([key, metadata]) => [key & 65535, metadata]));
         return [mode, {...image, rom, transfers}];
       }));
-      for (let seed = 0; seed < cases + (workload ? 1 : 0); seed++) {
-        const value = seed === cases ? displaySeed : (seed * 7919 + 32767) & 65535;
+      for (let seed = 0; seed < (display ? 1 : cases + (workload ? 3 : 0)); seed++) {
+        const value = seed >= cases ? [displaySeed, 0, 65535][seed - cases] : (seed * 7919 + 32767) & 65535;
         const other = (seed * 5113 + 17) & 65535;
         const third = (seed * 3571 + 3) & 65535;
         let parameters;
         let expected;
+        let expectedPorts;
         let buffer = new Uint8Array(0), expectedBuffer = buffer, bufferAddress = 0, returnWidth = 2;
         switch (name) {
           case 'calculationArrayWorkload':
           case 'calculationSortWorkload':
           case 'calculationStencilWorkload':
-          case 'calculationRecordWorkload': {
-            const count = seed === cases ? 16 : seed % 17;
+          case 'calculationRecordWorkload':
+          case 'calculationHeapWorkload':
+          case 'calculationActorWorkload':
+          case 'calculationTileWorkload':
+          case 'calculationPathWorkload':
+          case 'gameRamAllocate':
+          case 'gameRamRelease': {
+            const count = seed >= cases ? 16 : seed % 17;
             bufferAddress = 0xc100;
             buffer = Uint8Array.from({length: 128}, (_, index) => (index * 47 + seed * 11) & 255);
             expectedBuffer = buffer.slice();
@@ -1177,7 +1190,7 @@ if (process.env.RA_REAL_PROJECTS !== '0') {
                 expectedBuffer[index * 2 + 1] = item >> 8;
                 expected = (expected + item) & 8191;
               });
-            } else {
+            } else if (name === 'calculationRecordWorkload') {
               const readings = Array.from({length: count}, (_, index) => ({value: (value + index * 97) & 8191,
                 weight: 1 + index % 7, category: (value + index) & 3, enabled: (value + index * 3) & 7}));
               for (let pass = 0; pass < 2; pass++) {
@@ -1194,6 +1207,204 @@ if (process.env.RA_REAL_PROJECTS !== '0') {
                 expectedBuffer[32 + index] = reading.category | (reading.enabled ? 16 : 0);
                 expected = (expected + reading.value * reading.weight) & 8191;
               });
+            } else if (name === 'calculationHeapWorkload' || name.startsWith('gameRam')) {
+              // Model blocks as intervals, independently of the C header-walking implementation.
+              let blocks = [{offset: 0, length: 64, used: false}];
+              const allocate = requested => {
+                if (requested < 1 || requested > 63) return 0;
+                const index = blocks.findIndex(block => !block.used && block.length > requested);
+                if (index < 0) return 0;
+                const block = blocks[index], remaining = block.length - requested - 1;
+                if (remaining >= 2) {
+                  blocks.splice(index + 1, 0, {offset: block.offset + requested + 1, length: remaining, used: false});
+                  block.length = requested + 1;
+                  expectedBuffer[block.offset + block.length] = remaining;
+                }
+                block.used = true;
+                expectedBuffer[block.offset] = 128 | block.length;
+                return block.offset + 1;
+              };
+              const release = handle => {
+                const index = blocks.findIndex(block => block.offset + 1 === handle && block.used);
+                if (index < 0) return 0;
+                const block = blocks[index];
+                block.used = false;
+                expectedBuffer[block.offset] = block.length;
+                if (blocks[index + 1] && !blocks[index + 1].used) {
+                  block.length += blocks[index + 1].length;
+                  blocks.splice(index + 1, 1);
+                }
+                if (index > 0 && !blocks[index - 1].used) {
+                  const previous = blocks[index - 1];
+                  previous.length += block.length;
+                  expectedBuffer[previous.offset] = previous.length;
+                  blocks.splice(index, 1);
+                } else expectedBuffer[block.offset] = block.length;
+                return 1;
+              };
+              for (let index = 0; index < 64; index++) expectedBuffer[index] = value + index * 13;
+              if (name.startsWith('gameRam')) {
+                const shapes = [[64], [-64], [8, -8, 16, -32], [-8, 8, -16, 32], [32, -32], [16, -16, 32]];
+                let offset = 0;
+                blocks = shapes[seed % shapes.length].map(length => {
+                  const block = {offset, length: Math.abs(length), used: length < 0};
+                  expectedBuffer[offset] = block.length | (block.used ? 128 : 0);
+                  offset += block.length;
+                  return block;
+                });
+                buffer = expectedBuffer.slice();
+                const argumentsToTest = name === 'gameRamAllocate' ? [0, 1, 6, 7, 15, 31, 63, 64, 65535] :
+                  [0, 1, 2, 9, 17, 33, 64, 65535];
+                const argument = argumentsToTest[Math.floor(seed / shapes.length) % argumentsToTest.length];
+                parameters = [bufferAddress, argument];
+                expected = name === 'gameRamAllocate' ? allocate(argument) : release(argument);
+              } else {
+                expectedBuffer.fill(0, 64, 71);
+                expectedBuffer[0] = 64;
+                let handle = allocate(63);
+                expected += handle;
+                if (handle) {
+                  expectedBuffer[handle] = value;
+                  expectedBuffer[handle + 62] = value >> 8;
+                }
+                expected += allocate(1) * 3;
+                expected += release(handle) * 5;
+                expected += release(handle) * 7;
+                expected += allocate(0) * 11;
+                expected += allocate(64) * 13;
+                expected += release(2) * 17;
+                const first = allocate(7), second = allocate(7), third = allocate(7);
+                expected += first + second + third;
+                expected += release(first) * 19;
+                expected += release(third) * 23;
+                handle = allocate(15);
+                expected += handle * 29;
+                expected += release(second) * 31;
+                expected += release(handle) * 37;
+                const handles = Array(8).fill(0), sizes = Array(8).fill(0);
+                for (let round = 0; round < count; round++) {
+                  let slot = round % 8;
+                  if (handles[slot]) expectedBuffer[66] += release(handles[slot]);
+                  sizes[slot] = 2 + (((value >> (round % 8)) + round * 3) % 16);
+                  handle = allocate(sizes[slot]);
+                  handles[slot] = handle;
+                  if (!handle) expectedBuffer[65]++;
+                  else {
+                    expectedBuffer[64]++;
+                    for (let index = 0; index < sizes[slot]; index++) expectedBuffer[handle + index] = value + round * 7 + index;
+                  }
+                  handles.forEach((item, index) => {
+                    if (item) expected = (expected + expectedBuffer[item] * (index + 1) + expectedBuffer[item + sizes[index] - 1]) & 8191;
+                  });
+                  if (round % 2) {
+                    slot = (slot + 3) % 8;
+                    if (handles[slot]) {
+                      expectedBuffer[66] += release(handles[slot]);
+                      handles[slot] = 0;
+                    }
+                  }
+                }
+                for (const item of handles) if (item) expectedBuffer[66] += release(item);
+                expectedBuffer[67] = release(0);
+                handle = allocate(63);
+                expectedBuffer[68] = handle;
+                expectedBuffer[69] = release(handle);
+                expectedBuffer[70] = expectedBuffer[0];
+                if (blocks.length !== 1 || blocks[0].used || blocks[0].length !== 64 ||
+                    expectedBuffer[68] !== 1 || expectedBuffer[69] !== 1)
+                  throw new Error('Heap reference did not coalesce and reuse the complete arena');
+                for (let index = 0; index < 71; index++) expected = (expected + expectedBuffer[index] * (index + 1)) & 8191;
+              }
+            } else if (name === 'calculationActorWorkload') {
+              const tiles = Array.from({length: 64}, (_, index) => (value + index * 5 + Math.floor(index / 8) * 3) & 7);
+              const actors = Array.from({length: count}, (_, index) => ({x: (value + index * 13) % 128,
+                y: ((value >> 3) + index * 19) % 128, score: 0, direction: (value >> index) & 3, health: 3 + index % 4}));
+              for (let frame = 0; frame < 6; frame++) {
+                actors.forEach((actor, index) => {
+                  if (!actor.health) return;
+                  const direction = (actor.direction + frame) % 4, speed = 1 + index % 4;
+                  const x = (actor.x + [speed, 128 - speed, 0, 0][direction]) % 128;
+                  const y = (actor.y + [0, 0, speed, 128 - speed][direction]) % 128;
+                  if (tiles[Math.floor(y / 16) * 8 + Math.floor(x / 16)] & 1) actor.direction = (direction + 1) % 4;
+                  else { actor.x = x; actor.y = y; }
+                  const position = Math.floor(actor.y / 16) * 8 + Math.floor(actor.x / 16);
+                  if (tiles[position] & 2) actor.health--;
+                  if (tiles[position] & 4) {
+                    actor.score += (index + 1) * 4;
+                    tiles[position] &= 3;
+                  }
+                });
+              }
+              actors.forEach((actor, index) => {
+                expectedBuffer.set([actor.x, actor.y, actor.health, actor.score], index * 4);
+                expectedBuffer[64 + index] = actor.direction;
+                expected = (expected + actor.x * 3 + actor.y * 5 + actor.score + actor.health * 17 + actor.direction) & 8191;
+              });
+              expected = (expected + tiles.reduce((sum, tile, index) => sum + tile * (index + 1), 0)) & 8191;
+            } else if (name === 'calculationTileWorkload') {
+              // Expand commands directly rather than duplicating the byte-stream decoder.
+              const decoded = [];
+              let encodedBytes = 0;
+              for (let index = 0; index < count; index++) {
+                const length = 1 + ((value >> (index % 8)) & 3), run = (value >> (index % 8)) & 1;
+                encodedBytes += 1 + (run ? 1 : length);
+                for (let item = 0; item < length; item++) decoded.push(run ? (value + index * 11) & 63 : (value + index * 7 + item * 3) & 63);
+              }
+              let crc = value;
+              decoded.forEach((tile, index) => {
+                tile = (tile + (value & 7) + Math.floor(index / 8)) & 63;
+                expectedBuffer[index] = tile;
+                crc ^= tile << 8;
+                for (let bit = 0; bit < 8; bit++) crc = ((crc << 1) ^ ((crc & 32768) ? 0x1021 : 0)) & 65535;
+              });
+              expected = (crc + encodedBytes + decoded.length * 17) & 8191;
+            } else if (name === 'calculationPathWorkload') {
+              const start = value & 63, goal = (value >> 6) & 63;
+              const walls = Array.from({length: 64}, (_, index) => ((value + index * 11) & 31) < count && index !== start && index !== goal);
+              const distances = Array(64).fill(255);
+              let frontier = [start], distance = 0, visited = 1;
+              distances[start] = 0;
+              while (frontier.length) {
+                distance++;
+                const following = [];
+                for (const position of frontier) {
+                  const neighbours = [position % 8 ? position - 1 : -1, position % 8 < 7 ? position + 1 : -1,
+                    position >= 8 ? position - 8 : -1, position < 56 ? position + 8 : -1];
+                  for (const next of neighbours.filter(next => next >= 0 && !walls[next] && distances[next] === 255)) {
+                    distances[next] = distance;
+                    following.push(next);
+                    visited++;
+                  }
+                }
+                frontier = following;
+              }
+              expectedBuffer.set([...distances, visited, distances[goal], walls.filter(Boolean).length, start, goal]);
+              for (let index = 0; index < 69; index++) expected = (expected + expectedBuffer[index] * (index + 1)) & 8191;
+            }
+            break;
+          }
+          case 'calculateAndPrintComplexBank1':
+          case 'calculateAndPrintComplexBank2':
+          case 'calculateAndPrintComplexBank3': {
+            bufferAddress = 0xc100;
+            buffer = new Uint8Array(80);
+            parameters = [bufferAddress, 1, 0];
+            returnWidth = 0;
+            const source = readFileSync(join(root, 'tests/z80/sms', project, `bank_${name.slice(-1)}.ssc`), 'utf8');
+            const rows = Array.from(source.matchAll(/printCalculationLine\(chars,\s*(0x[\da-f]+),\s*(0x[\da-f]+),\s*(0x[\da-f]+),/gi));
+            if (!rows.length || rows.length !== (source.match(/printCalculationLine\(chars,/g) || []).length)
+              throw new Error(`Incomplete display oracle for ${name}`);
+            expectedPorts = [];
+            for (const row of rows) {
+              expectedPorts.push([0xbf, Number(row[1])], [0xbf, Number(row[2])]);
+              for (let column = 0; column < 4; column++) {
+                if (column) expectedPorts.push(...[0, 0, 0x1d, 0, 0, 0].map(byte => [0xbe, byte]));
+                expectedPorts.push([0xbe, 4], [0xbe, 0]);
+                for (const digit of Number(row[3]).toString(16).padStart(4, '0')) {
+                  const value = parseInt(digit, 16);
+                  expectedPorts.push([0xbe, value + (value < 10 ? 0x10 : 0x17)], [0xbe, 0]);
+                }
+              }
             }
             break;
           }
@@ -1228,28 +1439,34 @@ if (process.env.RA_REAL_PROJECTS !== '0') {
           case 'calculationPartitionRestore': parameters = [value, 1 + other % 65535, third]; expected = value; break;
           default: throw new Error('Unknown real routine');
         }
+        const displayPorts = {};
         for (const mode of Object.keys(totals)) {
           const image = routineImages.get(mode);
           let result;
           try {
-            result = execute(image.rom, image.symbols.get(name), parameters, parameters.map(() => 2),
-              buffer, bufferAddress, returnWidth, image.transfers, false, workload ? 250000 : 20000, workload ? 512 : 256);
-            if ((returnWidth && result.value !== expected) || !Buffer.from(result.buffer).equals(Buffer.from(expectedBuffer)))
-              throw new Error(`Expected ${expected}, got ${result.value}; buffer_equal=${Buffer.from(result.buffer).equals(Buffer.from(expectedBuffer))}`);
+            result = execute(image.rom, image.symbols.get(name), parameters, display ? [2, 1, 1] : parameters.map(() => 2),
+              buffer, bufferAddress, returnWidth, image.transfers, display, display ? 1000000 : workload ? 250000 : 20000, workload || display ? 512 : 256);
+            if ((returnWidth && result.value !== expected) || (display ?
+                JSON.stringify(result.port_writes) !== JSON.stringify(expectedPorts) : !Buffer.from(result.buffer).equals(Buffer.from(expectedBuffer))))
+              throw new Error(`Return/buffer/VDP mismatch: expected ${expected}, got ${result.value}`);
             routineTotals[mode].cases++;
             for (const metric of executionMetrics) routineTotals[mode][metric] += result[metric];
+            if (display) displayPorts[mode] = result.port_writes;
           } catch (error) {
             writeFileSync(join(output, 'failure.json'), JSON.stringify({project, name, mode, seed, parameters, expected,
-              expected_buffer: Array.from(expectedBuffer), actual: result, error: String(error)}, null, 2));
+              expected_buffer: Array.from(expectedBuffer), expected_ports: expectedPorts, actual: result, error: String(error)}, null, 2));
             throw new Error(`Failure ${project}/${name} seed=${seed} mode=${mode}: ${error}; artifacts=${output}`);
           }
         }
+        if (display) writeFileSync(join(output, project, `${name}-display.json`),
+          JSON.stringify({expected: expectedPorts, actual: displayPorts}, null, 2));
       }
       console.log(JSON.stringify({project, routine: name, ...routineTotals}));
     }
   }
   writeFileSync(join(output, 'real-execution-summary.json'), JSON.stringify(realTotals, null, 2));
-  console.log(`PASS:real_routines=${Object.values(realTotals).reduce((count, routines) => count + Object.keys(routines).length, 0)} cases_per_routine=${cases} extra_display_cases=4 default_no_ra=identical artifacts=${output}`);
+  const routines = Object.values(realTotals).flatMap(Object.values);
+  console.log(`PASS:real_routines=${routines.length} cases_per_mode=${routines.reduce((sum, modes) => sum + modes.ra.cases, 0)} randomized_inputs=${cases} default_no_ra=identical artifacts=${output}`);
 }
 
 const qualityRows = Object.entries(qualityTotals).map(([routine, modes]) => ({routine,

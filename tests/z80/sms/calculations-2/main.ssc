@@ -1,7 +1,7 @@
 
 // assets/data/asm code taken from https://www.smspower.org/maxim/HowToProgram/Lesson1AllOnOnePage (helloworld.zip)
 
-// Exercise scalar arithmetic, array processing, sorting, grid filtering and records.
+// Exercise arithmetic, arrays, records, RAM management and game-style workloads.
 // Each displayed row compares an expected result with three calculated results.
 
 // ROM header

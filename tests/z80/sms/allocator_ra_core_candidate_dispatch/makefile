@@ -13,9 +13,9 @@ all: linked.sms core_candidate_dispatch_test
 	./core_candidate_dispatch_test > core_candidate_dispatch_test.log 2>&1
 	grep -q "candidate_dispatch function=allocatorRaCoreCandidateDispatchPath.*plan=3.*reason=clobber_between action=2.*path=yes overlap=yes status=complete" compiler.log
 	grep -q "candidate_dispatch function=allocatorRaCoreCandidateDispatchConflict.*plan=4.*reason=active_register_conflict action=2.*path=yes overlap=yes status=complete" compiler.log
-	grep -q "candidate_dispatch function=allocatorRaCoreCandidateDispatchUnsupported.*plan=2.*reason=unsupported_primary action=2.*path=no overlap=no status=complete" compiler.log
+	grep -q "candidate_dispatch function=allocatorRaCoreCandidateDispatchUnsupported.*plan=2.*reason=unsupported_primary action=2.*path=yes overlap=yes status=complete" compiler.log
 	grep -q "candidate_dispatch function=coreCandidateDispatch.*plan=1.*reason=primary_available action=1 phy=11 selected=-1 path=no overlap=no status=complete" core_candidate_dispatch_test.log
-	grep -q "candidate_dispatch function=coreCandidateDispatch.*plan=2.*reason=unsupported_primary action=2 phy=22 selected=1 path=no overlap=no status=complete" core_candidate_dispatch_test.log
+	grep -q "candidate_dispatch function=coreCandidateDispatch.*plan=2.*reason=unsupported_primary action=2 phy=22 selected=1 path=yes overlap=yes status=complete" core_candidate_dispatch_test.log
 	grep -q "candidate_dispatch function=coreCandidateDispatch.*plan=3.*reason=clobber_between action=2 phy=22 selected=1 path=yes overlap=yes status=complete" core_candidate_dispatch_test.log
 	grep -q "candidate_dispatch function=coreCandidateDispatch.*plan=4.*reason=active_register_conflict action=1 phy=11 selected=-1 path=yes overlap=yes status=complete" core_candidate_dispatch_test.log
 	grep -q "candidate_dispatch function=coreCandidateDispatchDependency.*status=dependency_failed" core_candidate_dispatch_test.log

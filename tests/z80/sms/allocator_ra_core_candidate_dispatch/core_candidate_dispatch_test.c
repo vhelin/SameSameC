@@ -77,7 +77,8 @@ static int expect_dispatch(int plan, int selector_mode, int expected_action,
       dispatch.candidate_index != expected_index || dispatch.check_path != expected_path ||
       dispatch.check_overlap != expected_overlap || state.calls != expected_calls)
     return FAILED;
-  if (expected_calls > 0 && strcmp(state.reason, expected_reason) != 0)
+  if (expected_calls > 0 && (strcmp(state.reason, expected_reason) != 0 ||
+      state.check_path != expected_path || state.check_overlap != expected_overlap))
     return FAILED;
   return SUCCEEDED;
 }
@@ -117,7 +118,7 @@ int main(void) {
     return 3;
   if (expect_dispatch(RA_CANDIDATE_PLAN_FALLBACK_UNSUPPORTED, 0,
       RA_CANDIDATE_DISPATCH_USE_ALTERNATE, ALTERNATE_REGISTER, 1, 1,
-      "unsupported_primary", NO, NO) == FAILED)
+      "unsupported_primary", YES, YES) == FAILED)
     return 4;
   if (expect_dispatch(RA_CANDIDATE_PLAN_FALLBACK_PATH, 0,
       RA_CANDIDATE_DISPATCH_USE_ALTERNATE, ALTERNATE_REGISTER, 1, 1,
@@ -129,7 +130,7 @@ int main(void) {
     return 6;
   if (expect_dispatch(RA_CANDIDATE_PLAN_FALLBACK_UNSUPPORTED, 1,
       RA_CANDIDATE_DISPATCH_REJECT, NO_REGISTER, -1, 1,
-      "unsupported_primary", NO, NO) == FAILED)
+      "unsupported_primary", YES, YES) == FAILED)
     return 7;
   if (expect_dispatch(RA_CANDIDATE_PLAN_FALLBACK_PATH, 1,
       RA_CANDIDATE_DISPATCH_REJECT, NO_REGISTER, -1, 1,

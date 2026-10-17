@@ -1208,7 +1208,7 @@ static int test_candidate_selection_finalizations(void) {
       finalization.dispatch.action != RA_CANDIDATE_DISPATCH_USE_ALTERNATE ||
       finalization.dispatch.physical_register != 20 || finalization.dispatch.candidate_index != 1 ||
       finalization.split_action != RA_SPLIT_ACTION_NONE || g_selector_calls != 1 ||
-      g_selector_check_path != NO || g_selector_check_overlap != NO ||
+      g_selector_check_path != YES || g_selector_check_overlap != YES ||
       strcmp(g_selector_reason, "unsupported_primary") != 0)
     return 2;
 

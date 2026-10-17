@@ -7674,7 +7674,7 @@ int register_allocator_dispatch_candidate_plan(char *function_name, int block_in
     reason = plan == RA_CANDIDATE_PLAN_FALLBACK_UNSUPPORTED ?
         "unsupported_primary" : (plan == RA_CANDIDATE_PLAN_FALLBACK_PATH ?
         "clobber_between" : "active_register_conflict");
-    dispatch->check_path = plan == RA_CANDIDATE_PLAN_FALLBACK_UNSUPPORTED ? NO : YES;
+    dispatch->check_path = YES;
     dispatch->check_overlap = dispatch->check_path;
     selector_status = select_alternate(context, reason, dispatch->check_path,
         dispatch->check_overlap, &dispatch->physical_register, &dispatch->candidate_index);

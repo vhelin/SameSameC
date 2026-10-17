@@ -17,15 +17,15 @@ void calculateAndPrintComplexBank3(u8 *chars, u8 one, u8 zero) {
   u16 extra2;
   u16 extra3;
 
-  extra1 = ((((0x4C27 ^ 0x2A95) + 0x0351) - (0x0351 + zero)) ^ 0x2A95) + one - one;
+  extra1 = calculationTileWorkload(0x3B6D, 16, chars);
   extra2 = calculationShiftRestore(extra1, one, 0x5E13);
   extra3 = calculationProductRestore(extra2, 2, 1);
-  printCalculationLine(chars, 0x40, 0x7C, 0x4C27, extra1, extra2, extra3);
+  printCalculationLine(chars, 0x40, 0x7C, 0x13C5, extra1, extra2, extra3);
 
-  extra1 = (((((0x27D5 + 0x0843) ^ 0x3C69) ^ 0x3C69) - 0x0843) | zero) + one - one;
+  extra1 = calculationPathWorkload(0x17A6, 16, chars);
   extra2 = calculationPartitionRestore(extra1, 53, 0x71B4);
   extra3 = calculationShiftRestore(extra2, one, 0x0F3C);
-  printCalculationLine(chars, 0x80, 0x7C, 0x27D5, extra1, extra2, extra3);
+  printCalculationLine(chars, 0x80, 0x7C, 0x146F, extra1, extra2, extra3);
 
   extra1 = calculationRecordWorkload(0x5A13, 16, chars);
   extra2 = calculationProductRestore(extra1, 3, 2);
@@ -80,4 +80,132 @@ u16 calculationRecordWorkload(u16 seed, u16 count, u8 *bytes) {
     checksum = (checksum + readings[i].value * readings[i].weight) & 0x1FFF;
   }
   return checksum;
+}
+
+u16 calculationTileWorkload(u16 seed, u16 count, u8 *bytes) {
+
+  u8 encoded[80];
+  u8 *cursor = encoded;
+  u16 size = 0;
+  u16 source = 0;
+  u16 written = 0;
+  u16 length;
+  u16 control;
+  u16 tile;
+  u16 i;
+  u16 j;
+  u16 bit;
+  u16 crc = seed;
+
+  for (i = 0; i < count; i++) {
+    length = 1 + ((seed >> (i & 7)) & 3);
+    if (((seed >> (i & 7)) & 1) != 0) {
+      encoded[size++] = 0x80 | length;
+      encoded[size++] = (seed + i * 11) & 63;
+    }
+    else {
+      encoded[size++] = length;
+      for (j = 0; j < length; j++)
+        encoded[size++] = (seed + i * 7 + j * 3) & 63;
+    }
+  }
+  while (source < size) {
+    control = cursor[0];
+    cursor++;
+    source++;
+    length = control & 0x7F;
+    if ((control & 0x80) != 0) {
+      tile = cursor[0];
+      cursor++;
+      source++;
+      for (j = 0; j < length; j++)
+        bytes[written++] = tile;
+    }
+    else {
+      for (j = 0; j < length; j++)
+        bytes[written++] = cursor[j];
+      cursor += length;
+      source += length;
+    }
+  }
+  for (i = 0; i < written; i++) {
+    bytes[i] = (bytes[i] + (seed & 7) + i / 8) & 63;
+    crc ^= bytes[i] << 8;
+    for (bit = 0; bit < 8; bit++) {
+      if ((crc & 0x8000) != 0)
+        crc = (crc << 1) ^ 0x1021;
+      else
+        crc <<= 1;
+    }
+  }
+  return (crc + source + written * 17) & 0x1FFF;
+}
+
+u16 calculationPathWorkload(u16 seed, u16 count, u8 *bytes) {
+
+  u8 walls[64];
+  u8 queue[64];
+  u16 head = 0;
+  u16 tail = 1;
+  u16 start = seed & 63;
+  u16 goal = (seed >> 6) & 63;
+  u16 position;
+  u16 next;
+  u8 direction;
+  u16 i;
+  u16 checksum = seed & 0x1FFF;
+
+  bytes[66] = 0;
+  for (i = 0; i < 64; i++) {
+    bytes[i] = 255;
+    walls[i] = 0;
+    if (((seed + i * 11) & 31) < count)
+      walls[i] = 1;
+  }
+  walls[start] = 0;
+  walls[goal] = 0;
+  for (i = 0; i < 64; i++)
+    bytes[66] = bytes[66] + walls[i];
+  bytes[start] = 0;
+  queue[0] = start;
+  while (head < tail) {
+    position = queue[head++];
+    for (direction = 0; direction < 4; direction++) {
+      switch (direction) {
+      case 0:
+        if ((position & 7) == 0)
+          continue;
+        next = position - 1;
+        break;
+      case 1:
+        if ((position & 7) == 7)
+          continue;
+        next = position + 1;
+        break;
+      case 2:
+        if (position < 8)
+          continue;
+        next = position - 8;
+        break;
+      default:
+        if (position >= 56)
+          continue;
+        next = position + 8;
+        break;
+      }
+      if (walls[next] != 0)
+        continue;
+      if (bytes[next] != 255)
+        continue;
+      bytes[next] = bytes[position] + 1;
+      queue[tail++] = next;
+    }
+  }
+  bytes[64] = tail;
+  bytes[65] = bytes[goal];
+  bytes[67] = start;
+  bytes[68] = goal;
+  for (i = 0; i < 69; i++)
+    checksum = (checksum + bytes[i] * (i + 1)) & 0x1FFF;
+  return calculationPartitionRestore(checksum, 13, seed);
 }

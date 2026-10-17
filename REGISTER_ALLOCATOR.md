@@ -11755,6 +11755,77 @@ Current source/binary manifests and complete qualification outputs are under
 were rebuilt during this task; older manifests do not qualify those overwritten
 cache executables. Their current copies/hashes are in the new evidence directory.
 
+### Calculations-2 Game Workloads And RAM Manager
+
+Four more scalar rows now run deterministic game-style workloads at startup.
+All previous array/sort/stencil/record kernels remain. New kernels use the same
+`(seed, count, bytes)` contract, `count` 0-16 and the existing 80-byte display
+buffer; checksums still fit 13 bits for the three restoration/display columns.
+
+| Workload | Operations | Seed / count | Display result / VRAM row address |
+|---|---|---|---|
+| RAM manager | First-fit allocation, splitting, payload use, exhaustion, reuse, free and adjacent-block coalescing | `0x4219` / 16 | `0x0DB1` / `0x3D40` |
+| Actors | Six simulated frames, packed records, movement, metatile collisions, pickups, damage and inactive actors | `0x2D57` / 16 | `0x0B42` / `0x3B40` |
+| Tile decoder | Mixed literal/run packets, advancing byte pointers, tile transformation and CRC-16/CCITT recurrence | `0x3B6D` / 16 | `0x13C5` / `0x3C40` |
+| Pathfinding | 8x8 obstacle map, bounded FIFO breadth-first search, edge checks and unreachable destinations | `0x17A6` / 16 | `0x146F` / `0x3C80` |
+
+The RAM manager operates on an initialized 64-byte arena. Each one-byte header
+contains the total block size and an allocated bit; returned handles are payload
+offsets, with zero indicating failure. Payload requests 1-63 are supported;
+zero/oversized requests, interior/invalid handles and double frees fail without
+mutation. A free marks its block and sweeps adjacent free blocks together without
+moving live payloads. The workload verifies exact-fit exhaustion, fragmentation,
+both-neighbour merges and final 63-byte allocation/free after complete reuse.
+It writes 71 bytes including operation counters/reuse diagnostics. Actor output
+occupies `4*count` bytes plus directions at `64+i`; decoding writes at most 64
+tiles; pathfinding writes 64 distances and five summary bytes. These are fixture
+utilities, not a general malloc ABI or corruption-recovering heap.
+
+The decoder exposed unsupported-primary register fallback accepting an alternate
+without checking its intervening clobbers/overlaps. The existing core dispatcher
+now requires both checks for every fallback. Callback flag forwarding and scan
+orchestration controls are updated; the decoder retains its post-incremented
+array-write index as a real source regression. The production correction changes
+one line and adds no function, type or API.
+
+Independent host references model heap blocks as intervals, actors as objects,
+tile commands as expanded sequences and BFS as distance frontiers. Direct RAM
+API controls exercise six arena layouts, nine allocation requests and eight free
+handles. All eight workload kernels additionally run their exact display seed
+and the zero/full-word seed at count 16, alongside 512 count-varying inputs.
+Covered outcomes include 307 exhausted-heap cases, 433 cases with dead actors,
+110 unreachable goals, 12 equal start/goal cases, all 64 queue slots and a
+64-tile decode. These outcome counts are computed independently from inputs;
+every executed case must match the corresponding return and complete guarded
+buffer, with DE/SP restoration and bounded writes.
+
+The existing port sink also executes all three banked display drivers with
+`one=1`, `zero=0` and an exactly 80-byte buffer. All 14 rows must emit the exact
+VDP address commands and four matching hexadecimal columns; complete expected
+and actual port captures are saved. This verifies the new code reaches the
+screen path, not merely standalone kernels. Bank mapping is fixed for each
+driver; mapper switching, boot, VDP rendering and hardware timing are not emulated.
+
+Fresh GCC, native Release and native ASan runs each pass 427 generated entries
+and 22 real entry points: 228,379 cases per mode. Native outputs match GCC's
+80 ROMs, 30 execution/static/quality/display reports and 11,513 selected decision
+lines. Thirty traced/quiet real-project assembly pairs match after static-symbol
+ID normalization. Strict C89/pedantic/Wall/Werror compiler and verifier builds
+pass with the existing calloc warning exemption; 217 ASan-run logs contain no
+sanitizer reports, and compiler/verifier import the real ASan runtime.
+Both complete standard suites pass 173 tests (GCC and native Windows), with
+staged compiler/linker hashes checked before and after each run.
+
+Development probes also reproduced baseline loop-carried copy elimination,
+packed-byte field widening and word-switch emitter failures. The final heap uses
+an advancing coalescing sweep, actors cache byte fields before widening, and
+four-state switches use byte selectors. Those baseline issues are not claimed
+fixed. Exact failed sources/logs and successful qualification/capture reports
+remain under `/tmp/calculations2-game`; source/binary manifests identify the
+current tools rather than inheriting older cache-executable qualifications.
+This workload expansion does not complete optional steps 358-360 or establish a
+performance comparison against the smaller historical application.
+
 ### Batch 358-360: Bound One Remaining Source-Loop Miss
 
 - [ ] **358. Identify one executed lowering opportunity.** Reuse the existing
