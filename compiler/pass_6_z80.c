@@ -3650,9 +3650,6 @@ static int _generate_asm_z80_in_read_z80(struct tac *t, FILE *file_out, struct t
 }
 
 
-static void _load_pointer_value_at_iy_to_iy(int arg2_is_zero, FILE *file_out);
-
-
 static int _materialize_array_base_to_iy(struct tac *tac, struct z80_location *base_location, int base_memory_pointer_load,
                                         int arg2_is_zero, struct tree_node *function_node, FILE *file_out) {
 
@@ -3707,8 +3704,22 @@ static int _materialize_array_base_to_iy(struct tac *tac, struct z80_location *b
         is_write == YES ? "array_write_base_address" : "array_read_base_address",
         operand_name, base_location, RA_ADDRESS_TARGET_IY, 0);
 
-    if (base_memory_pointer_load == YES)
-      _load_pointer_value_at_iy_to_iy(arg2_is_zero, file_out);
+    if (base_memory_pointer_load == YES && is_write == NO && arg2_is_zero == NO &&
+        g_allocator_enabled == YES && g_allocator_force_all_spill == NO) {
+      if (_materialize_to_hl(base_location, file_out) == FAILED)
+        return FAILED;
+      _load_hl_to_iy(file_out);
+    }
+    else if (base_memory_pointer_load == YES) {
+      if (arg2_is_zero == NO)
+        _push_bc(file_out);
+      _load_from_iy_to_c(0, file_out);
+      _load_from_iy_to_b(1, file_out);
+      _load_value_to_iy(0, file_out);
+      _add_bc_to_iy(file_out);
+      if (arg2_is_zero == NO)
+        _pop_bc(file_out);
+    }
   }
 
   return SUCCEEDED;
@@ -4177,22 +4188,6 @@ static int _generate_asm_z80_out_write_z80(struct tac *t, FILE *file_out, struct
     _out_a_into_c(file_out);
 
   return SUCCEEDED;
-}
-
-
-static void _load_pointer_value_at_iy_to_iy(int arg2_is_zero, FILE *file_out) {
-
-  if (arg2_is_zero == NO)
-    _push_bc(file_out);
-
-  _load_from_iy_to_c(0, file_out);
-  _load_from_iy_to_b(1, file_out);
-
-  _load_value_to_iy(0, file_out);
-  _add_bc_to_iy(file_out);
-
-  if (arg2_is_zero == NO)
-    _pop_bc(file_out);
 }
 
 

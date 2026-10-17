@@ -12091,17 +12091,103 @@ captures and reports remain under `/tmp/calculations2-workspace`.
 
 ### Batch 364-366: Bound One Executed Index Transfer
 
-- [ ] **364. Attribute one remaining index cost.** Follow executed index
-      reads/writes through real-source owners, aliases and call boundaries.
-      Separate required address/ABI/data work from an avoidable transfer;
-      keep the exact source and independent execution oracle unchanged.
-- [ ] **365. Retain at most one profitable local trial.** Reuse current
-      lowering or allocation policy, proving alias/overlap/carry safety and
-      reporting isolated cycle/traffic/ROM gains and move/frame tradeoffs.
-      Do not cache escaped indices across potentially aliased stores.
-- [ ] **366. Consolidate and requalify.** Remove superseded paths, prove
-      cleanup identity, report production/test complexity separately and
-      apply the shared gates before a local-only commit.
+- [x] **364. Attribute one remaining index cost.** Trace the unchanged
+      calculations-1 source prefix and 58-read output loop. The escaped
+      index itself still needs memory; BC preservation while loading a
+      memory-backed pointer into IY is avoidable.
+- [x] **365. Retain one profitable local trial.** Reuse `_materialize_to_hl`
+      and `_load_hl_to_iy` for RA indexed reads through memory-backed pointers.
+      Keep writes, constant-zero indices, physical pointer bases, default/
+      `-no-ra` and forced-spill on their existing paths.
+- [x] **366. Consolidate and requalify.** Inline the single-use old pointer
+      materializer into its caller and remove its declaration/definition.
+      Production delta is **+16/-21 lines, five net removed and one fewer
+      function**, with no new helper, API, allocation policy or cache.
+
+Qualification and measured outcome:
+
+- The old `PUSH BC; LD C,(IY+0); LD B,(IY+1); LD IY,0; ADD IY,BC; POP BC`
+  becomes `LD L,(IY+0); LD H,(IY+1); PUSH HL; POP IY`: **25 cycles and five
+  ROM bytes saved per eligible read site**, with the same four machine-stack
+  byte accesses. ARRAY_READ already reserves HL as scratch; the index is
+  already in BC, and the existing final ADD IY,BC does not consume carry.
+  Word-element address addition and signed/full-width indices remain covered.
+  Writes are excluded because HL can hold their payload; constant-zero
+  reads retain the old path rather than gaining unnecessary stack traffic.
+  Nothing is cached across TACs, aliased stores, calls or port operations.
+
+| Unchanged real-source control, one call | Executed cycles | Frame byte accesses | Byte-register moves | Function ROM | Frame bytes |
+|---|---|---|---|---|---|
+| `matrix_real_index_0` | 29,927 -> 29,927 | 834 -> 834 | 302 -> 302 | 1,692 -> 1,692 | 15 -> 15 |
+| `matrix_source_loop_0` | 65,435 -> 63,985 | 1,886 -> 1,886 | 360 -> 360 | 1,828 -> 1,823 | 16 -> 16 |
+
+- The output loop saves 1,450 cycles. Its required 58 index bytes and 116
+  pointer-argument bytes remain; 232 BC-preservation bytes become 232
+  HL-to-IY transfer bytes. This is **not a spill or frame-traffic reduction**.
+  Calculations-1 used ROM falls 22,592->22,572 bytes; calculations-2 falls
+  41,119->41,059. Total/maximum frames stay 267/102 and 1,234/225 respectively.
+  Six real routines improve, including pathfinding by 824,000 aggregate
+  cycles over 515 cases (1,600 per call). No isolated cycle/ROM/frame-size
+  regression is measured; executed frame traffic and byte-register moves
+  remain unchanged throughout the common-source comparison.
+- Extend the existing index-copy family from 12 to 22 variants: zero/
+  nonzero constants, a 136-byte workspace, aliased stores, a mutating call,
+  a live word, signed byte/word indices, word elements/address carry and
+  reassigned global pointers. Five probes deliberately use byte-index ABIs:
+  full-width index preloading otherwise bypasses this memory-pointer path.
+  The actual 149-byte-frame probe now selects the new lowering. Zero-index
+  and retained full-width controls remain unchanged. The global case checks
+  exactly the named adjacent two-byte pointer object, not a general guard
+  relaxation. Test runner delta is +43/-13, 30 net lines; nine exact read
+  opcode goldens change in six existing fixtures, with SSC source unchanged.
+- Full qualification exposed a pre-existing, layout-dependent out-of-bounds
+  path: `continue` inside a switch targeted its exit, not the enclosing loop.
+  With explicit user approval, prerequisite commit `6be036d` fixes nearest-
+  loop switch continuation and do-loop condition continuation, and rejects
+  switch-only continuation. Two independent nested-loop/switch controls pass
+  corrected tools; old default execution fails an independent oracle. The CFG
+  fixture checks rejection in all three modes. This is a separate semantic
+  correction, **not an allocator gain**. Corrected baseline/trial compiler
+  sources differ from the final compiler only in pass-6 lowering.
+- Fresh GCC, native Release and native ASan compiler/verifier pairs, strict
+  GCC C89/pedantic/Wall/Werror builds with the established calloc exemption,
+  immutable verifier/rollback controls and all 14 exact VDP display rows pass.
+  Each final toolchain covers **457 generated entries and 22 real routines:
+  233,984 generated + 9,755 real = 243,739 cases per mode**, in default/
+  all-spill/RA modes, checking return/buffer/ports/DE/SP/stack guards.
+  Full six-cohort runs preceded the five byte-index probe
+  refinements; exact generator/hash proofs retain 25 unaffected cohort
+  sources across five compiler variants, and all five values cohorts were
+  then replaced by fresh runs. Other source and binary hashes are unchanged.
+- Native Release and ASan each match GCC's 80 ROMs, 30 reports and 12,030
+  selected decisions; cleanup matches 80 ROMs, eight static reports and
+  12,030 decisions. All 86 common SSC sources, 48 flags-off ROMs/execution
+  metrics and 30 traced/quiet real-project assembly pairs match their controls.
+  Both complete standard suites pass sequentially, **173 tests each**, with
+  staged compiler/linker hashes unchanged. All 217 final ASan logs are clean;
+  compiler/verifier runtime imports are verified. ASan linker execution,
+  leaks, other sanitizers, exhaustive paths and mapper/full-boot/rendering/
+  hardware timing remain unqualified; banked kernels use fixed mapping.
+- Reproduction artifacts under `/tmp/ra364` retain corrected baseline/trial
+  snapshots, 58-input/12-binary manifests, owner profiles, cohort proofs,
+  comparison reports and suite logs/staging hashes. Use the pinned 2.3.0
+  emulator and `RA_CASES=512`; control-only `RA_BASELINE=1` relaxes quality
+  gates, never execution correctness. Redundant suite mirrors are removed.
+  Fixed-spill-prefix rules, alias safety and BC/DIV legality are unchanged.
+  RA remains opt-in.
+
+### Batch 367-369: Bound Remaining Address-Setup Work
+
+- [ ] **367. Attribute one executed address-setup cost.** Follow remaining
+      IX/IY setup in unchanged real-source controls. Separate required
+      pointer/index/ABI work from a demonstrably redundant transfer.
+- [ ] **368. Reuse one existing path if profitable.** Try at most one bounded
+      address-lowering simplification, preserving live payloads, carry and
+      alias/call boundaries. Retain only a measured, independently verified
+      improvement; do not add pointer/index caches or a new policy framework.
+- [ ] **369. Consolidate and requalify.** Remove superseded code, report
+      production/test complexity and isolated cycle/traffic/ROM/frame
+      tradeoffs, then apply the shared gates before a local-only commit.
 
 **Shared completion gates:** Each three-step batch gets its own local commit,
 with no push and no unrelated worktree changes included. Reuse existing
@@ -12110,7 +12196,9 @@ remove real duplication or enable a demonstrated capability. For optimization
 changes, include a before/after control showing actual benefit and independent
 execution correctness. For output-preserving consolidation, require matching
 ROMs and allocation decisions. Except for the isolated, independently verified
-baseline semantic corrections in 316-318, keep default/`-no-ra` compatibility.
+baseline semantic corrections in 316-318 and the user-approved `6be036d`
+prerequisite to 364-366, keep default/`-no-ra` compatibility against the
+semantically corrected baseline.
 Keep full-width and partial-register safety, immutable verifier failure cases,
 and atomic mutation rejection/rollback. Run focused checks after each edit and
 both full suites plus available sanitizer/execution gates before closing a
