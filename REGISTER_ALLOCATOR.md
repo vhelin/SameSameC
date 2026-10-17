@@ -12532,15 +12532,103 @@ Qualification and measured outcome:
 
 ### Batch 379-381: Qualify Banked Static Move Attribution
 
-- [ ] **379. Attribute the banked counter discrepancy.** Separate listing
+- [x] **379. Attribute the banked counter discrepancy.** Separate listing
       bank/offset fields, actual emitted register-copy instructions and dynamic
       moves; freeze controls before changing measurement.
-- [ ] **380. Reuse existing address conventions.** Retain at most one bounded
+- [x] **380. Reuse existing address conventions.** Retain at most one bounded
       counter correction with independent banked and bank-zero opcode proofs,
       no new production helper and no code-generation or quality-gate shortcut.
-- [ ] **381. Consolidate and requalify.** Require unchanged ROMs, allocation
+- [x] **381. Consolidate and requalify.** Require unchanged ROMs, allocation
       decisions and execution metrics; isolate intentional static-report
       corrections, apply the shared gates and make a local-only commit.
+
+**Evidence and bounded change:**
+
+- Freeze `52489b0`, 442 source/test inputs and 699 already-qualified control
+  artifacts from `/tmp/ra376/gcc512`. All compiler C/H and executable test
+  inputs match that control exactly. Reuse eleven hash-verified tool binaries,
+  including GCC/strict GCC, native Release and native ASan compiler/verifier
+  binaries; do not claim fresh compiler builds for this measurement-only
+  change. Fresh full execution runs use the normal quality gates, with no
+  `RA_BASELINE` relaxation.
+- The listing contains bank, slot, CPU address and bank-relative offset, not
+  a whole-ROM offset in its final address field. For example, bank 1 / slot 2
+  / CPU 9446 / offset 1446 refers to ROM **5446**, not 1446. Reuse the existing
+  SMS runner's **bank * 0x4000 + offset** convention. Parse the bank once and
+  reuse it for the unchanged bank/CPU attribution key.
+- Extend the existing address match to capture the first emitted opcode byte.
+  Read the actual ROM byte with bounds-checked `Buffer.readUInt8` and require
+  it to match that listing byte before counting. A mismatch names the image
+  and listing row; out-of-range lookup fails explicitly. Keep the existing
+  unprefixed byte-register-copy classification and report schema unchanged.
+  No new helper, decoder, fixture, generated function, cohort or production
+  code is added. The runner changes **+6/-3 lines, three net added**; the small
+  increase provides the per-instruction consistency check, not new allocator
+  machinery.
+
+| Existing project/mode | Old static counter -> corrected | Emitted code |
+| --- | --- | --- |
+| calculations-1 default / no-ra | 429 -> 545 | unchanged |
+| calculations-1 all-spill | 442 -> 545 | unchanged |
+| calculations-1 RA / quiet RA | 567 -> 665 | unchanged |
+| calculations-2 default / no-ra | 903 -> 1,017 | unchanged |
+| calculations-2 all-spill | 898 -> 1,017 | unchanged |
+| calculations-2 RA / quiet RA | 1,017 -> 1,200 | unchanged |
+
+- These are corrected measurements, **not added moves or a speed/ROM
+  optimization**. All thirty bank-zero generated image counts are unchanged.
+  Independent checks cover **40 listings and 254,894 instruction bytes**:
+  bank-aware ROM lookup agrees with listed bytes, and move totals agree with
+  instruction-text counts, including inline sign-extension comments.
+  Both real projects cover banks 0/1/2/3 in all five modes. The first text
+  oracle missed commented register copies; preserve that failed attempt and
+  correct the oracle, not production behavior or quality gates.
+- Focused controls prove identical ROMs, symbols, bank maps, attribution maps
+  and every other static field. Deliberately restoring the old lookup still
+  passes bank zero but is rejected in both banked projects by the new opcode
+  check. A separate out-of-range mutation is rejected by the bounds check.
+  No compiler/emitter/cache, flag, ABI, spill-layout or allocation policy
+  changes; no golden bytes need updating.
+- Each final toolchain runs all six cohorts afresh: **468 generated entries
+  and 22 real routines; 239,616 generated + 9,755 real = 249,371 cases per
+  mode**, in default/all-spill/RA modes. Independent returns, full buffers,
+  ports, DE/SP and protected stack, immutable verifier failures, fixed spill
+  prefixes/shared suffixes and atomic rollback remain qualified.
+- Native Release and ASan each match GCC's **80 ROMs, 30 reports and 12,262
+  selected decisions**. Against the frozen control, all 80 ROMs, 86 common
+  SSC sources, 12,262 decisions and all execution/quality/display/coverage
+  reports match. Only ten move-counter fields in two existing static reports
+  change; all other fields in all eight static reports match. All 30
+  traced/quiet real-project assembly pairs and 14 exact VDP display rows pass.
+  Both full standard suites pass sequentially, **173 tests each**, with six
+  staged compiler/linker hashes unchanged before/after each run. All 217 final
+  ASan logs are clean; instrumented compiler/verifier binaries are unchanged.
+- Fresh owner profiles also match the baseline: prefix/output-loop costs
+  remain **28,965/61,341 simulated cycles**, with 834/1,886 frame accesses and
+  250/308 register moves. The 26 word copies remain 1,017 cycles, including
+  the 67-cycle cold copy. The loop still has 58 index bytes, 116 pointer bytes
+  and **232 HL-to-IY transfer bytes**; these are not claimed as allocator
+  spill traffic or eliminated work.
+- Artifacts under `/tmp/ra379` retain frozen baseline/current inputs, eleven
+  binary hashes, 699 control-output hashes, focused mutation proofs,
+  instruction-byte/text comparisons, owner profiles and suite staging hashes.
+  Remove only the completed suite mirror; retain logs and proofs. Pinned
+  emulator 2.3.0 and `RA_CASES=512` remain in use. ASan linker execution, leaks,
+  other sanitizers, exhaustive paths and mapper/full-boot/rendering/hardware
+  timing remain unqualified; banked kernels use fixed mapping. Opt-in RA,
+  alias safety and BC/DIV legality are unchanged.
+
+### Batch 382-384: Attribute Remaining Indexed-Read Transfers
+
+- [ ] **382. Measure the remaining transfer.** Follow the unchanged source
+      loop's HL-to-IY traffic, separating required index/pointer reads from
+      address transport and checking widths, destinations and live values.
+- [ ] **383. Reuse existing byte-load lowering only if profitable.** Retain
+      at most one measured trial without new caches or helpers; preserve
+      signed/full-word, alias/call, pending-reload and flag constraints.
+- [ ] **384. Consolidate and requalify.** Remove only demonstrated duplication,
+      prove cleanup identity and isolated tradeoffs, apply the shared gates
+      and make a local-only commit.
 
 **Shared completion gates:** Each three-step batch gets its own local commit,
 with no push and no unrelated worktree changes included. Reuse existing

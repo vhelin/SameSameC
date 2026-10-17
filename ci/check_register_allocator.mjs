@@ -330,12 +330,15 @@ function readImage(directory) {
       if (/^; (?:return value ->|copy return value to)/.test(source)) cause = 'abi_result';
       if (/^; old stack frame address ->/.test(source)) cause = 'abi_frame';
     }
-    const address = line.match(/^\s*\d+\s+([0-9a-f]{4})\s+[0-9a-f]{4}\s+([0-9a-f]{4})\s+([0-9a-f]{4,8})\s+/i);
+    const address = line.match(/^\s*\d+\s+([0-9a-f]{4})\s+[0-9a-f]{4}\s+([0-9a-f]{4})\s+([0-9a-f]{4,8})\s+([0-9a-f]{2})\s+/i);
     if (!address || !/^[A-Z][A-Z0-9]*(?:\s|$)/.test(source)) continue;
-    const opcode = rom[parseInt(address[3], 16)];
+    const bank = parseInt(address[1], 16);
+    const opcode = rom.readUInt8(bank * 0x4000 + parseInt(address[3], 16));
+    if (opcode !== parseInt(address[4], 16))
+      throw new Error(`Listing opcode mismatch in ${directory}: ${line.trim()}`);
     if ((opcode & 0xc0) === 0x40 && (opcode & 7) !== 6 && ((opcode >> 3) & 7) !== 6)
       staticMetrics.register_move_sites++;
-    transfers.set((parseInt(address[1], 16) << 16) | parseInt(address[2], 16), {cause, argumentsInFrame, section,
+    transfers.set((bank << 16) | parseInt(address[2], 16), {cause, argumentsInFrame, section,
       branch: tacCause === 'other_frame' && /^(?:JP|JR)\s+(?:[A-Z]+,\s*)?_label_/.test(source)});
   }
   if (framePending || !Object.keys(staticMetrics.functions).length)
