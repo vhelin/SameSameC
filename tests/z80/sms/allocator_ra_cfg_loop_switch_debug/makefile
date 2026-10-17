@@ -19,6 +19,12 @@ all: linked.sms
 	grep -q "cfg_edge function=allocatorRaCfgSwitchDebug.*kind=branch_false" compiler.log
 	grep -q "cfg_edge function=allocatorRaCfgSwitchDebug.*kind=fallthrough" compiler.log
 	grep -q "liveness function=allocatorRaCfgSwitchDebug block=1 use={} def={r0} live_in={} live_out={}" compiler.log
+	for flags in "" "-ra" "-ra-all-spill"; do \
+		if $(CC) -mz80 -rs 3 $$flags -o invalid_continue.asm invalid_continue.ssc > invalid_continue.log 2>&1; then \
+			echo "Switch-only continue was unexpectedly accepted"; exit 1; \
+		fi; \
+		grep -q "continue does nothing here, nothing to continue" invalid_continue.log || { cat invalid_continue.log; exit 1; }; \
+	done
 
 
 linked.sms: $(OFILES) makefile
@@ -32,4 +38,4 @@ $(OFILES): $(HFILES)
 
 
 clean:
-	rm -f $(OFILES) *~ linked.sms compiler.log
+	rm -f $(OFILES) *~ linked.sms compiler.log invalid_continue.asm invalid_continue.log

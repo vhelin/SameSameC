@@ -1427,8 +1427,8 @@ static int _generate_il_create_switch(struct tree_node *node) {
   /* create blocks */
   j = 0;
 
-  /* continue inside switch takes you to the exit */
-  _enter_breakable(label_exit, label_exit);
+  _enter_breakable(label_exit, g_breakable_stack_items_level < 0 ? -1 :
+      g_breakable_stack_items[g_breakable_stack_items_level].label_continue);
 
   for (i = 1; i < node->added_children; i += 2) {
     if (i <= node->added_children - 2) {
@@ -1549,25 +1549,28 @@ static int _generate_il_create_while(struct tree_node *node) {
 
 static int _generate_il_create_do(struct tree_node *node) {
 
-  int label_start, label_exit;
+  int label_start, label_condition, label_exit;
 
   /* update file id and line number for all TACs and error messages */
   g_current_filename_id = node->file_id;
   g_current_line_number = node->line_number;
 
   label_start = ++g_temp_label_id;
+  label_condition = ++g_temp_label_id;
   label_exit = ++g_temp_label_id;
 
   /* label of start */
   add_tac_label(generate_temp_label(label_start));
 
-  _enter_breakable(label_exit, label_start);
+  _enter_breakable(label_exit, label_condition);
 
   /* main block */
   if (_generate_il_create_block(node->children[0]) == FAILED)
     return FAILED;
 
   _exit_breakable();
+
+  add_tac_label(generate_temp_label(label_condition));
 
   /* condition */
   if (_generate_il_create_condition(node->children[1], label_exit) == FAILED)
@@ -1768,7 +1771,8 @@ static int _generate_il_create_continue(struct tree_node *node) {
   g_current_filename_id = node->file_id;
   g_current_line_number = node->line_number;
 
-  if (g_breakable_stack_items_level < 0) {
+  if (g_breakable_stack_items_level < 0 ||
+      g_breakable_stack_items[g_breakable_stack_items_level].label_continue < 0) {
     snprintf(g_error_message, sizeof(g_error_message), "_generate_il_create_continue(): continue does nothing here, nothing to continue.\n");
     return print_error(g_error_message, ERROR_ERR);
   }

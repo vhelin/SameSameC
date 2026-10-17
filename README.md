@@ -22,6 +22,7 @@ Yet Another ANSI C90 Like Language Cross Compiler Targeting 8-bit CPUs. Written 
 # Features
 
 - Has optional (and experimental) register allocator via -ra flag!
+- `continue` targets the innermost enclosing loop, including through nested switches; `do` loops test their condition before repeating. A switch without an enclosing loop cannot be continued.
 
 ## Features missing when compared with ANSI C90
 

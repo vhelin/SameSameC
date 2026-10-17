@@ -160,6 +160,10 @@ for (let variant = 0; variant < 30; variant++) {
     ['scalar_reassigned_word', 'u16 a, u16 b, u16 c', `u16 saved = a^b; u16 first = c+saved; ${variant ? 'if (a&1) {' : ''} saved = b^c; ${variant ? '}' : ''} return (first+saved)^saved;`, [2, 2, 2], 2],
     ['scalar_reassigned_byte', `${variant ? 's8' : 'u8'} a, ${variant ? 's8' : 'u8'} b, ${variant ? 's8' : 'u8'} c`, `${variant ? 's8' : 'u8'} saved = a^b; ${variant ? 's8' : 'u8'} first = c+saved; saved = a^c; return (first+saved)^saved;`, [1, 1, 1], 1],
     ['scalar_lifetime_hole', 'u16 a, u16 b, u16 c', `u16 saved = a^b; u16 first = c+saved; ${variant ? 'u8 called = ra_signed_helper(a,b,c);' : 'u8 called = 0;'} u16 middle = b+c+called; saved = a+c; return (first^middle)+(saved^middle);`, [2, 2, 2], 2],
+    ['scalar_switch_continue', 'u8 a, u8 b, u8 c', [
+      'u16 total = b; u8 i; for (i = 0; i < (a&7); i++) { switch (i&3) { case 0: switch (b&1) { case 0: continue; default: continue; } default: total = total+c+i; break; } total = total+1; } i = 0; do { i++; switch (i&3) { case 0: continue; default: total = total+c+i; break; } total = total+1; } while (i < (a&7)); return total;',
+      'u16 total = b; u8 i = 0; u8 j; while (i < (a&7)) { i++; switch (i&1) { case 0: for (j = 0; j < 3; j++) { switch (j) { case 1: continue; default: total = total+c; break; } total = total+1; } break; default: continue; } total = total+i; } return total;'
+    ][variant], [1, 1, 1], 2],
     ['scalar_source_reassigned', 'u16 a, u8 b, u8 c', `s16 result = 0x7521; u8 low = result; ra_buffer[0] = low; result = (((a|b)%0x1001)<<4)-10000; result ^= 0x4321; u8 next = result; ra_buffer[1] = next; result = ((((${variant ? '(c|a)|(b|c)' : '(a|c)|(c|b)'})%0x1001)<<4)-(c|10000)); result ^= (0x4321|c); return result;`, [2, 1, 1], 2],
     ['scalar_source_bitwise', 'u16 a, u8 b, u8 c', `return ((((${variant ? '(c|a)|(b|c)' : '(a|c)|(c|b)'}) % 0x1001) << 4) - (c|10000)) ^ (0x4321|c);`, [2, 1, 1], 2],
     ['scalar_copy', 'u16 a, u16 b, u16 c', 'u16 saved = a; return (b+c)+saved;', [2, 2, 2], 2],
@@ -920,6 +924,17 @@ for (const program of programs) {
         const saved = byte ^ other;
         expected = (((((third + saved + buffer[1]) & 255) ^ saved) + saved)) & 255;
         if (program.family === 'scalar_split_byte') expected = ((expected ^ saved) + saved) & 255;
+        break;
+      }
+      case 'scalar_switch_continue': {
+        expected = other;
+        const limit = byte & 7;
+        if (program.variant) {
+          for (let i = 1; i <= limit; i++) if (!(i & 1)) expected += 2 * (third + 1) + i;
+        } else {
+          for (let i = 0; i < limit; i++) if (i & 3) expected += third + i + 1;
+          for (let i = 1; i <= Math.max(1, limit); i++) if (i & 3) expected += third + i + 1;
+        }
         break;
       }
       case 'scalar_signed_byte': expected = ((third | 7) ^ byte ^ other) & 255; break;
