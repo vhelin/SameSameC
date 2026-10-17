@@ -11977,17 +11977,131 @@ captures and reports remain under `/tmp/calculations2-workspace`.
 
 ### Batch 361-363: Bound One Further DIV/Index Opportunity
 
-- [ ] **361. Attribute the next remaining miss.** Follow the executed DIV->OR
+- [x] **361. Attribute the next remaining miss.** Follow the executed DIV->OR
       value or stack-backed output index to its owners and exact lowering,
       separating mandatory calls/data/ABI work from avoidable transfers.
       Reuse unchanged real-source controls and independent execution oracles.
-- [ ] **362. Retain at most one profitable local trial.** Reuse existing
+- [x] **362. Retain at most one profitable local trial.** Reuse existing
       lowering or allocation policy, with measured common-source gains and
       explicit move/frame costs. Do not expand BC/DIV, signed/carry or alias
       legality without corresponding lowering and overlap evidence.
-- [ ] **363. Consolidate and qualify the result.** Remove superseded paths,
+- [x] **363. Consolidate and qualify the result.** Remove superseded paths,
       prove cleanup identity, report production/test complexity separately
       and apply the shared completion gates below before a local-only commit.
+
+#### Results and Retained Scope
+
+- The remaining DIV->OR miss is the unsigned-word `r56` quotient. Its
+  intervening `r57 = 1 - zero` has unsigned-byte operands promoted to
+  unsigned words, but previously uses HL/BC word subtraction. This forces
+  two `r56` stores and two OR reloads: offsets -15/-14 in the index control
+  and -16/-15 in the source-loop control. The OR result is `r59`/`r61`
+  respectively; profiling follows the read owner rather than assuming the
+  same result number. The interval has no external call or bank crossing,
+  and executes once before the output loop, not on every loop iteration.
+  DIV's four byte accesses for PUSH/POP DE remain required preservation.
+- Extend the existing shared classifier and byte emitter only for unsigned
+  byte SUB operands promoted to unsigned words, with an unassigned or BC
+  result. After the byte subtraction, `LD C,A; SBC A,A` saves the low byte
+  and computes the high borrow byte, preserving full 16-bit wraparound.
+  Capture borrow before result-address materialization: ADD IX,DE can
+  change carry. Existing stores write C/A to memory or finish BC directly.
+  No new emitter, allocation endpoint or DIV legality is introduced.
+- Assigned HL results, signed/wider operands or promotions, out-of-range
+  constants, retained ARG2 A and retained ARG2 BC stay on existing paths.
+  The BC fallback preserves the existing word-lowering contract that ARG2
+  BC can remain live; the new byte SUB would overwrite C. Constant-one
+  subtraction also keeps existing DEC word lowering. The broader trial
+  costs two extra cycles and one ROM byte in the unassigned `(a-1)` control;
+  the retained fallback exactly matches the frozen compiler there.
+  ADD is not narrowed. Default/-no-ra and forced-spill remain unchanged.
+- `r56` now stays in HL and `r57` uses existing BC placement. Unlike the
+  previous batch's spill-owner exchange, the four attributed accesses
+  disappear rather than moving to the intervening result. Required DIV
+  DE preservation and ordinary ABI/buffer/callee-frame work are unchanged;
+  the broad `other_frame` category is not relabeled as allocator spills.
+
+| Unchanged real-source control | Executed cycles | Frame byte accesses | Byte-register moves | Function ROM | Frame bytes |
+|---|---|---|---|---|---|
+| `matrix_real_index_0` | 30,012 -> 29,927 | 838 -> 834 | 298 -> 302 | 1,705 -> 1,692 | 17 -> 15 |
+| `matrix_source_loop_0` | 65,520 -> 65,435 | 1,890 -> 1,886 | 356 -> 360 | 1,841 -> 1,828 | 18 -> 16 |
+
+- The isolated gain is 85 cycles, four frame accesses, 13 ROM bytes and two
+  frame bytes per call, trading four extra register moves. Only the matching
+  parent `calculateAndPrint3` changes: calculations-1 RA used ROM falls
+  22,605->22,592 and total frame bytes 269->267, with maximum still 102.
+  Calculations-2 stays at 41,119 ROM bytes and 1,234/225 total/maximum frame.
+  The earlier historical maximum-frame tradeoff versus default remains.
+- Extend the existing immutable policy matrix from 189 to 225 probes, using
+  the same nine operations and 25 variants. These include retained ARG2 A/BC,
+  full BC-preservation fallback, constant-one and type/constant/feature gates.
+  Reuse the scalar-use family for 12 runtime controls: operand reversal,
+  zero/one/255 constants, underflow/high-bit pairs, unassigned and BC results,
+  and a 136-byte workspace. Its actual 148-byte frame exceeds the IX
+  displacement range; assembly checks require borrow capture before the
+  following carry-clobbering address addition. Independent host arithmetic
+  checks unsigned word results over 64 boundary pairs and 512 total inputs.
+  Nested word contexts are deliberate, not non-exercising byte promotions.
+- Generated variants 18/19 save 89 cycles, four frame accesses, 14 ROM bytes
+  and two frame bytes per call; 21/23/24/25 save 85/four/13/two. Each trades
+  four extra moves. Unassigned-result variants 26-28 save 25 cycles and five
+  ROM bytes, with unchanged frame traffic/size and one extra move. Variants
+  20/22/29 are unchanged, retaining constant-step lowering or existing
+  simplification. No isolated cycle/frame-traffic/per-function ROM/frame-size
+  increase is measured elsewhere; moves are the explicit retained cost.
+  All 22 real routine execution-metric records remain unchanged.
+- Factor repeated opcode/result-location checks inside the existing shared
+  classifier. Production changes are +22/-6 lines, **+16 net with no new
+  production function or API**. Tests/runner changes are +40/-14, +26 net.
+  No spill-layout, alias, global value or analysis framework is added.
+  The frozen pre-consolidation compiler matches all 86 source/generator SSC
+  files, 80 ROM files, eight static reports and 11,878 selected decision
+  lines. Text comparisons normalize only randomized static-symbol IDs.
+- Fresh GCC, native Release and native ASan compiler/verifier pairs pass,
+  as do strict unoptimized C89/pedantic/Wall/Werror builds with the established
+  calloc-warning exemption. Seven accepted and 32 immutable rejected cases,
+  fixed-prefix/shared-suffix controls and atomic rollback remain qualified.
+  Each final toolchain executes 445 generated entries and 22 real routines:
+  227,840 generated plus 9,755 real cases, **237,595 per mode** at 512 inputs,
+  in default/all-spill/RA modes. Return/buffer/DE/SP/stack guards and all
+  14 exact calculations-2 VDP display rows pass. The frozen pre-feature
+  compiler also passes the same common-source corpus.
+- Native Release and ASan each match GCC's 80 ROM files, 30 reports and
+  11,878 selected decision lines; 30 real-project traced/quiet assembly
+  pairs match. All 48 default/no-ra/all-spill ROM files match the frozen
+  control, as do their execution metrics. Both complete standard suites
+  pass sequentially, 173 tests each, with staged compiler/linker SHA256
+  checks before and after. The unchanged GCC linker is reused by hash;
+  native tools are freshly built. All 217 ASan execution logs are clean,
+  with real compiler/verifier runtime imports verified. ASan linker execution,
+  leaks, other sanitizers, exhaustive paths and mapper/full-boot/rendering/
+  hardware timing are not qualified; banked kernels still use fixed mapping.
+- Reproduction artifacts remain under `/tmp/ra361`: exact pre-feature and
+  pre-consolidation source snapshots, source/binary manifests, owner profile,
+  broader constant-step trial/probes, strict/native tools, full six-cohort
+  runner, comparison script/reports and full-suite logs/staging hashes.
+  Use the pinned 2.3.0 emulator, `RA_CASES=512`, matching verifier and unset
+  `RA_FAMILIES`/`RA_MATRIX_CASES` for all cohorts. `RA_BASELINE=1` relaxes
+  runner quality gates only for the frozen control, not its allocator.
+  Controls use the final standalone verifier for runner gates but their
+  own embedded allocation/model code. Earlier partial runs are archived
+  separately and are not final qualification. The stack-backed output
+  index and preceding `r55` DIV-input spill remain; fixed-spill prefix
+  rules and BC/DIV legality are unchanged. RA remains opt-in.
+
+### Batch 364-366: Bound One Executed Index Transfer
+
+- [ ] **364. Attribute one remaining index cost.** Follow executed index
+      reads/writes through real-source owners, aliases and call boundaries.
+      Separate required address/ABI/data work from an avoidable transfer;
+      keep the exact source and independent execution oracle unchanged.
+- [ ] **365. Retain at most one profitable local trial.** Reuse current
+      lowering or allocation policy, proving alias/overlap/carry safety and
+      reporting isolated cycle/traffic/ROM gains and move/frame tradeoffs.
+      Do not cache escaped indices across potentially aliased stores.
+- [ ] **366. Consolidate and requalify.** Remove superseded paths, prove
+      cleanup identity, report production/test complexity separately and
+      apply the shared gates before a local-only commit.
 
 **Shared completion gates:** Each three-step batch gets its own local commit,
 with no push and no unrelated worktree changes included. Reuse existing

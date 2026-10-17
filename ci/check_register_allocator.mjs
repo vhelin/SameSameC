@@ -55,7 +55,7 @@ for (const flags of [[], ['-q']]) {
     !verifierLog.includes('allocation_policy_test: register_pairs=25 independent_units=yes status=complete') ||
     !/allocation_policy_test: lowering_effects=\d+ direct_bc_complement=yes scratch_hl_rejected=yes full_barriers=yes status=complete/.test(verifierLog) ||
     !/allocation_policy_test: direct_bc_bitwise=yes unsigned_widening=yes signed_right_fallback=yes bc_overlap_rejected=yes status=complete/.test(verifierLog) ||
-    !/allocation_policy_test: byte_word_bitwise=\d+ unsigned_only=yes constants_bounded=yes flags_gated=yes unchanged=yes status=complete/.test(verifierLog) ||
+    !/allocation_policy_test: byte_word_bitwise=\d+ unsigned_only=yes constants_bounded=yes flags_gated=yes unchanged=yes borrow_word_sub=yes arg2_a_rejected=yes arg2_bc_fallback=yes unit_step_fallback=yes status=complete/.test(verifierLog) ||
     !/allocation_policy_test: endpoints=10200 supported=\d+ rejected=\d+ independent_table=yes status=complete/.test(verifierLog) ||
     !verifierLog.includes('spill_slot_test: cases=10 overlap_width_boundary_redefinition_controls=yes tacs_unchanged=yes status=complete') ||
     !verifierLog.includes('spill_slot_test: fixed_prefix=yes shared_suffix=yes invalid_fixed=11 immutable=yes status=complete') ||
@@ -75,7 +75,7 @@ const realLoopBody = readFileSync(join(root, 'tests/z80/sms/calculations-1/bank_
 const realIndexBody = realLoopBody.split('__z80_out')[0];
 const realWhileBody = readFileSync(join(root, 'tests/z80/sms/calculations-1/bank_1.ssc'), 'utf8')
   .match(/^  while \(start < chars\) \{[\s\S]*?^  \}/m)[0];
-for (let variant = 0; variant < 18; variant++) {
+for (let variant = 0; variant < 30; variant++) {
   const constant = 1 + variant * 7;
   const operator = ['+', '-', '&', '|', '^'][variant % 5];
   const comparison = ['==', '!=', '<', '>', '<=', '>='][variant % 6];
@@ -123,7 +123,12 @@ for (let variant = 0; variant < 18; variant++) {
       'u8 saved = a^b; u8 called = ra_signed_helper(saved,b,c); return called^saved;',
       'u16 saved; if (b&1) { saved = a; } else { saved = c; } return (saved+b)^saved;',
       'u8 saved = a; ra_pointer_helper(&saved,b); return saved;',
-      ...Array.from({length: 6}, (_, index) => `return (c+0x9234)/(${index < 3 ? 'a' : 'b'}${['&', '|', '^'][index % 3]}${index < 3 ? 'b' : 'a'});`)
+      ...Array.from({length: 6}, (_, index) => `return (c+0x9234)/(${index < 3 ? 'a' : 'b'}${['&', '|', '^'][index % 3]}${index < 3 ? 'b' : 'a'});`),
+      ...['a-b', 'b-a', 'a-1', '1-a', 'a-0', '0-a', 'a-255', '255-a'].map(difference => `return ((c+0x9234)/3)|(${difference});`),
+      'return (a-b)|((c+0x9234)/3);',
+      'return (b-a)|((c+0x9234)/3);',
+      'u8 workspace[136]; workspace[a&127] = b; return ((a-b)|((c+0x9234)/3))+workspace[a&127];',
+      'return (a-1)|((c+0x9234)/3);'
     ][variant], Array(3).fill(scalarType === 'u16' ? 2 : 1), 2],
     ['matrix_real_index', 'u8 *chars, u8 one, u8 zero', `${realIndexBody} return index;`, [2, 1, 1], 2],
     ['matrix_source_loop', variant ? 'u8 *start, u8 *chars' : 'u8 *chars, u8 one, u8 zero',
@@ -202,7 +207,7 @@ for (let variant = 0; variant < 18; variant++) {
     if (family.startsWith('matrix_') && variant >= ({matrix_byte: 10, matrix_word: 10,
       matrix_compare_byte: 12, matrix_compare_word: 12, matrix_compare_signed: 12,
       matrix_low_byte: 10, matrix_structural: 12, matrix_sentinel: 10, matrix_affinity: 8, matrix_rank: 4,
-      matrix_index_copy: 12, matrix_bc_alu: 12, matrix_scalar_uses: 18, matrix_real_index: 1}[family] || 2)) continue;
+      matrix_index_copy: 12, matrix_bc_alu: 12, matrix_scalar_uses: 30, matrix_real_index: 1}[family] || 2)) continue;
     if (comparisonForms && family !== 'arithmetic' && !family.startsWith('matrix_compare_')) continue;
     if (process.env.RA_FAMILIES && family !== 'arithmetic' && !process.env.RA_FAMILIES.split(',').includes(family)) continue;
     if (family.startsWith('matrix_') && ['matrix_index_copy', 'matrix_bc_alu', 'matrix_scalar_uses', 'matrix_real_index', 'matrix_source_loop'].includes(family) !==
@@ -643,18 +648,24 @@ for (const program of programs) {
         if (program.variant >= 12) {
           const edges = [0, 1, 127, 128, 255, 126, 129, 254];
           if (seed < 64) parameters = [edges[Math.floor(seed / 8)], edges[seed % 8], parameters[2]];
-          // Keep divisors nonzero while retaining unsigned high-bit cases.
-          parameters[1] |= 1;
-          parameters[0] = program.variant % 3 === 0 ? parameters[0] | 1 : program.variant % 3 === 2 ? parameters[0] & 254 : parameters[0];
+          if (program.variant < 18) {
+            // Keep divisors nonzero while retaining unsigned high-bit cases.
+            parameters[1] |= 1;
+            parameters[0] = program.variant % 3 === 0 ? parameters[0] | 1 : program.variant % 3 === 2 ? parameters[0] & 254 : parameters[0];
+          }
         }
         const [first, second, last] = parameters;
-        const saved = first ^ second, called = (saved + second + last) & 255;
+        const saved = first ^ second, called = (saved + second + last) & 255, quotient = Math.floor((last + 0x9234) / 3);
         expected = [saved < last ? first : second, (saved << (last & 15)) & 65535, (second << (first & 15)) & 65535,
           buffer[first & 127], (called >= 128 ? called - 256 : called) & 65535, (saved + second + last) & 65535,
           (saved >= 128 ? saved - 256 : saved) < (last >= 128 ? last - 256 : last) ? 1 : 0,
           saved >>> (last & 7), buffer[32 + (first >= 128 ? first - 256 : first)], called ^ saved,
           ((((second & 1) ? first : last) + second) & 65535) ^ ((second & 1) ? first : last), second,
-          ...Array.from({length: 6}, (_, index) => Math.floor((last + 0x9234) / [first & second, first | second, first ^ second][index % 3]))][program.variant];
+          ...Array.from({length: 6}, (_, index) => Math.floor((last + 0x9234) / [first & second, first | second, first ^ second][index % 3])),
+          ...[first-second, second-first, first-1, 1-first, first, -first, first-255, 255-first, first-second, second-first]
+            .map(difference => quotient | (difference & 65535)),
+          ((quotient | ((first-second) & 65535)) + second) & 65535,
+          quotient | ((first-1) & 65535)][program.variant];
         break;
       }
       case 'matrix_real_index':

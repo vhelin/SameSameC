@@ -2413,6 +2413,7 @@ static int _bbb_generate_asm_add_sub_or_xor_and_z80_8bit(struct tac *t, FILE *fi
   int arg1_in_hl = NO, arg1_in_bc = NO, arg2_in_hl = NO, arg2_in_bc = NO;
   int arg1_in_b = NO, arg2_in_b = NO, result_in_b = NO;
   int arg1_in_c = NO, arg2_in_c = NO, result_in_c = NO;
+  int word_sub = op == TAC_OP_SUB && t->arg1_var_type_promoted == VARIABLE_TYPE_UINT16;
 
   /* result */
 
@@ -2715,6 +2716,10 @@ static int _bbb_generate_asm_add_sub_or_xor_and_z80_8bit(struct tac *t, FILE *fi
     return FAILED;
   }
 
+  /* Capture borrow before IX address materialization can change carry. */
+  if (word_sub == YES)
+    fprintf(file_out, "      LD  C,A\n      SBC A,A\n");
+
   /******************************************************************************************************/
   /* target address -> ix */
   /******************************************************************************************************/
@@ -2747,11 +2752,19 @@ static int _bbb_generate_asm_add_sub_or_xor_and_z80_8bit(struct tac *t, FILE *fi
     /* 16-bit */
 
     /* lower byte */
-    if (_store_from_a(&result_location, 0, ix_offset, file_out) == FAILED)
+    if (word_sub == YES && result_location.kind != LOC_PHY_BC)
+      _load_c_into_ix(ix_offset, file_out);
+    else if (word_sub == NO && _store_from_a(&result_location, 0, ix_offset, file_out) == FAILED)
       return FAILED;
 
-    /* sign extend 8-bit -> 16-bit? */
-    if (t->result_var_type == VARIABLE_TYPE_INT16 && (t->arg1_var_type == VARIABLE_TYPE_INT8 ||
+    /* borrow or sign extend 8-bit -> 16-bit? */
+    if (word_sub == YES) {
+      if (_store_from_a(&result_location, 1, ix_offset, file_out) == FAILED)
+        return FAILED;
+      if (result_location.kind == LOC_PHY_BC)
+        fprintf(file_out, "      ; retained result in BC\n");
+    }
+    else if (t->result_var_type == VARIABLE_TYPE_INT16 && (t->arg1_var_type == VARIABLE_TYPE_INT8 ||
                                                       t->arg2_var_type == VARIABLE_TYPE_INT8)) {
       /* yes */
       _sign_extend_a_into_ix(ix_offset + 1, file_out);

@@ -4840,13 +4840,16 @@ static int _is_register_allocator_b_candidate(struct tac *producer, struct tac *
 
 int is_z80_register_allocator_byte_transparent_tac(struct tac *t, int physical_register) {
 
-  /* Unassigned byte-valued word results can use the byte emitter without touching HL. */
+  /* Byte operands can use the byte emitter and preserve the full word result without touching HL. */
   if (physical_register == Z80_PHY_HL)
     return g_allocator_enabled == YES && g_allocator_force_all_spill == NO &&
-      (t->op == TAC_OP_AND || t->op == TAC_OP_OR || t->op == TAC_OP_XOR) &&
+      (t->op == TAC_OP_AND || t->op == TAC_OP_OR || t->op == TAC_OP_XOR ||
+       (t->op == TAC_OP_SUB && t->arg2_physical_register != Z80_PHY_A && t->arg2_physical_register != Z80_PHY_BC &&
+        (t->arg2_type != TAC_ARG_TYPE_CONSTANT || t->arg2_d != 1.0))) &&
+      (t->result_physical_register == Z80_PHY_NONE || (t->op == TAC_OP_SUB && t->result_physical_register == Z80_PHY_BC)) &&
       t->arg1_var_type == VARIABLE_TYPE_UINT8 && t->arg2_var_type == VARIABLE_TYPE_UINT8 &&
       t->arg1_var_type_promoted == VARIABLE_TYPE_UINT16 && t->arg2_var_type_promoted == VARIABLE_TYPE_UINT16 &&
-      t->result_var_type == VARIABLE_TYPE_UINT16 && t->result_physical_register == Z80_PHY_NONE &&
+      t->result_var_type == VARIABLE_TYPE_UINT16 &&
       (t->arg1_type != TAC_ARG_TYPE_CONSTANT || (t->arg1_d >= 0.0 && t->arg1_d <= 255.0)) &&
       (t->arg2_type != TAC_ARG_TYPE_CONSTANT || (t->arg2_d >= 0.0 && t->arg2_d <= 255.0)) ? YES : NO;
 
