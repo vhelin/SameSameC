@@ -118,8 +118,13 @@ for (let variant = 0; variant < 30; variant++) {
       's16 index = a; return target[index];',
       'return target[a];',
       'ra_index_pointer = target; u16 first = ra_index_pointer[a]; ra_index_pointer = alias; return first+ra_index_pointer[a];',
-      ...[114, 115, 116].map(size => `u8 workspace[${size}]; u8 *local = target; workspace[a&63] = b; u16 loaded = local[a]; return loaded+workspace[a&63];`)
-    ][variant], pointerIndex ? [2, 2, byteIndex ? 1 : 2, 1] : [variant === 4 || variant === 5 ? 1 : 2, 1], [2, 3, 10, 11, 14, 15, 16, 17, 20, 21, 22, 23, 24].includes(variant) ? 2 : 1],
+      ...[114, 115, 116].map(size => `u8 workspace[${size}]; u8 *local = target; workspace[a&63] = b; u16 loaded = local[a]; return loaded+workspace[a&63];`),
+      'return target[a];',
+      'u8 workspace[136]; u8 *local; if (b&2) { local = target; } else { local = alias; } workspace[a&127] = b; u16 loaded = local[a]; return loaded+workspace[a&127];',
+      'u16 first = target[a]; alias[a] = b; return first+target[a];',
+      'u16 first = target[a]; ra_pointer_helper(&target[a],b); return first+target[a];',
+      'ra_index_pointer = target; u8 called = ra_signed_helper(b,a,0); u16 first = ra_index_pointer[a]; ra_index_pointer = alias; return first+ra_index_pointer[a]+called;'
+    ][variant], pointerIndex ? [2, 2, byteIndex ? 1 : 2, 1] : [variant === 4 || variant === 5 ? 1 : 2, 1], [2, 3, 10, 11, 14, 15, 16, 17, 20, 21, 22, 23, 24, 26, 27, 28, 29].includes(variant) ? 2 : 1],
     ['matrix_bc_alu', 'u16 a, u16 b, u16 c', variant < 10 ? `u16 saved = a${operator}b; return c${variant < 5 ? '-' : '+'}saved;` : variant === 10 ?
       'u16 live = a+c; u16 saved = b+c; return (live-saved)^live;' :
       'u8 small = a; u16 saved = b+c; return (saved+small)^small;', [2, 2, 2], 2],
@@ -224,7 +229,7 @@ for (let variant = 0; variant < 30; variant++) {
     if (family.startsWith('matrix_') && variant >= ({matrix_byte: 10, matrix_word: 10,
       matrix_compare_byte: 12, matrix_compare_word: 12, matrix_compare_signed: 12,
       matrix_low_byte: 10, matrix_structural: 12, matrix_sentinel: 10, matrix_affinity: 8, matrix_rank: 4,
-      matrix_index_copy: 25, matrix_bc_alu: 12, matrix_scalar_uses: 30, matrix_real_index: 1}[family] || 2)) continue;
+      matrix_index_copy: 30, matrix_bc_alu: 12, matrix_scalar_uses: 30, matrix_real_index: 1}[family] || 2)) continue;
     if (comparisonForms && family !== 'arithmetic' && !family.startsWith('matrix_compare_')) continue;
     if (process.env.RA_FAMILIES && family !== 'arithmetic' && !process.env.RA_FAMILIES.split(',').includes(family)) continue;
     if (family.startsWith('matrix_') && ['matrix_index_copy', 'matrix_bc_alu', 'matrix_scalar_uses', 'matrix_real_index', 'matrix_source_loop'].includes(family) !==
@@ -396,7 +401,7 @@ for (const program of process.env.RA_BASELINE === '1' ? [] : programs) {
        !lines.some(line => /profitability .*phy=BC known=yes /.test(line)) ||
        !lines.some(line => /placement_rank .*original=HL selected=BC known=yes .*mutation=no$/.test(line))))
     throw new Error(`Cost-ranked word-index affinity missing: ${program.name}`);
-  if (program.family === 'matrix_index_copy' && program.variant >= 22) {
+  if (program.family === 'matrix_index_copy' && program.variant >= 22 && program.variant <= 24) {
     const offset = -105 - program.variant, useIx = program.variant < 24;
     const address = `offset=${offset} mode=${useIx ? 'frame_displacement' : 'frame_address'} folded_offset=${useIx ? offset : 0} address_target=${useIx ? 'IX' : 'IY'} target=z80`;
     if (!lines.some(line => line.includes('emitter=array_read_base_address operand=arg1 kind=STACK_LOCAL ') && line.endsWith(address)))
@@ -405,6 +410,12 @@ for (const program of process.env.RA_BASELINE === '1' ? [] : programs) {
   if (program.family === 'matrix_index_copy' && [12, 13, 21].includes(program.variant) &&
       lines.some(line => line.includes('emitter=array_read_base_address ') && line.includes('address_target=IX ')))
     throw new Error(`Zero-index, uncached or global pointer fallback changed: ${program.name}`);
+  if (program.family === 'matrix_index_copy' && program.variant >= 25 &&
+      !lines.some(line => line.includes(`arg1_kind=${program.variant === 29 ? 'GLOBAL' : 'STACK_LOCAL'} arg1_phy=NONE arg1_size=2 result_kind=PHY_HL `)))
+    throw new Error(`Word-memory assignment to HL not exercised: ${program.name}`);
+  if (program.family === 'matrix_index_copy' && program.variant === 26 &&
+      !lines.some(line => Number(line.match(/emitter=assignment_arg1_address operand=arg1 kind=STACK_LOCAL offset=(-?\d+) /)?.[1]) < -128))
+    throw new Error(`Wide pointer-slot assignment not exercised: ${program.name}`);
   if (program.family === 'scalar_split_byte' &&
       (lines.filter(line => line.includes('scalar_split_transfer') && line.endsWith('kind=store')).length !== 1 ||
        lines.filter(line => line.includes('scalar_split_transfer') && line.endsWith('kind=reload')).length !== 1 ||
@@ -574,7 +585,7 @@ for (const program of programs) {
     const byte = (seed * 73 + program.variant * 19) & 255;
     const other = (seed * 29 + 17) & 255;
     const third = (seed * 47 + 3) & 255;
-    const globalPointer = program.family === 'matrix_index_copy' && program.variant === 21;
+    const globalPointer = program.family === 'matrix_index_copy' && [21, 29].includes(program.variant);
     const buffer = Uint8Array.from({length: globalPointer ? 130 : 128}, (_, index) => (index * 47 + seed * 11 + program.variant) & 255);
     const expectedBuffer = buffer.slice();
     let parameters = [byte, other, third];
@@ -642,19 +653,21 @@ for (const program of programs) {
         const word = [2, 3, 11, 20].includes(program.variant);
         const signed = [1, 3, 5, 18, 19].includes(program.variant);
         const offset = signed ? word ? 16 : 32 : 0;
-        const index = program.variant === 8 ? 7 : signed ? seed % (offset * 2 - 1) - offset + 1 : seed % (word || [15, 16, 21].includes(program.variant) ? 64 : 128);
+        const index = program.variant === 8 ? 7 : signed ? seed % (offset * 2 - 1) - offset + 1 : seed % (word || [15, 16, 21, 26, 27, 28, 29].includes(program.variant) ? 64 : 128);
         parameters = [index & (program.variant === 5 ? 255 : 65535), other];
         if (program.variant >= 12) {
           parameters = [offset, seed & 1 ? offset : 16, index & 65535, other];
           const previous = word ? buffer[(offset + index) * 2] + buffer[(offset + index) * 2 + 1] * 256 : buffer[offset + index];
           if (program.variant === 12) expected = buffer[offset];
           else if (program.variant === 13) expected = buffer[offset + 7];
-          else if (program.variant === 14 || program.variant >= 22) expected = previous + other;
-          else if (program.variant === 15 || program.variant === 16) {
-            expectedBuffer[(program.variant === 15 ? parameters[1] : offset) + index] = other;
+          else if ([14, 22, 23, 24].includes(program.variant)) expected = previous + other;
+          else if (program.variant === 26) expected = ((other & 2) ? previous : buffer[parameters[1] + index]) + other;
+          else if ([15, 16, 27, 28].includes(program.variant)) {
+            expectedBuffer[([15, 27].includes(program.variant) ? parameters[1] : offset) + index] = other;
             expected = previous + expectedBuffer[offset + index];
           } else if (program.variant === 17) expected = previous + index + other;
-          else if (program.variant === 21) expected = previous + buffer[parameters[1] + index];
+          else if ([21, 29].includes(program.variant)) expected = previous + buffer[parameters[1] + index] +
+            (program.variant === 29 ? (other + index) & 255 : 0);
           else expected = previous;
         } else if (program.variant === 9) {
           parameters = [0, seed & 1 ? 0 : 16, seed % 64, other];

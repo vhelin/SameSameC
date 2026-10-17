@@ -12262,14 +12262,96 @@ Qualification and measured outcome:
 
 ### Batch 370-372: Bound One Remaining Memory-to-Register Copy
 
-- [ ] **370. Attribute one executed copy cost.** Follow ordinary assignments
+- [x] **370. Attribute one executed copy cost.** Follow ordinary assignments
       in the unchanged real-source prefix before the output loop. Separate
       required pointer/ABI work from redundant setup or scratch transfers.
-- [ ] **371. Reuse existing assignment/materialization logic if profitable.**
+- [x] **371. Reuse existing assignment/materialization logic if profitable.**
       Retain at most one bounded trial, proving width, overlap, carry and
       alias/call safety without adding caches or a new lowering framework.
-- [ ] **372. Consolidate and requalify.** Remove superseded wrappers/paths,
+- [x] **372. Consolidate and requalify.** Remove superseded wrappers/paths,
       prove cleanup identity and isolated tradeoffs, and apply the shared
+      gates before a local-only commit.
+
+**Evidence and bounded change:**
+
+- Freeze `ca9bff5` and its 47 compiler C/H inputs. The unchanged source prefix
+  executes 26 word-pointer assignments to HL. Each uses two IY memory reads
+  through A, with redundant `LD L,A` / `LD H,A` transfers. Reuse the existing
+  `_materialize_to_hl` and `_store_from_hl` in the full-word assignment branch,
+  loading L/H directly from the same addresses in the same order. Each eligible
+  copy saves **eight cycles, two ROM bytes and two register moves**, not memory
+  traffic. Source-address setup, flags and allocation/A-clobber policy stay
+  unchanged. BC-to-HL assignment transport, constants, byte widening/truncation
+  and memory/BC destinations retain their previous paths.
+
+| Unchanged source, one call | Cycles before -> after | Frame byte accesses | Register moves before -> after | ROM bytes before -> after | Frame bytes |
+| --- | --- | --- | --- | --- | --- |
+| `matrix_real_index_0` | 29,927 -> 29,719 | 834 -> 834 | 302 -> 250 | 1,692 -> 1,640 | 15 -> 15 |
+| `matrix_source_loop_0` | 62,303 -> 62,095 | 1,886 -> 1,886 | 360 -> 308 | 1,817 -> 1,765 | 16 -> 16 |
+
+- The 26 copies themselves fall **1,950->1,742 cycles and 52->0 moves**.
+  The output loop's 58 index bytes, 116 pointer bytes and 232 HL-to-IY transfer
+  bytes remain. No spill or frame-traffic reduction is claimed. Calculations-1
+  used ROM falls **22,548->22,444**; calculations-2 falls **41,017->40,951**.
+  Total/maximum frames remain 267/102 and 1,234/225. Sixteen generated entries
+  and nine measured real routines improve without an isolated cycle/ROM/frame
+  regression. The RAM-manager workload saves 1,477,048 aggregate cycles across
+  its cases, not per call; every measured cycle delta is four times its
+  register-move delta, with unchanged frame traffic.
+- Extend the existing index-copy family from 25 to 30 variants: a full-width
+  pointer parameter, a 136-byte workspace, aliased store/reread, mutating call
+  and call-bounded global pointer. The pointer join forces an actual **-150**
+  source slot in a 152-byte frame; the contributing helper call forces an
+  actual GLOBAL word load. These are traced memory-to-HL assignments, not
+  copy-forwarded proxies. Reuse the independent buffer/return arithmetic and
+  exact named two-byte global-pointer snapshot without relaxing stack/buffer
+  guards. Existing signed, numeric, widening/truncation and displacement
+  controls remain. Drop four non-exercising numeric trial probes rather than
+  enlarge the existing 16-KiB matrix ROM: final default matrix/value images use
+  16,215/14,664 bytes respectively, both within their unchanged 16,384-byte bank.
+- Remove the single-use BC-to-HL get-address wrapper, preserving its guarded
+  H-before-L copy order inline. Production changes are **+9/-11 lines, two net
+  removed and one fewer function**; no new production helper, API, cache or
+  policy. The runner grows by thirteen net lines (+23/-10). Seven exact
+  eight-to-six-byte opcode substitutions in five existing golden fixtures
+  match the actual ROMs; executable SSC source and all other tag bytes match.
+- Strict unoptimized GCC C89/pedantic/Wall/Werror builds pass with the
+  established calloc exemption, as do fresh optimized GCC, native Release and
+  native ASan compiler/verifier builds and verifier execution. Each final
+  toolchain executes **465 generated entries and 22 real routines:
+  238,080 generated + 9,755 real = 247,835 cases per mode**, in default/
+  all-spill/RA modes. All six cohorts are fresh full runs, with independent
+  return/buffer/ports/DE/SP/stack guards and all 14 exact VDP display rows.
+  Immutable verifier failures, fixed-prefix/shared-suffix spill slots and
+  atomic rollback remain qualified.
+- Native Release and ASan each match GCC's **80 ROMs, 30 reports and 12,184
+  selected decisions**. Pre-consolidation cleanup matches 80 ROMs, eight static
+  reports and all 12,184 decisions; the baseline's selected decisions also
+  match. All 86 common SSC sources, 48 flags-off ROMs/execution metrics and
+  30 traced/quiet real-project assembly pairs match their controls. Both
+  complete standard suites pass sequentially, **173 tests each**, with six
+  staged compiler/linker hashes unchanged before/after each run.
+- All 217 final ASan logs are clean and compiler/verifier runtime imports are
+  verified. ASan linker execution, leaks, other sanitizers, exhaustive paths
+  and mapper/full-boot/rendering/hardware timing remain unqualified; banked
+  kernels use fixed mapping. Artifacts under `/tmp/ra370` retain the baseline/
+  pre-consolidation snapshots, 62-input/13-binary manifests, exact owner
+  profiles, golden proofs, comparisons and suite staging hashes. Use the
+  pinned 2.3.0 emulator and `RA_CASES=512`; control-only `RA_BASELINE=1` relaxes
+  quality gates, never execution correctness. The redundant suite mirror is
+  removed; logs and hashes remain. Alias safety, BC/DIV legality and opt-in
+  RA behavior are unchanged.
+
+### Batch 373-375: Bound Remaining Ordinary Word-Load Address Setup
+
+- [ ] **373. Attribute the remaining setup.** Follow ordinary word loads in
+      the unchanged source prefix, separating required memory reads from IY
+      reconstruction and checking actual cached-frame validity and word span.
+- [ ] **374. Reuse existing frame-address policy if profitable.** Retain at
+      most one measured trial without new caches or a lowering framework;
+      prove displacement boundaries and uncached/global/alias/call fallbacks.
+- [ ] **375. Consolidate and requalify.** Remove only demonstrated duplication,
+      prove cleanup identity and isolated tradeoffs, then apply the shared
       gates before a local-only commit.
 
 **Shared completion gates:** Each three-step batch gets its own local commit,

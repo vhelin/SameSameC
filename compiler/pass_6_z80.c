@@ -990,13 +990,6 @@ static void _load_hl_to_bc(FILE *file_out) {
 }
 
 
-static void _load_bc_to_hl(FILE *file_out) {
-
-  fprintf(file_out, "      LD  H,B\n");
-  fprintf(file_out, "      LD  L,C\n");
-}
-
-
 static void _load_a_to_b(FILE *file_out) {
 
   fprintf(file_out, "      LD  B,A\n");
@@ -2340,8 +2333,11 @@ static int _generate_asm_assignment_z80(struct tac *t, FILE *file_out, struct tr
     if (t->result_var_type == VARIABLE_TYPE_INT16 || t->result_var_type == VARIABLE_TYPE_UINT16) {
       /* 16-bit */
       if (t->arg1_var_type == VARIABLE_TYPE_INT16 || t->arg1_var_type == VARIABLE_TYPE_UINT16) {
-        if (result_location.kind == LOC_PHY_HL && arg1_location.kind == LOC_PHY_HL) {
-          if (_store_from_hl(&result_location, ix_offset, file_out) == FAILED)
+        if (result_location.kind == LOC_PHY_HL &&
+            (arg1_location.kind == LOC_PHY_HL || arg1_location.kind == LOC_GLOBAL ||
+             arg1_location.kind == LOC_STACK_LOCAL || arg1_location.kind == LOC_STACK_SPILL)) {
+          if (_materialize_to_hl(&arg1_location, file_out) == FAILED ||
+              _store_from_hl(&result_location, ix_offset, file_out) == FAILED)
             return FAILED;
         }
         else if (result_location.kind == LOC_PHY_BC &&
@@ -3419,8 +3415,10 @@ static int _generate_asm_get_address_z80(struct tac *t, FILE *file_out, struct t
     fprintf(file_out, "      ; retained arg1 in HL\n");
   }
   else if (arg1_location.kind == LOC_PHY_BC) {
-    if (retained_bc_base_hl_index == NO)
-      _load_bc_to_hl(file_out);
+    if (retained_bc_base_hl_index == NO) {
+      fprintf(file_out, "      LD  H,B\n");
+      fprintf(file_out, "      LD  L,C\n");
+    }
     fprintf(file_out, "      ; retained arg1 in BC\n");
   }
   else {
