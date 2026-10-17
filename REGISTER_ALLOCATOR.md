@@ -12436,15 +12436,111 @@ Qualification and measured outcome:
 
 ### Batch 376-378: Attribute the First Uncached Word Load
 
-- [ ] **376. Measure the remaining uncached setup.** Follow the first word
+- [x] **376. Measure the remaining uncached setup.** Follow the first word
       load in the unchanged source kernels and distinguish its own cost from
       later frame-address reconstruction and required memory/ABI accesses.
-- [ ] **377. Reuse existing initialization only if profitable.** Retain at
+- [x] **377. Reuse existing initialization only if profitable.** Retain at
       most one measured trial using existing address/cache helpers, without
       hoisting across clobbers or weakening width, reload or fallback checks.
-- [ ] **378. Consolidate and requalify.** Remove demonstrated duplication,
+- [x] **378. Consolidate and requalify.** Remove demonstrated duplication,
       prove cleanup identity and baseline compatibility, then apply the shared
       gates before a local-only commit.
+
+**Evidence and bounded change:**
+
+- Freeze `88b19c5` and its 47 compiler C/H inputs. The first word-pointer copy
+  in each unchanged source kernel still needs address initialization. Reuse
+  `_load_location_address_to_ix` in the existing word-assignment path instead
+  of requiring an already-valid IX cache. It initializes IX=DE when necessary,
+  skips setup only when the existing cache is valid, and supplies the folded
+  displacement to the existing trace and L/H byte-load helpers.
+- The cold copy itself remains **67 simulated cycles**: replacing IY setup
+  with IX setup has equal cost. All 26 copy sites together remain **1,017
+  cycles**, with zero register moves. The benefit is a later frame-cache
+  reconstruction that is no longer needed: **29 cycles and six ROM bytes
+  per source kernel**, not an intrinsically cheaper first memory read.
+
+| Unchanged source, one call | Cycles before -> after | Frame byte accesses | Register moves | ROM bytes before -> after | Frame bytes |
+| --- | --- | --- | --- | --- | --- |
+| `matrix_real_index_0` | 28,994 -> 28,965 | 834 -> 834 | 250 -> 250 | 1,490 -> 1,484 | 15 -> 15 |
+| `matrix_source_loop_0` | 61,370 -> 61,341 | 1,886 -> 1,886 | 308 -> 308 | 1,615 -> 1,609 | 16 -> 16 |
+
+- The output loop's 58 index bytes, 116 pointer bytes and 232 HL-to-IY
+  transfer bytes remain. Calculations-1 used ROM falls **22,144->22,132**;
+  calculations-2 falls **40,807->40,795**. Total/maximum frames remain 267/102
+  and 1,234/225. Ten generated entries and four measured real routines improve,
+  with no isolated cycle/ROM/frame regression. Executed frame traffic and
+  register moves are unchanged; cycle deltas are multiples of 29. The RAM
+  manager workload saves **340,344 aggregate cycles** across its cases, not
+  per call.
+- Keep opt-in/non-forced-spill RA, physical HL, full-word source/result types,
+  pending-reload exclusion and the existing FRAME_DISPLACEMENT policy. Word
+  offsets remain **-128 through +126**, so both bytes fit. Do not hoist setup
+  across calls, labels, ASM or DE/IX clobbers. Global/wide sources, BC and
+  memory destinations, constants and byte widening/truncation retain their
+  old routes. No allocation, A-clobber or flag-retention policy is relaxed;
+  replacing ADD IY,DE with ADD IX,DE does not claim identical hardware flags.
+- Reuse the existing generated cases and cohorts, with no new test function
+  or executable source changes. Require actual cold IX initialization and
+  the **-6/-5** byte-return parameter slot in variant 25. Scope variant 29's
+  fallback assertion to its required GLOBAL load: its separate local alias
+  word load can legitimately use IX. The actual GLOBAL trace still targets
+  IY. Existing alias/call/stack guards, -150 and -129 IY fallbacks,
+  -127/-128 IX controls and the independent twelve-case local/spill word-span
+  table remain qualified.
+- Remove the single-use SP-to-HL wrapper; its sole caller reuses the existing
+  constant-to-HL helper and preserves the same ADD HL,SP instruction/order.
+  Production changes are **+8/-12 lines, four net removed and one fewer
+  function**. No new production helper, API, cache or policy. The runner grows
+  by five net lines (+8/-3). Two golden blocks in one existing fixture each
+  lose six bytes of later IX reconstruction; equal-cost cold initialization,
+  executable SSC text and every other normalized instruction/tag byte are
+  independently checked against the frozen control.
+- Fresh optimized GCC, native Release and native ASan compiler/verifier
+  builds and verifier executions pass. Strict unoptimized GCC C89/pedantic/
+  Wall/Werror builds pass with the established calloc exemption. Each final
+  toolchain executes fresh full runs of all six cohorts: **468 generated
+  entries and 22 real routines; 239,616 generated + 9,755 real = 249,371 cases
+  per mode**, in default/all-spill/RA modes. Independent returns, buffers,
+  ports, DE/SP and protected stack, immutable verifier failures, stable fixed
+  spill prefixes/shared suffixes and atomic rollback remain qualified.
+- Native Release and ASan each match GCC's **80 ROMs, 30 reports and 12,262
+  selected decisions**. Pre-consolidation cleanup matches 80 ROMs, eight static
+  reports and all 12,262 decisions; baseline decisions also match. All 86
+  common SSC sources, 48 flags-off ROMs/execution metrics and 30 traced/quiet
+  real-project assembly pairs match. All 14 exact VDP display rows pass.
+  Both full standard suites pass sequentially, **173 tests each**, with six
+  staged tool hashes unchanged before/after each run. All 217 final ASan logs
+  are clean and actual compiler/verifier runtime imports are verified.
+- Separate an existing banked static-counter limitation from actual moves.
+  Listing-relative ROM lookup reports 556->567 and 1,013->1,017 static move
+  sites, while unchanged emitted register-copy instructions and independently
+  bank-aware listing bytes both give **665->665 and 1,200->1,200**. Every
+  checked instruction's first byte matches the bank-aware ROM location.
+  Dynamic moves are read from actual execution memory and remain unchanged;
+  do not present the relocation-sensitive static counter as a move saving or
+  regression. Leave its correction to the bounded follow-up below.
+- Artifacts under `/tmp/ra376` retain baseline/pre-consolidation snapshots,
+  **442-input/13-binary** manifests, exact first-copy/owner profiles, golden
+  and banked-listing proofs, comparisons and suite staging hashes. The
+  completed suite mirror is removed; logs and hashes remain. Use the pinned
+  2.3.0 emulator and `RA_CASES=512`; control-only `RA_BASELINE=1` relaxes quality
+  gates, never execution correctness. ASan linker execution, leaks, other
+  sanitizers, exhaustive paths and mapper/full-boot/rendering/hardware timing
+  remain unqualified; banked kernels use fixed mapping. Alias safety, BC/DIV
+  legality and opt-in RA behavior are unchanged.
+
+### Batch 379-381: Qualify Banked Static Move Attribution
+
+- [ ] **379. Attribute the banked counter discrepancy.** Separate listing
+      bank/offset fields, actual emitted register-copy instructions and dynamic
+      moves; freeze controls before changing measurement.
+- [ ] **380. Reuse existing address conventions.** Retain at most one bounded
+      counter correction with independent banked and bank-zero opcode proofs,
+      no new production helper and no code-generation or quality-gate shortcut.
+- [ ] **381. Consolidate and requalify.** Require unchanged ROMs, allocation
+      decisions and execution metrics; isolate intentional static-report
+      corrections, apply the shared gates and make a local-only commit.
 
 **Shared completion gates:** Each three-step batch gets its own local commit,
 with no push and no unrelated worktree changes included. Reuse existing

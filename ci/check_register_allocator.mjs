@@ -426,9 +426,14 @@ for (const program of process.env.RA_BASELINE === '1' ? [] : programs) {
     if (!lines.some(line => line.includes('emitter=assignment_arg1_address operand=arg1 kind=STACK_LOCAL ') && line.endsWith(address)))
       throw new Error(`Word assignment displacement boundary not exercised: ${program.name}`);
   }
-  if (program.family === 'matrix_index_copy' && [25, 26, 29].includes(program.variant) &&
-      lines.some(line => line.includes('emitter=assignment_arg1_address ') && line.includes('address_target=IX ')))
-    throw new Error(`Uncached, wide or global word assignment fallback changed: ${program.name}`);
+  if (program.family === 'matrix_index_copy' && program.variant === 25 &&
+      !/LD\s+IX,0\s+ADD IX,DE\s+LD\s+L,\(IX-6\)\s+LD\s+H,\(IX-5\)/.test(
+        readFileSync(join(output, 'ra', 'main.asm'), 'utf8').split(`.SECTION "${program.name}" FREE`)[1].split('.ENDS')[0]))
+    throw new Error(`Initial word load did not initialize the existing frame cache: ${program.name}`);
+  if (program.family === 'matrix_index_copy' && [26, 29].includes(program.variant) &&
+      lines.some(line => line.includes(`emitter=assignment_arg1_address operand=arg1 kind=${program.variant === 29 ? 'GLOBAL' : 'STACK_LOCAL'} `) &&
+        line.includes('address_target=IX ')))
+    throw new Error(`Wide or global word assignment fallback changed: ${program.name}`);
   if (program.family === 'scalar_split_byte' &&
       (lines.filter(line => line.includes('scalar_split_transfer') && line.endsWith('kind=store')).length !== 1 ||
        lines.filter(line => line.includes('scalar_split_transfer') && line.endsWith('kind=reload')).length !== 1 ||

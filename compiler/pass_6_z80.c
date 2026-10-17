@@ -1003,13 +1003,6 @@ static void _load_hl_to_sp(FILE *file_out) {
 }
 
 
-static void _load_sp_to_hl(FILE *file_out) {
-
-  fprintf(file_out, "      LD  HL,0\n");
-  fprintf(file_out, "      ADD HL,SP\n");
-}
-
-
 static void _load_value_to_bc(int value, FILE *file_out) {
 
   fprintf(file_out, "      LD  BC,%d\n", value);
@@ -2293,16 +2286,18 @@ static int _generate_asm_assignment_z80(struct tac *t, FILE *file_out, struct tr
   /* source address -> iy */
   /******************************************************************************************************/
 
-  if (g_allocator_enabled == YES && g_allocator_force_all_spill == NO && g_is_ix_de == YES &&
+  if (g_allocator_enabled == YES && g_allocator_force_all_spill == NO &&
       result_location.kind == LOC_PHY_HL && t->reload_spill_to_physical_operand == -1 &&
       (t->result_var_type == VARIABLE_TYPE_INT16 || t->result_var_type == VARIABLE_TYPE_UINT16) &&
       (t->arg1_var_type == VARIABLE_TYPE_INT16 || t->arg1_var_type == VARIABLE_TYPE_UINT16) &&
       get_register_allocator_address_materialization_mode(arg1_location.kind, RA_ADDRESS_TARGET_IX,
         arg1_location.offset) == RA_ADDRESS_MODE_FRAME_DISPLACEMENT) {
+    if (_load_location_address_to_ix(&arg1_location, &ix_offset, file_out) == FAILED)
+      return FAILED;
     _trace_z80_specialized_address_materialization(function_node, "assignment_arg1_address", "arg1",
-        &arg1_location, RA_ADDRESS_TARGET_IX, arg1_location.offset);
-    _load_from_ix_to_l(arg1_location.offset, file_out);
-    _load_from_ix_to_h(arg1_location.offset + 1, file_out);
+        &arg1_location, RA_ADDRESS_TARGET_IX, ix_offset);
+    _load_from_ix_to_l(ix_offset, file_out);
+    _load_from_ix_to_h(ix_offset + 1, file_out);
     return SUCCEEDED;
   }
 
@@ -6334,7 +6329,8 @@ static int _generate_asm_function_call_z80(struct tac *t, FILE *file_out, struct
 #endif
 
   /* sp -> hl (the new stack frame address) */
-  _load_sp_to_hl(file_out);
+  _load_value_to_hl(0, file_out);
+  fprintf(file_out, "      ADD HL,SP\n");
   _dec_hl(file_out);
 
   /* address of return address in stack frame -> bc */
