@@ -358,13 +358,6 @@ static void _load_value_to_iy(int value, FILE *file_out) {
 }
 
 
-static void _load_hl_to_iy(FILE *file_out) {
-
-  fprintf(file_out, "      PUSH HL\n");
-  fprintf(file_out, "      POP IY\n");
-}
-
-
 static void _load_bc_to_iy(FILE *file_out) {
 
   fprintf(file_out, "      PUSH BC\n");
@@ -3634,10 +3627,10 @@ static int _generate_asm_z80_in_read_z80(struct tac *t, FILE *file_out, struct t
 }
 
 
-static int _materialize_array_base_to_iy(struct tac *tac, struct z80_location *base_location, int base_memory_pointer_load,
-                                        int arg2_is_zero, struct tree_node *function_node, FILE *file_out) {
+static int _materialize_array_base(struct tac *tac, struct z80_location *base_location, int base_memory_pointer_load,
+                                   int arg2_is_zero, int keep_hl, struct tree_node *function_node, FILE *file_out) {
 
-  int is_write;
+  int is_write, materialized_hl = NO;
   char *operand_name;
 
   is_write = tac->op == TAC_OP_ARRAY_WRITE;
@@ -3660,21 +3653,21 @@ static int _materialize_array_base_to_iy(struct tac *tac, struct z80_location *b
 
   if (base_location->kind == LOC_CONST) {
     if (is_write == NO) {
-      fprintf(stderr, "_materialize_array_base_to_iy(): Source cannot be a value!\n");
+      fprintf(stderr, "_materialize_array_base(): Source cannot be a value!\n");
       return FAILED;
     }
     _load_value_to_iy(base_location->value, file_out);
   }
   else if (base_location->kind == LOC_PHY_A) {
-    fprintf(stderr, "_materialize_array_base_to_iy(): Cannot use an 8-bit retained array base! Please submit a bug report!\n");
+    fprintf(stderr, "_materialize_array_base(): Cannot use an 8-bit retained array base! Please submit a bug report!\n");
     return FAILED;
   }
   else if (base_location->kind == LOC_PHY_HL || base_location->kind == LOC_PHY_BC) {
     if (base_location->kind == LOC_PHY_HL)
-      _load_hl_to_iy(file_out);
+      materialized_hl = YES;
     else {
       if (is_write == YES && arg2_is_zero == NO) {
-        fprintf(stderr, "_materialize_array_base_to_iy(): Cannot use retained result in BC with a non-zero index! Please submit a bug report!\n");
+        fprintf(stderr, "_materialize_array_base(): Cannot use retained result in BC with a non-zero index! Please submit a bug report!\n");
         return FAILED;
       }
       _load_bc_to_iy(file_out);
@@ -3689,7 +3682,7 @@ static int _materialize_array_base_to_iy(struct tac *tac, struct z80_location *b
         operand_name, base_location, RA_ADDRESS_TARGET_IX, base_location->offset);
     _load_from_ix_to_l(base_location->offset, file_out);
     _load_from_ix_to_h(base_location->offset + 1, file_out);
-    _load_hl_to_iy(file_out);
+    materialized_hl = YES;
   }
   else {
     if (_load_location_address_to_iy(base_location, file_out) == FAILED)
@@ -3702,7 +3695,7 @@ static int _materialize_array_base_to_iy(struct tac *tac, struct z80_location *b
         g_allocator_enabled == YES && g_allocator_force_all_spill == NO) {
       if (_materialize_to_hl(base_location, file_out) == FAILED)
         return FAILED;
-      _load_hl_to_iy(file_out);
+      materialized_hl = YES;
     }
     else if (base_memory_pointer_load == YES) {
       if (arg2_is_zero == NO)
@@ -3714,6 +3707,11 @@ static int _materialize_array_base_to_iy(struct tac *tac, struct z80_location *b
       if (arg2_is_zero == NO)
         _pop_bc(file_out);
     }
+  }
+
+  if (materialized_hl == YES && keep_hl == NO) {
+    fprintf(file_out, "      PUSH HL\n");
+    fprintf(file_out, "      POP IY\n");
   }
 
   return SUCCEEDED;
@@ -3882,7 +3880,7 @@ static int _generate_asm_array_read_z80(struct tac *t, FILE *file_out, struct tr
   struct z80_location result_location;
   struct z80_location arg1_location;
   struct z80_location arg2_location;
-  int var_type, result_needs_16_bit, ix_offset = 0, base_memory_pointer_load = NO, arg2_is_zero = NO, base_materialized = NO;
+  int var_type, result_needs_16_bit, ix_offset = 0, base_memory_pointer_load = NO, arg2_is_zero = NO, base_materialized = NO, base_in_hl;
 
   /* OVERRIDE for __z80_in */
   if (t->arg1_type == TAC_ARG_TYPE_LABEL && strcmp(t->arg1_s, "__z80_in") == 0)
@@ -3923,7 +3921,7 @@ static int _generate_asm_array_read_z80(struct tac *t, FILE *file_out, struct tr
   }
 
   if (arg1_location.kind == LOC_PHY_BC && arg2_is_zero == NO) {
-    if (_materialize_array_base_to_iy(t, &arg1_location, base_memory_pointer_load, arg2_is_zero, function_node, file_out) == FAILED)
+    if (_materialize_array_base(t, &arg1_location, base_memory_pointer_load, arg2_is_zero, NO, function_node, file_out) == FAILED)
       return FAILED;
     base_materialized = YES;
   }
@@ -3966,14 +3964,7 @@ static int _generate_asm_array_read_z80(struct tac *t, FILE *file_out, struct tr
 #endif
 
   /******************************************************************************************************/
-  /* source address (arg1) -> iy */
-  /******************************************************************************************************/
-
-  if (base_materialized == NO && _materialize_array_base_to_iy(t, &arg1_location, base_memory_pointer_load, arg2_is_zero, function_node, file_out) == FAILED)
-    return FAILED;
-
-  /******************************************************************************************************/
-  /* add bc -> iy */
+  /* source address (arg1) -> hl/iy */
   /******************************************************************************************************/
 
   /* NOTE! var_type is actually the type of the item we have inside arg1 array */
@@ -3988,8 +3979,22 @@ static int _generate_asm_array_read_z80(struct tac *t, FILE *file_out, struct tr
                         t->result_var_type_promoted == VARIABLE_TYPE_INT16 ||
                         t->result_var_type_promoted == VARIABLE_TYPE_UINT16;
 
+  base_in_hl = g_allocator_enabled == YES && g_allocator_force_all_spill == NO &&
+               base_materialized == NO && arg2_is_zero == NO && var_type == VARIABLE_TYPE_UINT8 &&
+               (arg1_location.kind == LOC_PHY_HL || base_memory_pointer_load == YES);
+  if (base_materialized == NO && _materialize_array_base(t, &arg1_location, base_memory_pointer_load,
+      arg2_is_zero, base_in_hl, function_node, file_out) == FAILED)
+    return FAILED;
+
+  /******************************************************************************************************/
+  /* add bc -> hl/iy */
+  /******************************************************************************************************/
+
   if (!(t->arg2_type == TAC_ARG_TYPE_CONSTANT && ((int)t->arg2_d) == 0)) {
-    _add_bc_to_iy(file_out);
+    if (base_in_hl == YES)
+      _add_bc_to_hl(file_out);
+    else
+      _add_bc_to_iy(file_out);
 
     if (var_type == VARIABLE_TYPE_INT16 || var_type == VARIABLE_TYPE_UINT16) {
       /* the array has 16-bit items -> add bc -> iy twice! */
@@ -3998,7 +4003,7 @@ static int _generate_asm_array_read_z80(struct tac *t, FILE *file_out, struct tr
   }
 
   /******************************************************************************************************/
-  /* copy data (iy) -> hl */
+  /* copy data -> hl */
   /******************************************************************************************************/
 
   if (t->arg1_type == TAC_ARG_TYPE_CONSTANT) {
@@ -4013,7 +4018,10 @@ static int _generate_asm_array_read_z80(struct tac *t, FILE *file_out, struct tr
     }
     else {
       /* 8-bit */
-      _load_from_iy_to_l(0, file_out);
+      if (base_in_hl == YES)
+        fprintf(file_out, "      LD  L,(HL)\n");
+      else
+        _load_from_iy_to_l(0, file_out);
 
       /* sign extend 8-bit -> 16-bit? */
       if (var_type == VARIABLE_TYPE_INT8 && result_needs_16_bit) {
@@ -4387,8 +4395,8 @@ static int _generate_asm_array_write_z80(struct tac *t, FILE *file_out, struct t
   /* result address (result) -> iy */
   /******************************************************************************************************/
 
-  if (result_materialized == NO && _materialize_array_base_to_iy(t, &result_location,
-      _base_needs_memory_pointer_load(t->result_type, t->result_node, &result_location), arg2_is_zero, function_node, file_out) == FAILED)
+  if (result_materialized == NO && _materialize_array_base(t, &result_location,
+      _base_needs_memory_pointer_load(t->result_type, t->result_node, &result_location), arg2_is_zero, NO, function_node, file_out) == FAILED)
     return FAILED;
 
   /******************************************************************************************************/

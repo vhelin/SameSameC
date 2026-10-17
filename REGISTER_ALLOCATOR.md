@@ -12620,15 +12620,122 @@ Qualification and measured outcome:
 
 ### Batch 382-384: Attribute Remaining Indexed-Read Transfers
 
-- [ ] **382. Measure the remaining transfer.** Follow the unchanged source
+- [x] **382. Measure the remaining transfer.** Follow the unchanged source
       loop's HL-to-IY traffic, separating required index/pointer reads from
       address transport and checking widths, destinations and live values.
-- [ ] **383. Reuse existing byte-load lowering only if profitable.** Retain
+- [x] **383. Reuse existing byte-load lowering only if profitable.** Retain
       at most one measured trial without new caches or helpers; preserve
       signed/full-word, alias/call, pending-reload and flag constraints.
-- [ ] **384. Consolidate and requalify.** Remove only demonstrated duplication,
+- [x] **384. Consolidate and requalify.** Remove only demonstrated duplication,
       prove cleanup identity and isolated tradeoffs, apply the shared gates
       and make a local-only commit.
+
+**Evidence and bounded change:**
+
+- Freeze `9d319c8`, 47 compiler C/H files and 442 source/test inputs before
+  the trial. The output loop has 58 unsigned indexed reads: 58 index bytes
+  and 116 pointer bytes are required, while **232 temporary stack-byte
+  accesses** only transport the computed address from HL to IY. Its indexed
+  region costs 7,366 simulated cycles and 522 instructions. These accesses
+  are address transport, not allocator spills.
+- Keep the existing materialized HL address for unsigned-byte pointer reads
+  in opt-in/non-forced-spill RA, excluding constant-zero indices and bases
+  already materialized in IY. Eligible bases are physical HL or memory-held
+  pointers. Reuse existing pointer materialization and `ADD HL,BC`, then
+  emit `LD L,(HL)` through the existing byte-result path. Replace only
+  `PUSH HL / POP IY / ADD IY,BC / LD L,(IY+0)`; the new pair saves
+  **41 cycles, six ROM bytes and four stack-byte accesses per read**.
+- Signed elements, full-word elements, constant-zero indices, direct array
+  bases and pre-materialized BC bases retain their previous routes.
+  Unsigned widening, result destinations, checked base spill/reload ordering,
+  wide/global pointer-slot loads, alias/call constraints and frame-span checks
+  remain intact. ARRAY_READ already conservatively clobbers full HL, BC, A,
+  IX, IY and flags; no effect, allocation, spill, cache or flag policy changes.
+- Generalize the existing array-base materializer with a `keep_hl` argument,
+  consolidate its three HL-to-IY transfers into one tail and remove the
+  now-unused transfer wrapper. Array writes and early BC materialization
+  explicitly retain IY. Production changes **+39/-31 lines, eight net added
+  and one fewer function**; do not claim a net source-line reduction.
+  Four runner lines require the measured loop's direct HL byte-read sequence.
+  No new helper, cache, generated function, cohort or framework is added.
+
+| Existing kernel, one call | Cycles before -> after | Frame accesses | Moves | Used ROM bytes | Frame bytes |
+| --- | --- | --- | --- | --- | --- |
+| source prefix `ra_matrix_real_index_0` | 28,965 -> 28,965 | 834 -> 834 | 250 -> 250 | 1,484 -> 1,484 | 15 -> 15 |
+| output loop `ra_matrix_source_loop_0` | 61,341 -> 58,963 | 1,886 -> 1,654 | 308 -> 308 | 1,609 -> 1,603 | 16 -> 16 |
+
+- The 58 reads save **2,378 cycles and 232 address-transport accesses per
+  output-loop call**. Their indexed region falls to 4,988 cycles and 406
+  instructions, or 127 -> 86 cycles per read. Required index/pointer reads
+  and register moves are unchanged. All 26 word copies still cost 1,017
+  cycles, including the 67-cycle cold copy.
+
+| Existing RA project | Used ROM before -> after | Static register-copy sites | Total / maximum frame bytes |
+| --- | --- | --- | --- |
+| calculations-1 | 22,132 -> 22,108 (-24) | 665 unchanged | 267 / 102 unchanged |
+| calculations-2 | 40,795 -> 40,543 (-252) | 1,200 unchanged | 1,234 / 225 unchanged |
+
+- **83 generated entries and 12 real routines improve**, with no cycle,
+  frame-access, ROM or frame-size regression. Every dynamic delta has zero
+  move change and exactly four fewer frame-byte accesses per 41 cycles
+  saved; every ROM reduction is a multiple of six. All 40 static image
+  register-copy totals remain unchanged against the corrected bank-aware
+  baseline. The heap workload saves **7,443,550 cycles and 726,200 frame
+  accesses across its cases**, not per invocation; array, sorting, record,
+  RAM allocate/release, actor, tile, path and banked calculations also improve.
+- Update 16 golden blocks in eleven existing fixtures, removing **108 tagged
+  bytes**. Actual linked opcodes prove only the four-to-two-instruction
+  replacement above; all other normalized instructions, untouched tags and
+  executable SSC text match the frozen baseline. Normalize only the touched
+  reload fixture's working-tree CRLF back to its repository LF; leave
+  unrelated files alone.
+- Reuse four existing reload-fixture functions for additional artifact-only
+  execution controls: constant-zero unsigned bytes, full words, signed-byte
+  sums widened to signed words, and unsigned indexed split reloads.
+  Remove only executable `.DB` test markers in these controls. Each function
+  runs 1,024 cases per baseline/final compiler: **4,096 per compiler, 8,192
+  extra executions**. Independent arithmetic, complete read-only buffers,
+  ports and ABI/stack guards pass. Zero/word/signed functions retain identical
+  normalized instruction streams; no persistent test function is added.
+- Fresh optimized GCC and native Win32 Release/ASan builds and verifier
+  executions pass. Strict unoptimized GCC C89/pedantic/Wall/Werror builds
+  pass with the established calloc exemption. Each final toolchain runs all
+  six cohorts afresh: **468 generated entries and 22 real routines; 239,616
+  generated + 9,755 real = 249,371 cases per mode**, in default/all-spill/RA
+  modes. Independent returns, full buffers, ports, DE/SP, protected stack,
+  immutable verifier failures, stable fixed spill prefixes/shared suffixes
+  and atomic rollback remain qualified.
+- Native Release and ASan each match GCC's **80 ROMs, 30 reports and 12,262
+  selected decisions**. Pre-consolidation cleanup matches 80 ROMs, eight
+  static reports and all decisions; baseline decisions also match. All 86
+  common SSC sources, 48 flags-off ROMs and default/all-spill execution
+  metrics are unchanged. All 30 traced/quiet real-project assembly pairs
+  and 14 exact VDP display rows pass. All 217 final ASan logs are clean and
+  actual compiler/verifier runtime imports are verified.
+- Both full standard suites pass sequentially, **173 tests each**, with six
+  compiler/linker hashes unchanged before/after each run. GCC's staged tools
+  are intentionally replaced for the following native run; the final native
+  staged copies and both source toolchains also match their recorded hashes.
+- Artifacts under `/tmp/ra382` retain baseline/pre-consolidation snapshots,
+  442-input/13-binary manifests, exact owner profiles, opcode/golden and typed
+  control proofs, full comparisons and suite staging hashes. Retain logs and
+  proofs; remove only the completed suite mirror. Pinned emulator 2.3.0 and
+  `RA_CASES=512` remain in use. ASan linker execution, leaks, other sanitizers,
+  exhaustive paths and mapper/full-boot/rendering/hardware timing remain
+  unqualified; banked kernels use fixed mapping. Opt-in RA and BC/DIV
+  legality are unchanged.
+
+### Batch 385-387: Attribute Constant-Zero Byte-Read Transport
+
+- [ ] **385. Attribute the excluded zero-index path.** Measure remaining
+      address transport for constant-zero unsigned-byte reads, separating
+      base materialization, live values and result widths.
+- [ ] **386. Retain one measured reuse only if profitable.** Reuse existing
+      lowering without new helpers or caches; preserve signed/word reads,
+      checked reloads, alias/call and full-register/flag constraints.
+- [ ] **387. Consolidate and requalify.** Require identical cleanup output,
+      isolated measured gains and the shared completion gates before a
+      local-only commit; leave unproven alternatives deferred.
 
 **Shared completion gates:** Each three-step batch gets its own local commit,
 with no push and no unrelated worktree changes included. Reuse existing

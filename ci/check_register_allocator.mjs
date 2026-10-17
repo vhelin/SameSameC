@@ -396,6 +396,10 @@ if (process.env.RA_BASELINE !== '1') {
 }
 for (const program of process.env.RA_BASELINE === '1' ? [] : programs) {
   const lines = allocatorLog.split(/\r?\n/).filter(line => line.includes(`function=${program.name} `));
+  if (program.family === 'matrix_source_loop' && program.variant === 0 &&
+      !/LD\s+L,\(IX-7\)\s+LD\s+H,\(IX-6\)\s+ADD HL,BC\s+LD\s+L,\(HL\)/.test(
+        readFileSync(join(output, 'ra', 'main.asm'), 'utf8').split(`.SECTION "${program.name}" FREE`)[1].split('.ENDS')[0]))
+    throw new Error(`Unsigned pointer read did not reuse its HL address: ${program.name}`);
   if (program.family === 'matrix_bc_alu' && program.variant < 5 &&
       !lines.some(line => /linear_scan retain .*16-bit in BC .*consumer_tac=\d+\(SUB arg2\)/.test(line)))
     throw new Error(`BC ALU right operand not exercised: ${program.name}`);
