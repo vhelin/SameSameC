@@ -56,6 +56,28 @@ int main(int argc, char **argv) {
   int index;
 
   g_register_allocator_trace = !(argc > 1 && strcmp(argv[1], "-q") == 0);
+  {
+    struct {
+      int offset, mode;
+    } cases[] = {
+      { -129, RA_ADDRESS_MODE_FRAME_ADDRESS }, { -128, RA_ADDRESS_MODE_FRAME_DISPLACEMENT },
+      { -127, RA_ADDRESS_MODE_FRAME_DISPLACEMENT }, { 126, RA_ADDRESS_MODE_FRAME_DISPLACEMENT },
+      { 127, RA_ADDRESS_MODE_FRAME_ADDRESS }, { 128, RA_ADDRESS_MODE_FRAME_ADDRESS }
+    };
+    int kind, boundary;
+
+    for (kind = 0; kind < 2; kind++) {
+      for (boundary = 0; boundary < (int)(sizeof(cases) / sizeof(cases[0])); boundary++) {
+        if (_get_z80_register_allocator_address_materialization_mode(
+            kind == 0 ? RA_LOCATION_STACK_LOCAL : RA_LOCATION_STACK_SPILL,
+            RA_ADDRESS_TARGET_IX, cases[boundary].offset) != cases[boundary].mode) {
+          fprintf(stderr, "allocation_policy_test: frame_word_span kind=%d offset=%d status=failed\n", kind, cases[boundary].offset);
+          return 1;
+        }
+      }
+    }
+    fprintf(stderr, "allocation_policy_test: frame_word_span=-128..126 high_byte_bounded=yes status=complete\n");
+  }
   memset(&function, 0, sizeof(function));
   memset(&name, 0, sizeof(name));
   memset(&locals, 0, sizeof(locals));

@@ -400,12 +400,6 @@ static void _load_label_to_ix(char *label, FILE *file_out) {
 }
 
 
-static void _load_label_to_iy(char *label, FILE *file_out) {
-
-  fprintf(file_out, "      LD  IY,%s\n", label);
-}
-
-
 static void _load_value_into_ix(int value, int offset, FILE *file_out) {
 
   value &= 0xff;
@@ -1566,18 +1560,6 @@ static char *_get_z80_tac_operand_name(int which_operand) {
 }
 
 
-static int _get_z80_location_size(int var_type) {
-
-  int bits;
-
-  bits = get_variable_type_size(var_type);
-  if (bits <= 0)
-    return 0;
-
-  return bits / 8;
-}
-
-
 static int _set_z80_location_to_physical_register(struct z80_location *location, int physical_register, int register_index) {
 
   location->phy = physical_register;
@@ -1594,7 +1576,7 @@ static int _set_z80_location_to_physical_register(struct z80_location *location,
 
 static int _resolve_z80_location(int type, char *name, int value, struct tree_node *node, int var_type, struct tree_node *function_node, struct z80_location *location, char *operand_name, int retained_physical_register) {
 
-  int offset, source_kind;
+  int offset, source_kind, bits;
   struct temp_register *temp_register;
   char *function_name;
 
@@ -1602,7 +1584,8 @@ static int _resolve_z80_location(int type, char *name, int value, struct tree_no
   location->kind = RA_LOCATION_NONE;
   location->offset = 0;
   location->phy = Z80_PHY_NONE;
-  location->size = _get_z80_location_size(var_type);
+  bits = get_variable_type_size(var_type);
+  location->size = bits > 0 ? bits / 8 : 0;
   location->value = value;
   location->label = name;
   location->node = node;
@@ -1910,7 +1893,7 @@ static int _load_location_address_to_iy(struct z80_location *location, FILE *fil
   if (address_mode == RA_ADDRESS_MODE_NONE) {
   }
   else if (address_mode == RA_ADDRESS_MODE_GLOBAL_LABEL) {
-    _load_label_to_iy(location->label, file_out);
+    fprintf(file_out, "      LD  IY,%s\n", location->label);
   }
   else if (address_mode == RA_ADDRESS_MODE_FRAME_ADDRESS) {
     fprintf(file_out, "      ; offset %d\n", location->offset);
@@ -2309,6 +2292,19 @@ static int _generate_asm_assignment_z80(struct tac *t, FILE *file_out, struct tr
   /******************************************************************************************************/
   /* source address -> iy */
   /******************************************************************************************************/
+
+  if (g_allocator_enabled == YES && g_allocator_force_all_spill == NO && g_is_ix_de == YES &&
+      result_location.kind == LOC_PHY_HL && t->reload_spill_to_physical_operand == -1 &&
+      (t->result_var_type == VARIABLE_TYPE_INT16 || t->result_var_type == VARIABLE_TYPE_UINT16) &&
+      (t->arg1_var_type == VARIABLE_TYPE_INT16 || t->arg1_var_type == VARIABLE_TYPE_UINT16) &&
+      get_register_allocator_address_materialization_mode(arg1_location.kind, RA_ADDRESS_TARGET_IX,
+        arg1_location.offset) == RA_ADDRESS_MODE_FRAME_DISPLACEMENT) {
+    _trace_z80_specialized_address_materialization(function_node, "assignment_arg1_address", "arg1",
+        &arg1_location, RA_ADDRESS_TARGET_IX, arg1_location.offset);
+    _load_from_ix_to_l(arg1_location.offset, file_out);
+    _load_from_ix_to_h(arg1_location.offset + 1, file_out);
+    return SUCCEEDED;
+  }
 
   if (_load_location_address_to_iy(&arg1_location, file_out) == FAILED)
     return FAILED;

@@ -57,6 +57,7 @@ for (const flags of [[], ['-q']]) {
     !/allocation_policy_test: direct_bc_bitwise=yes unsigned_widening=yes signed_right_fallback=yes bc_overlap_rejected=yes status=complete/.test(verifierLog) ||
     !/allocation_policy_test: byte_word_bitwise=\d+ unsigned_only=yes constants_bounded=yes flags_gated=yes unchanged=yes borrow_word_sub=yes arg2_a_rejected=yes arg2_bc_fallback=yes unit_step_fallback=yes status=complete/.test(verifierLog) ||
     !/allocation_policy_test: endpoints=10200 supported=\d+ rejected=\d+ independent_table=yes status=complete/.test(verifierLog) ||
+    !verifierLog.includes('allocation_policy_test: frame_word_span=-128..126 high_byte_bounded=yes status=complete') ||
     !verifierLog.includes('spill_slot_test: cases=10 overlap_width_boundary_redefinition_controls=yes tacs_unchanged=yes status=complete') ||
     !verifierLog.includes('spill_slot_test: fixed_prefix=yes shared_suffix=yes invalid_fixed=11 immutable=yes status=complete') ||
     !verifierLog.includes('spill_slot_test: fixed_owners=3 byte_word_mixed=yes prefix_stable=yes suffix_shared=yes tacs_unchanged=yes status=complete') ||
@@ -75,7 +76,7 @@ const realLoopBody = readFileSync(join(root, 'tests/z80/sms/calculations-1/bank_
 const realIndexBody = realLoopBody.split('__z80_out')[0];
 const realWhileBody = readFileSync(join(root, 'tests/z80/sms/calculations-1/bank_1.ssc'), 'utf8')
   .match(/^  while \(start < chars\) \{[\s\S]*?^  \}/m)[0];
-for (let variant = 0; variant < 30; variant++) {
+for (let variant = 0; variant < 33; variant++) {
   const constant = 1 + variant * 7;
   const operator = ['+', '-', '&', '|', '^'][variant % 5];
   const comparison = ['==', '!=', '<', '>', '<=', '>='][variant % 6];
@@ -124,7 +125,9 @@ for (let variant = 0; variant < 30; variant++) {
       'u16 first = target[a]; alias[a] = b; return first+target[a];',
       'u16 first = target[a]; ra_pointer_helper(&target[a],b); return first+target[a];',
       'ra_index_pointer = target; u8 called = ra_signed_helper(b,a,0); u16 first = ra_index_pointer[a]; ra_index_pointer = alias; return first+ra_index_pointer[a]+called;'
-    ][variant], pointerIndex ? [2, 2, byteIndex ? 1 : 2, 1] : [variant === 4 || variant === 5 ? 1 : 2, 1], [2, 3, 10, 11, 14, 15, 16, 17, 20, 21, 22, 23, 24, 26, 27, 28, 29].includes(variant) ? 2 : 1],
+    ][variant >= 30 ? 26 : variant].replace('workspace[136]', `workspace[${variant >= 30 ? variant + 83 : 136}]`),
+    pointerIndex ? [2, 2, byteIndex ? 1 : 2, 1] : [variant === 4 || variant === 5 ? 1 : 2, 1],
+    variant >= 30 || [2, 3, 10, 11, 14, 15, 16, 17, 20, 21, 22, 23, 24, 26, 27, 28, 29].includes(variant) ? 2 : 1],
     ['matrix_bc_alu', 'u16 a, u16 b, u16 c', variant < 10 ? `u16 saved = a${operator}b; return c${variant < 5 ? '-' : '+'}saved;` : variant === 10 ?
       'u16 live = a+c; u16 saved = b+c; return (live-saved)^live;' :
       'u8 small = a; u16 saved = b+c; return (saved+small)^small;', [2, 2, 2], 2],
@@ -225,17 +228,18 @@ for (let variant = 0; variant < 30; variant++) {
     ['join_call', 'u8 *target, u8 index, u8 selector, u8 value', `u16 retained = target[index]+${constant}; u8 called = ra_arithmetic_${variant}(value,selector,target[index]); if (selector&${1 << (variant % 4)}) { target[index] = called+value; } else { target[index+1] = called^value; retained = retained+selector; } return retained+target[index]+target[index+1];`, [2, 1, 1, 1], 2]
   ];
   for (const [family, parameters, body, widths, returnWidth] of functions) {
+    const wordBoundary = family === 'matrix_index_copy' && variant >= 30;
     if (variant >= 8 && !family.startsWith('matrix_')) continue;
     if (family.startsWith('matrix_') && variant >= ({matrix_byte: 10, matrix_word: 10,
       matrix_compare_byte: 12, matrix_compare_word: 12, matrix_compare_signed: 12,
       matrix_low_byte: 10, matrix_structural: 12, matrix_sentinel: 10, matrix_affinity: 8, matrix_rank: 4,
-      matrix_index_copy: 30, matrix_bc_alu: 12, matrix_scalar_uses: 30, matrix_real_index: 1}[family] || 2)) continue;
+      matrix_index_copy: 33, matrix_bc_alu: 12, matrix_scalar_uses: 30, matrix_real_index: 1}[family] || 2)) continue;
     if (comparisonForms && family !== 'arithmetic' && !family.startsWith('matrix_compare_')) continue;
     if (process.env.RA_FAMILIES && family !== 'arithmetic' && !process.env.RA_FAMILIES.split(',').includes(family)) continue;
-    if (family.startsWith('matrix_') && ['matrix_index_copy', 'matrix_bc_alu', 'matrix_scalar_uses', 'matrix_real_index', 'matrix_source_loop'].includes(family) !==
+    if (!wordBoundary && family.startsWith('matrix_') && ['matrix_index_copy', 'matrix_bc_alu', 'matrix_scalar_uses', 'matrix_real_index', 'matrix_source_loop'].includes(family) !==
       (process.env.RA_VALUE_CASES === '1')) continue;
     const scalarFamily = family.startsWith('scalar_') || family === 'word_bc';
-    if (family !== 'arithmetic' && (process.env.RA_MATRIX_CASES === '1' ?
+    if (family !== 'arithmetic' && (wordBoundary ? process.env.RA_SCALAR_CASES !== '1' : process.env.RA_MATRIX_CASES === '1' ?
       !family.startsWith('matrix_') : family.startsWith('matrix_') || scalarFamily !== (process.env.RA_SCALAR_CASES === '1'))) continue;
     if (scalarFamily && family !== 'word_bc' && variant > 1) continue;
     const name = `ra_${family}_${variant}`;
@@ -416,6 +420,15 @@ for (const program of process.env.RA_BASELINE === '1' ? [] : programs) {
   if (program.family === 'matrix_index_copy' && program.variant === 26 &&
       !lines.some(line => Number(line.match(/emitter=assignment_arg1_address operand=arg1 kind=STACK_LOCAL offset=(-?\d+) /)?.[1]) < -128))
     throw new Error(`Wide pointer-slot assignment not exercised: ${program.name}`);
+  if (program.family === 'matrix_index_copy' && program.variant >= 30) {
+    const offset = -97 - program.variant, useIx = program.variant < 32;
+    const address = `offset=${offset} mode=${useIx ? 'frame_displacement' : 'frame_address'} folded_offset=${useIx ? offset : 0} address_target=${useIx ? 'IX' : 'IY'} target=z80`;
+    if (!lines.some(line => line.includes('emitter=assignment_arg1_address operand=arg1 kind=STACK_LOCAL ') && line.endsWith(address)))
+      throw new Error(`Word assignment displacement boundary not exercised: ${program.name}`);
+  }
+  if (program.family === 'matrix_index_copy' && [25, 26, 29].includes(program.variant) &&
+      lines.some(line => line.includes('emitter=assignment_arg1_address ') && line.includes('address_target=IX ')))
+    throw new Error(`Uncached, wide or global word assignment fallback changed: ${program.name}`);
   if (program.family === 'scalar_split_byte' &&
       (lines.filter(line => line.includes('scalar_split_transfer') && line.endsWith('kind=store')).length !== 1 ||
        lines.filter(line => line.includes('scalar_split_transfer') && line.endsWith('kind=reload')).length !== 1 ||
@@ -653,7 +666,7 @@ for (const program of programs) {
         const word = [2, 3, 11, 20].includes(program.variant);
         const signed = [1, 3, 5, 18, 19].includes(program.variant);
         const offset = signed ? word ? 16 : 32 : 0;
-        const index = program.variant === 8 ? 7 : signed ? seed % (offset * 2 - 1) - offset + 1 : seed % (word || [15, 16, 21, 26, 27, 28, 29].includes(program.variant) ? 64 : 128);
+        const index = program.variant === 8 ? 7 : signed ? seed % (offset * 2 - 1) - offset + 1 : seed % (word || program.variant >= 30 || [15, 16, 21, 26, 27, 28, 29].includes(program.variant) ? 64 : 128);
         parameters = [index & (program.variant === 5 ? 255 : 65535), other];
         if (program.variant >= 12) {
           parameters = [offset, seed & 1 ? offset : 16, index & 65535, other];
@@ -661,7 +674,7 @@ for (const program of programs) {
           if (program.variant === 12) expected = buffer[offset];
           else if (program.variant === 13) expected = buffer[offset + 7];
           else if ([14, 22, 23, 24].includes(program.variant)) expected = previous + other;
-          else if (program.variant === 26) expected = ((other & 2) ? previous : buffer[parameters[1] + index]) + other;
+          else if (program.variant === 26 || program.variant >= 30) expected = ((other & 2) ? previous : buffer[parameters[1] + index]) + other;
           else if ([15, 16, 27, 28].includes(program.variant)) {
             expectedBuffer[([15, 27].includes(program.variant) ? parameters[1] : offset) + index] = other;
             expected = previous + expectedBuffer[offset + index];

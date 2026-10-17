@@ -12344,14 +12344,106 @@ Qualification and measured outcome:
 
 ### Batch 373-375: Bound Remaining Ordinary Word-Load Address Setup
 
-- [ ] **373. Attribute the remaining setup.** Follow ordinary word loads in
+- [x] **373. Attribute the remaining setup.** Follow ordinary word loads in
       the unchanged source prefix, separating required memory reads from IY
       reconstruction and checking actual cached-frame validity and word span.
-- [ ] **374. Reuse existing frame-address policy if profitable.** Retain at
+- [x] **374. Reuse existing frame-address policy if profitable.** Retain at
       most one measured trial without new caches or a lowering framework;
       prove displacement boundaries and uncached/global/alias/call fallbacks.
-- [ ] **375. Consolidate and requalify.** Remove only demonstrated duplication,
+- [x] **375. Consolidate and requalify.** Remove only demonstrated duplication,
       prove cleanup identity and isolated tradeoffs, then apply the shared
+      gates before a local-only commit.
+
+**Evidence and bounded change:**
+
+- Freeze `71b8791` and its 47 compiler C/H inputs. Of 26 ordinary word-pointer
+  copies in each unchanged source kernel, **25 already have IX=DE**. Reuse the
+  existing cache validity, full-word target policy and IX byte-load helpers
+  instead of rebuilding IY. Each eligible site removes `LD IY,offset` /
+  `ADD IY,DE`: **29 simulated cycles, six ROM bytes and two instructions**.
+  Both memory reads retain their addresses/order; register moves and frame
+  traffic do not change. The first, uncached copy retains its original setup.
+- Gate the path on opt-in/non-forced-spill RA, a physical HL destination,
+  full-word source/result types and existing FRAME_DISPLACEMENT policy.
+  Pending physical reloads keep their checked path; do not bypass their error
+  handling. Global/wide/uncached sources, BC and memory destinations,
+  constants and byte widening/truncation remain unchanged. No flag-retention
+  or allocation/A-clobber policy is relaxed.
+
+| Unchanged source, one call | Cycles before -> after | Frame byte accesses | Register moves | ROM bytes before -> after | Frame bytes |
+| --- | --- | --- | --- | --- | --- |
+| `matrix_real_index_0` | 29,719 -> 28,994 | 834 -> 834 | 250 -> 250 | 1,640 -> 1,490 | 15 -> 15 |
+| `matrix_source_loop_0` | 62,095 -> 61,370 | 1,886 -> 1,886 | 308 -> 308 | 1,765 -> 1,615 | 16 -> 16 |
+
+- The 26 copy sites fall **1,742->1,017 cycles**, exactly 25 removed setups;
+  no spill reduction is claimed. The output loop's 58 index bytes, 116 pointer
+  bytes and 232 HL-to-IY transfer bytes remain. Calculations-1 used ROM falls
+  **22,444->22,144**; calculations-2 falls **40,951->40,807**. Total/maximum
+  frames remain 267/102 and 1,234/225. Twelve generated entries and eight
+  measured real routines improve without an isolated cycle/ROM/frame
+  regression. All executed cycle deltas are multiples of 29, with unchanged
+  frame traffic and moves. The RAM-manager workload saves **5,013,955 aggregate
+  cycles** across its cases, not per call.
+- Reuse the existing pointer-join/workspace template for three variants:
+  actual word slots **-127/-128 use IX; -129 uses IY**. Existing -150/global/
+  initially uncached controls remain fallbacks. A twelve-case table in the
+  existing verifier checks both local/spill kinds at -129/-128/-127 and
+  +126/+127/+128, independently proving the high-byte limit. The runner
+  requires this table in traced and quiet verifier execution and exact slot/
+  mode traces; qualification also checks the actual two-byte IX/IY assembly.
+  Buffer/return, alias/call, ABI and stack guards remain independent and unchanged.
+- The forced-spill value image has only 386 free bytes. Place the three new
+  boundary variants in the **existing scalar cohort**, not a larger ROM bank
+  or a new cohort. Scalar default/all-spill images use 13,831/13,957 bytes;
+  value images remain 14,664/15,998, all within their existing 16,384-byte bank.
+  After this test-only rebalance, rerun scalar/value cohorts. Retain the other
+  four completed cohorts only after **16 exact source-input proofs** and
+  byte-identical runtime/oracle/report code; failed-layout artifacts remain
+  separate. No semantic test cases are discarded.
+- Inline the single-use IY-label and location-size wrappers, preserving
+  instruction text, call order and nonpositive-width behavior. Production
+  changes are **+17/-21 lines, four net removed and two fewer functions**;
+  no new production helper, API, cache or policy. The runner grows by thirteen
+  net lines (+20/-7); the existing verifier gains 22 lines and no function.
+  Two exact twelve-to-six-byte golden replacements in two existing fixtures
+  match actual ROMs. All executable fixture source and other instructions/
+  tag bytes match the frozen control.
+- Fresh optimized GCC, native Release and native ASan compiler/verifier
+  builds and verifier execution pass. Strict unoptimized GCC C89/pedantic/
+  Wall/Werror builds pass with the established calloc exemption. Each final
+  toolchain qualifies **468 generated entries and 22 real routines:
+  239,616 generated + 9,755 real = 249,371 cases per mode**, in default/
+  all-spill/RA modes, across six cohorts. All 14 exact VDP display rows and
+  independent return/buffer/ports/DE/SP/stack guards pass. Immutable verifier
+  failures, fixed-prefix/shared-suffix spill slots and atomic rollback remain
+  qualified.
+- Native Release and ASan each match GCC's **80 ROMs, 30 reports and 12,262
+  selected decisions**. Pre-consolidation cleanup matches 80 ROMs, eight static
+  reports and all 12,262 decisions; baseline decisions also match. All 86
+  common SSC sources, 48 flags-off ROMs/execution metrics and 30 traced/quiet
+  real-project assembly pairs match. Both full standard suites pass
+  sequentially, **173 tests each**, with six staged tool hashes unchanged
+  before/after each run. All 217 final ASan logs are clean and actual compiler/
+  verifier runtime imports are verified.
+- Artifacts under `/tmp/ra373` retain snapshots, **442-input/13-binary**
+  manifests, owner profiles, golden/cohort proofs, comparisons and suite
+  hashes; the completed suite mirror is removed. Use the pinned 2.3.0 emulator
+  and `RA_CASES=512`; control-only `RA_BASELINE=1` relaxes quality gates, never
+  execution correctness. ASan linker execution, leaks, other sanitizers,
+  exhaustive paths and mapper/full-boot/rendering/hardware timing remain
+  unqualified; banked kernels use fixed mapping. Alias safety, BC/DIV legality
+  and opt-in RA behavior are unchanged.
+
+### Batch 376-378: Attribute the First Uncached Word Load
+
+- [ ] **376. Measure the remaining uncached setup.** Follow the first word
+      load in the unchanged source kernels and distinguish its own cost from
+      later frame-address reconstruction and required memory/ABI accesses.
+- [ ] **377. Reuse existing initialization only if profitable.** Retain at
+      most one measured trial using existing address/cache helpers, without
+      hoisting across clobbers or weakening width, reload or fallback checks.
+- [ ] **378. Consolidate and requalify.** Remove demonstrated duplication,
+      prove cleanup identity and baseline compatibility, then apply the shared
       gates before a local-only commit.
 
 **Shared completion gates:** Each three-step batch gets its own local commit,
