@@ -46,6 +46,8 @@
 #define RA_ADDRESS_MODE_FRAME_ADDRESS        3
 #define RA_ADDRESS_MODE_FRAME_DISPLACEMENT   4
 
+struct tac;
+
 int pass_5(void);
 int optimize_il(void);
 int optimize_for_inc(void);
@@ -62,5 +64,6 @@ int get_register_allocator_return_value_byte_offset(int return_value_size, int b
 int get_register_allocator_call_frame_prefix_value(int value_kind);
 int get_register_allocator_location_kind(int source_kind, int physical_register);
 int get_register_allocator_address_materialization_mode(int location_kind, int address_target, int offset);
+int is_z80_register_allocator_byte_transparent_tac(struct tac *t, int physical_register);
 
 #endif

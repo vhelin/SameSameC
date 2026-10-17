@@ -262,6 +262,72 @@ int main(int argc, char **argv) {
           checks++;
         }
       }
+      {
+        struct tac before;
+        int variant, expected, byte_checks = 0;
+        int saved_enabled = g_allocator_enabled, saved_spill = g_allocator_force_all_spill;
+        for (op_index = 0; op_index < (int)(sizeof(operations) / sizeof(operations[0])); op_index++) {
+          for (variant = 0; variant < 21; variant++) {
+            memset(&lowering, 0, sizeof(lowering));
+            lowering.op = operations[op_index];
+            lowering.arg1_type = lowering.arg2_type = TAC_ARG_TYPE_TEMP;
+            lowering.arg1_var_type = lowering.arg2_var_type = VARIABLE_TYPE_UINT8;
+            lowering.arg1_var_type_promoted = lowering.arg2_var_type_promoted = VARIABLE_TYPE_UINT16;
+            lowering.result_var_type = VARIABLE_TYPE_UINT16;
+            g_allocator_enabled = YES;
+            g_allocator_force_all_spill = NO;
+            switch (variant) {
+            case 1: lowering.arg1_var_type = VARIABLE_TYPE_INT8; break;
+            case 2: lowering.arg2_var_type = VARIABLE_TYPE_INT8; break;
+            case 3: lowering.arg1_var_type = VARIABLE_TYPE_UINT16; break;
+            case 4: lowering.arg2_var_type = VARIABLE_TYPE_UINT16; break;
+            case 5: lowering.arg1_var_type_promoted = VARIABLE_TYPE_INT16; break;
+            case 6: lowering.arg2_var_type_promoted = VARIABLE_TYPE_INT16; break;
+            case 7: lowering.result_var_type = VARIABLE_TYPE_INT16; break;
+            case 8: lowering.result_physical_register = Z80_PHY_HL; break;
+            case 9: lowering.result_physical_register = Z80_PHY_BC; break;
+            case 10: case 11:
+              lowering.arg1_type = TAC_ARG_TYPE_CONSTANT;
+              lowering.arg1_d = variant == 10 ? -1.0 : 256.0;
+              break;
+            case 12: case 13:
+              lowering.arg2_type = TAC_ARG_TYPE_CONSTANT;
+              lowering.arg2_d = variant == 12 ? -1.0 : 256.0;
+              break;
+            case 14: g_allocator_enabled = NO; break;
+            case 15: g_allocator_force_all_spill = YES; break;
+            case 16:
+              lowering.arg1_type = lowering.arg2_type = TAC_ARG_TYPE_CONSTANT;
+              lowering.arg1_d = 255.0;
+              break;
+            case 17:
+              lowering.arg1_physical_register = Z80_PHY_HL;
+              lowering.arg2_physical_register = Z80_PHY_BC;
+              break;
+            case 18:
+              lowering.arg1_physical_register = Z80_PHY_B;
+              lowering.arg2_physical_register = Z80_PHY_C;
+              break;
+            case 19: lowering.result_var_type = VARIABLE_TYPE_UINT8; break;
+            case 20:
+              lowering.arg1_var_type_promoted = lowering.arg2_var_type_promoted = VARIABLE_TYPE_UINT8;
+              break;
+            }
+            memcpy(&before, &lowering, sizeof(before));
+            expected = op_index >= 3 && op_index <= 5 &&
+              (variant == 0 || (variant >= 16 && variant <= 18)) ? YES : NO;
+            if (is_z80_register_allocator_byte_transparent_tac(&lowering, Z80_PHY_HL) != expected ||
+                _is_z80_basic_block_transparent_tac_for_physical_register(&lowering, Z80_PHY_HL) !=
+                (expected == YES || (variant == 9 && (op_index == 0 || (op_index >= 3 && op_index <= 5))) ? YES : NO) ||
+                memcmp(&before, &lowering, sizeof(before)) != 0)
+              return 1;
+            byte_checks++;
+          }
+        }
+        g_allocator_enabled = saved_enabled;
+        g_allocator_force_all_spill = saved_spill;
+        fprintf(stderr, "allocation_policy_test: byte_word_bitwise=%d unsigned_only=yes constants_bounded=yes flags_gated=yes unchanged=yes status=complete\n", byte_checks);
+      }
       fprintf(stderr, "allocation_policy_test: lowering_effects=%d direct_bc_complement=yes scratch_hl_rejected=yes full_barriers=yes status=complete\n", checks);
       fprintf(stderr, "allocation_policy_test: direct_bc_bitwise=yes unsigned_widening=yes signed_right_fallback=yes bc_overlap_rejected=yes status=complete\n");
     }

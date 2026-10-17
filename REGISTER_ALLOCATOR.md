@@ -11854,27 +11854,140 @@ captures and reports remain under `/tmp/calculations2-workspace`.
 
 ### Batch 358-360: Bound One Remaining Source-Loop Miss
 
-- [ ] **358. Identify one executed lowering opportunity.** Reuse the existing
+- [x] **358. Identify one executed lowering opportunity.** Reuse the existing
       source-loop/index controls, real source and transfer/rejection reports
       to associate one costly frame-backed value with its TAC owner, width,
       clobbers and call/bank boundaries. Separate mandatory ABI/memory accesses
       from avoidable transfers; retain an exact common-source control and
       independent return/buffer/DE/SP oracle. Do not infer eligibility from an
       aggregate rejection count or enlarge global allocation speculatively.
-- [ ] **359. Reuse existing lowering for a demonstrated local gain.** Implement
+- [x] **359. Reuse existing lowering for a demonstrated local gain.** Implement
       only the bounded opportunity established above, reusing current emitters,
       target effects and cost checks. Preserve partial/full register overlap,
       signedness, live inputs, fixed-spill prefix stability and atomic failure.
       Require measured real-source cycles/traffic or ROM benefit with explicit
       per-function move/frame tradeoffs; discard or defer an unprofitable trial
       rather than adding a new value framework or phase-specific helper.
-- [ ] **360. Consolidate and requalify the retained result.** Remove superseded
+- [x] **360. Consolidate and requalify the retained result.** Remove superseded
       paths inside existing owners, report production/test complexity
       separately, and prove unchanged decisions/ROMs for cleanup. Re-run fresh
       actual-source verifiers, independent generated/real execution, strict
       source checks, native/available ASan and sequential full suites with
       matched staged binaries. Publish isolated benefits, regressions and
       remaining coverage, keep -ra opt-in, and commit locally without pushing.
+
+#### Results and Retained Scope
+
+- The unchanged calculations-1 source prefix identifies word numerator `r54`
+  from `(34000 + one) - one`, the intervening `r55 = 123 | zero`, and their
+  DIV consumer `r56`. Both actual OR operands are unsigned bytes, promoted
+  to unsigned words by the surrounding expression. The old word OR lowering
+  clobbers HL/BC, forcing the SUB->DIV value out of HL. This interval has no
+  external call or bank crossing. It executes once before the source output
+  loop, not once per loop iteration.
+- Reuse the existing byte emitter for unassigned unsigned-word AND/OR/XOR
+  results whose actual operands are unsigned bytes and whose promotions are
+  unsigned words. That emitter computes in A and stores a zero high byte.
+  The existing byte-transparency classifier is shared between allocation and
+  lowering rather than duplicated. Its new promise is HL-only: do not promise
+  BC preservation while an unassigned result might subsequently acquire HL.
+  Existing read/write/overlap checks remain in force. Signed/wider operands,
+  signed promotions/results, assigned results and constants outside 0-255
+  stay on existing paths. ADD/SUB cannot be narrowed this way because their
+  carry/borrow can affect the word result. Default/-no-ra and forced-spill
+  builds do not enable the new lowering.
+- After the change `r54` remains in HL, but `r55` spills instead: current BC
+  legality does not admit this DIV operand. The selected slot still executes
+  two byte stores and two reads. Those are offsets -13/-12 in the index
+  control and -14/-13 in the source-loop control, measured against the entry
+  frame even while DIV temporarily repurposes DE. DIV's PUSH/POP DE is
+  required frame-pointer preservation, not an allocator spill. Ordinary
+  argument, buffer and callee-frame traffic is not attributed to this change.
+  The broad `other_frame` counter remains unclassified.
+
+| Unchanged real-source control | Executed cycles | Frame byte accesses | Byte-register moves | Function ROM | Frame bytes |
+|---|---|---|---|---|---|
+| `matrix_real_index_0` | 30,046 -> 30,012 | 838 -> 838 | 302 -> 298 | 1,713 -> 1,705 | 17 -> 17 |
+| `matrix_source_loop_0` | 65,554 -> 65,520 | 1,890 -> 1,890 | 360 -> 356 | 1,849 -> 1,841 | 18 -> 18 |
+
+- These are isolated savings of 34 cycles, eight ROM bytes and four moves per
+  call, **not a net frame-traffic or frame-size improvement**. Both matching
+  parent calculations-1 functions shrink by eight bytes, reducing RA used
+  ROM from 22,621 to 22,605 bytes; calculations-2 stays at 41,119 bytes.
+  Their frame totals/maxima stay 269/102 and 1,234/225 respectively. Existing
+  frame/move tradeoffs versus default from earlier batches are not erased.
+- Add 189 immutable actual-source policy probes covering nine operations and
+  21 type, constant, register and feature-flag variants. Reuse the scalar-use
+  family for six execution controls: AND/OR/XOR in both operand orders,
+  nested under `(c + 0x9234) / (...)` so the operands really receive unsigned
+  word promotions. Assigning the bitwise expression to a word local alone
+  would already use byte lowering and would not exercise this change.
+  Boundary pairs include unsigned high bits, with parity normalization to
+  keep divisors nonzero. Each new control independently saves 38 cycles,
+  nine ROM bytes and four moves per call, with unchanged frame traffic/size,
+  over all 512 inputs. No isolated cycle, frame-traffic, move, per-function
+  ROM or frame-size regression appears elsewhere in the measured corpus.
+- Consolidate the trial's duplicate byte-emitter return into the existing
+  dispatch condition. Production changes are +21/-5 lines, **+16 net and no
+  new production function**; one existing classifier is exposed across
+  passes. Tests/runner changes are +83/-6 lines, +77 net, including reuse of
+  one scalar parameter-type calculation. No new value framework, register
+  class, spill-layout rule or planner is added. Against the pre-consolidation
+  trial, all 86 compiled/source-generator SSC files, 80 ROM files, eight
+  static reports and 11,661 selected allocation-decision lines match.
+  Only randomized static-symbol IDs are normalized in textual comparisons.
+- Fresh final GCC, native MSVC Release and native ASan compilers and
+  actual-source verifiers pass. Strict unoptimized C89/pedantic/Wall/Werror
+  compiler/verifier builds pass with the established calloc-warning
+  exemption. Seven accepted and 32 immutable rejected verifier cases,
+  fixed-prefix/shared-suffix controls and atomic rollback remain qualified.
+  Every final toolchain executes 433 generated entries plus 22 real routines:
+  221,696 generated and 9,755 real cases, **231,451 per mode** at 512 inputs,
+  in default/all-spill/RA modes. Return values, guarded buffers, DE/SP and
+  stack-write bounds pass, as do all 14 exact calculations-2 VDP display rows.
+  The frozen pre-feature compiler also passes the common-source corpus.
+- Native Release and ASan each match final GCC's 80 ROM files, 30 reports
+  and 11,661 selected decision lines. All 30 real-project traced/quiet
+  assembly pairs match after static-ID normalization. All 48 default/no-ra/
+  all-spill ROM files match the frozen pre-feature control. Both complete
+  standard suites pass sequentially, 173 tests each; staged compiler/linker
+  hashes are checked before and after. The unchanged GCC linker is reused
+  by hash; the native linker is freshly built. All 217 ASan execution logs
+  scanned are clean, and compiler/verifier import the real ASan runtime.
+  ASan linker instrumentation, leaks, other sanitizers, exhaustive paths and
+  hardware mapper/full-boot/rendering/timing behavior are not qualified.
+  Banked workload execution still uses fixed mapping.
+- Reproduction artifacts remain under `/tmp/ra358`: frozen pre-feature
+  source, strict/final/control/native binaries, source/binary SHA256
+  manifests, `owner-profile.json`, execution/static reports, comparison
+  script/results and full-suite logs/staging hashes. Pre-consolidation
+  `trial.exe` supplies the cleanup control. Use the existing runner with the
+  pinned 2.3.0 emulator, `RA_CASES=512` and matching verifier; unset
+  `RA_FAMILIES` and `RA_MATRIX_CASES` for all six recursive cohorts.
+  `RA_MATRIX_CASES=0` adds only scalar controls, so the four matrix cohorts
+  in this qualification were also run explicitly and totals were derived
+  from all six coverage reports. `RA_BASELINE=1` relaxes runner quality
+  gates only for the frozen compiler; it does not disable its allocator.
+  Control compilers use the final verifier for runner gates but retain their
+  own embedded allocation/model code. Earlier non-exercising scalar-local
+  trials are retained separately, not counted as changed-path evidence.
+  The remaining DIV->OR `r56` rejection and stack-backed output index are
+  not fixed; BC/DIV legality and fixed-spill prefix rules are not broadened.
+  RA remains opt-in.
+
+### Batch 361-363: Bound One Further DIV/Index Opportunity
+
+- [ ] **361. Attribute the next remaining miss.** Follow the executed DIV->OR
+      value or stack-backed output index to its owners and exact lowering,
+      separating mandatory calls/data/ABI work from avoidable transfers.
+      Reuse unchanged real-source controls and independent execution oracles.
+- [ ] **362. Retain at most one profitable local trial.** Reuse existing
+      lowering or allocation policy, with measured common-source gains and
+      explicit move/frame costs. Do not expand BC/DIV, signed/carry or alias
+      legality without corresponding lowering and overlap evidence.
+- [ ] **363. Consolidate and qualify the result.** Remove superseded paths,
+      prove cleanup identity, report production/test complexity separately
+      and apply the shared completion gates below before a local-only commit.
 
 **Shared completion gates:** Each three-step batch gets its own local commit,
 with no push and no unrelated worktree changes included. Reuse existing

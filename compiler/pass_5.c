@@ -4838,7 +4838,17 @@ static int _is_register_allocator_b_candidate(struct tac *producer, struct tac *
 }
 
 
-static int _is_register_allocator_byte_transparent_tac(struct tac *t, int physical_register) {
+int is_z80_register_allocator_byte_transparent_tac(struct tac *t, int physical_register) {
+
+  /* Unassigned byte-valued word results can use the byte emitter without touching HL. */
+  if (physical_register == Z80_PHY_HL)
+    return g_allocator_enabled == YES && g_allocator_force_all_spill == NO &&
+      (t->op == TAC_OP_AND || t->op == TAC_OP_OR || t->op == TAC_OP_XOR) &&
+      t->arg1_var_type == VARIABLE_TYPE_UINT8 && t->arg2_var_type == VARIABLE_TYPE_UINT8 &&
+      t->arg1_var_type_promoted == VARIABLE_TYPE_UINT16 && t->arg2_var_type_promoted == VARIABLE_TYPE_UINT16 &&
+      t->result_var_type == VARIABLE_TYPE_UINT16 && t->result_physical_register == Z80_PHY_NONE &&
+      (t->arg1_type != TAC_ARG_TYPE_CONSTANT || (t->arg1_d >= 0.0 && t->arg1_d <= 255.0)) &&
+      (t->arg2_type != TAC_ARG_TYPE_CONSTANT || (t->arg2_d >= 0.0 && t->arg2_d <= 255.0)) ? YES : NO;
 
   if (t->op != TAC_OP_ASSIGNMENT && t->op != TAC_OP_ADD && t->op != TAC_OP_SUB && t->op != TAC_OP_AND && t->op != TAC_OP_OR && t->op != TAC_OP_XOR)
     return NO;
@@ -5450,9 +5460,11 @@ static int _is_z80_basic_block_transparent_tac_for_physical_register(struct tac 
         (t->arg1_var_type_promoted == VARIABLE_TYPE_UINT16 || t->arg1_var_type_promoted == VARIABLE_TYPE_INT16) &&
         (t->arg2_var_type_promoted == VARIABLE_TYPE_UINT16 || t->arg2_var_type_promoted == VARIABLE_TYPE_INT16))
       scratch_units &= ~(RA_Z80_UNIT_B | RA_Z80_UNIT_C);
-    if (_is_register_allocator_byte_transparent_tac(t, Z80_PHY_C) == YES)
+    if (is_z80_register_allocator_byte_transparent_tac(t, Z80_PHY_HL) == YES)
+      scratch_units &= ~(RA_Z80_UNIT_H | RA_Z80_UNIT_L);
+    if (is_z80_register_allocator_byte_transparent_tac(t, Z80_PHY_C) == YES)
       scratch_units &= ~RA_Z80_UNIT_C;
-    if (_is_register_allocator_byte_transparent_tac(t, Z80_PHY_B) == YES)
+    if (is_z80_register_allocator_byte_transparent_tac(t, Z80_PHY_B) == YES)
       scratch_units &= ~RA_Z80_UNIT_B;
     if (_is_register_allocator_jump_op(t->op) == YES && t->op != TAC_OP_JUMP &&
         (t->arg1_var_type_promoted == VARIABLE_TYPE_INT8 ||
