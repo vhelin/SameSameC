@@ -11494,7 +11494,7 @@ Qualification (352-354):
 
 ### Batch 355-357: Attribute Gains And Requalify The Result
 
-- [ ] **355. Measure each retained optimization against a matched control.**
+- [x] **355. Measure each retained optimization against a matched control.**
       Retain reproducible per-change baselines/ablations as work proceeds,
       varying every affected module and holding common sources/flags fixed.
       Report per-function cycles, executed copies and categorized transfers,
@@ -11503,7 +11503,7 @@ Qualification (352-354):
       time, log volume and actual RSS with dispersion. Separate baseline fixes,
       allocation gains and cleanup; do not substitute bundled batch deltas for
       individual-feature attribution or silently mark historical 339 complete.
-- [ ] **356. Requalify the final source and freshly staged binaries.** Run
+- [x] **356. Requalify the final source and freshly staged binaries.** Run
       actual-source verifier/layout and atomic-failure checks, independent
       generated/real execution, strict C90/warnings, Cygwin/native MSVC and
       available ASan gates. Verify default/-no-ra, forced-all-spill controls,
@@ -11511,7 +11511,7 @@ Qualification (352-354):
       sequentially with hash-matched fresh binaries and actual test counts.
       Name signed-word, hardware/bank, sanitizer and other coverage still unrun;
       do not inherit a passing gate from a different source or binary revision.
-- [ ] **357. Publish retained tradeoffs and choose the next scope.** Summarize
+- [x] **357. Publish retained tradeoffs and choose the next scope.** Summarize
       attributable benefits, per-function regressions, compile-cost changes,
       net production complexity and every deferred/unproven item. Retain only
       demonstrated improvements or explicitly justified tradeoffs. Decide from
@@ -11519,6 +11519,205 @@ Qualification (352-354):
       allocation is warranted; do not equate more framework extraction with
       better allocation. Keep -ra opt-in, preserve the existing safety gates,
       and stop or revise work that fails its benefit criterion.
+
+Qualification (355-357):
+
+- Attribution uses current common compiler sources and identical GCC
+  `-O2 -DNDEBUG` flags, not comparisons of bundled historical releases.
+  `no-bc` reverses both pass-5 contracts and pass-6 direct-BC bitwise lowering;
+  `single-def` disables only admission of multiple definitions, retaining
+  current type propagation and return ordering; `no-rank` restores the former
+  winner policy without removing split-reload overlap safety. A separate
+  corrected pre-consolidation control retains fixed-spill prefix stability.
+  All other compiler modules are SHA256-identical within each comparison.
+  Each control passes the same independent execution oracles; the final-source
+  verifier is reused, and only final-feature policy assertions are disabled
+  for ablations. All 16 default/-no-ra project/cohort ROMs per ablation match
+  final. These are conditional marginal benefits with other retained
+  features enabled, not additive or exhaustive historical attribution.
+- The existing execution runner now records used ROM separately from padded
+  image length, normalized per-function section ROM/frame sizes, total/maximum
+  frames and exact rejection summaries. Missing ROM/frame/section measurements
+  and duplicate normalized function names fail explicitly. Existing execution
+  summaries retain cycles, executed byte-register LD moves and exclusive
+  preserve/reload/argument/result/frame/other byte-access categories. Static
+  move sites are not executed copies; `other_frame` is not all allocator spill
+  traffic. No new production function, type, API, file or dependency was added.
+  Runner changes are 27 added/2 removed lines, within the existing `readImage`;
+  the preceding consolidation's 99-line production reduction remains intact.
+
+Current isolated benefits (final minus feature-disabled control; per call at
+512 inputs, bytes for ROM/frame/traffic):
+
+| Retained feature / routine | Cycles | Executed moves | Frame accesses | Function ROM | Frame size |
+|---|---:|---:|---:|---:|---:|
+| Ranking: each `scalar_rank_fallback` variant | -8 | -2 | 0 | -2 | 0 |
+| Direct BC: each `scalar_source_bitwise` variant | -256 | -8 | -12 | -43 | -4 |
+| Direct BC: each `scalar_source_reassigned` variant | -256 | -8 | -12 | -43 | -2 |
+| Multiple definitions: each `scalar_source_reassigned` variant | -318 | -1 | -15 | -52 | 0 |
+| Multiple definitions: `scalar_reassigned_word_0` | -274 | -2 | -14 | -44 | -2 |
+| Multiple definitions: each real shift/partition restore routine | -152 | 0 | -8 | -24 | 0 |
+
+- Direct BC changes 20 executed cohort/routine entries, multiple-definition
+  admission seven, and ranking two. None increases executed cycles, moves or
+  frame accesses against its own control. The direct-BC source example removes
+  six `other_frame` reads and six writes; multi-definition source reassignment
+  removes two ABI-result reads, five other reads and eight other writes.
+  Real shift/partition restoration removes four other reads and four writes;
+  preserve/reload and remaining ABI categories are unchanged in these examples.
+  Ranking saves only moves/instructions, not memory accesses.
+- On real projects, direct BC removes 28 used ROM bytes solely from
+  `calculateAndPrint5`, with no frame change; the nine independently executed
+  bank-zero routines show no direct-BC marginal gain. This banked function's
+  ROM reduction is static evidence, not a claim of hardware-facing execution.
+  Multiple-definition admission removes 48 ROM bytes in calculations-2
+  (24 each from shift/partition restoration) and six total frame bytes
+  (two each in the three complex banked functions), with maximum unchanged.
+  Its project-wide static move-site count increases by four even though
+  executed moves in the qualified bank-zero routines do not increase.
+  Ranking has no measured real-project ROM/frame/execution effect.
+- Direct BC removes two `clobber_between` rejection-summary entries in
+  `calculateAndPrint5`, two in matrix shifts, one in matrix values, and 19 in
+  scalar controls. Multiple-definition admission changes scalar decision
+  multiplicities and adds four matrix-index-copy rejection entries
+  (`unsupported_physical_register`/`clobber_between`) without an execution or
+  ROM regression there. Ranking leaves rejection summaries unchanged. Exact
+  per-function entries and all categorized deltas are retained in the reports;
+  a changed count alone is not an independent opportunity or safety proof.
+- Compile-cost attribution reuses the existing measurement script in isolated
+  copies of both real projects, all five modes, four rounds of one sample
+  each. The five compiler variants run in forward/reverse order on alternating
+  rounds, with hash-checked staging, actual GNU-time peak RSS, and no concurrent
+  task builds/execution/full suites. Table entries are median [minimum,maximum]
+  milliseconds, not linker/assembler wall time:
+
+| Build | Quiet calculations-1 | Quiet calculations-2 | Traced calculations-1 | Traced calculations-2 |
+|---|---:|---:|---:|---:|
+| Final | 235 [190,250] | 180 [160,260] | 1530 [1450,1590] | 920 [830,970] |
+| No direct BC | 235 [210,250] | 180 [170,230] | 1530 [1510,1560] | 925 [900,950] |
+| Single definition | 205 [190,230] | 255 [170,290] | 1555 [1500,1600] | 885 [880,900] |
+| Former ranking | 210 [190,250] | 185 [180,220] | 1550 [1500,1560] | 905 [890,910] |
+| Corrected pre-cleanup | 240 [190,260] | 210 [190,230] | 1545 [1530,1570] | 905 [900,990] |
+
+Actual peak RSS, median [minimum,maximum] KiB of the per-project maximum
+compiler-process peak:
+
+| Build | Quiet calculations-1 | Quiet calculations-2 | Traced calculations-1 | Traced calculations-2 |
+|---|---:|---:|---:|---:|
+| Final | 13212 [13208,13220] | 13108 [13100,13112] | 13278 [13276,13284] | 13172 [13152,13188] |
+| No direct BC | 13212 [13208,13224] | 13116 [13112,13128] | 13280 [13280,13288] | 13166 [13164,13168] |
+| Single definition | 13208 [13208,13208] | 13108 [13108,13112] | 13282 [13276,13292] | 13160 [13148,13164] |
+| Former ranking | 13208 [13208,13216] | 13108 [13104,13112] | 13282 [13272,13288] | 13152 [13152,13164] |
+| Corrected pre-cleanup | 13216 [13208,13220] | 13104 [13104,13120] | 13288 [13280,13300] | 13142 [13140,13148] |
+
+- Timing ranges overlap for every feature/control comparison; medians are not
+  a demonstrated throughput improvement. In particular, ranking and
+  multi-definition admission have observed quiet calculations-1 median costs
+  of 25/30 ms, while the latter's calculations-2 quiet median moves the opposite
+  way. Small RSS changes are reported, not rounded to a memory win: final
+  traced calculations-2 is 30 KiB above the corrected pre-cleanup median.
+  No new cache, analysis-lifetime change, speed or RSS benefit is claimed.
+- Captured build-log median bytes (quiet project 1/2; traced project 1/2) are
+  final 337615/283722; 8512307.5/4757038.5,
+  no-BC 337992/283722; 8480813/4759712,
+  single-definition 337611/283662; 8527803/4684513,
+  former-ranking 337611/283723; 8527744/4754271.5,
+  corrected-pre-cleanup 337611/283724; 8527799/4757010.
+  Final quiet ranges are 337611-337615 / 283720-283722 bytes; traced ranges
+  8496861-8512336 / 4748819-4759781. These include make/linker diagnostics,
+  not only compiler trace. Full control ranges and every raw sample are in
+  `measurement-summary.json` and `bench-<round>-<variant>` reports. Direct BC
+  can increase trace volume despite fewer rejections; multi-definition
+  admission increases calculations-2 traced volume by about 73 KB. No overall
+  log-volume improvement is claimed.
+- Fresh optimized GCC compiler/linker and actual-source verifier, MSVC Release
+  compiler/linker/verifier, and MSVC ASan compiler/verifier were built from the
+  final source. Full strict C89/pedantic/Wall/Werror compiler and verifier
+  builds pass, with only the existing GCC 14
+  calloc-transposed-args warning disabled. Traced and quiet verifier runs retain
+  seven accepted and 32 immutable rejected cases, all eleven invalid fixed
+  destinations, three stable-prefix/shared-suffix controls and atomic rollback.
+  Every final toolchain executes 427 generated entries and nine real bank-zero
+  routines: 223,232 cases per mode at 512 inputs. Default/-no-ra, forced-spill
+  semantics and traced/quiet identity pass. Corrected cleanup, native Release
+  and native ASan each match final GCC's 80 ROM files, 21 execution/static
+  metric files and 8,812 selected decision lines, normalizing only randomized
+  static-symbol IDs; 70 real-project traced/quiet assembly pairs also match
+  with only those IDs normalized. Both standard full suites pass sequentially,
+  173 tests each on freshly staged GCC and native compiler/linker pairs.
+  SHA256 staging and before/after checks pass. The isolated suite mirrors all
+  391 tracked test inputs and current compiler headers/sources, preserving
+  unrelated worktree changes and the pre-existing generated sprite ROM.
+  All 217 ASan-run logs are free of sanitizer reports;
+  compiler and verifier both import the real ASan runtime. ASan linker
+  instrumentation, leaks, UBSan, MSan, Valgrind, hardware/bank execution,
+  exhaustive CFG/path coverage and signed-word relational expansion are not
+  qualified.
+- Final versus default has no measured per-function ROM increase or executed
+  cycle/frame-traffic regression in these cohorts, but byte-register moves
+  often increase as frame accesses fall. `matrix_source_loop_0` trades 160
+  extra moves for 7,653 fewer cycles and 380 fewer frame accesses per call;
+  `matrix_real_index_0` trades 102 for 5,681 and 264. These are retained
+  tradeoffs, not copy-count improvements. Frame regressions are explicit:
+  eight `join_call` variants, both scalar frequency-loop and region-escape
+  variants each use one extra byte; both scalar loop-pressure variants use two.
+  Real `calculateAndPrint` uses one extra byte (101->102 maximum) despite
+  453 fewer function ROM bytes. Its call-preserved `r106` is computed from
+  `1 - one`, not generally a constant; no unsafe rematerialization or prefix
+  compaction is introduced to hide this cost.
+- Real project default->RA used ROM/frame total/maximum remain
+  24,468->22,621 / 283->269 / 101->102 and
+  17,510->16,000 / 259->236 / 98->96. Values use the currently installed
+  assembler, not older assembler totals. Retain all three demonstrated
+  optimizations and the output-preserving consolidation; retain required
+  correctness fixes independently of performance. No global allocator,
+  SSA/value framework or analysis cache is justified by this evidence.
+- Reproduction artifacts are under `/tmp/ra355`: exact source/binary SHA256
+  manifests, direct-BC/single-definition/ranking/cleanup patches, final and
+  control execution/static/rejection reports, `comparison.json`,
+  `static-tradeoffs.json`, `measurement-summary.json`, `compare.mjs` and
+  `measure-summary.mjs`. Rebuild controls from the current compiler source:
+  reverse `direct-bc.patch`; separately apply `single-def.patch`,
+  `no-rank.patch` or `cleanup.patch` forward, using the common flags above.
+  Run the existing
+  runner with the pinned 2.3.0 emulator, `RA_CASES=512`, fresh compiler/linker
+  and final verifier; use `RA_BASELINE=1` only for feature-disabled controls.
+  The six cohorts retain separate normalized source-shape counts
+  11/52/103/37/37/40, not unique CFG counts.
+- Next scope is one measured source-loop/index lowering miss, not wider
+  allocation by default. `matrix_source_loop_0` still executes 1,528
+  `other_frame` accesses per call and `matrix_real_index_0` 592, while both
+  report SUB->DIV and DIV->OR clobber rejections. First tie those accesses to
+  actual TAC owners and lowering effects; ABI and ordinary memory traffic must
+  not be relabeled as allocator spills. A bounded local lowering opportunity
+  must show an isolated real-source gain before implementation is retained.
+  Historical optional 328/332/333/339/341/342 remain unchecked; this batch does
+  not retroactively complete wider attribution or hot/cold loop placement.
+  RA stays opt-in.
+
+### Batch 358-360: Bound One Remaining Source-Loop Miss
+
+- [ ] **358. Identify one executed lowering opportunity.** Reuse the existing
+      source-loop/index controls, real source and transfer/rejection reports
+      to associate one costly frame-backed value with its TAC owner, width,
+      clobbers and call/bank boundaries. Separate mandatory ABI/memory accesses
+      from avoidable transfers; retain an exact common-source control and
+      independent return/buffer/DE/SP oracle. Do not infer eligibility from an
+      aggregate rejection count or enlarge global allocation speculatively.
+- [ ] **359. Reuse existing lowering for a demonstrated local gain.** Implement
+      only the bounded opportunity established above, reusing current emitters,
+      target effects and cost checks. Preserve partial/full register overlap,
+      signedness, live inputs, fixed-spill prefix stability and atomic failure.
+      Require measured real-source cycles/traffic or ROM benefit with explicit
+      per-function move/frame tradeoffs; discard or defer an unprofitable trial
+      rather than adding a new value framework or phase-specific helper.
+- [ ] **360. Consolidate and requalify the retained result.** Remove superseded
+      paths inside existing owners, report production/test complexity
+      separately, and prove unchanged decisions/ROMs for cleanup. Re-run fresh
+      actual-source verifiers, independent generated/real execution, strict
+      source checks, native/available ASan and sequential full suites with
+      matched staged binaries. Publish isolated benefits, regressions and
+      remaining coverage, keep -ra opt-in, and commit locally without pushing.
 
 **Shared completion gates:** Each three-step batch gets its own local commit,
 with no push and no unrelated worktree changes included. Reuse existing

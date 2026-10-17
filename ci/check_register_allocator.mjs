@@ -224,10 +224,13 @@ const modes = [['default', []], ['no_ra', ['-no-ra']], ['all_spill', ['-ra-all-s
   ['ra', ['-ra']], ['ra_quiet', ['-ra', '-q']]];
 
 function readImage(directory) {
-  const symbols = new Map();
+  const symbols = new Map(), sectionSizes = new Map();
+  const staticSuffix = /(__static__\w+_ssc_)\d+/g;
   for (const line of readFileSync(join(directory, 'linked.sym'), 'utf8').split(/\r?\n/)) {
     const match = line.match(/^00:([0-9a-f]+)\s+(\S+)$/i);
     if (match) symbols.set(match[2], parseInt(match[1], 16));
+    const section = line.match(/^[0-9a-f]{8}\s+[0-9a-f]+:[0-9a-f]+\s+[0-9a-f]+\s+([0-9a-f]+)\s+(\S+)$/i);
+    if (section) sectionSizes.set(section[2], parseInt(section[1], 16));
   }
   const rom = readFileSync(join(directory, 'linked.sms'));
   run('wla-z80', ['-i', '-o', 'counters.o', 'linked.sms.combined.asm'], directory, 'counter-assembler.log');
@@ -236,15 +239,35 @@ function readImage(directory) {
   if (!rom.equals(readFileSync(join(directory, 'counters.sms'))))
     throw new Error(`Listing-enabled ROM mismatch in ${directory}`);
   const transfers = new Map();
-  const staticMetrics = {rom_image_bytes: rom.length, register_move_sites: 0};
+  const usage = readFileSync(join(directory, 'linker.log'), 'utf8').match(/^ROM: (\d+) bytes .* free of total (\d+)\./m);
+  if (!usage) throw new Error(`Missing used ROM measurement in ${directory}`);
+  const staticMetrics = {rom_image_bytes: rom.length, rom_used_bytes: Number(usage[2]) - Number(usage[1]),
+    register_move_sites: 0, frame_total_bytes: 0, frame_max_bytes: 0, functions: {}, rejections: []};
+  for (const name of readdirSync(directory).filter(name => /^(?:compiler|.+\.compiler)\.log$/.test(name)).sort())
+    staticMetrics.rejections.push(...(readFileSync(join(directory, name), 'utf8')
+      .match(/^register_allocator: rejection_summary .+$/gm) || []).map(line => line.replace(staticSuffix, '$1<id>')));
+  let framePending = false;
   let cause = 'other_frame', tacCause = cause, argumentsInFrame = [], transferOpen = false, section = '';
   for (const line of readFileSync(join(directory, 'linked.sms.combined.lst'), 'utf8').split(/\r?\n/)) {
     const source = line.slice(60).trim();
     if (/^\.SECTION\b/.test(source)) {
       if (transferOpen) throw new Error('Unterminated allocator transfer');
+      if (framePending) throw new Error(`Missing frame allocation in ${section}`);
       cause = tacCause = 'other_frame';
       argumentsInFrame = [];
       section = source.match(/^\.SECTION "([^"]+)"/)[1];
+      framePending = false;
+    }
+    if (source.includes('allocate space for the stack frame')) framePending = true;
+    const frame = framePending && source.match(/^LD\s+HL,-(\d+)$/);
+    if (frame) {
+      const name = section.replace(staticSuffix, '$1<id>'), bytes = Number(frame[1]);
+      if (!sectionSizes.has(section) || Object.hasOwn(staticMetrics.functions, name))
+        throw new Error(`Invalid function-frame section ${section} in ${directory}`);
+      staticMetrics.functions[name] = {rom_bytes: sectionSizes.get(section), frame_bytes: bytes};
+      staticMetrics.frame_total_bytes += bytes;
+      staticMetrics.frame_max_bytes = Math.max(staticMetrics.frame_max_bytes, bytes);
+      framePending = false;
     }
     if (/^; TAC:/.test(source)) {
       if (transferOpen) throw new Error('Allocator transfer crossed TAC boundary');
@@ -278,6 +301,8 @@ function readImage(directory) {
       transfers.set(parseInt(address[2], 16), {cause, argumentsInFrame, section,
         branch: tacCause === 'other_frame' && /^(?:JP|JR)\s+(?:[A-Z]+,\s*)?_label_/.test(source)});
   }
+  if (framePending || !Object.keys(staticMetrics.functions).length)
+    throw new Error(`Incomplete function-frame measurements in ${directory}`);
   if (transferOpen || !transfers.size) throw new Error('Incomplete execution attribution map');
   return {rom, symbols, transfers, staticMetrics};
 }
