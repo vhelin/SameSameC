@@ -1175,6 +1175,9 @@ if (process.env.RA_REAL_PROJECTS !== '0') {
                 expectedBuffer[32 + index] = item;
                 expected = (expected + item * (index + 1)) & 8191;
               });
+              expectedBuffer[40] = 1;
+              expectedBuffer[41] = 64;
+              expected = (expected + 9 + 64 * 10) & 8191;
             } else if (name === 'calculationStencilWorkload') {
               let grid = Array.from({length: count}, (_, index) => (value + index * index + index * 17) & 8191);
               for (let pass = 0; pass < 3; pass++)

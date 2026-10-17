@@ -11826,6 +11826,32 @@ current tools rather than inheriting older cache-executable qualifications.
 This workload expansion does not complete optional steps 358-360 or establish a
 performance comparison against the smaller historical application.
 
+#### Managed Sorting Workspace
+
+The manager is now also used by a calculation other than its own lifecycle test.
+`calculationSortWorkload` allocates its eight-bin byte histogram from a local
+64-byte arena, uses the returned payload pointer throughout histogram generation
+and checksum calculation, then releases it. The word array remains unchanged;
+this needs no unsupported pointer casts, new helper or production compiler code.
+
+Output bytes 40/41 report successful release (`1`) and the fully coalesced arena
+header (`64`). They join the weighted checksum with weights 9/10, changing the
+sorting display row at VRAM `0x3D00` from `0x0724` to `0x09AD`. Allocation,
+release or coalescing failure returns the visible error marker `0xFFFF`, outside
+the successful 13-bit checksum range. The independent sort oracle still uses a
+host sort/histogram and additionally checks both cleanup bytes.
+
+Focused GCC, native Release and native ASan execution each passes 515 sorter
+inputs in default/all-spill/RA modes, including counts 0-16 and exact
+display/zero/full-word seeds. The existing runner also passes 90 generated
+controls and all 22 real routines: 55,835 cases per mode. All 14 banked display
+rows pass exact VDP-port comparisons. Native outputs match GCC's 30 ROMs,
+10 reports and 6,048 selected decision lines; 102 ASan logs contain no reports.
+The unchanged calculations-2 makefile passes with GCC and native Release and
+produces the same ROMs as the execution runner. Existing qualified compiler and
+verifier binaries are reused with their hashes checked; current fixture hashes,
+captures and reports remain under `/tmp/calculations2-workspace`.
+
 ### Batch 358-360: Bound One Remaining Source-Loop Miss
 
 - [ ] **358. Identify one executed lowering opportunity.** Reuse the existing
