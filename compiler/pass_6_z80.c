@@ -3912,6 +3912,11 @@ static int _generate_asm_array_read_z80(struct tac *t, FILE *file_out, struct tr
   if (_transfer_array_base_spill(t, function_node, &arg1_location, NO, file_out) == FAILED)
     return FAILED;
 
+  if (t->arg1_node != NULL)
+    var_type = get_array_item_variable_type(t->arg1_node);
+  else
+    var_type = t->arg1_var_type;
+
   if (arg2_location.kind == LOC_CONST && arg2_location.value == 0)
     arg2_is_zero = YES;
 
@@ -3920,8 +3925,14 @@ static int _generate_asm_array_read_z80(struct tac *t, FILE *file_out, struct tr
     return FAILED;
   }
 
+  base_in_hl = g_allocator_enabled == YES && g_allocator_force_all_spill == NO &&
+               var_type == VARIABLE_TYPE_UINT8 && arg1_location.kind == LOC_PHY_BC &&
+               arg2_location.kind == LOC_PHY_HL && arg2_location.size == 2 &&
+               (t->arg2_var_type == VARIABLE_TYPE_INT16 || t->arg2_var_type == VARIABLE_TYPE_UINT16);
+
   if (arg1_location.kind == LOC_PHY_BC && arg2_is_zero == NO) {
-    if (_materialize_array_base(t, &arg1_location, base_memory_pointer_load, arg2_is_zero, NO, function_node, file_out) == FAILED)
+    if (base_in_hl == NO &&
+        _materialize_array_base(t, &arg1_location, base_memory_pointer_load, arg2_is_zero, NO, function_node, file_out) == FAILED)
       return FAILED;
     base_materialized = YES;
   }
@@ -3941,7 +3952,7 @@ static int _generate_asm_array_read_z80(struct tac *t, FILE *file_out, struct tr
   /* copy data (ix) -> bc */
   /******************************************************************************************************/
 
-  if (_materialize_array_index_to_bc(&arg2_location, t->arg2_var_type, ix_offset, NO, file_out) == FAILED) {
+  if (base_in_hl == NO && _materialize_array_index_to_bc(&arg2_location, t->arg2_var_type, ix_offset, NO, file_out) == FAILED) {
     print_tac(t, NO, stderr);
     return FAILED;
   }
@@ -3967,21 +3978,13 @@ static int _generate_asm_array_read_z80(struct tac *t, FILE *file_out, struct tr
   /* source address (arg1) -> hl/iy */
   /******************************************************************************************************/
 
-  /* NOTE! var_type is actually the type of the item we have inside arg1 array */
-  if (t->arg1_node != NULL) {
-    /* we come here only if arg1 has been a variable, not a temp register */
-    var_type = get_array_item_variable_type(t->arg1_node);
-  }
-  else
-    var_type = t->arg1_var_type;
-
   result_needs_16_bit = result_location.size == 2 ||
                         t->result_var_type_promoted == VARIABLE_TYPE_INT16 ||
                         t->result_var_type_promoted == VARIABLE_TYPE_UINT16;
 
-  base_in_hl = g_allocator_enabled == YES && g_allocator_force_all_spill == NO &&
+  base_in_hl = base_in_hl == YES || (g_allocator_enabled == YES && g_allocator_force_all_spill == NO &&
                base_materialized == NO && var_type == VARIABLE_TYPE_UINT8 &&
-               (arg1_location.kind == LOC_PHY_HL || base_memory_pointer_load == YES);
+               (arg1_location.kind == LOC_PHY_HL || base_memory_pointer_load == YES));
   if (base_materialized == NO && _materialize_array_base(t, &arg1_location, base_memory_pointer_load,
       arg2_is_zero, base_in_hl, function_node, file_out) == FAILED)
     return FAILED;

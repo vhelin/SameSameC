@@ -12894,15 +12894,130 @@ Qualification and measured outcome:
   other sanitizers, exhaustive paths and mapper/full-boot/rendering/hardware
   timing remain unqualified. Banked kernels use fixed mapping.
 
-### Batch 388-390: Attribute Remaining Physical-BC Byte Reads
+### Batch 388-390: Reuse Physical-BC Bases With HL Indices
 
-- [ ] **388. Measure the remaining BC-base path.** Attribute constant-zero
-      unsigned-byte reads whose pointer is already in BC, including live
-      values, result destinations and required versus transport traffic.
-- [ ] **389. Reuse existing lowering only if profitable.** Keep at most one
+- [x] **388. Measure the remaining BC-base path.** Check the planned
+      constant-zero case against candidate eligibility, then attribute the
+      user-approved reachable BC-pointer/full-word-HL-index reads.
+- [x] **389. Reuse existing lowering only if profitable.** Keep at most one
       measured trial without helpers or caches; preserve full-register,
       signed/word, alias/call, reload and flag constraints.
-- [ ] **390. Consolidate and requalify.** Avoid duplicate lowering, require
+- [x] **390. Consolidate and requalify.** Avoid duplicate lowering, require
+      cleanup identity where applicable and isolated measured gains, apply
+      shared completion gates and make a local-only commit.
+
+**Evidence and bounded change:**
+
+- Freeze `f58cd59`, 47 compiler C/H files, 442 source/test inputs and the
+  previous full corpus. The candidate policy permits an assignment-produced
+  pointer in BC only when the array index is already retained in HL;
+  other pointer producers use HL. A constant-zero index cannot select that
+  BC case. Find no constant-zero BC reads in the corpus; do not add dead
+  lowering or change allocator eligibility to manufacture a demonstration.
+- The user approves revising this batch to the two reachable BC-pointer/
+  HL-index reads in `calculationHeapWorkload`. Their byte elements use a
+  full-word index. The old route transfers BC to IY through the stack, copies
+  the HL index into BC, then adds and reads through IY:
+
+  ```
+  PUSH BC / POP IY / LD C,L / LD B,H / ADD IY,BC / LD L,(IY+0)
+    -> ADD HL,BC / LD L,(HL)
+  ```
+
+- Reuse the existing address addition and byte-result path. Six instructions,
+  67 simulated cycles and ten bytes become two instructions, **18 cycles
+  and two bytes**: save **49 cycles, eight ROM bytes, four temporary
+  stack-byte accesses and two register copies per read**. This is address
+  transport, not allocator spill elimination; required pointer/index loads
+  and result stores remain unchanged.
+- Reuse the existing `base_in_hl` flag rather than adding state or helpers.
+  Resolve element width before choosing the route, retain BC/HL through
+  index materialization, then use the shared addition/read/widen/store code.
+  Production changes **+15/-12 lines: three net added, no new function**.
+  Moving and simplifying the existing element-width lookup avoids duplicated
+  type logic; no independent cleanup rewrite needs a separate identity claim.
+- Gate the route on opt-in/non-forced-spill RA, unsigned-byte elements,
+  a BC pointer, a two-byte HL index and signed/unsigned full-word index type.
+  Preserve byte-index extension, signed/full-word element fallbacks, checked
+  preserve/reload calls and their errors, alias/call rules, full-register/
+  flag effects and allocator/cache/placement policy. No BC/HL operand swap
+  or unchecked reclassification of pending transfers is introduced.
+
+| Existing/new control, one call | Cycles before -> after | Frame accesses | Register copies |
+| --- | --- | --- | --- |
+| new BC-base byte regression | 494 -> 445 | 14 -> 10 | 6 -> 4 |
+| widened byte result control | 558 -> 509 | 17 -> 13 | 6 -> 4 |
+| heap, seed `4219`, count 0 | 359,986 -> 359,986 | 7,226 -> 7,226 | 698 -> 698 |
+| heap, seed `4219`, count 16 | 1,172,807 -> 1,165,947 | 27,238 -> 26,678 | 2,720 -> 2,440 |
+
+- The maximum-count heap call executes 140 eligible reads, saving
+  **6,860 cycles, 560 stack-byte accesses and 280 copies**. Empty/single/
+  maximum-count owner profiles isolate both TAC sites and account for every
+  cycle/access delta. Across all 515 heap inputs the savings are
+  **1,601,418 cycles, 130,728 accesses and 65,364 copies**, not per-call
+  figures. The existing bank-one display calculation also saves 6,860
+  cycles; all fourteen display rows, including assembly workloads, match.
+- Exactly **two real routines improve**; generated kernels, converters,
+  source-prefix/output-loop costs and every other measured routine remain
+  unchanged. Every dynamic delta is a multiple of 49 cycles with exactly
+  four fewer stack-byte accesses and two fewer copies per read. No cycle,
+  traffic, move, ROM or frame-size regression is observed.
+
+| Existing RA project | Used ROM before -> after | Static register-copy sites | Total / maximum frame bytes |
+| --- | --- | --- | --- |
+| calculations-1 | 22,086 -> 22,086 | 665 -> 665 | 267 / 102 unchanged |
+| calculations-2 | 41,168 -> 41,152 (-16) | 1,245 -> 1,241 | 1,273 / 225 unchanged |
+
+- The heap function alone shrinks **5,146 -> 5,130 bytes**, with its
+  61-byte frame unchanged. Prove all **80 assembly files** differ only by
+  the six-to-two-instruction replacement at the two heap sites in RA and
+  quiet RA. Per-function/image ROM and static-copy deltas equal those sites'
+  exact eight-byte/two-copy savings; all other static fields match.
+- Reuse the existing pointer-base fixture: retain its four old golden blocks
+  unchanged, add one byte-read function and its **57-byte fifth golden**,
+  and require the actual BC-pointer/two-byte-HL-index trace. The baseline
+  compiler still passes the old four blocks but rejects the new one:
+  65 bytes versus 57. Both GCC/native full fixture makefiles pass.
+- Reuse the CI execution/counter helpers for **12,288 extra old/final
+  executions** of six controls. Independent returns, whole buffers including
+  sink writes, ports, DE/SP and stack guards cover byte/widened results,
+  high-word and negative signed indices, byte indices, signed elements and
+  word elements. Signed-element, byte-index and word-element function
+  opcodes remain identical. No cohort, oracle or quality gate is weakened.
+- Fresh optimized/strict GCC and native Release/ASan compiler/verifier builds
+  pass; strict GCC retains the established calloc warning exemption.
+  Each toolchain runs all six cohorts: **468 generated entries and 25 real
+  routines; 239,616 generated + 11,300 real = 250,916 cases per mode**, in
+  default/all-spill/RA modes. Immutable verifier failures, fixed spill
+  prefixes/shared suffixes and atomic rollback remain qualified.
+- Native Release and ASan each match GCC's **80 ROMs, 30 reports and 12,286
+  selected decisions**. All 86 common SSC sources and selected decisions match.
+  **76 ROM artifacts** remain identical; only calculations-2 RA/quiet RA
+  and their listing-enabled duplicates change. All flags-off execution/static
+  metrics, 30 traced/quiet assembly pairs and 14 exact VDP rows match.
+  All 217 ASan logs are clean; compiler/verifier runtime imports are verified.
+- Both full standard suites pass sequentially, **173 tests each**, with six
+  compiler/linker hashes unchanged before/after each run. GCC staging is
+  intentionally replaced before native staging; verify each run's snapshots,
+  both source toolchains and the final native staged copies separately.
+- Artifacts under `/tmp/ra388` retain frozen inputs/tools, typed/golden
+  controls, owner profiles, full comparisons and rejected first attempts.
+  Profile only copied images; all 699 original corpus-output hashes remain
+  intact. Remove only the completed suite mirror; preserve unrelated changes
+  and both existing untracked ROMs. Pinned emulator 2.3.0 and `RA_CASES=512`
+  remain in use. ASan uses the Release linker; ASan linker execution, leaks,
+  other sanitizers, exhaustive paths and mapper/full-boot/rendering/hardware
+  timing remain unqualified. Banked kernels use fixed mapping.
+
+### Batch 391-393: Attribute Remaining Full-Word Indexed Reads
+
+- [ ] **391. Measure word-read address transport.** Attribute remaining
+      full-word indexed reads, separating required bytes, scaling and result
+      assembly from pointer/index transfers and temporary stack traffic.
+- [ ] **392. Reuse existing lowering only if profitable.** Keep at most one
+      measured trial without helpers or caches; preserve signed/byte reads,
+      alias/call, full-register, reload and flag constraints.
+- [ ] **393. Consolidate and requalify.** Avoid duplicate lowering, require
       cleanup identity where applicable and isolated measured gains, apply
       shared completion gates and make a local-only commit.
 
