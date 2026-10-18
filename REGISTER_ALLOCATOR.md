@@ -12790,15 +12790,121 @@ Qualification and measured outcome:
 
 ### Batch 385-387: Attribute Constant-Zero Byte-Read Transport
 
-- [ ] **385. Attribute the excluded zero-index path.** Measure remaining
+- [x] **385. Attribute the excluded zero-index path.** Measure remaining
       address transport for constant-zero unsigned-byte reads, separating
       base materialization, live values and result widths.
-- [ ] **386. Retain one measured reuse only if profitable.** Reuse existing
+- [x] **386. Retain one measured reuse only if profitable.** Reuse existing
       lowering without new helpers or caches; preserve signed/word reads,
       checked reloads, alias/call and full-register/flag constraints.
-- [ ] **387. Consolidate and requalify.** Require identical cleanup output,
+- [x] **387. Consolidate and requalify.** Reuse shared lowering without
+      duplication, requiring cleanup identity for any separate consolidation,
       isolated measured gains and the shared completion gates before a
       local-only commit; leave unproven alternatives deferred.
+
+**Evidence and bounded change:**
+
+- Freeze `cc9115d`, 47 compiler C/H files and 442 source/test inputs before
+  the trial. Constant-zero index materialization already emits **no BC
+  initialization**. Attribute only actual pointer loading and address
+  transport, not an invented ten-cycle index setup.
+- Extend the existing unsigned-byte `keep_hl` path to constant-zero pointer
+  reads with **three condition replacements, +3/-3 backend lines and zero
+  net growth**. No function, helper, cache or policy is added. The existing
+  shared base materializer already handles the required routes, so no
+  independent cleanup rewrite is necessary.
+
+| Existing zero-read route | Replacement | Saved simulated cycles / ROM bytes |
+| --- | --- | --- |
+| retained/reloaded HL | `PUSH HL / POP IY / LD L,(IY+0)` -> `LD L,(HL)` | 37 / 5 |
+| cold/global IY-loaded pointer | load BC, reconstruct IY, indexed byte read -> load L/H from the same IY slot, `LD L,(HL)` | 41 / 8 |
+| valid cached IX pointer slot | reconstruct IY from DE, load BC, reconstruct IY again -> load L/H directly from IX, `LD L,(HL)` | 70 / 14 |
+
+- The first route removes four temporary stack-byte accesses per read,
+  **not allocator spill traffic**. The other routes retain both required
+  pointer-byte reads and their frame traffic. Zero reads emit no `ADD HL,BC`.
+  Existing full-slot displacement checks, checked spill/reload ordering,
+  unsigned widening and result stores remain in use. Signed/full-word reads,
+  direct arrays, physical BC bases and nonzero indexed reads keep their
+  previous routes; wide/global slots may improve their final byte fetch
+  without gaining an invalid IX displacement.
+- Keep opt-in/non-forced-spill gating, conservative ARRAY_READ effects,
+  partial/full-register and flag safety, alias/call rules, allocation
+  decisions and fixed spill prefixes/shared suffixes unchanged.
+
+| Existing kernel, one call | Cycles before -> after | Frame accesses | Moves |
+| --- | --- | --- | --- |
+| `ra_matrix_index_copy_12` | 235 -> 194 | 3 -> 3 | 2 -> 2 |
+| `allocatorRaReadReloadZero` | 403 -> 329 | 18 -> 10 | 1 -> 1 |
+| `allocatorRaCoreCandidateNonzero` | 550 -> 480 | 16 -> 16 | 0 -> 0 |
+| source prefix `ra_matrix_real_index_0` | 28,965 -> 28,801 | 834 -> 834 | 250 -> 250 |
+| output loop `ra_matrix_source_loop_0` | 58,963 -> 58,799 | 1,654 -> 1,654 | 308 -> 308 |
+
+- Both source kernels save **164 cycles through four existing
+  `convertNumbersToChars16` calls**, not through another optimization of the
+  nonzero indexed loop. Their read-only zero-index TAC groups cost
+  652 -> 488 cycles, with sixteen frame accesses unchanged. Keep zero-index
+  writes out of this attribution.
+
+| Existing RA project | Used ROM before -> after | Static register-copy sites | Total / maximum frame bytes |
+| --- | --- | --- | --- |
+| calculations-1 | 22,108 -> 22,086 (-22) | 665 unchanged | 267 / 102 unchanged |
+| calculations-2 | 41,212 -> 41,168 (-44) | 1,245 unchanged | 1,273 / 225 unchanged |
+
+- **Four generated entries and seven real routines improve**, with no
+  cycle, frame-access, ROM or frame-size regression. The tile workload saves
+  434,070 cycles across its cases, not per call. All dynamic savings decompose
+  into the measured 37/41/70-cycle routes; register moves remain unchanged.
+  The real routines also appear in the root quality report: do not count
+  those duplicate rows as additional generated improvements.
+- Prove all **80 generated/real assembly files** differ only by the three
+  permitted zero-read replacements. Per-function and whole-image ROM deltas
+  equal their exact five/eight/fourteen-byte site totals; all 40 static image
+  register-copy totals remain unchanged. Regenerate **23 golden blocks in
+  eighteen existing fixtures, removing 152 tagged bytes**; linked opcodes,
+  untouched tags and executable SSC source are independently checked.
+- Reuse five existing fixture routines for **10,240 extra old/final
+  executions**, covering zero reads, reloads, signed/full-word controls,
+  nonzero indices and cached-IX reads with write side effects. Signed/full-word functions
+  remain opcode-identical. Add only a positive cold-zero sequence check and
+  clarify the existing uncached/global negative guard in the CI runner;
+  no input, oracle, cohort or quality gate is weakened.
+- Fresh optimized/strict GCC and native Release/ASan compiler/verifier builds
+  pass, including the strict GCC build with the established calloc warning
+  exemption. Each toolchain runs all six cohorts: **468 generated entries
+  and 25 real routines; 239,616 generated + 11,300 real = 250,916 cases per
+  mode**, in default/all-spill/RA modes. Independent returns, full buffers,
+  ports, DE/SP, protected stack, immutable verifier failures and atomic
+  rollback remain qualified.
+- Native Release and ASan each match GCC's **80 ROMs, 30 reports and 12,286
+  selected decisions**. Against the baseline, all 86 common SSC sources,
+  48 flags-off ROMs, default/all-spill execution and flags-off static metrics,
+  and all selected allocation decisions match. All 30 traced/quiet
+  real-project assembly pairs and 14 exact VDP display rows pass, including
+  the three committed assembly workloads. All 217 ASan logs are clean;
+  actual compiler/verifier runtime imports are verified.
+- Both full standard suites pass sequentially, **173 tests each**, with six
+  compiler/linker hashes unchanged before/after each run. GCC staging is
+  intentionally replaced before native staging; each run's snapshots and
+  the final native staged binaries match their recorded source tools.
+- Artifacts under `/tmp/ra385` retain input/tool hashes, original-output
+  audits, exact owner profiles, opcode/golden and typed-control proofs,
+  comparisons and suite staging hashes. Retain logs/proofs and remove only
+  the completed suite mirror. Pinned emulator 2.3.0 and `RA_CASES=512`
+  remain in use. ASan uses the Release linker; ASan linker execution, leaks,
+  other sanitizers, exhaustive paths and mapper/full-boot/rendering/hardware
+  timing remain unqualified. Banked kernels use fixed mapping.
+
+### Batch 388-390: Attribute Remaining Physical-BC Byte Reads
+
+- [ ] **388. Measure the remaining BC-base path.** Attribute constant-zero
+      unsigned-byte reads whose pointer is already in BC, including live
+      values, result destinations and required versus transport traffic.
+- [ ] **389. Reuse existing lowering only if profitable.** Keep at most one
+      measured trial without helpers or caches; preserve full-register,
+      signed/word, alias/call, reload and flag constraints.
+- [ ] **390. Consolidate and requalify.** Avoid duplicate lowering, require
+      cleanup identity where applicable and isolated measured gains, apply
+      shared completion gates and make a local-only commit.
 
 **Shared completion gates:** Each three-step batch gets its own local commit,
 with no push and no unrelated worktree changes included. Reuse existing

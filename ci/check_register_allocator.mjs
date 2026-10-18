@@ -420,7 +420,11 @@ for (const program of process.env.RA_BASELINE === '1' ? [] : programs) {
   }
   if (program.family === 'matrix_index_copy' && [12, 13, 21].includes(program.variant) &&
       lines.some(line => line.includes('emitter=array_read_base_address ') && line.includes('address_target=IX ')))
-    throw new Error(`Zero-index, uncached or global pointer fallback changed: ${program.name}`);
+    throw new Error(`Uncached or global pointer-slot fallback changed: ${program.name}`);
+  if (program.family === 'matrix_index_copy' && program.variant === 12 &&
+      !/LD\s+L,\(IY\+0\)\s+LD\s+H,\(IY\+1\)\s+LD\s+L,\(HL\)/.test(
+        readFileSync(join(output, 'ra', 'main.asm'), 'utf8').split(`.SECTION "${program.name}" FREE`)[1].split('.ENDS')[0]))
+    throw new Error(`Zero-index unsigned pointer read did not reuse HL: ${program.name}`);
   if (program.family === 'matrix_index_copy' && program.variant >= 25 &&
       !lines.some(line => line.includes(`arg1_kind=${program.variant === 29 ? 'GLOBAL' : 'STACK_LOCAL'} arg1_phy=NONE arg1_size=2 result_kind=PHY_HL `)))
     throw new Error(`Word-memory assignment to HL not exercised: ${program.name}`);

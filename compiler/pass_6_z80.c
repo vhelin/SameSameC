@@ -3674,7 +3674,7 @@ static int _materialize_array_base(struct tac *tac, struct z80_location *base_lo
     }
     fprintf(file_out, "      ; retained %s in %s\n", operand_name, base_location->kind == LOC_PHY_HL ? "HL" : "BC");
   }
-  else if (base_memory_pointer_load == YES && is_write == NO && arg2_is_zero == NO &&
+  else if (base_memory_pointer_load == YES && is_write == NO && (arg2_is_zero == NO || keep_hl == YES) &&
            g_allocator_enabled == YES && g_allocator_force_all_spill == NO && g_is_ix_de == YES &&
            get_register_allocator_address_materialization_mode(base_location->kind, RA_ADDRESS_TARGET_IX,
              base_location->offset) == RA_ADDRESS_MODE_FRAME_DISPLACEMENT) {
@@ -3691,7 +3691,7 @@ static int _materialize_array_base(struct tac *tac, struct z80_location *base_lo
         is_write == YES ? "array_write_base_address" : "array_read_base_address",
         operand_name, base_location, RA_ADDRESS_TARGET_IY, 0);
 
-    if (base_memory_pointer_load == YES && is_write == NO && arg2_is_zero == NO &&
+    if (base_memory_pointer_load == YES && is_write == NO && (arg2_is_zero == NO || keep_hl == YES) &&
         g_allocator_enabled == YES && g_allocator_force_all_spill == NO) {
       if (_materialize_to_hl(base_location, file_out) == FAILED)
         return FAILED;
@@ -3980,7 +3980,7 @@ static int _generate_asm_array_read_z80(struct tac *t, FILE *file_out, struct tr
                         t->result_var_type_promoted == VARIABLE_TYPE_UINT16;
 
   base_in_hl = g_allocator_enabled == YES && g_allocator_force_all_spill == NO &&
-               base_materialized == NO && arg2_is_zero == NO && var_type == VARIABLE_TYPE_UINT8 &&
+               base_materialized == NO && var_type == VARIABLE_TYPE_UINT8 &&
                (arg1_location.kind == LOC_PHY_HL || base_memory_pointer_load == YES);
   if (base_materialized == NO && _materialize_array_base(t, &arg1_location, base_memory_pointer_load,
       arg2_is_zero, base_in_hl, function_node, file_out) == FAILED)
