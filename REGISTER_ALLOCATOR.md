@@ -13122,15 +13122,117 @@ Qualification and measured outcome:
 
 ### Batch 394-396: Attribute Constant-Zero Word Reads
 
-- [ ] **394. Measure the excluded zero-index word path.** Separate required
+- [x] **394. Measure the excluded zero-index word path.** Separate required
       pointer/data bytes from address reconstruction, temporary stack traffic
       and result assembly, including cold and cached slots.
-- [ ] **395. Reuse existing word lowering only if profitable.** Keep at most
+- [x] **395. Reuse existing word lowering only if profitable.** Keep at most
       one measured trial without helpers or caches; preserve byte/signed,
       alias/call, full-register, reload and flag constraints.
-- [ ] **396. Consolidate and requalify.** Avoid duplicate lowering, require
+- [x] **396. Consolidate and requalify.** Avoid duplicate lowering, require
       cleanup identity where applicable and explicit measured tradeoffs,
       apply shared completion gates and make a local-only commit.
+
+**Evidence and bounded change:**
+
+- Freeze `43f3a9d`, its qualified O3 compiler, 47 compiler C/H files,
+  450 tracked inputs and all 699 previous corpus outputs. Requalify the
+  control against the same full corpus as the final compilers. Constant-zero
+  index materialization already emits no BC initialization: the savings
+  below remove address reconstruction, not a fictional index load.
+- Remove only the zero-index exclusion from the existing signed/unsigned
+  word-read eligibility. Reuse `base_in_hl`, base materialization, checked
+  preserve/reload calls and the existing word-load sequence:
+
+  ```
+  PUSH HL / POP IY / LD L,(IY+0) / LD H,(IY+1)
+    -> LD A,(HL) / INC HL / LD H,(HL) / LD L,A
+  ```
+
+  This retained/reloaded-HL kernel costs **24 rather than 63 simulated
+  cycles and four rather than nine ROM bytes**: save **39 cycles, five
+  bytes and four temporary stack-byte accesses**. Cold memory-pointer
+  slots additionally reuse the existing HL pointer load, saving **43
+  cycles/eight bytes**; an already cached, in-range IX slot saves **72
+  cycles/fourteen bytes and two instructions**. Required pointer/data reads
+  remain. Every affected read adds **one register copy** (`LD L,A`).
+- Production changes are **one replaced condition, zero net lines and no
+  new function/helper/state**. There is no separate cleanup rewrite needing
+  an identity claim. Keep opt-in/non-forced-spill gating; byte/signed-byte,
+  nonzero word, direct-array/IY and BC-base word paths stay unchanged.
+  Existing ARRAY_READ effects already cover A/BC/HL/IX/IY and flags.
+  Placement, alias/call barriers, full-register constraints, transfers,
+  address-cache/span rules and fixed spill-layout policy are unchanged.
+
+| Independent control, one call | Cycles before -> after | Frame accesses | Register copies |
+| --- | --- | --- | --- |
+| existing three-word reload routine, one zero-index read | 728 -> 689 | 25 -> 21 | 2 -> 3 |
+| cold word-pointer argument | 265 -> 222 | 4 -> 4 | 0 -> 1 |
+| cached word-pointer argument, with a preceding write | 498 -> 426 | 12 -> 12 | 0 -> 1 |
+| wide local-pointer slot, beyond IX displacement | 690 -> 647 | 14 -> 14 | 0 -> 1 |
+
+- Reuse the CI execution helpers for ten 1,024-input old/final controls
+  (**20,480 executions per pass**). Independent returns, complete buffers,
+  ports, DE/SP and stack guards pass. Cover signed word values, unchanged
+  signed/full-width indices, byte/signed-byte fallbacks, reloads, cached
+  read/write side effects and a wide slot across an inline-asm barrier.
+  Entire typed images differ only by one retained, two cold and two cached
+  word-read replacements.
+- **Four real routines improve; no generated entry changes.** Across 515
+  cases each, record/actor workloads save **1,046,565/1,996,332 cycles**
+  and **107,340/204,752 stack-byte accesses**, adding 26,835/51,188 copies.
+  Bank-two/bank-three display calls save 7,644/4,056 cycles. These are corpus
+  totals, not per-call gains; do not count duplicated root quality rows
+  twice. The shared quick 16-bit converter also shrinks statically, without
+  an observed dynamic gain in the measured converter cases.
+
+| Existing RA project | Used ROM before -> after | Static register-copy sites | Total / maximum frame bytes |
+| --- | --- | --- | --- |
+| calculations-1 | 22,086 -> 22,078 (-8) | 665 -> 666 (+1) | 267 / 102 unchanged |
+| calculations-2 | 41,061 -> 40,993 (-68) | 1,254 -> 1,267 (+13) | 1,273 / 225 unchanged |
+
+- Accept the explicit copy-count tradeoff; no measured cycle, frame-access,
+  frame-size or ROM regression occurs. All **80 assembly files** differ
+  only by **28 approved replacements** across traced/quiet output:
+  24 retained and four cold. Exact per-function/image byte and copy deltas
+  match those sites; all other static fields match. Dynamic deltas match
+  the measured read costs and instruction counts.
+- Refresh **29 golden blocks in 21 existing fixtures, removing 173 tagged
+  bytes**, with unchanged executable SSC text and untouched tags. The old
+  reload image passes three blocks but rejects the new word block
+  (93 versus 88 bytes). Twelve representative GCC/native make runs pass.
+  No new repository test function or cohort is added.
+- Fresh optimized/strict GCC and native Release/ASan compiler/verifier
+  qualification passes; the O3 `-Wall -Werror` compiler build has no
+  diagnostics or warning exemptions. Each final toolchain runs all six
+  cohorts: **468 generated entries and 25 real routines, 250,916 cases per
+  mode** (239,616 generated + 11,300 real), in default/all-spill/RA modes.
+  Immutable verifier failures, fixed spill prefixes/shared suffixes and
+  atomic rollback remain qualified.
+- Release and ASan each match GCC's **80 ROMs, 30 reports and 12,286 selected
+  decisions**. All 86 common SSC sources, 48 flags-off ROMs, flags-off
+  execution/static metrics and selected decisions match the frozen control.
+  All 30 traced/quiet assembly pairs, 14 exact display rows and 217 ASan
+  logs pass; compiler/verifier ASan imports are verified.
+- Both full standard suites pass sequentially, **174 tests each**, with
+  six source/staged compiler/linker hashes unchanged before/after each run.
+  Preserve all original input/output hashes outside the documented scope,
+  unrelated changes and both existing untracked ROMs. Artifacts under
+  `/tmp/ra394` retain controls, opcode/golden proofs and qualification logs;
+  remove only the completed suite mirror and generated patch. Emulator
+  2.3.0 and `RA_CASES=512` remain pinned. ASan uses the Release linker;
+  ASan linker execution, leaks, other sanitizers, exhaustive paths and
+  mapper/full-boot/rendering/hardware timing remain unqualified. Banked
+  kernels use fixed mapping.
+
+### Batch 397-399: Attribute Remaining BC-Base Word Reads
+
+- [ ] **397. Measure reachable BC-base word reads.** Prove reachability
+      before attributing pointer/index transfers, scaling and word assembly.
+- [ ] **398. Reuse existing lowering only if profitable.** Keep at most one
+      measured trial without helpers or caches; otherwise document deferral.
+      Preserve full-width indices, scaling, reloads and byte/signed paths.
+- [ ] **399. Consolidate and requalify.** Require isolated gains and explicit
+      tradeoffs, apply shared completion gates and make a local-only commit.
 
 **Shared completion gates:** Each three-step batch gets its own local commit,
 with no push and no unrelated worktree changes included. Reuse existing

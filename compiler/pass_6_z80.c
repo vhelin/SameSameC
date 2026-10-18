@@ -3984,7 +3984,7 @@ static int _generate_asm_array_read_z80(struct tac *t, FILE *file_out, struct tr
 
   base_in_hl = base_in_hl == YES || (g_allocator_enabled == YES && g_allocator_force_all_spill == NO &&
                base_materialized == NO && (var_type == VARIABLE_TYPE_UINT8 ||
-                 (arg2_is_zero == NO && (var_type == VARIABLE_TYPE_INT16 || var_type == VARIABLE_TYPE_UINT16))) &&
+                 var_type == VARIABLE_TYPE_INT16 || var_type == VARIABLE_TYPE_UINT16) &&
                (arg1_location.kind == LOC_PHY_HL || base_memory_pointer_load == YES));
   if (base_materialized == NO && _materialize_array_base(t, &arg1_location, base_memory_pointer_load,
       arg2_is_zero, base_in_hl, function_node, file_out) == FAILED)
