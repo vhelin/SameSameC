@@ -8,11 +8,10 @@
 // @BT END
 // @BT TEST-02 02 START
 // @BT DD 7E F6 DD 86 F5 DD 77 F2 DD 7E F6 DD 86 F5 4F
-// @BT 06 00 DD 6E F3 DD 66 F4 E5 FD E1
-// @BT FD 09 FD 09 FD 6E 00 FD 66 01
-// @BT 2B DD 4E F2 06 00 FD 21 F3 FF FD 19 C5 FD 4E 00
-// @BT FD 46 01 FD 21 00 00 FD 09 C1 FD 09 FD 09 FD 75
-// @BT 00 FD 74 01
+// @BT 06 00 DD 6E F3 DD 66 F4 09 09 7E
+// @BT 23 66 6F 2B DD 4E F2 06 00 FD
+// @BT 21 F3 FF FD 19 C5 FD 4E 00 FD 46 01 FD 21 00 00
+// @BT FD 09 C1 FD 09 FD 09 FD 75 00 FD 74 01
 // @BT END
 
 u8 allocatorRaSplitReloadNonzeroByte(u8 **roots, u8 root_left, u8 root_right, u8 index_left, u8 index_right) {

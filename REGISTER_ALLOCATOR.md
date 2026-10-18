@@ -13011,15 +13011,126 @@ Qualification and measured outcome:
 
 ### Batch 391-393: Attribute Remaining Full-Word Indexed Reads
 
-- [ ] **391. Measure word-read address transport.** Attribute remaining
+- [x] **391. Measure word-read address transport.** Attribute remaining
       full-word indexed reads, separating required bytes, scaling and result
       assembly from pointer/index transfers and temporary stack traffic.
-- [ ] **392. Reuse existing lowering only if profitable.** Keep at most one
+- [x] **392. Reuse existing lowering only if profitable.** Keep at most one
       measured trial without helpers or caches; preserve signed/byte reads,
       alias/call, full-register, reload and flag constraints.
-- [ ] **393. Consolidate and requalify.** Avoid duplicate lowering, require
+- [x] **393. Consolidate and requalify.** Avoid duplicate lowering, require
       cleanup identity where applicable and isolated measured gains, apply
       shared completion gates and make a local-only commit.
+
+**Evidence and bounded change:**
+
+- Freeze `7827c3e`, 47 compiler C/H files, 442 source/test inputs and all
+  699 previous corpus outputs. Existing unsigned-byte reads already retain
+  an HL address, while nonzero full-word reads still transfer that address
+  to IY, scale the index with two indexed additions and load both bytes:
+
+  ```
+  PUSH HL / POP IY / ADD IY,BC / ADD IY,BC / LD L,(IY+0) / LD H,(IY+1)
+    -> ADD HL,BC / ADD HL,BC / LD A,(HL) / INC HL / LD H,(HL) / LD L,A
+  ```
+
+- Both sequences execute six instructions. The new sequence costs
+  **46 rather than 93 simulated cycles and six rather than thirteen ROM
+  bytes**: save **47 cycles, seven bytes and four temporary stack-byte
+  accesses per eligible read**. Loading the low byte into A before changing
+  HL preserves the address until the high byte is read. This deliberately
+  adds **one register copy per read**, rather than claiming a move-count
+  improvement or allocator spill elimination.
+- Extend the existing `base_in_hl` eligibility to signed/unsigned full-word
+  elements only for nonzero indices. Reuse base materialization, checked
+  preserve/reload calls, index extension, both existing HL additions,
+  `_inc_hl`, and the established get-address pointer-word load sequence.
+  Result storage is unchanged. Production changes **+16/-5 lines, eleven
+  net added and no new function/helper/state**. No independent cleanup
+  rewrite needs a separate identity claim.
+- Keep opt-in/non-forced-spill gating. Constant-zero word reads, BC-base
+  word reads, direct-array/IY routes and all byte paths remain unchanged.
+  Word scaling still adds the normalized BC index twice; do not double an
+  already materialized pointer or destroy the low-byte address before the
+  high-byte read. Existing ARRAY_READ effects already clobber A/BC/HL/IX/IY
+  and flags. Alias/call, full-register, pending-transfer, cache/span,
+  allocator placement and fixed spill-layout policies remain unchanged.
+
+| Existing/control kernel, one call | Cycles before -> after | Frame accesses | Register copies |
+| --- | --- | --- | --- |
+| `ra_matrix_index_copy_3` | 380 -> 333 | 12 -> 8 | 0 -> 1 |
+| signed-word/signed-index control | 380 -> 333 | 12 -> 8 | 0 -> 1 |
+| constant-zero control `ra_matrix_index_copy_2` | 251 -> 251 | 4 -> 4 | 0 -> 0 |
+
+- **Four generated entries and four real routines improve**. Across its
+  515 cases, the actor workload saves **3,910,917 cycles and 332,844
+  stack-byte accesses**, with 83,211 added copies. The record workload saves
+  **775,359 cycles and 65,988 accesses**, with 16,497 added copies.
+  These are corpus totals, not per-call figures. Existing bank-two/bank-three
+  display calculations save 14,946/3,008 cycles respectively. Converters,
+  source-prefix/output-loop kernels and all other measured routines are
+  unchanged. Real routines also appear in the root quality report; count
+  those rows only once.
+
+| Existing RA project | Used ROM before -> after | Static register-copy sites | Total / maximum frame bytes |
+| --- | --- | --- | --- |
+| calculations-1 | 22,086 -> 22,086 | 665 -> 665 | 267 / 102 unchanged |
+| calculations-2 | 41,152 -> 41,061 (-91) | 1,241 -> 1,254 (+13) | 1,273 / 225 unchanged |
+
+- Accept the measured register-copy tradeoff explicitly; no cycle, ROM,
+  frame-access or frame-size regression is observed. Every dynamic delta
+  equals 47 saved cycles/four saved accesses/one added copy per read, with
+  **executed instruction counts unchanged**. All 80 assembly files differ
+  only by the replacement above: 38 sites across traced/quiet output.
+  Per-function/image byte and static-copy deltas match exact site totals;
+  all other static fields match.
+- Regenerate **five golden blocks in five existing fixtures, removing
+  42 tagged bytes**. Prove actual linked bytes, untouched tags and unchanged
+  executable SSC text. The old compiler passes the reload fixture's other
+  three blocks but rejects its word block: 107 bytes versus 93.
+  All ten focused makefile runs pass: five fixtures under GCC and native
+  Release. No new repository test function, cohort or production helper is added.
+- Reuse existing CI execution/counter helpers for **12,288 extra old/final
+  executions**. Controls cover two word reloads, negative/full-width signed
+  word indices and signed word values, unchanged byte/signed-byte reads,
+  zero indices and cached-IX read/write side effects. Independent returns,
+  full buffers, ports, DE/SP and stack guards pass; unchanged fallback
+  functions remain opcode-identical.
+- Fresh optimized/strict GCC and native Release/ASan compiler/verifier builds
+  pass; strict GCC keeps the established calloc warning exemption. Each
+  toolchain runs all six cohorts: **468 generated entries and 25 real
+  routines; 239,616 generated + 11,300 real = 250,916 cases per mode**,
+  in default/all-spill/RA modes. Immutable verifier failures, fixed spill
+  prefixes/shared suffixes and atomic rollback remain qualified.
+- Native Release and ASan each match GCC's **80 ROMs, 30 reports and 12,286
+  selected decisions**. All 86 common SSC sources, 48 flags-off ROMs,
+  flags-off execution/static metrics and selected allocation decisions match
+  the baseline. All 30 traced/quiet assembly pairs and 14 exact VDP display
+  rows pass. All 217 ASan logs are clean; actual compiler/verifier runtime
+  imports are verified. No oracle or quality gate is weakened.
+- Both full standard suites pass sequentially, **173 tests each**, with six
+  compiler/linker hashes unchanged before/after each run. GCC staging is
+  intentionally replaced before native staging; verify each run's snapshots,
+  both source toolchains and final native staged copies separately.
+- Artifacts under `/tmp/ra391` retain frozen inputs/tools, opcode/golden
+  and typed-control proofs, complete comparisons and rejected first tooling
+  attempts. Keep all original corpus-output hashes intact; remove only the
+  completed suite mirror. Preserve unrelated worktree changes and both
+  existing untracked ROMs. Emulator 2.3.0 and `RA_CASES=512` remain pinned.
+  ASan uses the Release linker; ASan linker execution, leaks, other
+  sanitizers, exhaustive paths and mapper/full-boot/rendering/hardware timing
+  remain unqualified. Banked kernels use fixed mapping.
+
+### Batch 394-396: Attribute Constant-Zero Word Reads
+
+- [ ] **394. Measure the excluded zero-index word path.** Separate required
+      pointer/data bytes from address reconstruction, temporary stack traffic
+      and result assembly, including cold and cached slots.
+- [ ] **395. Reuse existing word lowering only if profitable.** Keep at most
+      one measured trial without helpers or caches; preserve byte/signed,
+      alias/call, full-register, reload and flag constraints.
+- [ ] **396. Consolidate and requalify.** Avoid duplicate lowering, require
+      cleanup identity where applicable and explicit measured tradeoffs,
+      apply shared completion gates and make a local-only commit.
 
 **Shared completion gates:** Each three-step batch gets its own local commit,
 with no push and no unrelated worktree changes included. Reuse existing

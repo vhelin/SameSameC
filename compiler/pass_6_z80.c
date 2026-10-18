@@ -3983,7 +3983,8 @@ static int _generate_asm_array_read_z80(struct tac *t, FILE *file_out, struct tr
                         t->result_var_type_promoted == VARIABLE_TYPE_UINT16;
 
   base_in_hl = base_in_hl == YES || (g_allocator_enabled == YES && g_allocator_force_all_spill == NO &&
-               base_materialized == NO && var_type == VARIABLE_TYPE_UINT8 &&
+               base_materialized == NO && (var_type == VARIABLE_TYPE_UINT8 ||
+                 (arg2_is_zero == NO && (var_type == VARIABLE_TYPE_INT16 || var_type == VARIABLE_TYPE_UINT16))) &&
                (arg1_location.kind == LOC_PHY_HL || base_memory_pointer_load == YES));
   if (base_materialized == NO && _materialize_array_base(t, &arg1_location, base_memory_pointer_load,
       arg2_is_zero, base_in_hl, function_node, file_out) == FAILED)
@@ -4000,8 +4001,10 @@ static int _generate_asm_array_read_z80(struct tac *t, FILE *file_out, struct tr
       _add_bc_to_iy(file_out);
 
     if (var_type == VARIABLE_TYPE_INT16 || var_type == VARIABLE_TYPE_UINT16) {
-      /* the array has 16-bit items -> add bc -> iy twice! */
-      _add_bc_to_iy(file_out);
+      if (base_in_hl == YES)
+        _add_bc_to_hl(file_out);
+      else
+        _add_bc_to_iy(file_out);
     }
   }
 
@@ -4016,8 +4019,16 @@ static int _generate_asm_array_read_z80(struct tac *t, FILE *file_out, struct tr
   else {
     if (var_type == VARIABLE_TYPE_INT16 || var_type == VARIABLE_TYPE_UINT16) {
       /* 16-bit */
-      _load_from_iy_to_l(0, file_out);
-      _load_from_iy_to_h(1, file_out);
+      if (base_in_hl == YES) {
+        fprintf(file_out, "      LD  A,(HL)\n");
+        _inc_hl(file_out);
+        fprintf(file_out, "      LD  H,(HL)\n");
+        fprintf(file_out, "      LD  L,A\n");
+      }
+      else {
+        _load_from_iy_to_l(0, file_out);
+        _load_from_iy_to_h(1, file_out);
+      }
     }
     else {
       /* 8-bit */
