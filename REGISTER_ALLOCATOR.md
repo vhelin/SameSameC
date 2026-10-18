@@ -13295,6 +13295,87 @@ no speculative SM83/6502 abstractions.
   opcode/golden proofs and qualification logs are retained under
   `/tmp/z80-patterns-1`; emulator 2.3.0 remains pinned.
 
+### Profile-Guided Z80 Instruction Selection: Constant Word Shifts
+
+Use `9ed0876` as the frozen control, rather than resuming optional allocator
+micro-batches. The same 25-routine, 740-case/mode profile attributes
+**7,772,555 of 113,788,617 RA cycles (6.83%)** to constant word shifts.
+Left shifts by three and right shifts by four/eight dominate; variable
+shifts account for only 568,243 cycles and are not changed.
+
+- Consolidate the two existing word-shift helpers into `_shift_hl_by_bc`.
+  For resolved constant counts, use `ADD HL,HL`, byte transfers for shifts
+  of eight or more, and `SRL L` once the high byte is known zero. Unroll only
+  while the entire kernel fits the original **8-byte left / 11-byte right**
+  loop; use a bounded `DJNZ` loop otherwise. Omit the now-unused constant
+  `LD BC,count`. Every selected kernel fits its old budget, and every
+  complete constant-shift sequence saves at least that three-byte load.
+- Preserve the old low-16-bit count representation: zero is a no-op and
+  normalized counts of 16 or more produce zero. Keep existing logical
+  right-shift behavior, including signed-word inputs, and existing byte
+  promotion/sign extension. Variable-count assembly, byte-shift lowering,
+  multiplication/division/modulo, frame protection, conservative clobbers
+  and allocation policy are unchanged. This is common Z80 code generation
+  in every mode; the allocator remains opt-in. Keep instruction selection
+  target-local rather than introducing speculative SM83/6502 machinery.
+- Remove the duplicated caller assembly explanations too. The production
+  change is **46 added / 55 removed lines, one fewer function**, with no new
+  production helper. The same-flags GCC host executable grows from 854,510
+  to 855,022 bytes (+512); smaller source does not imply a smaller host EXE.
+- Full `RA_CASES=512` qualification reduces the existing 25-routine RA
+  aggregate from **1,597,754,186 to 1,518,743,199 cycles (-4.95%)**.
+  Thirteen real routines and 42 generated entries improve; none regresses.
+  Whole-routine reductions include the converter **22.95%** in both
+  projects, actor **14.24%**, tile **7.81%**, stencil **3.69%**, sort **3.56%**
+  and record **3.30%**. Bank display routines improve **2.65%, 12.13% and
+  4.88%**. These are emulated execution-corpus measurements, not whole-game
+  or hardware speedups.
+
+| Existing RA project | Used ROM before -> after | Static register-copy sites | Frame sizes / frame and stack traffic |
+| --- | --- | --- | --- |
+| calculations-1 | 22,078 -> 22,015 (-63) | -6 | unchanged |
+| calculations-2 | 40,237 -> 39,692 (-545) | -59 | unchanged |
+
+- The same 63/545-byte savings apply in default, explicit `-no-ra` and
+  forced-spill modes. No measured function/image grows; no cycle or
+  instruction count regresses. All execution metrics other than instructions,
+  cycles and register copies match the control; dynamic copies decrease.
+- Add **38 generated cases** in the existing literal cohort: left/right
+  counts 0-17, signed/full-word boundaries, computed/retained inputs and two
+  variable-count controls covering counts through 256. Check shifts with
+  independent multiplication/division oracles, not JavaScript's masked shift
+  operators. Reuse the existing 16-bit shift-count fixture for eight new
+  byte blocks, including signed-byte widening and the full-width count 256.
+  Refresh **17 existing golden blocks in seven fixtures, removing 137
+  expected bytes**, without changing their executable SSC. Add no test file.
+- Exhaustively execute **36 actual old/new kernels over all 65,536 word
+  inputs: 4,718,592 executions pass**, including zero-count no-op kernels.
+  Verify exact byte budgets, result, preserved DE/IX/IY/SP, forbidden
+  writes/ports and non-regressing cycles. Another **23,040 whole-function
+  executions** pass, including all signed-byte values. Replace only inline
+  byte-marker data with same-size NOPs for whole-function execution;
+  kernel/golden checks use unmodified code. The old compiler passes both
+  existing variable-count tags and rejects all eight new constant tags.
+- Fresh strict GCC O3 (`-ansi -pedantic -Wall -Werror`), native Release and
+  native ASan compiler/verifier gates pass. Each runs all six cohorts:
+  **539 generated entries and 25 real routines, 287,268 cases per mode**
+  (275,968 generated + 11,300 real), in default/all-spill/RA modes. Both
+  full standard suites pass sequentially, **175 tests each**, with source
+  and staged compiler/linker hashes unchanged.
+- Release and ASan each match GCC's **80 ROMs, 30 reports and 13,138 selected
+  decisions**. Baseline/final comparison proves 86 identical SSC sources,
+  unchanged decisions, and **610 approved constant replacements among
+  735 word-shift kernels in 80 assembly files**. All other assembly,
+  including variable shifts, is unchanged. All 48 final traced/quiet
+  assembly pairs, 14 exact display rows and 217 ASan logs pass; compiler
+  and verifier sanitizer imports are verified. Preserve unrelated inputs
+  and both existing user ROMs. Artifacts under `/tmp/z80-patterns-2` retain
+  profiles, controls, exhaustive/opcode/golden proofs and qualification logs.
+  Emulator 2.3.0 remains pinned. ASan uses the Release linker with leak
+  detection disabled; ASan linker execution, other sanitizers, exhaustive
+  whole-program paths and mapper/full-boot/rendering/hardware timing remain
+  unqualified. Banked kernels use fixed mapping.
+
 ### Deferred Optional Batch 397-399: Attribute Remaining BC-Base Word Reads
 
 These items are not the next implementation obligation. Resume only if new
@@ -13319,6 +13400,8 @@ ROMs and allocation decisions. Except for the isolated, independently verified
 baseline semantic corrections in 316-318 and the user-approved `6be036d`
 prerequisite to 364-366, keep default/`-no-ra` compatibility against the
 semantically corrected baseline.
+These allocator-only compatibility gates do not prohibit the separately
+profiled and qualified common Z80 instruction-selection improvements above.
 Keep full-width and partial-register safety, immutable verifier failure cases,
 and atomic mutation rejection/rollback. Run focused checks after each edit and
 both full suites plus available sanitizer/execution gates before closing a

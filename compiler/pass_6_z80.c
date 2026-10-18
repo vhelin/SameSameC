@@ -1313,34 +1313,59 @@ static void _sign_extend_c_to_bc_preserving_a(FILE *file_out) {
 }
 
 
-static void _shift_left_hl_by_bc(FILE *file_out) {
+static void _shift_hl_by_bc(const struct z80_location *location, int op, FILE *file_out) {
 
-  fprintf(file_out, "      ; shift left HL by BC\n");
+  int count, bytes, loop, byte_shift = NO;
+
+  fprintf(file_out, "      ; shift %s HL by BC\n", op == TAC_OP_SHIFT_LEFT ? "left" : "right");
+
+  if (location->kind == LOC_CONST) {
+    count = location->value & 0xffff;
+    if (count >= 16) {
+      _load_value_to_hl(0, file_out);
+      return;
+    }
+    if (count >= 8) {
+      fprintf(file_out, "      LD  %c,%c\n", op == TAC_OP_SHIFT_LEFT ? 'H' : 'L', op == TAC_OP_SHIFT_LEFT ? 'L' : 'H');
+      fprintf(file_out, "      LD  %c,0\n", op == TAC_OP_SHIFT_LEFT ? 'L' : 'H');
+      count -= 8;
+      byte_shift = YES;
+    }
+
+    /* Unroll only while the whole kernel fits the original 8/11-byte loop. */
+    bytes = count * (op == TAC_OP_SHIFT_LEFT ? 1 : byte_shift == YES ? 2 : 4) + (byte_shift == YES ? 3 : 0);
+    loop = bytes > (op == TAC_OP_SHIFT_LEFT ? 8 : 11);
+    if (loop) {
+      _load_value_to_b(count, file_out);
+      _add_label("-", file_out, YES);
+      count = 1;
+    }
+    for (; count > 0; count--) {
+      if (op == TAC_OP_SHIFT_LEFT)
+        fprintf(file_out, "      ADD HL,HL\n");
+      else if (byte_shift == YES)
+        fprintf(file_out, "      SRL L\n");
+      else {
+        fprintf(file_out, "      SRL H\n");
+        fprintf(file_out, "      RR  L\n");
+      }
+    }
+    if (loop)
+      fprintf(file_out, "      DJNZ -\n");
+    return;
+  }
 
   _add_label("-", file_out, YES);
 
   fprintf(file_out, "      LD  A,B\n");
   fprintf(file_out, "      OR  A,C\n");
   fprintf(file_out, "      JR  Z,+\n");
-  fprintf(file_out, "      ADD HL,HL\n");
-  fprintf(file_out, "      DEC BC\n");
-  fprintf(file_out, "      JR  -\n");
-
-  _add_label("+", file_out, YES);
-}
-
-
-static void _shift_right_hl_by_bc(FILE *file_out) {
-
-  fprintf(file_out, "      ; shift right HL by BC\n");
-
-  _add_label("-", file_out, YES);
-
-  fprintf(file_out, "      LD  A,B\n");
-  fprintf(file_out, "      OR  A,C\n");
-  fprintf(file_out, "      JR  Z,+\n");
-  fprintf(file_out, "      SRL H\n");
-  fprintf(file_out, "      RR  L\n");
+  if (op == TAC_OP_SHIFT_LEFT)
+    fprintf(file_out, "      ADD HL,HL\n");
+  else {
+    fprintf(file_out, "      SRL H\n");
+    fprintf(file_out, "      RR  L\n");
+  }
   fprintf(file_out, "      DEC BC\n");
   fprintf(file_out, "      JR  -\n");
 
@@ -4640,11 +4665,7 @@ static int _aaa_generate_asm_shift_left_right_z80_16bit(struct tac *t, FILE *fil
     else
       _load_value_to_b(0, file_out);
   }
-  else if (arg2_location.kind == LOC_CONST) {
-    /* 16-bit */
-    _load_value_to_bc(arg2_location.value, file_out);
-  }
-  else {
+  else if (arg2_location.kind != LOC_CONST) {
     if (t->arg2_var_type != VARIABLE_TYPE_INT16 && t->arg2_var_type != VARIABLE_TYPE_UINT16 &&
         !((t->arg2_var_type == VARIABLE_TYPE_INT8 || t->arg2_var_type == VARIABLE_TYPE_UINT8) &&
         (t->arg2_var_type_promoted == VARIABLE_TYPE_INT16 || t->arg2_var_type_promoted == VARIABLE_TYPE_UINT16))) {
@@ -4660,37 +4681,7 @@ static int _aaa_generate_asm_shift_left_right_z80_16bit(struct tac *t, FILE *fil
   /* hl <</>> bc */
   /******************************************************************************************************/
 
-  if (op == TAC_OP_SHIFT_LEFT) {
-    /*
-      -
-      ld a, b
-      or a, c
-      jr z, +
-
-      add hl,hl
-      dec bc
-      jr -
-      +
-    */
-
-    _shift_left_hl_by_bc(file_out);
-  }
-  else if (op == TAC_OP_SHIFT_RIGHT) {
-    /*
-      -
-      ld a, b
-      or a, c
-      jr z, +
-
-      srl h
-      rr l
-      dec bc
-      jr -
-      +
-    */
-
-    _shift_right_hl_by_bc(file_out);
-  }
+  _shift_hl_by_bc(&arg2_location, op, file_out);
 
   /******************************************************************************************************/
   /* target address -> ix */
