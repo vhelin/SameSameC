@@ -1,15 +1,19 @@
-# Register Allocator Implementation Plan
+# Register Allocator Implementation Record
 
-This document is the actionable, checkbox-driven plan for adding a real,
-target-aware Z80 register allocator to SameSameC. Treat the checked boxes in
-this document as the current implementation record on top of the existing
-virtual-temp pipeline.
+**Status: the bounded Z80 register allocator v1 is complete and remains opt-in
+via `-ra`. No mandatory implementation batches remain.** See
+[Completed Z80 Scope And Optional Future Work](#completed-z80-scope-and-optional-future-work)
+for current guarantees, limitations, qualification and maintenance duties.
+
+The checked phases below record implementation on top of the virtual-temp
+pipeline. Unchecked optimization and future-target items are optional extensions,
+not prerequisites for completing this Z80 scope.
 
 ---
 
-## 0. Ground Truth: What Exists Today
+## 0. Original Baseline: Before Allocator Implementation
 
-Read-only context. Not tasks. Do not check these boxes.
+Historical starting context, not the current implementation state or tasks.
 
 - `compiler/pass_4.c` generates monotonically increasing temps via `g_temp_r`
   during IL lowering.
@@ -31,8 +35,7 @@ Read-only context. Not tasks. Do not check these boxes.
   backend builds a custom frame with a `PUSH return_label / JP target`
   sequence. This is a hard register barrier.
 - Inline asm (`compiler/inline_asm_z80.c`) reads/writes variables as `(@var)`;
-      Phase 41 routes those operands through `z80_location` as stack/global
-      locations materialized through IX. It is still a hard register barrier.
+  these accesses require memory-backed addressing and register-clobber barriers.
 - Allocator regression tests are normal SMS makefile tests under
       `tests/z80/sms/allocator_*`. Each migrated test uses `byte_tester -s main.ssc`
       against tagged bytes in `linked.sms`; the temporary
@@ -13496,350 +13499,139 @@ not marked complete because supporting infrastructure was added.
 
 ---
 
-## Remaining Work To 100%
+## Completed Z80 Scope And Optional Future Work
 
-The current completion target is the bounded first working Z80 allocator, not
-every possible optimization or future target. The allocator must keep `-ra` as
-the opt-in feature flag. Do not remove, rename, or make the register allocator
-unconditional while finishing these items. A 6502 backend and optional quality
-improvements are explicitly postponed and are not part of this completion
-target. Phases 265-267 complete the mandatory graph-wide atomic reload work and
-final qualification. No mandatory implementation batches remain for this
-bounded scope (estimated remaining batches: 0).
+**The bounded first working Z80 register allocator v1 is complete. Mandatory
+implementation batches remaining: 0.** Phases 265-267 completed graph-wide atomic
+reload work and the original qualification gate; later checked phases extend
+that implementation. Completion does not mean optimal code generation, general
+retention across every control-flow shape, or support for another CPU.
 
-The unchecked items below are optional architecture extraction, optimization
-quality, broader backend coverage, and future-target work. They are not defects
-in the completed bounded Z80 allocator.
+Keep `-ra` opt-in, `-no-ra` explicit, and `-ra-all-spill` as the conservative
+validation mode. This close-out does not change allocator behavior, instruction
+selection, CLI defaults, production code or test inputs.
 
-- [ ] Extract target-independent basic-block construction, liveness, next-use,
-      live-interval, linear-scan, spill/split, and join-reconciliation logic
-      from the current Z80-specific implementation into a reusable allocator
-      core without changing `-ra` behavior. Phase 97 extracts generic
-      liveness-set indexing and backward fixed-point solving. Phase 98
-      extracts normalized basic-block partitioning and CFG construction.
-      Phase 99 extracts callback-driven next-use traversal. Phase 100 extracts
-      aggregate live-interval metadata construction. Phase 101 extracts
-      active-slot conflict arbitration. Phase 102 extracts active-slot state,
-      reset, expiration, and assignment. Phase 103 moves physical-register to
-      active-slot mapping and slot cardinality behind the target policy. Phase
-      104 extracts callback-driven per-definition candidate discovery and
-      read-multiplicity classification. Phase 105 extracts temp retention and
-      displacement state transitions. Phase 106 extracts split-preservation
-      action planning. Phase 107 extracts callback-driven first-read reload-site
-      discovery. Phase 108 extracts post-target-selection reload-action
-      planning. Phase 109 extracts canonical reload TAC-mutation planning;
-      Phase 110 extracts canonical spill TAC-mutation planning. Concrete plan
-      application becomes callback-driven in Phase 111. Phase 112 extracts
-      bounded reload-chain discovery while current integration remains
-      capacity one. Phase 113 applies complete block-local chains with per-site
-      target approval and callback mutation. Phase 114 extracts canonical
-      reload-emission metadata and validation while concrete target instruction
-      selection remains local. Phase 115 extracts matching spill-emission
-      metadata and validation. Phase 116 extracts and validates the reusable
-      target-policy contract. Phase 117 extracts opaque physical-register unit
-      overlap decisions. Phase 118 allocates active-slot storage from the policy
-      cardinality. Phase 119 resolves the current five Z80 scheduling roles
-      through policy-owned indexes instead of fixed positions. Phase 120 moves
-      ordered primary/alternate candidate register sets behind target callbacks.
-      Phase 121 extracts ordered candidate arbitration while policy fact
-      collection and fallback triggers remain local. Phase 122 extracts lazy,
-      callback-driven candidate fact collection while fallback triggers remain
-      local. Phase 123 extracts fallback-trigger precedence while target
-      capabilities remain local. Phase 124 moves fallback capabilities behind
-      the target policy and suppresses unavailable alternates in core. Phase
-      125 extracts primary legality, path, and active fact evaluation. Phase
-      126 moves equal-next-use target preference behind policy while keeping
-      generic linear-scan arbitration in core. Phases 127-129 extract interval
-      boundary analysis, callback-driven transparent-range scanning, and full
-      candidate-path arbitration. Phases 130-132 consolidate primary fallback
-      decisions, active-slot transition planning, and ordered callback-driven
-      transition application. Phases 133-135 extract candidate range analysis,
-      ordered qualification, and composed competing-candidate probing. Broader
-      Phase 136 composes ordered alternate evaluation and arbitration into one
-      transaction. Phase 137 extracts primary-plan dispatch while concrete
-      alternate sets remain target-owned. Phase 138 composes equal-next-use
-      preference, linear-scan arbitration, and active-slot transition planning
-      after active-temp replaceability is known. Phase 139 extracts that
-      replaceability decision behind an opaque metadata callback. Phase 140
-      composes slot-transition application and split-spill mutation application
-      behind opaque callbacks. Phase 141 composes primary decision, fallback
-      dispatch, and split-action planning. Phase 142 composes spill-boundary
-      gating and lazy split-preservation capability resolution. Phase 143
-      composes preparation and finalization into one ordered selection
-      transaction. Phase 144 composes policy-owned active-slot resolution and
-      candidate transition planning. Phase 145 composes that preparation with
-      callback-driven transition and split-spill mutation application while
-      preserving target diagnostics through a preparation observer. Phase 146
-      composes reload-action planning, canonical mutation preparation, and
-      callback application. Phase 147 composes bounded reload discovery,
-      per-site target selection, and mutation execution. Phase 148 extracts
-      checked parallel-buffer storage planning for those reload chains. Phase
-      149 extracts checked basic-block and CFG workspace planning. Phase 150
-      adds checked instruction-descriptor sizing to that shared control-flow
-      plan. Phase 151 extracts checked four-buffer liveness workspace planning.
-      Phase 152 makes the generic liveness solver validate and consume that
-      storage descriptor rather than recomputing its layout. Broader operand/
-      register support and join reconciliation still remain. Phase 153 extracts
-      callback-driven per-block liveness use/def construction while keeping
-      target TAC operand interpretation in pass 5. Phase 154 extracts
-      stack-only join discovery, live-in traversal, and fail-closed retained
-      state rejection while keeping target temp-state classification local.
-      Phase 155 replaces public unchecked liveness indexing with
-      descriptor-validated block/temp offset resolution. Phase 156 moves join
-      stack-versus-retained classification onto the generic temp-state
-      invariant while preserving stack-only policy enforcement. Phase 157
-      extracts the resulting join action decision while retaining rejection of
-      planned predecessor spills until cross-block mutation is implemented.
-      Phase 158 extracts deterministic, validated join predecessor collection;
-      Phase 159 maps those predecessors to validated terminal anchors with
-      explicit before/after placement. Phase 160 adds atomic target approval for
-      every structural-join site. Phase 161 prepares canonical descriptor-only
-      mutations for approved sites without applying them. Phase 162 adds
-      callback-driven validation and application, currently exercising empty
-      plans without target mutation. Phase 163 composes approved sites with
-      validated target spill offset/width metadata. Phase 164 validates and
-      dispatches that complete metadata through a callback, while current
-      production plans exercise canonical empty skips. Phase 165 atomically
-      orders approved sites by descending TAC anchor so future insertion cannot
-      invalidate pending anchors. Phase 166 adds ownership-safe indexed TAC
-      insertion with canonical empty slots and capacity growth. Phase 167 adds
-      validated register-spill marker population and callback-driven pass-5
-      insertion while current production remains empty. Phase 168 adds
-      fail-closed concrete Z80 emission for `A`, `B`, `C`, `HL`, and `BC`.
-      Phase 169 validates and stably orders the complete function-wide join,
-      temp, and predecessor-site emission batch, including `after`-before-
-      `before` precedence at equal anchors. Phase 170 validates the applied TAC
-      count, discards stale analysis storage, reconstructs CFG/basic blocks,
-      and recomputes liveness before later consumers. Phase 171 adds a
-      fail-closed all-path eligibility transaction and read-only Z80 preflight.
-      Phase 172 resolves definitions through validated CFG predecessors and
-      carries all-path transparency to the join. Phase 173 atomically plans the
-      distinct producer and consumer TAC assignments and rejects incompatible
-      existing assignments. Phase 174 plans a conservative cross-block active-
-      slot reservation against target-supplied overlap facts and current
-      retained intervals. Phase 175 converts that span into the deterministic
-      union of block-local reservations on valid producer-to-consumer CFG
-      routes. Phase 176 validates and dispatches that plan through ordered
-      callbacks with exact partial-failure reporting; production currently
-      applies it only to isolated observation state. Atomic allocator-state
-      application, block-exit spill coordination, and schedule application
-      remain prerequisites for narrow retained-live-in enablement.
-- [ ] Define a target-policy interface for physical registers and overlapping
-      units, candidate legality, instruction clobbers, calling conventions,
-      spill/reload constraints, and target location materialization. Phase 68
-      introduces the interface and migrates physical-register unit/overlap
-      lookup, Phase 69 migrates candidate legality, and Phase 70 migrates the
-      per-TAC clobber descriptor lookup. Phase 71 migrates per-TAC physical
-      register transparency. Phase 72 migrates the primary physical register
-      for call results, and Phase 73 migrates call/return hard-boundary spill
-      classification. Phase 74 migrates the first narrow split spill/reload
-      constraints. Phase 75 migrates stack-return slot reservation, and Phase
-      76 migrates contiguous stack-argument placement. Phase 77 migrates call
-      argument transport classification while preserving concrete Z80
-      emission. Phase 78 migrates concrete return-slot byte offsets for both
-      callee stores and caller loads. Phase 79 migrates the fixed call-frame
-      prefix shared by layout, caller setup/restoration, and callee return.
-      Phase 80 migrates logical source/destination byte offsets and access
-      widths for concrete call arguments while preserving Z80 instruction
-      selection. Phase 81 migrates semantic-source to target-location-kind
-      classification for constants, globals, stack storage, and all current
-      physical registers. Phase 82 migrates address strategy selection for
-      the shared IX/IY/HL helpers. Phase 83 migrates instruction-equivalent
-      `GET_ADDRESS_ARRAY` index and 16-bit `MUL`/`DIV`/`MOD` arg2 IX paths.
-      Phase 84 migrates instruction-distinct 8-bit arithmetic arg2 paths with
-      an explicit uncached IX target. Phase 85 migrates function-call
-      old-frame IY cache strategy. Phase 86 migrates memory-backed get-address
-      base HL construction. Phase 87 migrates function-call result-store IY
-      construction. Phase 88 migrates global function-call argument-source IY
-      construction while preserving old-frame cache invalidation. Phase 89
-      closes the array-initializer target HL boundary with contextual policy
-      diagnostics and fail-closed helper propagation. Phase 90 adds contextual
-      IY policy ownership for memory-backed array read/write bases while
-      preserving retained-base bypasses. Phase 91 adds contextual IX policy
-      ownership for inline-asm variable reads/writes while preserving the hard
-      barrier. Phase 92 adds contextual IX policy ownership for memory-backed
-      Z80 input/output port operands while preserving constant and retained
-      bypasses. Phase 93 adds contextual IX policy ownership for 8-bit and
-      16-bit complement memory sources/results while preserving all retained
-      result bypasses. Phase 94 adds contextual IX/IY policy ownership for
-      assignment memory results/sources while preserving constant and retained
-      bypasses. Phase 95 adds contextual IX policy ownership for memory-backed
-      8-bit and 16-bit shift results while preserving retained physical-result
-      bypasses. Phase 96 adds contextual IX policy ownership for memory-backed
-      callee return-value sources and permits terminal `RETURN_VALUE` operands
-      to use target-approved physical registers. Phase 103 adds active-slot
-      count, index, and display-name ownership for all five current Z80
-      registers. Phase 105 extracts the target-independent temp storage-state
-      transitions for register-only retention, spill-backed retention, and
-      displacement. Phase 106 extracts the target-independent split action
-      decision after final register selection; reload-site discovery, concrete
-      spill/reload insertion, and join reconciliation remain. Phase 107 extracts
-      callback-driven first-read reload-site discovery while target reload
-      selection remains local. Phase 108 extracts the resulting target-independent
-      reload-action decision while TAC marking and concrete emission remain
-      local. Phase 109 extracts the reload TAC-mutation plan while concrete TAC
-      application and backend emission remain local. Phase 110 extracts the
-      matching spill TAC-mutation plan; concrete TAC application and backend
-      emission remain local. Phase 111 moves concrete TAC writes behind generic
-      core dispatch and TAC-specific callbacks; backend emission remains local.
-      Phase 112 extracts bounded multi-read reload discovery. Phase 113 applies
-      complete block-local chains while preserving per-site Z80 target approval
-      and concrete emission. Phase 114 extracts the canonical reload-emission
-      plan while preserving Z80 address materialization and instruction
-      selection. Phase 115 extracts the symmetric canonical spill-emission
-      plan while preserving Z80 address materialization and instruction
-      selection. Phase 116 moves the complete policy contract into the core
-      header and validates every hook. Phases 117-120 extract physical-unit
-      overlap, policy-sized active storage, policy-owned slot-role mapping, and
-      ordered candidate-register sets. Phase 124 adds policy-owned candidate
-      fallback capabilities. Phase 126 adds policy-owned equal-next-use
-      preference. Other specialized address sequences, concrete instruction
-      selection, and other hooks remain.
-- [ ] Move the current `A`/`HL`/`BC`/`B`/`C` rules behind a Z80 policy and keep
-      all existing exact-ROM and debug-trace tests unchanged as the extraction
-      compatibility gate.
-- [ ] Postponed beyond the current Z80 completion target: add a separate 6502
-      policy/backend using `A`/`X`/`Y`, 6502 addressing modes and clobbers,
-      memory-backed or target-defined 16-bit values, and a 6502-specific
-      call/spill contract. Reuse the allocator core rather than cloning the
-      Z80 allocator when that future work begins.
-- [x] Add native SMS coverage for retained computed `GET_ADDRESS_ARRAY arg1`
-      base temps, or document the parser/lowering limitation if SameSameC
-      cannot express that shape. Phase 37 covers constant-index pointer-base
-      temps retained in `HL`; Phase 38 covers computed-index pointer bases by
-      retaining the base in `BC` while the computed index remains in `HL`.
-- [ ] Audit remaining pointer/indirect-address paths beyond the migrated
-      `ARRAY_WRITE`, `ARRAY_READ`, `GET_ADDRESS_ARRAY`, and `__z80_in`/`__z80_out`
-      port cases so pointer bases, dereferences, and pointer writes can consume
-      retained values safely wherever the backend can schedule them. Phase 39
-      covers the known 16-bit computed-index `ARRAY_READ` pointer-base gap, and
-      Phase 40 covers the matching `ARRAY_WRITE` pointer-base gap; less common
-      indirect forms still need review. Phase 41 routes inline-asm `(@var)`
-      variable operands through `z80_location`, and Phase 42 routes local array
-      initializer bulk-copy targets through `z80_location`; Phase 47 adds a
-      combined pointer-to-pointer and pointer-array smoke regression; Phase 48
-      adds debug and coverage for struct-array field helper addresses; Phase
-      49 adds debug and coverage for global struct-pointer roots plus nested
-      pointer-member dereferences; Phase 50 extends that to a two-hop global
-      struct-pointer chain with depth/member indirect debug; Phase 51 covers
-      struct-pointer field increment/decrement helpers and pins their safe
-      multi-read address spill; Phase 52 adds the first targeted split-spill
-      insertion for retained `HL` array-read bases; Phase 53 explicitly reloads
-      the later zero-index write base into `BC`; Phase 64 covers computed-index
-      reads and writes through arrays of struct pointers; Phase 65 covers byte
-      increment and 16-bit decrement helpers through those indexed pointers,
-      including `HL` split preservation and `BC` write-base reload; Phase 66
-      covers matching union-pointer arrays across ordinary reads/writes and
-      helper updates. Phase 92 closes contextual policy ownership for
-      memory-backed `__z80_in` and `__z80_out` port operands while retaining
-      the existing physical-register paths.
-      Pointer-to-struct function arguments are not accepted by the parser and
-      typedefs are not supported. These phases do not yet prove every other
-      supported complex indexed dereference, pointer-write, or helper-only
-      address path can safely consume retained registers.
-- [ ] Replace stack-only join reconciliation with cross-block physical
-      register retention, including loop back-edges and branch joins. Phase 171
-      establishes the generic all-path eligibility contract and an observe-only
-      Z80 fact preflight. Phase 172 adds reaching-definition discovery through
-      dominating blocks with ambiguity and path-clobber handling. Phase 173
-      plans and conflict-checks the required producer/consumer assignments
-      without applying them. Phase 174 plans a conservative active-slot
-      reservation across the producer-to-consumer span. Phase 175 converts it
-      into block-local reservations along the exact contributing CFG paths.
-      Phase 176 dispatches those reservations through validated callbacks in
-      observe-only production mode. Phases 177-180 add atomic reservation-state
-      commit, function-scan ownership, candidate arbitration, and narrowly
-      scoped block-exit spill exemptions. Phase 181 atomically applies complete
-      producer/consumer assignment schedules. Phase 182 enables the first
-      source-reachable retained branch join in `C`. Phases 183-194 establish
-      loop topology, candidate, definition, fact, schedule, cyclic reservation,
-      composite plan, and atomic state-plus-assignment application contracts,
-      then wire the complete path into production behind fail-closed gates.
-      Phases 195-200 classify the concrete representation gap, discover and
-      select a complete stack-backed loop value, and handle structured loop
-      exits conservatively. Phases 201-202 plan a collision-free promoted temp
-      and its complete ordered operand rewrite schedule. Phase 203 adds the
-      atomic promotion application transaction boundary. Phase 204 makes the
-      post-mutation rebuild decision aware of inserted TAC, rewritten operands,
-      and added temp metadata. Phase 205 adds atomic publication and rollback
-      for normalized promoted-temp and operand storage. Phases 206-219 add the
-      production target adapter, atomic operand mutation, CFG/liveness
-      reconstruction, loop-retention activation, exit-path reservation, and
-      spill coordination. Phases 220-225 classify loop flow and structured
-      exits and make post-mutation fixed-point control checked,
-      target-independent, and production-visible. Phases 226-228 select a
-      unique defining latch, collect roles across every back edge, and retain
-      values through transparent continue paths. Phases 229-231 collect all
-      defining latches, generalize retention to multiple producers, and enable
-      multiple updating latches in production. Phases 232-234 validate complete
-      assignment register facts, select a common target-policy candidate, and
-      activate that arbitration in production. Phases 235-237 evaluate all
-      candidate registers across the complete loop reservation ranges, compose
-      those path facts with assignment compatibility, and activate fail-closed
-      path-aware arbitration in production. Phases 238-240 add checked
-      candidate-exclusion state, exclusion-aware common-register selection,
-      and bounded production retry after candidate-specific reservation
-      conflicts. Phases 241-243 enable assignment-produced 8-bit loop values in
-      `B`, close physical-`B` assignment materialization, and pin the complete
-      source-to-ROM path. Phases 250-252 retain single shift-produced 8-bit loop
-      values in `C` while proving multi-value shift conflicts remain stack-
-      backed. Broader producer forms and general cross-block split/reload
-      scheduling remain.
-- [ ] Add spill/reload insertion for longer live ranges instead of relying
-      only on single-use block-local retention. Phase 52 handles the first
-      narrow case by preserving a retained `HL` array-read base into its
-      existing spill slot for later reads, and Phase 53 explicitly reloads a
-      later zero-index `ARRAY_WRITE result` base into `BC`. Phase 67 covers a
-      source-reachable non-zero-index read-modify-write conflict by preferring
-      the final value in `A` and spilling its equally distant index. General
-      interval splitting, reload placement for shared non-zero-index bases and
-      other operand positions/registers, and cross-block ranges remain. Phase
-      74 moves the existing Phase 52/53 preservation and reload constraints
-      behind fail-closed target-policy hooks without broadening those cases.
-      Phase 112 discovers complete bounded reload chains, and Phase 113 applies
-      every block-local site approved by those existing narrow target hooks.
-- [ ] Broaden the physical register model beyond the currently migrated
-      `A`/`HL` cases, narrow `BC` roles, and Phase 43-46's first
-      clobber-aware 8-bit `C`/`B` arithmetic and index paths. Phase 54 adds
-      conditional-comparison `arg1` retention in `C`, and Phase 55 completes
-      its coverage across all six comparison operators. Comparison `arg2` in
-      `C` lacks a source-reachable lowering case, while `B` comparison operands
-      and broader `B`/`C` emitter roles remain.
-      Phase 56 adds unary `COMPLEMENT` as the first non-binary-arithmetic
-      producer for `B`/`C`; Phase 57 adds source-reachable 8-bit normal and
-      `__z80_in` array-read results in `C`; Phase 59 adds source-reachable
-      8-bit function-call results in `C`; Phase 60 carries those results through
-      spilled constant boolean initialization into equality comparison; Phase
-      61 adds source-reachable 8-bit `MUL`, `DIV`, and `MOD` results in `C`;
-      Phase 62 adds source-reachable 8-bit left- and right-shift results in `C`;
-      Phase 63 adds computed left- and right-shift values in `C` across later
-      count computation. Phase 96 adds terminal 8-bit `A` and 16-bit `HL`
-      producer-to-return forwarding. Phases 241-243 add assignment-produced
-      8-bit loop retention and complete assignment destinations in `B`.
-      Phases 244-246 add source-reachable 8-bit array-read results in `B` and
-      close their concrete backend emission. Phases 247-249 add source-reachable
-      8-bit shift results in `B` and close their concrete no-store backend path.
-      Phases 250-252 add cross-block left/right shift loop retention in `C` and
-      pin unsafe multi-value shift fallback. Call and complex-arithmetic results
-      in `B`, broader nonconstant assignment transparency, other loads, and
-      other producer classes remain.
-      Phase 67 adds a same-consumer tie-break that retains an 8-bit
-      `ARRAY_WRITE arg1` value in `A` instead of its equally distant index.
-- [x] Decide the current inline-asm contract: keep it as a hard clobber barrier
-      and force `(@var)` operands through stack/global `z80_location` lookups.
-- [ ] Add explicit inline-asm operand/clobber constraints if inline asm should
-      ever consume retained registers or preserve values across asm blocks.
-- [x] Audit every backend `find_stack_offset()` use so retained temps either
-      resolve through `z80_location` or fail loudly. The only remaining direct
-      calls in `compiler/pass_6_z80.c` are now inside `_resolve_z80_location()`.
-- [ ] Keep auditing TAC rewrites and new backend helper paths so any future
-      retained temp either resolves through `z80_location` or fails loudly.
-      Phase 58 also requires these audits to distinguish semantic TAC operand
-      width from a conservatively widened reused physical container.
-- [ ] Expand SMS regression coverage for larger real pointer-heavy and
-      array-heavy programs, then keep both `./run_tests.sh` and
-      `./run_tests.sh -windows` green with `-ra` still opt-in. Phase 47 adds
-      a compact pointer-heavy smoke test; broader app-style coverage remains.
+### Completed Guarantees And Known Limits
+
+- [x] A reusable core already provides CFG/basic blocks, liveness, next-use,
+      interval and active-slot analysis, selection/planning and checked mutation
+      transactions. A Z80 policy already owns register-unit overlap, legality,
+      clobbers, call/frame contracts and location/address materialization.
+      Phases 68-176 record that extraction; it is not an unstarted prerequisite.
+- [x] The qualified Z80 roles are `A`, `HL`, `BC`, `B` and `C`, with overlapping
+      byte/pair units checked. `DE` remains the frame pointer; `IX`/`IY` remain
+      address scratch/cache registers, not additional allocatable registers.
+- [x] Bounded branch/loop retention and split preservation/reload are in
+      production, not merely observe-only plans. Phases 177-267 record activation
+      and atomic CFG reloads; later phases extend source-reachable cases.
+      Broader producers, arbitrary interval splitting and unrestricted cross-block
+      placement remain optional quality improvements.
+- [x] Pointer bases, indices, values and results resolve through `z80_location`.
+      Retention is limited by proven operand, width, overlap and clobber rules.
+      Unproven candidates remain memory-backed; invalid internal retained
+      locations or transfer schedules fail explicitly rather than inventing a
+      stack slot or accepting partial mutation.
+- [x] Calls and inline assembly retain their hard-barrier contracts. Inline-asm
+      `(@var)` operands use stack/global locations; no retained-register operand
+      or preservation contract is implied. Address-taking, aliases, tracked asm
+      references and pointer reassignment constrain promotion.
+- [x] Real-project execution coverage is no longer just Phase 47's compact smoke
+      test. The existing CI runner checks 25 routines from `calculations-1` and
+      `calculations-2`, including arrays, sorting, stencils, records, heap/RAM
+      allocation and release, game workloads and embedded-assembly workloads.
+
+Parser limitations are not allocator work: pointer-to-struct function arguments
+and typedefs remain unsupported. Qualification is finite, not a proof of every
+source program or of mapper/full-boot/rendering/hardware timing. Banked execution
+checks use fixed mapping. ASan qualification uses the Release linker with leak
+detection disabled; ASan linker execution and other sanitizers are not implied.
+
+### Pointer And Indirect Correctness Close-Out
+
+The bounded review follows source lowering in [pass_4.c](compiler/pass_4.c),
+candidate/promotion/barrier policy in [pass_5.c](compiler/pass_5.c), and concrete
+location/transfer emission in [pass_6_z80.c](compiler/pass_6_z80.c). It checks
+correctness of accepted forms and conservative fallback, not whether every
+indirect access can avoid a spill.
+
+| Surface | Checked boundary and existing coverage |
+| --- | --- |
+| Pointer/struct/union roots and nested dereferences | Lower through ordinary address, assignment and array-read/write TAC; existing pointer-array, deep-member and helper-update fixtures cover shared addresses and read-modify-write preservation. |
+| Array/address bases, indices and values | Location resolution, retained `HL`/`BC` scheduling, signed/unsigned byte extension, full-word indices, element scaling and value widths; existing index, pointer-value and BC-base/HL-index fixtures pin accepted and stack-backed paths. |
+| Split preservation/reload | Target-approved operands/registers, real spill backing and checked emission; existing split fixtures and immutable verifier rejection/rollback controls reject unsupported or partial schedules. |
+| Calls, escapes, aliases and inline assembly | Promotion restrictions and call/asm barriers; existing alias/call execution families, inline-asm operand and stack-guard fixtures cover conservative behavior. |
+| Ports, local array initialization and address scratch | Shared location/policy helpers, error propagation and frame/cache addressing; existing port, initializer and specialized-address fixtures cover these helper-only paths. |
+| Direct stack lookup | All three backend `find_stack_offset()` call sites remain inside `_resolve_z80_location()`; retained temps cannot silently fall through to a fabricated stack location. |
+
+No new source-reachable correctness defect was identified in this bounded review.
+Do not read that result as blanket authorization for unproven retention forms.
+Existing regressions and independent oracles are reused; no new production helper,
+retention endpoint or duplicate test framework is needed.
+
+Close-out validation on 2026-10-19:
+
+- Fresh strict GCC compiler/verifier builds pass with no diagnostics, using
+  `-ansi -pedantic -Wall -Werror -DNDEBUG` and `-O3`/`-O2` respectively.
+- All 38 selected pointer/address/barrier fixtures pass under GCC, native Release
+  and ASan: 114 makefile runs, with 76 exact cross-toolchain ROM comparisons.
+  Each verifier also passes traced and quiet modes with 32 immutable rejection
+  and seven immutable acceptance controls, plus the independent 10,200-endpoint
+  legality table.
+- The existing [execution runner](ci/check_register_allocator.mjs) passes pointer,
+  walk, nested, join/call, escape/rematerialization, typed-index, structural and
+  wide-frame cohorts at `RA_CASES=128`, including all 25 real routines. This is
+  16,000 generated cases (including repeated shared arithmetic controls) and
+  2,852 real cases per default/all-spill/RA mode: 18,852 per mode, 56,556 total.
+  Default/`-no-ra` and traced/quiet RA identity checks remain enabled.
+- Artifacts under `/tmp/ra-closeout-20261019` retain manifests, logs, exact ROM
+  hashes, execution summaries and the resolver-boundary proof. All production
+  sources, existing test inputs and unrelated worktree inputs remain unchanged.
+
+The latest full qualification at `8071c01` covers 547 generated entries and 25
+real routines: 291,364 cases per mode/toolchain in default/all-spill/RA modes
+under GCC, native Release and ASan compiler/verifier builds. Both full standard
+suites pass, 175 tests each. The instruction-selection results above record
+additional arithmetic proofs and exact compatibility/decision comparisons.
+This documentation-only close-out retains that full-suite evidence rather than
+claiming a new full-suite run.
+
+### Optional Extensions, Not Completion Blockers
+
+Leave these unchecked until an actual implementation is measured and qualified.
+They replace the former duplicated phase-by-phase "remaining to 100%" checklist;
+the numbered phases above retain the detailed implementation history.
+
+- [ ] Extract further target-independent logic or remaining Z80-specific hooks
+      only to remove real duplication or satisfy a concrete backend requirement.
+      Reuse the existing core and policy rather than introducing a second layer.
+- [ ] Broaden pointer/indirect retention, register roles, cross-block producers,
+      interval splitting or reload placement only for a reachable, profitable
+      workload. Existing bounded support does not establish the general case.
+- [ ] Add explicit inline-asm operand/clobber constraints only if retained values
+      must cross or participate in asm blocks; otherwise keep the hard barrier.
+- [ ] Implement separate Game Boy/SM83 and 6502 policies/backends when that work
+      starts. Account for each CPU's registers, instructions, addressing and
+      calling/spill contracts; reuse proven core pieces without assuming Z80
+      lowering or 16-bit register pairs transfer unchanged.
+- [ ] Expand real-program regression coverage when a concrete unsupported or
+      untested shape is identified. The current large-workload coverage is
+      already implemented; adding more programs is not a prerequisite to v1.
+
+### Ongoing Maintenance Duties
+
+These are continuing requirements, not finite completion checkboxes:
+
+- Audit new TAC rewrites, helpers and retention endpoints for location resolution,
+  semantic operand width versus reused physical-container width, byte/pair
+  overlap, alias/escape handling, IX cache invalidation and frame/stack safety.
+- Keep unsupported retention conservative. A demonstrated miscompilation or
+  allocator-caused rejection of otherwise supported source is a correctness bug,
+  not an optional optimization; fix it with a focused regression.
+- Preserve immutable verifier failures, atomic rejection/rollback, flags-off
+  compatibility and the opt-in contract. Apply the shared completion gates to
+  future code changes and report actual test counts.
+- Treat common Z80 instruction-selection improvements as separately profiled
+  backend work, not evidence that allocator v1 is unfinished.
 
 ---
 
@@ -13885,7 +13677,13 @@ in the completed bounded Z80 allocator.
 - **Allocator documentation drift** — treat this file, not older TODO text, as
       the source of truth while implementing allocator work.
 
-Current rollout note: a current inventory audit found 88 `tests/z80/sms/allocator*`
+### Historical Rollout Notes (Phases 36-66)
+
+The inventory, suite counts and toolchain limitations below describe those
+historical phases, not the current completion status or available toolchains.
+Use the completed-scope qualification above for current evidence.
+
+An earlier inventory audit found 88 `tests/z80/sms/allocator*`
 directories, each with a lowercase `makefile`, `main.ssc`, and
 `@BT linked.sms` byte-tester tag. `find_stack_offset()` still fails loudly if
 any retained temp reaches a stack-only emitter path. The

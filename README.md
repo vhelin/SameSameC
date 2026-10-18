@@ -21,7 +21,9 @@ Yet Another ANSI C90 Like Language Cross Compiler Targeting 8-bit CPUs. Written 
 
 # Features
 
-- Has optional (and experimental) register allocator via -ra flag!
+- Has an opt-in Z80 register allocator via `-ra` (bounded v1 complete).
+  See [REGISTER_ALLOCATOR.md](REGISTER_ALLOCATOR.md) for qualification,
+  limitations and optional extensions.
 - `continue` targets the innermost enclosing loop, including through nested switches; `do` loops test their condition before repeating. A switch without an enclosing loop cannot be continued.
 
 ## Features missing when compared with ANSI C90
@@ -60,6 +62,7 @@ Yet Another ANSI C90 Like Language Cross Compiler Targeting 8-bit CPUs. Written 
 - Reduce code bloat (pass_2.c)
 - Z80: Keep stack frame in IX and possibly IY all the time
 - Z80: Remove unnecessary stack writes/reads (i.e., temp "register" access)
+- Z80: Profile and improve common instruction patterns.
 
 ## Fix
 
@@ -67,7 +70,6 @@ Yet Another ANSI C90 Like Language Cross Compiler Targeting 8-bit CPUs. Written 
 - Check that all pointer operations work properly
 - When defining an array sometimes [] takes only an integer and not an expression
 - When defining an array of pointers to structs/unions it's possible to give too many items
-- Continue the Z80 register allocator work tracked in [REGISTER_ALLOCATOR.md](REGISTER_ALLOCATOR.md); the current implementation is feature-flagged with `-ra` and covered by SMS allocator tests.
 
 ## Add
 
