@@ -18,9 +18,9 @@
 #include "struct_item.h"
 
 
-/* define this for DEBUG */
-
+#ifdef SAMESAMEC_TRACE
 #define DEBUG_PASS_3 1
+#endif
 
 
 extern struct tree_node *g_global_nodes, *g_label_definition;
@@ -29,7 +29,11 @@ extern char *g_variable_types[9], *g_two_char_symbols[17], g_label[MAX_NAME_LENG
 extern char g_tmp[4096], g_error_message[sizeof(g_tmp) + MAX_NAME_LENGTH + 1 + 1024];
 extern double g_parsed_double;
 
-static int g_current_indentation_depth = 0, g_print_is_inside_for = NO, g_simplified_expressions = 0, g_simplify_expressions_failed = NO;
+static int g_simplified_expressions = 0, g_simplify_expressions_failed = NO;
+static void _simplify_expressions_block(struct tree_node *node);
+
+#if defined(DEBUG_PASS_3)
+static int g_current_indentation_depth = 0, g_print_is_inside_for = NO;
 static char g_current_indentation[256];
 
 
@@ -69,7 +73,6 @@ static char *_get_current_end_of_statement(void) {
 
 
 static void _print_block(struct tree_node *node);
-static void _simplify_expressions_block(struct tree_node *node);
 
 
 void print_expression(struct tree_node *node) {
@@ -694,8 +697,6 @@ static void _print_global_node(struct tree_node *node) {
 }
 
 
-#if defined(DEBUG_PASS_3)
-
 static void _print_global_nodes(void) {
 
   int i;
@@ -735,11 +736,6 @@ int pass_3(void) {
   _print_global_nodes();
 #endif
 
-  /* keep the compiler silent */
-  if (0) {
-    _print_global_node(g_global_nodes->children[0]);
-  }
-  
   return SUCCEEDED;
 }
 

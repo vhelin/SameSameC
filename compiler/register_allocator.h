@@ -3,7 +3,12 @@
 
 #include <stddef.h>
 
+#ifdef SAMESAMEC_TRACE
 extern int g_register_allocator_trace;
+#else
+/* Keep trace arguments type-checked without evaluating or emitting them. */
+#define g_register_allocator_trace 0
+#endif
 #define RA_TRACE(arguments) do { if (g_register_allocator_trace) fprintf arguments; } while (0)
 
 #define RA_BLOCK_END_NONE              0

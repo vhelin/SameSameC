@@ -20,6 +20,7 @@
 #include "inline_asm.h"
 #include "inline_asm_z80.h"
 #include "struct_item.h"
+#include "register_allocator.h"
 
 
 extern struct tree_node *g_global_nodes;
@@ -72,9 +73,9 @@ static int _generate_il_create_array_read_pointer_base_temp(struct tree_node *no
   tac_promote_argument(t, VARIABLE_TYPE_UINT16, TAC_USE_RESULT);
   tac_promote_argument(t, VARIABLE_TYPE_UINT16, TAC_USE_ARG1);
 
-  fprintf(stderr, "register_allocator: array_read_pointer_base_temp function=%s label=%s r%d\n",
+  RA_TRACE((stderr, "register_allocator: array_read_pointer_base_temp function=%s label=%s r%d\n",
           g_current_function != NULL && g_current_function->children[1] != NULL ? g_current_function->children[1]->label : "<unknown>",
-          node->label, *base_register);
+          node->label, *base_register));
 
   return SUCCEEDED;
 }
@@ -107,9 +108,9 @@ static int _generate_il_create_array_write_pointer_base_temp(struct tree_node *n
   tac_promote_argument(t, VARIABLE_TYPE_UINT16, TAC_USE_RESULT);
   tac_promote_argument(t, VARIABLE_TYPE_UINT16, TAC_USE_ARG1);
 
-  fprintf(stderr, "register_allocator: array_write_pointer_base_temp function=%s label=%s r%d\n",
+  RA_TRACE((stderr, "register_allocator: array_write_pointer_base_temp function=%s label=%s r%d\n",
           g_current_function != NULL && g_current_function->children[1] != NULL ? g_current_function->children[1]->label : "<unknown>",
-          node->label, *base_register);
+          node->label, *base_register));
 
   return SUCCEEDED;
 }
@@ -443,11 +444,11 @@ int generate_il_calculate_struct_access_address(struct tree_node *node, int *fin
       indirect_depth++;
 
       if (g_allocator_enabled == YES) {
-        fprintf(stderr, "register_allocator: struct_access_indirect function=%s depth=%d member=%s from_r%d to_r%d access=pointer\n",
+        RA_TRACE((stderr, "register_allocator: struct_access_indirect function=%s depth=%d member=%s from_r%d to_r%d access=pointer\n",
                 g_current_function != NULL && g_current_function->children[1] != NULL ? g_current_function->children[1]->label : "<unknown>",
                 indirect_depth,
                 named_node != NULL ? named_node->label : "<unknown>",
-                pointer_register, g_temp_r);
+                pointer_register, g_temp_r));
       }
 
       cregister = g_temp_r++;
@@ -507,9 +508,9 @@ int generate_il_calculate_struct_access_address(struct tree_node *node, int *fin
   tac_promote_argument(t, VARIABLE_TYPE_UINT16, TAC_USE_ARG1);
 
   if (g_allocator_enabled == YES) {
-      fprintf(stderr, "register_allocator: struct_access_address function=%s root=%s access=%s root_kind=%s r%d final_type=%d\n",
+      RA_TRACE((stderr, "register_allocator: struct_access_address function=%s root=%s access=%s root_kind=%s r%d final_type=%d\n",
             g_current_function != NULL && g_current_function->children[1] != NULL ? g_current_function->children[1]->label : "<unknown>",
-        node->children[0]->label, root_access, root_kind, fregister, *final_type);
+        node->children[0]->label, root_access, root_kind, fregister, *final_type));
   }
 
   return SUCCEEDED;
@@ -1158,9 +1159,9 @@ struct tac *generate_il_create_get_address_array(struct tree_node *node) {
     tac_promote_argument(t, VARIABLE_TYPE_UINT16, TAC_USE_RESULT);
     tac_promote_argument(t, VARIABLE_TYPE_UINT16, TAC_USE_ARG1);
 
-    fprintf(stderr, "register_allocator: get_address_array_pointer_base_temp function=%s label=%s r%d\n",
+    RA_TRACE((stderr, "register_allocator: get_address_array_pointer_base_temp function=%s label=%s r%d\n",
             g_current_function != NULL && g_current_function->children[1] != NULL ? g_current_function->children[1]->label : "<unknown>",
-            node->label, base_register);
+            node->label, base_register));
   }
 
   t = add_tac();
@@ -1702,10 +1703,10 @@ static int _generate_il_create_increment_decrement(struct tree_node *node) {
     tac_promote_argument(t, final_type, TAC_USE_RESULT);
 
     if (g_allocator_enabled == YES) {
-      fprintf(stderr, "register_allocator: struct_access_update function=%s op=%s address_r%d value_r%d final_type=%d address_uses=2 read_index=0 write_index=0 split_candidate=yes\n",
+      RA_TRACE((stderr, "register_allocator: struct_access_update function=%s op=%s address_r%d value_r%d final_type=%d address_uses=2 read_index=0 write_index=0 split_candidate=yes\n",
               g_current_function != NULL && g_current_function->children[1] != NULL ? g_current_function->children[1]->label : "<unknown>",
               (int)node->value == SYMBOL_INCREMENT ? "increment" : "decrement",
-              raddress, rtemp, final_type);
+              raddress, rtemp, final_type));
     }
   }
   else {

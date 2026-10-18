@@ -1,5 +1,6 @@
 #include <limits.h>
 #include <stddef.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -7223,6 +7224,22 @@ int main(void) {
   struct register_allocator_liveness_storage storage;
   int maximum_block_count;
   int iterations;
+
+  iterations = 0;
+  RA_TRACE((stderr, "core_trace_test: evaluated=%d\n", ++iterations));
+  if (iterations != SAMESAMEC_TRACE_ENABLED) {
+    fprintf(stderr, "core_trace_test: trace argument evaluation mismatch\n");
+    return 1;
+  }
+#ifdef SAMESAMEC_TRACE
+  g_register_allocator_trace = NO;
+  RA_TRACE((stderr, "core_trace_test: quiet_evaluated=%d\n", ++iterations));
+  g_register_allocator_trace = YES;
+  if (iterations != 1) {
+    fprintf(stderr, "core_trace_test: quiet trace arguments evaluated\n");
+    return 1;
+  }
+#endif
 
   if (expect_storage("coreLivenessStorageOne", 1, 1) == FAILED ||
       expect_storage("coreLivenessStorageWide", 4, 40) == FAILED ||

@@ -38,7 +38,7 @@ const sources = readdirSync(join(root, 'compiler')).filter(name => name.endsWith
 const harness = process.env.RA_VERIFIER || join(output,
   process.platform === 'win32' ? 'allocation_verify_test.exe' : 'allocation_verify_test');
 if (!process.env.RA_VERIFIER)
-  run(process.env.CC || 'gcc', ['-ansi', '-pedantic', '-Wall', '-DNDEBUG', '-o', harness,
+  run(process.env.CC || 'gcc', ['-ansi', '-pedantic', '-Wall', '-DNDEBUG', '-DSAMESAMEC_TRACE', '-o', harness,
     join(fixture, 'allocation_verify_test.c'), ...sources, '-lm'], output, 'verifier-build.log');
 let verifierFailures;
 for (const flags of [[], ['-q']]) {
@@ -388,6 +388,9 @@ writeFileSync(join(output, 'static-summary.json'), JSON.stringify(Object.fromEnt
   Array.from(compiled, ([mode, image]) => [mode, image.staticMetrics])), null, 2));
 const allocatorLog = readFileSync(join(output, 'ra/compiler.log'), 'utf8');
 if (process.env.RA_BASELINE !== '1') {
+  if (!/^register_allocator_core: next_use .+status=found$/m.test(allocatorLog) ||
+      !/^register_allocator_core: liveness_solve .+status=converged$/m.test(allocatorLog))
+    throw new Error('Allocator lifecycle trace coverage missing; rebuild the compiler with CMake -DSAMESAMEC_TRACE=ON or make TRACE=1');
   if (/scalar_copy_promotion function=ra_pressure_\d+ variable=first .+scope=linear_definitions/.test(allocatorLog))
     throw new Error('Mixed-width reassignment was promoted');
   if (programs.some(program => program.family === 'scalar_reassigned_word')) {
@@ -407,9 +410,6 @@ if (process.env.RA_BASELINE !== '1') {
   if (quietAllocatorLines.join('\n') !==
       (allocatorLog.match(/^register_allocator: rejection_summary .+$/gm) || []).join('\n'))
     throw new Error('Quiet allocator lifecycle output or rejection summary mismatch');
-  if (!/^register_allocator_core: next_use .+status=found$/m.test(allocatorLog) ||
-      !/^register_allocator_core: liveness_solve .+status=converged$/m.test(allocatorLog))
-    throw new Error('Allocator lifecycle trace coverage missing');
 }
 for (const program of process.env.RA_BASELINE === '1' ? [] : programs) {
   const lines = allocatorLog.split(/\r?\n/).filter(line => line.includes(`function=${program.name} `));

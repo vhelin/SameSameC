@@ -81,7 +81,8 @@ int z80_emit_register_spill(struct tac *t, struct tree_node *function_node,
     fprintf(file_out, "      LD  (IX+1),B\n");
   }
 
-  fprintf(stderr, "register_allocator_z80: register_spill_emit function=%s temp=r%d phy=%d destination_offset=%d bytes=%d stores=%d status=complete\n",
+  if (SAMESAMEC_TRACE_ENABLED)
+    fprintf(stderr, "register_allocator_z80: register_spill_emit function=%s temp=r%d phy=%d destination_offset=%d bytes=%d stores=%d status=complete\n",
       function_name, temp_index, physical_register, destination_offset,
       byte_count, byte_count);
   return SUCCEEDED;
@@ -103,7 +104,8 @@ int z80_validate_array_write_reload_operand(char *function_name, int operand) {
     return FAILED;
   }
 
-  fprintf(stderr, "register_allocator_z80: reload_operand function=%s op=ARRAY_WRITE operand_id=%d status=supported\n",
+  if (SAMESAMEC_TRACE_ENABLED)
+    fprintf(stderr, "register_allocator_z80: reload_operand function=%s op=ARRAY_WRITE operand_id=%d status=supported\n",
       function_name, operand);
   return SUCCEEDED;
 }
@@ -113,12 +115,14 @@ int z80_get_split_reload_physical_register(int consumer_op, int operand,
     int size) {
 
   int physical_register;
+  int invalid_input;
   char *status;
 
   physical_register = Z80_PHY_NONE;
-  if (consumer_op < 0 ||
+  invalid_input = consumer_op < 0 ||
       (operand != TAC_USE_RESULT && operand != TAC_USE_ARG1 &&
-       operand != TAC_USE_ARG2) || size <= 0) {
+       operand != TAC_USE_ARG2) || size <= 0;
+  if (invalid_input) {
     status = "invalid_input";
   }
   else if (consumer_op == TAC_OP_ARRAY_WRITE && operand == TAC_USE_RESULT &&
@@ -135,7 +139,8 @@ int z80_get_split_reload_physical_register(int consumer_op, int operand,
     status = "unsupported";
   }
 
-  fprintf(stderr, "register_allocator_z80: split_reload_endpoint op=%d operand=%d size=%d phy=%d status=%s\n",
+  if (SAMESAMEC_TRACE_ENABLED || invalid_input)
+    fprintf(stderr, "register_allocator_z80: split_reload_endpoint op=%d operand=%d size=%d phy=%d status=%s\n",
       consumer_op, operand, size, physical_register, status);
   return physical_register;
 }

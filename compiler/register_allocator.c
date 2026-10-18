@@ -6,7 +6,9 @@
 #include "defines.h"
 #include "register_allocator.h"
 
+#ifdef SAMESAMEC_TRACE
 int g_register_allocator_trace = YES;
+#endif
 
 
 static int _block_end_falls_through(int end_reason) {

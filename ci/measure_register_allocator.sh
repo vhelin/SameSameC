@@ -53,6 +53,10 @@ for fixture in "$@"; do
           cat "$compiler_log" >> "$log"
         fi
       done
+      if [ "$mode" = ra ] && ! grep -q '^register_allocator_core: liveness_solve .*status=converged' "$log"; then
+        echo 'Allocator workspace/rejection measurements require a trace-enabled compiler (CMake -DSAMESAMEC_TRACE=ON or make TRACE=1; rebuild cleanly).' >&2
+        exit 1
+      fi
       awk -v sample="$sample" -v require_peak="${RA_TIME:-}" -v log_bytes="$(wc -c < "$log")" '
         /^RA_COMPILE_SECONDS=/ { split($1, timing, "="); seconds += timing[2]; timings++ }
         /RA_PEAK_RSS_KIB=/ { split($2, memory, "="); if (memory[2] > peak) peak = memory[2] }

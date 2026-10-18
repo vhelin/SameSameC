@@ -51,13 +51,17 @@ static void _debug_register_allocator_temp_compaction_stage(char *stage);
 
 int pass_5(void) {
 
+#ifdef SAMESAMEC_TRACE
   g_register_allocator_trace = g_quiet == NO;
+#endif
   if (g_verbose_mode == ON)
     printf("Pass 5...\n");
 
+#ifdef SAMESAMEC_TRACE
   if (g_register_allocator_trace) {
   print_tacs();
   }
+#endif
 
   if (optimize_for_inc() == FAILED)
     return FAILED;
@@ -111,9 +115,11 @@ int pass_5(void) {
   fprintf(stderr, ">------------------------------ OPTIMIZED IL ------------------------------>\n");
   }
 
+#ifdef SAMESAMEC_TRACE
   if (g_register_allocator_trace) {
   print_tacs();
   }
+#endif
 
   return SUCCEEDED;
 }
@@ -10106,14 +10112,18 @@ static int _run_basic_block_linear_scan(struct tree_node *function_node,
   status = FAILED;
 
   if (g_tacs_count < 0 || (size_t)g_tacs_count > (size_t)-1 / sizeof(*rejections)) {
+    fprintf(stderr, "register_allocator: rejection_summary status=invalid_instruction_count\n");
     free(active_slots);
     return FAILED;
   }
-  rejections = (int (*)[7])calloc((size_t)g_tacs_count, sizeof(*rejections));
-  if (rejections == NULL) {
-    fprintf(stderr, "register_allocator: rejection_summary status=out_of_memory\n");
-    free(active_slots);
-    return FAILED;
+  rejections = NULL;
+  if (SAMESAMEC_TRACE_ENABLED) {
+    rejections = (int (*)[7])calloc((size_t)g_tacs_count, sizeof(*rejections));
+    if (rejections == NULL) {
+      fprintf(stderr, "register_allocator: rejection_summary status=out_of_memory\n");
+      free(active_slots);
+      return FAILED;
+    }
   }
 
   RA_TRACE((stderr, "register_allocator: target_active_slots function=%s target=%s slots=%d status=complete bytes=%lu storage=policy_sized\n",
@@ -10426,7 +10436,7 @@ static int _run_basic_block_linear_scan(struct tree_node *function_node,
 
       }
 rejected_candidate:
-      if (rejection_reason == 0)
+      if (!SAMESAMEC_TRACE_ENABLED || rejection_reason == 0)
         continue;
       for (rejection_index = 0; rejection_index < rejection_count; rejection_index++) {
         int *row = rejections[rejection_index];
@@ -10448,12 +10458,14 @@ rejected_candidate:
     }
   }
 
-  for (rejection_index = 0; rejection_index < rejection_count; rejection_index++) {
-    int *row = rejections[rejection_index];
-    fprintf(stderr, "register_allocator: rejection_summary function=%s producer=%s consumer=%s operand=%s size=%d phy=%s reason=%s unique_decisions=%d basis=producer_next_use\n",
-      function_node->children[1]->label, _get_first_allocator_op_name(row[0]),
-      _get_first_allocator_op_name(row[1]), _get_register_allocator_consumer_arg_name(row[2]),
-      row[3], _get_first_allocator_physical_register_name(row[4]), reasons[row[5] - 1], row[6]);
+  if (SAMESAMEC_TRACE_ENABLED) {
+    for (rejection_index = 0; rejection_index < rejection_count; rejection_index++) {
+      int *row = rejections[rejection_index];
+      fprintf(stderr, "register_allocator: rejection_summary function=%s producer=%s consumer=%s operand=%s size=%d phy=%s reason=%s unique_decisions=%d basis=producer_next_use\n",
+        function_node->children[1]->label, _get_first_allocator_op_name(row[0]),
+        _get_first_allocator_op_name(row[1]), _get_register_allocator_consumer_arg_name(row[2]),
+        row[3], _get_first_allocator_physical_register_name(row[4]), reasons[row[5] - 1], row[6]);
+    }
   }
   status = SUCCEEDED;
 

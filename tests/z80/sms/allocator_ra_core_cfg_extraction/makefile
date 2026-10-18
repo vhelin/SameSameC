@@ -65,7 +65,7 @@ main.asm: main.ssc
 
 
 core_cfg_storage_test: core_cfg_storage_test.c ../../../../compiler/register_allocator.c ../../../../compiler/register_allocator.h
-	gcc -ansi -pedantic -Wall -Werror -o core_cfg_storage_test core_cfg_storage_test.c ../../../../compiler/register_allocator.c
+	gcc -ansi -pedantic -Wall -Werror -DSAMESAMEC_TRACE -o core_cfg_storage_test core_cfg_storage_test.c ../../../../compiler/register_allocator.c
 
 
 clean:

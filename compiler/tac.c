@@ -437,6 +437,7 @@ void print_tac(struct tac *t, int is_comment, FILE *file_out) {
 }
 
 
+#ifdef SAMESAMEC_TRACE
 void print_tacs(void) {
 
   int i;
@@ -449,6 +450,8 @@ void print_tacs(void) {
     print_tac(&g_tacs[i], NO, stderr);
 }
 
+
+#endif
 
 int tac_set_arg1(struct tac *t, int arg_type, double d, char *s) {
 
@@ -694,7 +697,8 @@ struct tac *insert_tac(int index) {
         (size_t)(old_count - index) * sizeof(struct tac));
   }
   g_tacs[index] = empty_tac;
-  fprintf(stderr, "tac_storage: insert index=%d old_count=%d count=%d capacity=%d moved=%d status=complete\n",
+  if (SAMESAMEC_TRACE_ENABLED)
+    fprintf(stderr, "tac_storage: insert index=%d old_count=%d count=%d capacity=%d moved=%d status=complete\n",
       index, old_count, g_tacs_count, g_tacs_max, old_count - index);
   return &g_tacs[index];
 }
@@ -742,7 +746,8 @@ int tac_set_register_spill(struct tac *t, struct tree_node *function_node,
   t->result_type = TAC_ARG_TYPE_CONSTANT;
   t->result_d = destination_offset;
   t->function_node = function_node;
-  fprintf(stderr, "tac_storage: register_spill temp=r%d phy=%d destination_offset=%d bytes=%d status=complete\n",
+  if (SAMESAMEC_TRACE_ENABLED)
+    fprintf(stderr, "tac_storage: register_spill temp=r%d phy=%d destination_offset=%d bytes=%d status=complete\n",
       temp_index, physical_register, destination_offset, byte_count);
   return SUCCEEDED;
 }

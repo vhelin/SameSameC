@@ -1,6 +1,9 @@
 
 CC = gcc
-CFLAGS = -c -g -O0 -ansi -pedantic -Wall -DNDEBUG
+CFLAGS = -c -Os -ansi -pedantic -Wall -DNDEBUG
+ifeq ($(TRACE),1)
+override CPPFLAGS += -DSAMESAMEC_TRACE
+endif
 LD = gcc
 LDFLAGS = -lm
 WLAFLAGS = $(CFLAGS)
@@ -14,77 +17,77 @@ all: $(OFILES) makefile.gcc
 	$(LD) $(OFILES) $(LDFLAGS) -o samesamecc
 
 main.o: main.c defines.h main.h makefile.gcc
-	$(CC) $(CFLAGS) main.c
+	$(CC) $(CPPFLAGS) $(CFLAGS) main.c
 
 parse.o: parse.c defines.h parse.h makefile.gcc
-	$(CC) $(CFLAGS) parse.c
+	$(CC) $(CPPFLAGS) $(CFLAGS) parse.c
 
 include_file.o: include_file.c defines.h include_file.h makefile.gcc
-	$(CC) $(CFLAGS) include_file.c
+	$(CC) $(CPPFLAGS) $(CFLAGS) include_file.c
 
 printf.o: printf.c defines.h printf.h makefile.gcc
-	$(CC) $(CFLAGS) printf.c
+	$(CC) $(CPPFLAGS) $(CFLAGS) printf.c
 
 definition.o: definition.c defines.h definition.h makefile.gcc
-	$(CC) $(CFLAGS) definition.c
+	$(CC) $(CPPFLAGS) $(CFLAGS) definition.c
 
 stack.o: stack.c defines.h stack.h makefile.gcc
-	$(CC) $(CFLAGS) stack.c
+	$(CC) $(CPPFLAGS) $(CFLAGS) stack.c
 
 tree_node.o: tree_node.c defines.h tree_node.h makefile.gcc
-	$(CC) $(CFLAGS) tree_node.c
+	$(CC) $(CPPFLAGS) $(CFLAGS) tree_node.c
 
 pass_1.o: pass_1.c defines.h pass_1.h makefile.gcc
-	$(CC) $(CFLAGS) pass_1.c
+	$(CC) $(CPPFLAGS) $(CFLAGS) pass_1.c
 
 pass_2.o: pass_2.c defines.h pass_2.h makefile.gcc
-	$(CC) $(CFLAGS) pass_2.c
+	$(CC) $(CPPFLAGS) $(CFLAGS) pass_2.c
 
 pass_3.o: pass_3.c defines.h pass_3.h makefile.gcc
-	$(CC) $(CFLAGS) pass_3.c
+	$(CC) $(CPPFLAGS) $(CFLAGS) pass_3.c
 
 pass_4.o: pass_4.c defines.h pass_4.h makefile.gcc
-	$(CC) $(CFLAGS) pass_4.c
+	$(CC) $(CPPFLAGS) $(CFLAGS) pass_4.c
 
 pass_5.o: pass_5.c defines.h pass_5.h makefile.gcc
-	$(CC) $(CFLAGS) pass_5.c
+	$(CC) $(CPPFLAGS) $(CFLAGS) pass_5.c
 
 pass_6_z80.o: pass_6_z80.c defines.h pass_6_z80.h makefile.gcc
-	$(CC) $(CFLAGS) pass_6_z80.c
+	$(CC) $(CPPFLAGS) $(CFLAGS) pass_6_z80.c
 
 register_allocator.o: register_allocator.c defines.h register_allocator.h makefile.gcc
-	$(CC) $(CFLAGS) register_allocator.c
+	$(CC) $(CPPFLAGS) $(CFLAGS) register_allocator.c
 
 il.o: il.c defines.h il.h makefile.gcc
-	$(CC) $(CFLAGS) il.c
+	$(CC) $(CPPFLAGS) $(CFLAGS) il.c
 
 tac.o: tac.c defines.h tac.h makefile.gcc
-	$(CC) $(CFLAGS) tac.c
+	$(CC) $(CPPFLAGS) $(CFLAGS) tac.c
 
 token.o: token.c defines.h token.h makefile.gcc
-	$(CC) $(CFLAGS) token.c
+	$(CC) $(CPPFLAGS) $(CFLAGS) token.c
 
 symbol_table.o: symbol_table.c defines.h symbol_table.h makefile.gcc
-	$(CC) $(CFLAGS) symbol_table.c
+	$(CC) $(CPPFLAGS) $(CFLAGS) symbol_table.c
 
 source_line_manager.o: source_line_manager.c defines.h source_line_manager.h makefile.gcc
-	$(CC) $(CFLAGS) source_line_manager.c
+	$(CC) $(CPPFLAGS) $(CFLAGS) source_line_manager.c
 
 inline_asm.o: inline_asm.c defines.h inline_asm.h makefile.gcc
-	$(CC) $(CFLAGS) inline_asm.c
+	$(CC) $(CPPFLAGS) $(CFLAGS) inline_asm.c
 
 inline_asm_z80.o: inline_asm_z80.c defines.h inline_asm_z80.h makefile.gcc
-	$(CC) $(CFLAGS) inline_asm_z80.c
+	$(CC) $(CPPFLAGS) $(CFLAGS) inline_asm_z80.c
 
 struct_item.o: struct_item.c defines.h struct_item.h makefile.gcc
-	$(CC) $(CFLAGS) struct_item.c
+	$(CC) $(CPPFLAGS) $(CFLAGS) struct_item.c
 
 z80_register_spill.o: z80_register_spill.c defines.h z80_register_spill.h makefile.gcc
-	$(CC) $(CFLAGS) z80_register_spill.c
+	$(CC) $(CPPFLAGS) $(CFLAGS) z80_register_spill.c
 
 
 $(OFILES): $(HFILES)
 
 
 clean:
-	rm *.o ; rm *~ ; rm samesamecc ; rm samesamecc.exe.stackdump
+	rm -f $(OFILES) *~ samesamecc samesamecc.exe samesamecc.exe.stackdump

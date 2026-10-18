@@ -22,9 +22,9 @@
 #include "struct_item.h"
 
 
-/* define this for DEBUG */
-
+#ifdef SAMESAMEC_TRACE
 #define DEBUG_PASS_2 1
+#endif
 
 
 extern int g_input_float_mode, g_parsed_int;
@@ -3620,7 +3620,9 @@ static int _process_create_variable_struct_union_process_struct_union(struct tre
     return print_error_using_tree_node(g_error_message, ERROR_ERR, child);
   }
 
+#if defined(DEBUG_PASS_2)
   print_simple_tree_node(child);
+#endif
   
   i++;
 
@@ -3656,7 +3658,9 @@ static int _process_create_variable_struct_union_process_struct_union(struct tre
           return FAILED;
       }
       else if (child->type == TREE_NODE_TYPE_EXPRESSION) {
+#if defined(DEBUG_PASS_2)
         print_expression(child);
+#endif
 
         /* store the struct_item pointer for later so we don't have to traverse through the struct_item tree again... */
         child->struct_item = s;
@@ -3678,7 +3682,9 @@ static int _process_create_variable_struct_union_process_struct_union(struct tre
         return print_error_using_tree_node(g_error_message, ERROR_ERR, child);
       }
 
+#if defined(DEBUG_PASS_2)
       print_expression(child);
+#endif
       i++;
 
       for (j = 0; j < s->array_items; j++) {
@@ -3699,7 +3705,9 @@ static int _process_create_variable_struct_union_process_struct_union(struct tre
           /* store the struct_item pointer for later so we don't have to travere through the struct_item tree again... */
           child->struct_item = s;
 
+#if defined(DEBUG_PASS_2)
           print_expression(child);
+#endif
         }
         else if (s->variable_type == VARIABLE_TYPE_STRUCT || s->variable_type == VARIABLE_TYPE_UNION) {
           struct struct_item *next = s;
@@ -3727,7 +3735,9 @@ static int _process_create_variable_struct_union_process_struct_union(struct tre
           /* store the struct_item pointer for later so we don't have to travere through the struct_item tree again... */
           child->struct_item = s;
 
+#if defined(DEBUG_PASS_2)
           print_expression(child);
+#endif
         }
 
         i++;
@@ -3754,7 +3764,9 @@ static int _process_create_variable_struct_union_process_struct_union(struct tre
           }
         }
 
+#if defined(DEBUG_PASS_2)
         print_simple_tree_node(child);
+#endif
 
         i++;
       }
@@ -3774,13 +3786,17 @@ static int _process_create_variable_struct_union_process_struct_union(struct tre
         return print_error_using_tree_node(g_error_message, ERROR_ERR, child);
       }
       
+#if defined(DEBUG_PASS_2)
       print_simple_tree_node(child);
+#endif
       *node_index = i;
   
       return SUCCEEDED;
     }
     else if (child->type == TREE_NODE_TYPE_SYMBOL && child->value == ',') {
+#if defined(DEBUG_PASS_2)
       print_simple_tree_node(child);
+#endif
 
       i++;
     }
@@ -3807,7 +3823,9 @@ static int _process_creation_of_variable_struct_union(struct tree_node *node) {
   if (node->added_children <= 2)
     return SUCCEEDED;
 
+#if defined(DEBUG_PASS_2)
   fprintf(stderr, "ADDED C %d (%s)\n", node->added_children, node->children[1]->label);
+#endif
 
   child = node->children[i];
 
@@ -3824,7 +3842,9 @@ static int _process_creation_of_variable_struct_union(struct tree_node *node) {
       calculate_array_size = YES;
     }
 
+#if defined(DEBUG_PASS_2)
     print_simple_tree_node(child);
+#endif
 
     i++;
   }
@@ -3862,11 +3882,15 @@ static int _process_creation_of_variable_struct_union(struct tree_node *node) {
         return print_error_using_tree_node(g_error_message, ERROR_ERR, child);
       }
 
+#if defined(DEBUG_PASS_2)
       print_simple_tree_node(child);
+#endif
 
       i++;
 
+#if defined(DEBUG_PASS_2)
       fprintf(stderr, "\n");
+#endif
     }
     else if (j < count - 1) {
       if (i >= node->added_children) {
@@ -3886,11 +3910,15 @@ static int _process_creation_of_variable_struct_union(struct tree_node *node) {
         return print_error_using_tree_node(g_error_message, ERROR_ERR, child);
       }
 
+#if defined(DEBUG_PASS_2)
       print_simple_tree_node(child);
+#endif
 
       i++;
 
+#if defined(DEBUG_PASS_2)
       fprintf(stderr, "\n");
+#endif
     }
   }
 
@@ -3922,12 +3950,16 @@ static int _process_creation_of_variable_struct_union(struct tree_node *node) {
       return print_error_using_tree_node(g_error_message, ERROR_ERR, child);
     }
 
+#if defined(DEBUG_PASS_2)
     print_simple_tree_node(child);
+#endif
 
     i++;
   }
 
+#if defined(DEBUG_PASS_2)
   fprintf(stderr, "\n");
+#endif
   
   return SUCCEEDED;
 }

@@ -42,7 +42,7 @@ main.asm: main.ssc
 	$(CC) $(CFLAGS) main.asm main.ssc > compiler.log 2>&1 || (cat compiler.log && false)
 
 core_path_analysis_test: core_path_analysis_test.c ../../../../compiler/register_allocator.c ../../../../compiler/register_allocator.h
-	gcc -ansi -pedantic -Wall -Werror -o core_path_analysis_test core_path_analysis_test.c ../../../../compiler/register_allocator.c
+	gcc -ansi -pedantic -Wall -Werror -DSAMESAMEC_TRACE -o core_path_analysis_test core_path_analysis_test.c ../../../../compiler/register_allocator.c
 
 
 clean:

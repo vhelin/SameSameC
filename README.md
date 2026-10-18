@@ -52,6 +52,44 @@ Yet Another ANSI C90 Like Language Cross Compiler Targeting 8-bit CPUs. Written 
 - The "object file" is actually plain WLA DX ASM
 
 
+# Building The Compiler
+
+Diagnostic tracing is **compiled out by default**, independently of `NDEBUG`
+and the target-side `-ra` switch. Error messages, warnings, allocator
+verification and generated assembly/comments remain enabled. The existing
+debug-print source is retained for development.
+
+For a normal CMake release build:
+
+```sh
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DSAMESAMEC_TRACE=OFF
+cmake --build build --config Release
+```
+
+To restore token/AST dumps and allocator/backend traces, use a separate build:
+
+```sh
+cmake -S . -B build-trace -DCMAKE_BUILD_TYPE=Release -DSAMESAMEC_TRACE=ON
+cmake --build build-trace --config Release
+```
+
+The GNU compiler makefile defaults to `-Os`, without debug symbols. Use
+`make -C compiler -f makefile.gcc TRACE=1` for tracing, or define
+`SAMESAMEC_TRACE` in your C compiler's preprocessor definitions. With the
+Visual Studio project, pass `/p:SameSameCTrace=true` to MSBuild. Leave the
+definition absent for normal builds; defining it as `0` still enables tracing.
+Clean and rebuild when changing GNU make flags, for example with
+`make -C compiler -f makefile.gcc clean`.
+
+The allocator regression suite, `ci/check_register_allocator.mjs` and
+`ci/measure_register_allocator.sh` require a trace-enabled compiler on `PATH`
+(or the checker's `SAMESAMECC` override). Runtime `-q` still suppresses the
+existing allocator traces in that build, but is not a substitute for compiling
+them out. CI opts into tracing for these assertions; the Windows XP publishing
+pipeline rebuilds without tracing before packaging user binaries. Host core,
+TAC-storage and spill-emitter tests also run with tracing compiled out.
+
+
 # TODO
 
 ## Optimize

@@ -55,7 +55,12 @@ int main(int argc, char **argv) {
   struct tac instructions[4];
   int index;
 
+#ifdef SAMESAMEC_TRACE
   g_register_allocator_trace = !(argc > 1 && strcmp(argv[1], "-q") == 0);
+#else
+  (void)argc;
+  (void)argv;
+#endif
   {
     struct {
       int offset, mode;

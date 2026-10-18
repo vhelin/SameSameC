@@ -14,6 +14,7 @@
 #include "pass_4.h"
 #include "tree_node.h"
 #include "stack.h"
+#include "register_allocator.h"
 
 
 /* define this for DEBUG */
@@ -69,8 +70,8 @@ static int _generate_il_create_array_read_pointer_base_temp(struct tree_node *no
   tac_promote_argument(t, VARIABLE_TYPE_UINT16, TAC_USE_RESULT);
   tac_promote_argument(t, VARIABLE_TYPE_UINT16, TAC_USE_ARG1);
 
-  fprintf(stderr, "register_allocator: array_read_pointer_base_temp function=%s label=%s r%d\n",
-          _get_current_function_name_for_allocator_debug(), node->label, *base_register);
+  RA_TRACE((stderr, "register_allocator: array_read_pointer_base_temp function=%s label=%s r%d\n",
+          _get_current_function_name_for_allocator_debug(), node->label, *base_register));
 
   return SUCCEEDED;
 }

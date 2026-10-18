@@ -75,6 +75,12 @@
   #define SAMESAMEC_DEBUG 1
 #endif
 
+#ifdef SAMESAMEC_TRACE
+  #define SAMESAMEC_TRACE_ENABLED 1
+#else
+  #define SAMESAMEC_TRACE_ENABLED 0
+#endif
+
 #ifdef _CRT_SECURE_NO_WARNINGS
   #pragma warning(disable:4996) /* Just in case */
 #endif

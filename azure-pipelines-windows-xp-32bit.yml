@@ -46,6 +46,7 @@ steps:
     mkdir -p build-xp
     cd build-xp
     cmake .. -G "MinGW Makefiles" \
+             -DSAMESAMEC_TRACE=ON \
              -DCMAKE_C_COMPILER=gcc \
              -DCMAKE_BUILD_TYPE=Release \
              -DCMAKE_C_FLAGS="$CMAKE_XP_FLAGS"
@@ -112,6 +113,13 @@ steps:
   displayName: 'Run tests'
 
 - template: ci/publish-test-failure-artifacts.yml
+
+- bash: |
+    set -eux
+    export PATH="/c/msys64/mingw32/bin:/c/msys64/usr/bin:$PATH"
+    cmake -S . -B build-xp -DSAMESAMEC_TRACE=OFF
+    cmake --build build-xp --config Release
+  displayName: 'Rebuild distributable compiler without tracing'
 
 - powershell: |
     gci env:* | sort-object name | Format-Table -AutoSize | Out-File $env:BUILD_ARTIFACTSTAGINGDIRECTORY/environment-variables.txt

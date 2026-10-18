@@ -13635,6 +13635,88 @@ These are continuing requirements, not finite completion checkboxes:
 
 ---
 
+## Compiler Tracing And Release Builds
+
+Compiler diagnostic tracing is now a separate, default-off build feature,
+`SAMESAMEC_TRACE`. This is independent of `NDEBUG`, allocator enablement and
+target instruction selection. Normal builds retain errors, warnings,
+allocation verification, failure/rollback diagnostics and emitted assembly
+comments. In particular, asking for a stack offset for a retained register is
+always diagnosed, including in a quiet build.
+
+The existing token, AST, TAC and allocator/backend debug-print source remains
+available. Enable it with CMake `-DSAMESAMEC_TRACE=ON`, GNU make `TRACE=1`,
+MSBuild `/p:SameSameCTrace=true`, or the C preprocessor definition
+`SAMESAMEC_TRACE`. Normal builds leave the definition absent. The shared
+allocator trace flag becomes a compile-time zero in that configuration, so
+existing trace arguments still type-check as ANSI C90 without being evaluated.
+Trace-only rejection aggregation/storage is also omitted. Traced builds keep
+the existing runtime `-q` behavior and quiet rejection summaries.
+
+The GNU compiler makefile now uses `-Os` without `-g` rather than the old
+`-O0 -g` release default. Clean and rebuild when switching GNU make flags.
+See [README.md](README.md#building-the-compiler) for complete build commands.
+No new production function, LTO requirement, stripping build step or target
+code-generation change was introduced.
+
+The trace-dependent regression/measurement tools require a trace-enabled
+compiler. All standalone host trace assertions explicitly enable the
+definition; the core, TAC-storage and spill-emitter harnesses additionally
+exercise the same inputs without it. Measurement rejects missing trace data
+instead of treating absent workspace/rejection logs as measured zeroes.
+CI explicitly enables traces for its existing diagnostic assertions. The
+Windows XP publishing pipeline rebuilds with tracing off before packaging.
+
+Fresh Cygwin GCC 14.4.0 measurements against the frozen pre-change compiler,
+with identical optimization flags and without LTO:
+
+| Compiler build | Before (bytes) | Normal tracing-off (bytes) | Reduction |
+| --- | ---: | ---: | ---: |
+| GCC `-O3 -DNDEBUG`, both stripped | 731,648 | 563,200 | 23.0% |
+| GCC `-Os -DNDEBUG`, both stripped | 529,920 | 396,288 | 25.2% |
+| MSVC Win32 CMake Release, unstripped | 535,040 | 409,088 | 23.5% |
+
+The GCC `-O3` trace-enabled build retains the original executable sizes:
+855,022 bytes unstripped and 731,648 bytes stripped. These comparisons isolate
+tracing cleanup from the separate GNU make optimization/debug-symbol default
+change. Normal `-O0 -g` builds also exclude representative success-trace,
+token/AST/TAC dump and pointer/spill trace formats; `-q` alone never provided
+that compile-time saving.
+
+The actual GNU make defaults were also rebuilt, not just approximated with
+direct GCC commands: the old `-O0 -g` compiler is 1,575,875 bytes and the new
+normal `-Os`, tracing-off compiler is 520,418 bytes (67.0% smaller). This larger
+combined saving includes the optimization/debug-symbol change; the table above
+isolates the tracing saving.
+
+Qualification includes strict GCC ANSI C90 `-Wall -Werror` builds at `-O0`,
+`-Os` and `-O3`, MSVC Release and ASan builds/verifiers with `/WX`, and both
+Visual Studio project trace settings using the installed v143 toolset with
+isolated outputs. The legacy v141/XP project toolsets and remote Azure jobs
+were not run locally. Representative token/AST/TAC, core, pointer and spill
+success-trace formats are absent from normal binaries even at `-O0`, and
+present with tracing enabled. All six normal/traced GCC, MSVC and ASan
+compilers keep a real invalid-source error visible, including with `-q`.
+
+Eight compiler variants (the frozen baseline; normal/traced GCC, MSVC and
+ASan; and the actual default GNU make compiler) passed all six generated
+execution cohorts and 25 real routines. Each variant covers 35,008 generated
+and 1,444 real cases per default/all-spill/RA mode: 109,356 executions per
+compiler, 874,848 in total. Immutable verifier controls still reject 32 cases,
+accept seven and check the independent 10,200-endpoint policy table. Compared
+ROMs and execution metrics are byte-identical. Assembly comparisons additionally
+canonicalize the pre-existing randomized static-symbol suffixes (the compiler
+seeds `rand()` from time); this is not a new code-generation difference.
+The five-mode measurement script succeeds with tracing and rejects a normal
+compiler explicitly rather than publishing missing trace metrics.
+
+All 175 existing fixture Make checks passed with each of the GCC and native
+MSVC trace-enabled compilers, with 178 byte-identical cross-toolchain fixture
+ROMs. An additional 80 execution-corpus ROM comparisons bridge the frozen GCC
+baseline and native MSVC build exactly. A publishing-style, same-directory
+CMake trace-ON to trace-OFF reconfigure/rebuild also passed: the resulting
+409,088-byte executable excludes the checked dump/success-trace formats.
+
 ## Rollout Gates
 
 - [x] Compiler builds clean with flag off (default).

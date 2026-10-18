@@ -23,7 +23,7 @@ steps:
 - script: |
     set -eux
     WLA_INCLUDE="$PWD/ci/relax_wla_dx_warnings.cmake"
-    cmake -DCMAKE_BUILD_TYPE=Debug \
+    cmake -DSAMESAMEC_TRACE=ON -DCMAKE_BUILD_TYPE=Debug \
           -DCMAKE_C_FLAGS="-g -Wall -Wextra -Wuninitialized" \
           -G "Unix Makefiles"
     make
@@ -47,7 +47,7 @@ steps:
 - script: |
     set -eux
     WLA_INCLUDE="$PWD/ci/relax_wla_dx_warnings.cmake"
-    cmake -G "Unix Makefiles" \
+    cmake -DSAMESAMEC_TRACE=ON -G "Unix Makefiles" \
           -DCMAKE_BUILD_TYPE=Release \
           -DCMAKE_C_FLAGS="-g -Wall -Wextra -Wuninitialized"
     make

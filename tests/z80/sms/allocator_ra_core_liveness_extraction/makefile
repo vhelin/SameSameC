@@ -9,8 +9,10 @@ IFILES =
 OFILES = main.asm
 
 
-all: linked.sms core_liveness_storage_test tac_insert_test z80_register_spill_test
+all: linked.sms core_liveness_storage_test tac_insert_test z80_register_spill_test no_trace_tests
 	./core_liveness_storage_test > core_liveness_storage_test.log 2>&1
+	grep -q "core_trace_test: evaluated=1" core_liveness_storage_test.log
+	: && ! grep -q "core_trace_test: quiet_evaluated=" core_liveness_storage_test.log
 	./tac_insert_test > tac_insert_test.log 2>&1
 	$(BT) -s main.ssc
 	grep -q "tac_storage: insert index=0 old_count=3 count=4 capacity=1024 moved=3 status=complete" tac_insert_test.log
@@ -845,14 +847,37 @@ main.asm: main.ssc
 
 
 core_liveness_storage_test: core_liveness_storage_test.c ../../../../compiler/register_allocator.c ../../../../compiler/register_allocator.h
-	gcc -ansi -pedantic -Wall -Werror -o core_liveness_storage_test core_liveness_storage_test.c ../../../../compiler/register_allocator.c
+	gcc -ansi -pedantic -Wall -Werror -DSAMESAMEC_TRACE -o core_liveness_storage_test core_liveness_storage_test.c ../../../../compiler/register_allocator.c
 
 tac_insert_test: tac_insert_test.c ../../../../compiler/tac.c ../../../../compiler/tac.h
-	gcc -ansi -pedantic -Wall -Werror -o tac_insert_test tac_insert_test.c ../../../../compiler/tac.c
+	gcc -ansi -pedantic -Wall -Werror -DSAMESAMEC_TRACE -o tac_insert_test tac_insert_test.c ../../../../compiler/tac.c
 
 z80_register_spill_test: z80_register_spill_test.c ../../../../compiler/z80_register_spill.c ../../../../compiler/z80_register_spill.h
-	gcc -ansi -pedantic -Wall -Werror -o z80_register_spill_test z80_register_spill_test.c ../../../../compiler/z80_register_spill.c
+	gcc -ansi -pedantic -Wall -Werror -DSAMESAMEC_TRACE -o z80_register_spill_test z80_register_spill_test.c ../../../../compiler/z80_register_spill.c
+
+core_liveness_storage_no_trace_test: core_liveness_storage_test.c ../../../../compiler/register_allocator.c ../../../../compiler/register_allocator.h ../../../../compiler/defines.h
+	gcc -ansi -pedantic -Wall -Werror -o $@ core_liveness_storage_test.c ../../../../compiler/register_allocator.c
+
+tac_insert_no_trace_test: tac_insert_test.c ../../../../compiler/tac.c ../../../../compiler/tac.h ../../../../compiler/defines.h
+	gcc -ansi -pedantic -Wall -Werror -o $@ tac_insert_test.c ../../../../compiler/tac.c
+
+z80_register_spill_no_trace_test: z80_register_spill_test.c ../../../../compiler/z80_register_spill.c ../../../../compiler/z80_register_spill.h ../../../../compiler/defines.h
+	gcc -ansi -pedantic -Wall -Werror -o $@ z80_register_spill_test.c ../../../../compiler/z80_register_spill.c
+
+.PHONY: no_trace_tests
+no_trace_tests: core_liveness_storage_no_trace_test tac_insert_no_trace_test z80_register_spill_no_trace_test
+	./core_liveness_storage_no_trace_test > core_liveness_storage_no_trace_test.log 2>&1
+	./tac_insert_no_trace_test > tac_insert_no_trace_test.log 2>&1
+	./z80_register_spill_no_trace_test > z80_register_spill_no_trace_test.log 2>&1
+	: && ! grep -q "core_trace_test: evaluated=\|core_trace_test: quiet_evaluated=" core_liveness_storage_no_trace_test.log
+	: && ! grep -Eq "^(tac_storage|register_allocator_z80): .*status=(complete|supported|unsupported)$$" tac_insert_no_trace_test.log z80_register_spill_no_trace_test.log
+	grep -q "liveness_storage .*status=invalid_input" core_liveness_storage_no_trace_test.log
+	test "$$(grep -c "tac_storage: insert .*status=invalid_input" tac_insert_no_trace_test.log)" -eq 2
+	test "$$(grep -c "tac_storage: register_spill .*status=invalid_input" tac_insert_no_trace_test.log)" -eq 7
+	test "$$(grep -c "register_allocator_z80: register_spill_emit .*status=invalid_input" z80_register_spill_no_trace_test.log)" -eq 21
+	test "$$(grep -c "reload_operand .*status=invalid_input" z80_register_spill_no_trace_test.log)" -eq 3
+	test "$$(grep -c "split_reload_endpoint .*status=invalid_input" z80_register_spill_no_trace_test.log)" -eq 4
 
 
 clean:
-	rm -f $(OFILES) *~ linked.sms compiler.log core_liveness_storage_test core_liveness_storage_test.log tac_insert_test tac_insert_test.log z80_register_spill_test z80_register_spill_test.log
+	rm -f $(OFILES) *~ linked.sms compiler.log core_liveness_storage_test core_liveness_storage_test.log tac_insert_test tac_insert_test.log z80_register_spill_test z80_register_spill_test.log core_liveness_storage_no_trace_test core_liveness_storage_no_trace_test.log tac_insert_no_trace_test tac_insert_no_trace_test.log z80_register_spill_no_trace_test z80_register_spill_no_trace_test.log

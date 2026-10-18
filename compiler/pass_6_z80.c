@@ -300,7 +300,7 @@ int find_stack_offset(int type, char *name, int value, struct tree_node *node, i
 
     if (temp_register != NULL) {
       if (g_allocator_enabled == YES && temp_register->physical_register != Z80_PHY_NONE) {
-        RA_TRACE((stderr, "register_allocator: stack offset requested for retained r%d in %s; emitter must use %s directly.\n", value, function_node->children[1]->label, _get_z80_physical_register_name(temp_register->physical_register)));
+        fprintf(stderr, "register_allocator: stack offset requested for retained r%d in %s; emitter must use %s directly.\n", value, function_node->children[1]->label, _get_z80_physical_register_name(temp_register->physical_register));
         return FAILED;
       }
 
