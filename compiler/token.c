@@ -114,7 +114,7 @@ int token_add(int id, int value, double value_double, char *label) {
         token_free(t);
         return print_error("Out of memory while allocating a new token.\n", ERROR_DIR);
       }
-      strncpy(t->label, label, strlen(label));
+      strcpy(t->label, label);
     }
   }
 

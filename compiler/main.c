@@ -536,7 +536,7 @@ static int _add_a_new_definition(char *name, double d, char *s, int id) {
       token_free(t);
       return print_error("_add_a_new_definition(): Out of memory while allocating a new token.\n", ERROR_DIR);
     }
-    strncpy(t->label, s, strlen(s) + 1);
+    strcpy(t->label, s);
   }
   
   if (definition_add_token(definition, t, 0) == FAILED)

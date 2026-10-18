@@ -1,0 +1,47 @@
+// 31 summands and an equality check fill the 63 usable token slots.
+#define LIMIT_EXPRESSION 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 == 31
+
+#if (7 + 3) * 2 != 20 || 17 % 5 != 2 || (8 >> 1) != 4
+#include "incorrect-integer-expression"
+#endif
+
+#if 1.5 + 2.5 == 4 && ((3 << 2) & 15) == 12
+#else
+#include "incorrect-floating-expression"
+#endif
+
+#if 0
+#include "incorrect-false-branch"
+#elif ((~0 & 15) ^ 3) == 12 && !0
+#else
+#include "incorrect-elif-expression"
+#endif
+
+#if LIMIT_EXPRESSION
+#else
+#include "incorrect-limit-expression"
+#endif
+
+// Reject both a full buffer (64 tokens) and an expression beyond it (65).
+#if OVERFLOW == 1
+#if !LIMIT_EXPRESSION
+#endif
+#elif OVERFLOW == 2
+#if !!LIMIT_EXPRESSION
+#endif
+#endif
+
+struct TokenWorkspace {
+  u8 boundary[LIMIT_EXPRESSION];
+  u8 values[(2 + 3) * 2];
+};
+
+struct TokenWorkspace workspace;
+
+u8 ALIAS(u8 index) {
+  return index + workspace.boundary[0];
+}
+
+void main(void) {
+  workspace.values[0] = ALIAS(0);
+}
