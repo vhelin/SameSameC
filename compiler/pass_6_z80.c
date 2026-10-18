@@ -1400,10 +1400,38 @@ static void _multiply_h_and_e_to_hl(FILE *file_out) {
 }
 
 
-static void _multiply_bc_and_de_to_hl(FILE *file_out) {
+static void _multiply_bc_and_de_to_hl(struct tac *t, FILE *file_out) {
+
+  int multiplier = 0, mask, bit = 1, bytes = 2;
+  const char *multiplicand = NULL;
+
+  if (t->arg2_type == TAC_ARG_TYPE_CONSTANT) {
+    multiplier = ((int)t->arg2_d) & 0xffff;
+    multiplicand = "BC";
+  }
+  else if (t->arg1_type == TAC_ARG_TYPE_CONSTANT) {
+    multiplier = ((int)t->arg1_d) & 0xffff;
+    multiplicand = "DE";
+  }
+
+  fprintf(file_out, "      ; multiply BC * DE -> HL\n");
+  for (mask = multiplier; mask > 1; mask >>= 1) {
+    bytes += 1 + (mask & 1);
+    bit <<= 1;
+  }
+  /* Two register copies and one byte per add must fit the existing 18-byte loop. */
+  if (multiplier > 0 && bytes <= 18) {
+    fprintf(file_out, "      LD  H,%c\n", multiplicand[0]);
+    fprintf(file_out, "      LD  L,%c\n", multiplicand[1]);
+    for (bit >>= 1; bit > 0; bit >>= 1) {
+      fprintf(file_out, "      ADD HL,HL\n");
+      if ((multiplier & bit) != 0)
+        fprintf(file_out, "      ADD HL,%s\n", multiplicand);
+    }
+    return;
+  }
 
   /* from http://cpctech.cpc-live.com/docs/mult.html */
-  fprintf(file_out, "      ; multiply BC * DE -> HL\n");
   fprintf(file_out, "      LD  A,16 ; number of bits to process\n");
   fprintf(file_out, "      LD  HL,0\n");
 
@@ -5189,38 +5217,8 @@ static int _generate_asm_mul_div_mod_z80_16bit(struct tac *t, FILE *file_out, st
   /* bc * de -> hl */
   /******************************************************************************************************/
 
-  if (op == TAC_OP_MUL) {
-    /*
-      ld a,16     ; this is the number of bits of the number to process
-      ld hl,0     ; HL is updated with the partial result, and at the end it will hold
-                  ; the final result.
-    .mul_loop
-      srl b
-      rr c        ;; divide BC by 2 and shifting the state of bit 0 into the carry
-                  ;; if carry = 0, then state of bit 0 was 0, (the rightmost digit was 0)
-                  ;; if carry = 1, then state of bit 1 was 1. (the rightmost digit was 1)
-                  ;; if rightmost digit was 0, then the result would be 0, and we do the add.
-                  ;; if rightmost digit was 1, then the result is DE and we do the add.
-      jr nc,no_add
-
-      ;; will get to here if carry = 1
-      add hl,de
-
-    .no_add
-      ;; at this point BC has already been divided by 2
-
-      ex de,hl    ;; swap DE and HL
-      add hl,hl   ;; multiply DE by 2
-      ex de,hl    ;; swap DE and HL
-
-      ;; at this point DE has been multiplied by 2
-
-      dec a
-      jr nz,mul_loop  ;; process more bits
-    */
-
-    _multiply_bc_and_de_to_hl(file_out);
-  }
+  if (op == TAC_OP_MUL)
+    _multiply_bc_and_de_to_hl(t, file_out);
 
   /******************************************************************************************************/
   /* bc / de -> ca (result), hl (remainder) */
