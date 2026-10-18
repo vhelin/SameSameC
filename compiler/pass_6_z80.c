@@ -1444,7 +1444,7 @@ static void _multiply_bc_and_de_to_hl(struct tac *t, FILE *file_out) {
     bytes += 1 + (mask & 1);
     bit <<= 1;
   }
-  /* Two register copies and one byte per add must fit the existing 18-byte loop. */
+  /* Keep the original 18-byte budget for constant chains. */
   if (multiplier > 0 && bytes <= 18) {
     fprintf(file_out, "      LD  H,%c\n", multiplicand[0]);
     fprintf(file_out, "      LD  L,%c\n", multiplicand[1]);
@@ -1456,24 +1456,22 @@ static void _multiply_bc_and_de_to_hl(struct tac *t, FILE *file_out) {
     return;
   }
 
-  /* from http://cpctech.cpc-live.com/docs/mult.html */
-  fprintf(file_out, "      LD  A,16 ; number of bits to process\n");
+  /* Shift the multiplier through A:C, leaving B available for DJNZ. */
+  fprintf(file_out, "      LD  A,B\n");
+  fprintf(file_out, "      LD  B,16 ; number of bits to process\n");
   fprintf(file_out, "      LD  HL,0\n");
 
   _add_label("-", file_out, YES);
 
-  fprintf(file_out, "      SRL B\n");
-  fprintf(file_out, "      RR  C\n");
-  fprintf(file_out, "      JR  NC, +\n");
+  fprintf(file_out, "      ADD HL,HL\n");
+  fprintf(file_out, "      SLA C\n");
+  fprintf(file_out, "      RLA\n");
+  fprintf(file_out, "      JR  NC,+\n");
   fprintf(file_out, "      ADD HL,DE\n");
 
   _add_label("+", file_out, YES);
 
-  fprintf(file_out, "      EX  DE,HL\n");
-  fprintf(file_out, "      ADD HL,HL\n");
-  fprintf(file_out, "      EX  DE,HL\n");
-  fprintf(file_out, "      DEC A\n");
-  fprintf(file_out, "      JR  NZ,-\n");
+  fprintf(file_out, "      DJNZ -\n");
 }
 
 

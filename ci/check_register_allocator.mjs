@@ -99,6 +99,11 @@ for (let variant = 0; variant < 38; variant++) {
     ['matrix_rank', 'u16 a, u16 b, u16 c', `u16 live = ~a; u16 saved = ~c; return live ${['+', '&', '|', '^'][variant % 4]} saved;`, [2, 2, 2], 2],
     ['matrix_constant_multiply', variant >= 28 ? 's16 a, s16 b, u16 c' : 'u16 a, u16 b, u16 c',
       `return (${variant & 1 ? `${multiplyOperand}*(a^b)` : `(a^b)*${multiplyOperand}`})+c;`, [2, 2, 2], 2],
+    ['matrix_variable_multiply', ['u16 a, u16 b, u16 c', 'u16 a, u16 b, u16 c',
+      's16 a, s16 b, u16 c', 's16 a, s16 b, u16 c', 'u8 a, u16 b, u16 c',
+      'u16 a, u8 b, u16 c', 's8 a, u16 b, u16 c', 'u16 a, s8 b, u16 c'][variant],
+      `return (${variant === 1 ? '(a^c)' : 'a'}*${variant === 3 ? '(b^c)' : 'b'})+c;`,
+      variant === 4 || variant === 6 ? [1, 2, 2] : variant === 5 || variant === 7 ? [2, 1, 2] : [2, 2, 2], 2],
     ['matrix_constant_shift', variant & 4 ? 's16 a, s16 b, u16 c' : 'u16 a, u16 b, u16 c',
       `return ((a^b)${variant & 1 ? '>>' : '<<'}${variant < 36 ? `(${variant >> 1})` : 'c'})+c;`, [2, 2, 2], 2],
     ['matrix_index_affinity', 'u16 a', `${variant ? 'u8 *target = &ra_buffer[0]; ' : ''}u16 index = ~a; return ${variant ? 'target' : 'ra_buffer'}[index];`, [2], 1],
@@ -235,17 +240,18 @@ for (let variant = 0; variant < 38; variant++) {
   ];
   for (const [family, parameters, body, widths, returnWidth] of functions) {
     const wordBoundary = family === 'matrix_index_copy' && variant >= 30;
-    const literalArithmetic = family === 'matrix_constant_multiply' || family === 'matrix_constant_shift';
+    const arithmeticFamily = family === 'matrix_constant_multiply' || family === 'matrix_constant_shift' ||
+      family === 'matrix_variable_multiply';
     if (variant >= 8 && !family.startsWith('matrix_')) continue;
     if (family.startsWith('matrix_') && variant >= ({matrix_byte: 10, matrix_word: 10,
       matrix_compare_byte: 12, matrix_compare_word: 12, matrix_compare_signed: 12,
       matrix_low_byte: 10, matrix_structural: 12, matrix_sentinel: 10, matrix_affinity: 8, matrix_rank: 4,
       matrix_index_copy: 33, matrix_bc_alu: 12, matrix_scalar_uses: 30, matrix_real_index: 1,
-      matrix_constant_multiply: 33, matrix_constant_shift: 38}[family] || 2)) continue;
-    // Literal arithmetic shares the smaller literal-comparison cohort.
-    if (literalArithmetic && comparisonForms !== 1 && !process.env.RA_FAMILIES) continue;
+      matrix_constant_multiply: 33, matrix_constant_shift: 38, matrix_variable_multiply: 8}[family] || 2)) continue;
+    // Arithmetic regressions share the smaller literal-comparison cohort.
+    if (arithmeticFamily && comparisonForms !== 1 && !process.env.RA_FAMILIES) continue;
     if (comparisonForms && family !== 'arithmetic' && !family.startsWith('matrix_compare_') &&
-        !literalArithmetic) continue;
+        !arithmeticFamily) continue;
     if (process.env.RA_FAMILIES && family !== 'arithmetic' && !process.env.RA_FAMILIES.split(',').includes(family)) continue;
     if (!wordBoundary && family.startsWith('matrix_') && ['matrix_index_copy', 'matrix_bc_alu', 'matrix_scalar_uses', 'matrix_real_index', 'matrix_source_loop'].includes(family) !==
       (process.env.RA_VALUE_CASES === '1')) continue;
@@ -644,13 +650,29 @@ for (const program of programs) {
         expected = (shifted + last) & 65535;
         break;
       }
+      case 'matrix_variable_multiply':
       case 'matrix_constant_multiply': {
         const edges = [0, 1, 255, 256, 32767, 32768, 65534, 65535];
         parameters = seed < 64 ? [edges[Math.floor(seed / 8)], edges[seed % 8], edges[(seed + 3) % 8]] :
           [(seed * 7919) & 65535, (seed * 5113 + 65535) & 65535, (seed * 3571 + 32767) & 65535];
         const [first, second, last] = parameters;
-        const multiplier = program.variant === 32 ? last : multiplyConstants[program.variant >> 1];
-        expected = (Math.imul(first ^ second, multiplier) + last) & 65535;
+        if (program.family === 'matrix_constant_multiply') {
+          const multiplier = program.variant === 32 ? last : multiplyConstants[program.variant >> 1];
+          expected = (Math.imul(first ^ second, multiplier) + last) & 65535;
+        } else {
+          let left = first, right = second;
+          if (program.variant >= 4) {
+            const index = program.variant & 1;
+            parameters[index] &= 255;
+            const byte = parameters[index];
+            const widened = program.variant >= 6 && byte >= 128 ? byte - 256 : byte;
+            if (index) right = widened;
+            else left = widened;
+          }
+          if (program.variant === 1) left ^= last;
+          if (program.variant === 3) right ^= last;
+          expected = (Math.imul(left, right) + last) & 65535;
+        }
         break;
       }
       case 'matrix_byte':

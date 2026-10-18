@@ -13376,6 +13376,90 @@ shifts account for only 568,243 cycles and are not changed.
   whole-program paths and mapper/full-boot/rendering/hardware timing remain
   unqualified. Banked kernels use fixed mapping.
 
+### Profile-Guided Z80 Instruction Selection: General Word Multiplication
+
+The frozen `ce5c728` profile now identifies variable word multiplication as
+the largest classified arithmetic region: **13,272,836 of 108,024,514 RA
+cycles (12.29%)**, across the same 25 routines and 740 cases per mode.
+
+- Reuse `_multiply_bc_and_de_to_hl`, replacing only its generic fallback.
+  Save the high multiplier byte in A, use B as the 16-iteration counter,
+  and shift the multiplier through A:C using `SLA C` / `RLA`. Double the
+  partial product with `ADD HL,HL`, conditionally add DE and use `DJNZ`.
+  This removes 32 `EX DE,HL` instructions per multiplication and replaces
+  `DEC A` / `JR NZ` with the existing Z80 counted-loop idiom.
+- The generic kernel shrinks **18 -> 15 bytes**. Its exact cost changes
+  from `1020 + 6*popcount(input BC)` to `784 + 6*popcount(input BC)`:
+  **236 T-states and 47 executed instructions saved for every input**,
+  about 21-23% of the old kernel's cycles. Preserve signed/unsigned
+  low-word results, argument materialization, DE frame protection and
+  conservative clobbers. Byte multiplication, division, modulo and shifts
+  are unchanged; allocation policy and decisions are unchanged too.
+- Keep the original **18-byte constant-chain budget**, even though the
+  generic fallback is now smaller. Tightening it would regress previously
+  profitable sparse constants such as 511 and 32769. All existing selected
+  chains remain byte-identical; dense constants use the improved fallback.
+  This is common Z80 code generation in every mode, not another allocator
+  feature. Keep `-ra` opt-in and future SM83/6502 instruction selection local.
+- Add no production function, policy or cache. The production delta is
+  **9 added / 11 removed lines**; the same-flags strict GCC host executable
+  remains **855,022 bytes**, with no host-size growth.
+- Full `RA_CASES=512` qualification reduces the existing RA workload
+  aggregate from **1,518,743,199 to 1,476,429,579 cycles (-2.79%)**.
+  Fourteen real routines and 13 generated entries improve; none regresses.
+  Whole-routine reductions include multiply-add **16.61%**, sort **4.02%**,
+  heap **3.90%**, array **3.09%**, path **3.02%**, actor **2.70%** and
+  record **2.62%**. These are emulated corpus results, not whole-game or
+  hardware timing claims.
+
+| Existing RA project | Used ROM before -> after | Static register-copy sites |
+| --- | --- | --- |
+| calculations-1 | 22,015 -> 22,003 (-12) | +4 |
+| calculations-2 | 39,692 -> 39,647 (-45) | +15 |
+
+- The same ROM savings apply in default, explicit `-no-ra` and forced-spill
+  modes. Accept one additional `LD A,B` copy per selected multiply; the
+  copy metric does not count the removed exchanges. Frame sizes and
+  frame/stack traffic are unchanged, as are all other execution metrics
+  except cycles, instructions and register copies. No measured function
+  or image grows, and no cycle or instruction count regresses.
+- Reuse the existing arithmetic oracle's edge/seed generation for **eight
+  new variable-multiply cases**: signed/unsigned words, computed/retained
+  operands and byte widening on either side. Reuse the multiply fixture
+  for signed-word, signed-byte and unchanged byte-multiply blocks; add no
+  test file. Refresh **six existing golden blocks in five fixtures,
+  removing 18 expected bytes**, with unchanged executable SSC except the
+  three explicitly added fixture functions.
+- Execute **4,718,592 actual old/new kernel checks**: vary every word
+  against 16 representative factors in both operand positions, then every
+  byte pair under four signedness combinations. Check the independent
+  product, exact cycle/instruction formulas, byte budgets, preserved
+  IX/IY/SP, new DE preservation and forbidden writes/ports. Another
+  **29,184 whole-function executions** pass across default/spill/RA and
+  old/new compilers. Only byte-marker data becomes same-size NOPs for
+  whole-function execution; kernel and golden checks use unmodified code.
+  The old compiler passes six unchanged byte blocks and rejects the four
+  generic blocks, including both new signed controls.
+- Fresh strict GCC O3 (`-ansi -pedantic -Wall -Werror`), native Release and
+  native ASan compiler/verifier gates pass. Each runs all six cohorts:
+  **547 generated entries and 25 real routines, 291,364 cases per mode**
+  (280,064 generated + 11,300 real), in default/all-spill/RA modes. Both
+  full standard suites pass sequentially, **175 tests each**, with source
+  and staged compiler/linker hashes unchanged.
+- Release and ASan each match GCC's **80 ROMs, 30 reports and 13,210 selected
+  decisions**. Baseline/final comparison proves 86 identical SSC sources
+  and unchanged decisions. In **615 word-multiply kernels across 80
+  assembly files**, exactly **160 generic kernels** change; all 455 constant
+  chains and all assembly outside those kernels match. All 48 traced/quiet
+  pairs, 14 exact display rows and 217 ASan logs pass; compiler/verifier
+  sanitizer imports are verified. Preserve unrelated inputs and both user
+  ROMs. Artifacts under `/tmp/z80-patterns-3` retain profiles, controls,
+  opcode/golden proofs and qualification logs; emulator 2.3.0 remains pinned.
+  ASan uses the Release linker with leak detection disabled. ASan linker
+  execution, other sanitizers, exhaustive whole-program paths and
+  mapper/full-boot/rendering/hardware timing remain unqualified; banked
+  kernels use fixed mapping.
+
 ### Deferred Optional Batch 397-399: Attribute Remaining BC-Base Word Reads
 
 These items are not the next implementation obligation. Resume only if new
