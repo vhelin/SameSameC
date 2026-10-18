@@ -117,6 +117,8 @@ int inline_asm_z80_parse_line(struct asm_line *al) {
     else
       return SUCCEEDED;
   }
+  else
+    return SUCCEEDED;
   
   /* parse the variable name */
   got_parenthesis = NO;

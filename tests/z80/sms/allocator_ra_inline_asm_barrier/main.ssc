@@ -5,6 +5,9 @@
 // @BT TEST-02 02 START
 // @BT DD 21 00 00 DD 19 DD 6E F9 DD 66 FA DD 4E F7 DD 46 F8 78 AC 67 79 AD 6F DD 75 F3 DD 74 F4 DD 6E F3 DD 66 F4 DD 75 F3 DD 74 F4 DD 6E F3 DD 66 F4 DD 4E F5 DD 46 F6 78 AC 67 79 AD 6F DD 75 F1 DD 74 F2 DD 21 01 C0 FD 21 F1 FF FD 19 FD 7E 00 DD 77 00 FD 7E 01 DD 77 01
 // @BT END
+// @BT TEST-03 03 START
+// @BT D5 21 00 C1 3E 5A 77 11 01 C1 12 32 02 C1 22 03 C1 D1
+// @BT END
 
 u8 g_allocator_inline_asm_barrier_sink_a;
 u16 g_allocator_inline_asm_barrier_sink_hl;
@@ -42,4 +45,16 @@ u16 allocatorRaInlineAsmBarrierHl(u16 left, u16 right, u16 mask) {
 }
 
 void main(void) {
+
+  __asm(".DB \"03>\"",
+        "PUSH DE",
+        "LD HL,$C100",
+        "LD A,$5A",
+        "LD (HL),A",
+        "LD DE,$C101",
+        "LD (DE),A",
+        "LD ($C102),A",
+        "LD ($C103),HL",
+        "POP DE",
+        ".DB \"<03\"");
 }

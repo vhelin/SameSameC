@@ -1195,6 +1195,7 @@ if (process.env.RA_REAL_PROJECTS !== '0') {
       'calculationArrayWorkload', 'calculationSortWorkload', 'calculationStencilWorkload', 'calculationRecordWorkload',
       'gameRamAllocate', 'gameRamRelease',
       'calculationHeapWorkload', 'calculationActorWorkload', 'calculationTileWorkload', 'calculationPathWorkload',
+      'calculationMoveWorkload', 'calculationHistogramWorkload', 'calculationFletcherWorkload',
       'calculateAndPrintComplexBank1', 'calculateAndPrintComplexBank2', 'calculateAndPrintComplexBank3']]
   ]) {
     const images = new Map();
@@ -1228,7 +1229,8 @@ if (process.env.RA_REAL_PROJECTS !== '0') {
       const displaySeed = {calculationArrayWorkload: 0x47c1, calculationSortWorkload: 0x253a,
         calculationStencilWorkload: 0x36b9, calculationRecordWorkload: 0x5a13,
         calculationHeapWorkload: 0x4219, calculationActorWorkload: 0x2d57,
-        calculationTileWorkload: 0x3b6d, calculationPathWorkload: 0x17a6}[name];
+        calculationTileWorkload: 0x3b6d, calculationPathWorkload: 0x17a6,
+        calculationMoveWorkload: 0x43be, calculationHistogramWorkload: 0x2e91, calculationFletcherWorkload: 0x145c}[name];
       const routineImages = new Map(Array.from(images, ([mode, image]) => {
         const bank = image.banks.get(name), address = image.symbols.get(name);
         if (bank === 0) return [mode, image];
@@ -1257,6 +1259,9 @@ if (process.env.RA_REAL_PROJECTS !== '0') {
           case 'calculationActorWorkload':
           case 'calculationTileWorkload':
           case 'calculationPathWorkload':
+          case 'calculationMoveWorkload':
+          case 'calculationHistogramWorkload':
+          case 'calculationFletcherWorkload':
           case 'gameRamAllocate':
           case 'gameRamRelease': {
             const count = seed >= cases ? 16 : seed % 17;
@@ -1476,6 +1481,28 @@ if (process.env.RA_REAL_PROJECTS !== '0') {
                 for (let bit = 0; bit < 8; bit++) crc = ((crc << 1) ^ ((crc & 32768) ? 0x1021 : 0)) & 65535;
               });
               expected = (crc + encodedBytes + decoded.length * 17) & 8191;
+            } else if (name === 'calculationMoveWorkload') {
+              for (let index = 0; index < 32; index++)
+                expectedBuffer[index] = (value ^ (value >> 8)) + index * 13;
+              expectedBuffer.copyWithin(3, 0, count);
+              expectedBuffer.copyWithin(0, 5, 5 + count);
+              expected = (value + expectedBuffer.slice(0, 32).reduce((sum, byte) => sum + byte, 0)) & 65535;
+            } else if (name === 'calculationHistogramWorkload') {
+              let sample = (value ^ (value >> 8)) & 255;
+              for (let index = 0; index < 16; index++) {
+                expectedBuffer[index] = sample;
+                sample = (((sample << 1) | (sample >> 7)) + 7) & 255;
+              }
+              expectedBuffer.fill(0, 32, 48);
+              for (let index = 0; index < count; index++)
+                expectedBuffer[32 + (expectedBuffer[index] & 15)]++;
+              expected = (value + expectedBuffer.slice(32, 48).reduce((sum, bin, index) => sum + bin * (index + 1), 0)) & 65535;
+            } else if (name === 'calculationFletcherWorkload') {
+              const packet = Uint8Array.from({length: count}, (_, index) => (value ^ (value >> 8)) + index * 29);
+              expectedBuffer.set(packet);
+              const first = packet.reduce((sum, byte) => sum + byte, 0) % 255;
+              const second = packet.reduce((sum, byte, index) => sum + byte * (count - index), 0) % 255;
+              expected = first | (second << 8);
             } else if (name === 'calculationPathWorkload') {
               const start = value & 63, goal = (value >> 6) & 63;
               const walls = Array.from({length: 64}, (_, index) => ((value + index * 11) & 31) < count && index !== start && index !== goal);

@@ -11852,6 +11852,69 @@ produces the same ROMs as the execution runner. Existing qualified compiler and
 verifier binaries are reused with their hashes checked; current fixture hashes,
 captures and reports remain under `/tmp/calculations2-workspace`.
 
+#### Embedded Z80 Application Workloads
+
+Three further workloads live in `calculations-2/bank_1.ssc`. Their actual
+buffer processing, loops and checksums are embedded `__asm` Z80 instructions,
+not C implementations or separate assembly files. Each accepts
+`(u16 seed, u16 count, u8 *bytes)`, with count 0-16 and the existing 80-byte
+display workspace. Arguments/results cross the existing `(@variable)`
+interface; DE is saved before use as scratch and restored before the result
+store. IX is not repurposed inside the assembly body.
+
+| Workload | Assembly work / output | Old simple row -> new result | VRAM row |
+| --- | --- | --- | --- |
+| `calculationMoveWorkload` | Initialize 32 bytes; overlapping right/left moves with `LDDR`/`LDIR`; seeded 16-bit sum | `0x43BE` -> `0x14C5` | `0x3D80` |
+| `calculationHistogramWorkload` | Generate 16 samples; count low-nibble categories into bins at bytes 32-47; seeded weighted sum | `0x2E91` -> `0x1DBA` | `0x3DC0` |
+| `calculationFletcherWorkload` | Generate count packet bytes; calculate Fletcher-16 modulo 255 | `0x145C` -> `0x027D` | `0x3900` |
+
+Each selected old row still performs its original arithmetic, then adds its
+assembly workload's checksum and masks to 13 bits. Both existing restoration
+calls consume that combined value. The expected column and all three
+calculated columns therefore depend visibly on the new work; none of the
+checksums is cancelled or discarded. Copy count zero skips both block-move
+instructions, avoiding the Z80's 65,536-byte zero-count behavior. Histogram
+count zero leaves zeroed bins; the empty packet's Fletcher checksum is zero.
+
+Fix the inline-asm parser's missing non-variable `LD` fall-through so ordinary
+stores such as `LD (HL),A`, `LD (DE),A` and absolute-address stores reach the
+assembler unchanged. This adds two compiler lines, no helper or clobber-policy
+change. Existing `(@variable)` validation stays in place. The existing
+inline-asm barrier fixture retains its original two golden blocks and adds
+one raw-store opcode block.
+
+The execution runner reuses its existing workload harness and adds independent
+host oracles: overlap-safe buffer moves, host histogram/weighted reduction,
+and direct modulo-255 Fletcher sums. It checks complete buffers and untouched
+sentinels, returns, ports, DE/SP and protected stack, including counts 0-16,
+display seeds and zero/full-word seeds. Banked display checks cover all three
+changed rows.
+
+Fresh optimized/strict GCC and native Win32 Release/ASan compiler builds pass,
+as does the fresh optimized GCC verifier. Full execution runs on each compiler
+pass all six cohorts: **468 generated entries and 25 real routines; 239,616
+generated + 11,300 real = 250,916 cases per mode** in default/all-spill/RA.
+Each new kernel passes 515 inputs per mode/toolchain and has identical
+normalized assembly in all five build modes. The Fletcher inputs include
+empty/one/max counts, byte 255, carries and exact-255 reductions in both sums.
+
+Native Release/ASan match GCC's **80 ROMs, 30 reports and 12,286 selected
+decisions**. The 70 images outside calculations-2, 9,084 associated decisions
+and all 21 unaffected existing real-routine metrics match the previous batch.
+All 30 traced/quiet real-project assembly pairs and 14 exact banked display
+rows pass; 217 ASan-run logs are clean. The three affected makefiles
+(`calculations-2`, inline-asm barrier and target-policy inline-asm address)
+pass with both GCC and native Release, and their calculations ROMs match the
+runner. The old compiler rejects the new raw-store regression at `LD (HL),A`;
+the fixed compiler passes all three golden blocks.
+
+Proofs, manifests and logs remain under `/tmp/calc2-asm-20261018`; completed
+make-test mirrors are removed after comparison. ASan runs instrument the
+compiler, using the native Release linker and fresh GCC verifier, not an ASan
+linker/verifier. Leaks, other sanitizers, full boot/mapper/rendering and hardware
+timing remain unqualified. This expansion does not complete allocator steps
+385-387 or compare performance against the smaller historical workload.
+
 ### Batch 358-360: Bound One Remaining Source-Loop Miss
 
 - [x] **358. Identify one executed lowering opportunity.** Reuse the existing

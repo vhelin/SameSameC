@@ -16,19 +16,22 @@ void calculateAndPrintComplexBank1(u8 *chars, u8 one, u8 zero) {
   printCalculationLine(chars, 0x40, 0x7D, 0x0DB1, extra1, extra2, extra3);
 
   extra1 = (((((0x43BE + 0x0625) ^ 0x1B6D) ^ 0x1B6D) - 0x0625) | zero) + one - one;
+  extra1 = (extra1 + calculationMoveWorkload(extra1, 16, chars)) & 0x1FFF;
   extra2 = calculationShiftRestore(extra1, one, 0x739C);
   extra3 = calculationPartitionRestore(extra2, 67, 0x2662);
-  printCalculationLine(chars, 0x80, 0x7D, 0x43BE, extra1, extra2, extra3);
+  printCalculationLine(chars, 0x80, 0x7D, 0x14C5, extra1, extra2, extra3);
 
   extra1 = (((((0x2E91 * (one + 2)) + 2) / (one + 2)) ^ 0x4D2A) ^ 0x4D2A) + zero;
+  extra1 = (extra1 + calculationHistogramWorkload(extra1, 16, chars)) & 0x1FFF;
   extra2 = calculationProductRestore(extra1, 5, 3);
   extra3 = calculationShiftRestore(extra2, one, 0x18E7);
-  printCalculationLine(chars, 0xC0, 0x7D, 0x2E91, extra1, extra2, extra3);
+  printCalculationLine(chars, 0xC0, 0x7D, 0x1DBA, extra1, extra2, extra3);
 
   extra1 = ((((0x145C ^ 0x63A9) + 0x027B) - (0x027B + zero)) ^ 0x63A9) + one - one;
+  extra1 = (extra1 + calculationFletcherWorkload(extra1, 16, chars)) & 0x1FFF;
   extra2 = calculationProductRestore(extra1, 2, 1);
   extra3 = calculationPartitionRestore(extra2, 71, 0x39E4);
-  printCalculationLine(chars, 0x00, 0x79, 0x145C, extra1, extra2, extra3);
+  printCalculationLine(chars, 0x00, 0x79, 0x027D, extra1, extra2, extra3);
 
   extra1 = (((((0x286F + 0x051D) ^ 0x74B2) ^ 0x74B2) - 0x051D) | zero) + one - one;
   extra2 = calculationShiftRestore(extra1, one, 0x1D73);
@@ -49,6 +52,212 @@ void calculateAndPrintComplexBank1(u8 *chars, u8 one, u8 zero) {
   extra2 = calculationProductRestore(extra1, 3, 2);
   extra3 = calculationPartitionRestore(extra2, 79, 0x47A5);
   printCalculationLine(chars, 0x00, 0x7D, 0x09AD, extra1, extra2, extra3);
+}
+
+// Assembly kernels accept 0..16 elements in the shared buffer and preserve frame DE.
+// Move overlapping ranges in both directions, then sum all 32 initialized bytes.
+u16 calculationMoveWorkload(u16 seed, u16 count, u8 *bytes) {
+
+  u16 checksum;
+
+  __asm("LD BC,(@count)",
+        "LD HL,(@bytes)",
+        "PUSH DE",
+        "LD DE,(@seed)",
+        "PUSH DE",
+        "PUSH BC",
+        "PUSH HL",
+        "LD A,D",
+        "XOR E",
+        "LD B,32",
+        "calculationMoveWorkload_fill:",
+        "LD (HL),A",
+        "ADD A,13",
+        "INC HL",
+        "DJNZ calculationMoveWorkload_fill",
+        "POP HL",
+        "POP BC",
+        "LD A,B",
+        "OR C",
+        "JR Z,calculationMoveWorkload_sum",
+        "PUSH BC",
+        "PUSH HL",
+        "LD D,H",
+        "LD E,L",
+        "INC DE",
+        "INC DE",
+        "INC DE",
+        "ADD HL,BC",
+        "DEC HL",
+        "EX DE,HL",
+        "ADD HL,BC",
+        "DEC HL",
+        "EX DE,HL",
+        "LDDR",
+        "POP HL",
+        "POP BC",
+        "PUSH HL",
+        "LD D,H",
+        "LD E,L",
+        "INC HL",
+        "INC HL",
+        "INC HL",
+        "INC HL",
+        "INC HL",
+        "LDIR",
+        "POP HL",
+        "calculationMoveWorkload_sum:",
+        "POP DE",
+        "LD B,32",
+        "calculationMoveWorkload_add:",
+        "LD A,(HL)",
+        "ADD A,E",
+        "LD E,A",
+        "JR NC,calculationMoveWorkload_next",
+        "INC D",
+        "calculationMoveWorkload_next:",
+        "INC HL",
+        "DJNZ calculationMoveWorkload_add",
+        "EX DE,HL",
+        "POP DE",
+        "LD (@checksum),HL");
+
+  return checksum;
+}
+
+// Generate 16 samples, count their low nibbles at bytes[32..47], and weight bins.
+u16 calculationHistogramWorkload(u16 seed, u16 count, u8 *bytes) {
+
+  u16 checksum;
+
+  __asm("LD BC,(@count)",
+        "LD HL,(@bytes)",
+        "PUSH DE",
+        "LD DE,(@seed)",
+        "PUSH DE",
+        "PUSH BC",
+        "PUSH HL",
+        "LD A,D",
+        "XOR E",
+        "LD B,16",
+        "calculationHistogramWorkload_fill:",
+        "LD (HL),A",
+        "RLCA",
+        "ADD A,7",
+        "INC HL",
+        "DJNZ calculationHistogramWorkload_fill",
+        "LD DE,16",
+        "ADD HL,DE",
+        "PUSH HL",
+        "LD B,16",
+        "XOR A",
+        "calculationHistogramWorkload_clear:",
+        "LD (HL),A",
+        "INC HL",
+        "DJNZ calculationHistogramWorkload_clear",
+        "POP DE",
+        "POP HL",
+        "POP BC",
+        "LD A,B",
+        "OR C",
+        "JR Z,calculationHistogramWorkload_sum",
+        "calculationHistogramWorkload_count:",
+        "LD A,(HL)",
+        "INC HL",
+        "AND 15",
+        "PUSH HL",
+        "LD L,A",
+        "LD H,0",
+        "ADD HL,DE",
+        "INC (HL)",
+        "POP HL",
+        "DEC BC",
+        "LD A,B",
+        "OR C",
+        "JR NZ,calculationHistogramWorkload_count",
+        "calculationHistogramWorkload_sum:",
+        "EX DE,HL",
+        "POP DE",
+        "LD B,16",
+        "LD C,1",
+        "calculationHistogramWorkload_bin:",
+        "LD A,(HL)",
+        "OR A",
+        "JR Z,calculationHistogramWorkload_next",
+        "PUSH BC",
+        "LD B,A",
+        "calculationHistogramWorkload_add:",
+        "LD A,E",
+        "ADD A,C",
+        "LD E,A",
+        "JR NC,calculationHistogramWorkload_carry",
+        "INC D",
+        "calculationHistogramWorkload_carry:",
+        "DJNZ calculationHistogramWorkload_add",
+        "POP BC",
+        "calculationHistogramWorkload_next:",
+        "INC C",
+        "INC HL",
+        "DJNZ calculationHistogramWorkload_bin",
+        "EX DE,HL",
+        "POP DE",
+        "LD (@checksum),HL");
+
+  return checksum;
+}
+
+// Generate count packet bytes and return their Fletcher-16 checksum (modulo 255).
+u16 calculationFletcherWorkload(u16 seed, u16 count, u8 *bytes) {
+
+  u16 checksum;
+
+  __asm("LD BC,(@count)",
+        "LD HL,(@bytes)",
+        "PUSH DE",
+        "LD DE,(@seed)",
+        "LD A,B",
+        "OR C",
+        "JR Z,calculationFletcherWorkload_empty",
+        "LD A,D",
+        "XOR E",
+        "PUSH HL",
+        "LD B,C",
+        "calculationFletcherWorkload_fill:",
+        "LD (HL),A",
+        "ADD A,29",
+        "INC HL",
+        "DJNZ calculationFletcherWorkload_fill",
+        "POP HL",
+        "LD B,C",
+        "LD DE,0",
+        "calculationFletcherWorkload_sum:",
+        "LD A,(HL)",
+        "ADD A,E",
+        "ADC A,0",
+        "CP 255",
+        "JR NZ,calculationFletcherWorkload_first",
+        "XOR A",
+        "calculationFletcherWorkload_first:",
+        "LD E,A",
+        "LD A,D",
+        "ADD A,E",
+        "ADC A,0",
+        "CP 255",
+        "JR NZ,calculationFletcherWorkload_second",
+        "XOR A",
+        "calculationFletcherWorkload_second:",
+        "LD D,A",
+        "INC HL",
+        "DJNZ calculationFletcherWorkload_sum",
+        "EX DE,HL",
+        "JR calculationFletcherWorkload_done",
+        "calculationFletcherWorkload_empty:",
+        "LD HL,0",
+        "calculationFletcherWorkload_done:",
+        "POP DE",
+        "LD (@checksum),HL");
+
+  return checksum;
 }
 
 u16 calculationSortWorkload(u16 seed, u16 count, u8 *bytes) {
