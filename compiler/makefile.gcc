@@ -1,6 +1,6 @@
 
 CC = gcc
-CFLAGS = -c -Os -ansi -pedantic -Wall -DNDEBUG
+CFLAGS = -c -g -O0 -ansi -pedantic -Wall -DNDEBUG
 ifeq ($(TRACE),1)
 override CPPFLAGS += -DSAMESAMEC_TRACE
 endif
