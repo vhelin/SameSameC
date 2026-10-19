@@ -107,7 +107,7 @@ extraction.
   or weaker alias, clobber and fallback checks.
 - [x] **2c. Leaf and caller overhead:** reduce redundant argument/result copies
   and frame setup within the existing ABI first; measure wrappers separately.
-- [ ] **2d. Stack footprint and pre-SM83 qualification:** reduce proven
+- [x] **2d. Stack footprint and pre-SM83 qualification:** reduce proven
   unnecessary frame slots, spills or saves, measure the complete frame footprint
   as well as SP high-water, and pass all checkpoint gates.
 - [ ] **3. Initial SM83 backend:** establish correct Game Boy code generation,
@@ -630,6 +630,76 @@ The next implementation target is follow-up 2d, not SM83 yet.
   calculation ROMs before starting step 3; mark 2a-2d complete with actual
   measurements, not parity claims.
 
+##### Step 2d Checkpoint (2026-10-19)
+
+Complete within the bounded footprint goal. Existing loop/interval retention
+can leave a spill slot reserved even when every operand already uses the same
+physical register. The existing spill-layout pass now omits that unused backing
+only after scanning all active uses in the function. Missing or inconsistent
+physical annotations, call arguments, explicit spills, reload/store transfers
+and inline assembly retain memory backing. Fixed spill owners and the entire
+prefix through their lowest destination remain unchanged; only the suffix can
+shrink. Default and forced-all-spill layouts are unchanged.
+
+No new retention, clobber or slot-sharing policy is introduced. The existing
+poison-offset path prevents an omitted slot from silently becoming a memory
+fallback. No production helper is added; the coverage proof adds 36 lines to
+the existing layout function.
+
+The comparison runner now measures the deepest frame access below entry SP,
+the largest access below the instruction's SP, and the full observed call span.
+The full span includes reserved stack space, below-SP frame accesses and the
+two-byte entry return address. Ordinary PUSH/POP accesses are not misclassified
+as below-SP storage when emulator callbacks precede the SP update.
+
+RA results against immediate parent `cddbdf1`, in bytes across identical calls:
+
+| Routine | SP high-water | Deepest access below entry SP | Full call span |
+| --- | ---: | ---: | ---: |
+| Byte fill | 22 -> 20 | 20 -> 20 | 24 -> 22 |
+| Shift/restore | 22 -> 20 | 20 -> 20 | 24 -> 22 |
+| Partition/restore | 28 -> 26 | 28 -> 26 | 30 -> 28 |
+| Stencil workload | 120 -> 118 | 120 -> 118 | 122 -> 120 |
+| Path workload | 187 -> 185 | 187 -> 185 | 189 -> 187 |
+| PackBits + CRC | 47 -> 45 | 47 -> 45 | 49 -> 47 |
+| Tile + CRC | 126 -> 126 | 126 -> 126 | 128 -> 128 |
+
+The below-SP access extent does not increase: fill remains eight bytes and
+PackBits/CRC ten. These are actual two-byte footprint reductions, not storage
+moved below SP. Kernel/wrapper code bytes and T-states are unchanged throughout
+both SSC modes. The stock SDCC size-profile fill still needs only eight bytes
+of SP displacement / ten bytes of full call span; parity is not claimed.
+
+All 104 builds / 1856 calls / 24 independent timing checks pass, with all 78
+pinned competitor controls exact. Final footprint accounting re-executes all
+104 images and all 26 immediate-parent SSC images, reproducing their original
+five metrics exactly. All 26 SSC rows are non-regressing against the parent in
+those metrics and the three new footprint observations. The historical
+baseline is unchanged.
+
+Fourteen native backing-slot cases cover all five retained registers,
+incomplete/mixed coverage, real call arguments, explicit memory transfers and
+disabled/all-spill modes. Existing fixed-owner controls also pin an otherwise
+unused retained slot in the protected prefix. All 32 immutable verifier
+rejections remain intact. The eight-cohort 64-seed allocator corpus, 28 real
+routines and four-seed ASan corpus pass, including nested calls, recursion,
+escapes, wide frames, aliasing and pressure fallback.
+
+All 175 fixtures pass, including seven rechecks after updating four byte-marker
+ranges and three exact-policy fixtures. All 174 available fixture assemblies
+differ only in qualified frame offsets. The 61530 condition executions pass per
+Release/traced/ASan configuration; all 140 intermediate/linked condition ROMs
+are identical across builds. Strict ANSI GCC normal/traced checks, MSVC builds
+and all 18 comparison-tool tests normally and under `python -O` pass. Measurement
+probes separately cover below-SP storage, ordinary calls and untouched reserved
+stack space.
+
+Both full calculation projects rebuild successfully. Used ROM remains 20764
+and 33421 bytes; padded images remain 65536 bytes and normal/traced images are
+identical. Steps 1, 2 and 2a-2d are qualified; the next implementation target is
+step 3, the initial SM83 backend. Further frame optimization remains optional,
+not a claim that these finite tests establish every program's maximum RAM use.
+
 ### 3. Maintain Induction Addresses And Select Z80 Loops
 
 Reuse existing array/pointer TAC and Z80 address emitters. Introduce a narrowly
@@ -764,6 +834,14 @@ three workloads/eight configurations, including the 256-byte fill.
   boundary/error vectors and 0/255/256-byte loop cases.
 - Each build retains generated input, assembly/listings, linked image, symbols,
   logs, actual command lines, measured call samples and metrics.
+- `max_stack_bytes` retains its original meaning: displacement below entry SP.
+  `max_stack_access_bytes` measures the deepest stack/frame access below entry
+  SP, and `max_below_sp_bytes` records accesses below the instruction's stack
+  pointer. `max_frame_footprint_bytes` combines reserved SP span and frame
+  accesses, including the two-byte entry return address. This is observed
+  whole-call storage, not global RAM, interrupt headroom or an unexecuted-path
+  bound. These additional observations do not regenerate the historical
+  five-metric baseline; compare them against a consistently remeasured parent.
 - `report.json` records partial/full status, tool versions/hashes, baseline
   deltas and SameSameC/competitor geometric ratios. Negative deltas are gains.
   Build seconds are observations, not a statistically qualified speed benchmark.
@@ -806,6 +884,6 @@ to this cross-compiler experiment.
    compiler source growth visible and remove superseded logic. Commit the batch
    locally with the validation summary; do not push.
 
-Steps 1, 2, 2a, 2b and 2c are complete. Current implementation target: **follow-up
-2d, stack footprint and pre-SM83 qualification**. Complete and qualify 2d before
-**step 3, the initial SM83 backend**.
+Steps 1, 2, 2a, 2b, 2c and 2d are complete. Current implementation target:
+**step 3, the initial SM83 backend**. Keep the qualified Z80 behavior and shared
+core covered while introducing the new target's addressing, spill and call rules.

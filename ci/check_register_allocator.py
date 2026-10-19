@@ -170,6 +170,7 @@ def verify_allocator(output):
         "spill_slot_test: cases=10 overlap_width_boundary_redefinition_controls=yes tacs_unchanged=yes status=complete",
         "spill_slot_test: fixed_prefix=yes shared_suffix=yes invalid_fixed=11 immutable=yes status=complete",
         "spill_slot_test: fixed_owners=3 byte_word_mixed=yes prefix_stable=yes suffix_shared=yes tacs_unchanged=yes status=complete",
+        "spill_slot_test: unused_backing=14 complete_physical_coverage=yes memory_fallbacks=yes tacs_unchanged=yes status=complete",
         "allocation_cost_test: nearer_rejected=yes farther_reused=yes status=complete",
         "allocation_cost_test: weighted_cycles=yes static_bytes=yes instruction_bound=256 fallback=next_use immutable=yes status=complete",
         "allocation_cost_test: split_reload_overlap_controls=4 status=complete",

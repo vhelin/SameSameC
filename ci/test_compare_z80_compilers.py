@@ -148,6 +148,30 @@ class ComparisonTests(unittest.TestCase):
         benchmark.compare_result(dict(reference), reference)
         self.assertEqual(reference, before)
 
+    def test_footprint_includes_storage_below_sp(self):
+        for destination, reserve, sp, access, below, footprint in (
+            (0xcff0, False, 2, 15, 13, 17),
+            (0xc000, False, 2, 2, 0, 4),
+            (0xc000, True, 31, 2, 0, 33),
+        ):
+            with self.subTest(destination=destination, reserve=reserve):
+                memory = bytearray(65536)
+                memory[0x100:0x107] = bytes([0xcd, 0, 2, 0x22, 0, 0xc3, 0xc9])
+                kernel = bytes([
+                    0x21, 42, 0, 0x22, destination & 255, destination >> 8, 0xc9,
+                ])
+                if reserve:
+                    kernel = b"\x31\xe0\xcf" + kernel[:-1] + b"\x31\xfd\xcf\xc9"
+                memory[0x200:0x200 + len(kernel)] = kernel
+                symbols = {"bench": 0x100, "probe": 0x200, "bench_buffer": 0xc000,
+                           "bench_params": 0xc240, "bench_result": 0xc300}
+                value, _, counters = benchmark.execute(memory, symbols, "probe", [], b"", 0)
+                self.assertEqual(value, 42)
+                self.assertEqual(counters["stack_high_water"], sp)
+                self.assertEqual(counters["stack_access_extent"], access)
+                self.assertEqual(counters["below_sp_extent"], below)
+                self.assertEqual(counters["frame_footprint"], footprint)
+
 
 if __name__ == "__main__":
     unittest.main()

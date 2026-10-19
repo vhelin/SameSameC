@@ -19,7 +19,8 @@ all: linked.sms
 	grep -q "resolve function=allocatorRaBRetentionCConflict operand=result kind=PHY_B" compiler.log
 	grep -q "resolve function=allocatorRaBRetentionCConflict operand=arg1 kind=PHY_B" compiler.log
 	grep -q "register 0 size 1 spill no phy C" main.asm
-	grep -q "register 1 size 1 spill yes phy NONE" main.asm
+	grep -q "register 1 size 1 spill no phy C" main.asm
+	grep -q "unused_spill_slot function=allocatorRaAssignmentC temp=r1 size=1 phy=C coverage=complete fixed_prefix=preserved" compiler.log
 	grep -q "register 2 size 1 spill no phy A" main.asm
 	grep -q "retained result in B" main.asm
 	grep -q "retained arg1 in B" main.asm

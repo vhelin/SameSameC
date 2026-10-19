@@ -341,8 +341,9 @@ all: linked.sms core_liveness_storage_test tac_insert_test z80_register_spill_te
 	grep -q "liveness function=allocatorRaCoreLivenessLoopJoin block=3 use={r1} def={} live_in={r1} live_out={}" compiler.log
 	: && ! grep -q "block_exit_spill_decision function=allocatorRaCoreLivenessLoopJoin .*temp=r1 .*spill=required" compiler.log
 	test "$$(grep -c "block_exit_spill_decision function=allocatorRaCoreLivenessLoopJoin .*temp=r1 .*spill=exempt" compiler.log)" -eq 3
-	grep -q "spill slot function=allocatorRaCoreLivenessLoopJoin r1 offset=-7 size=1" compiler.log
-	sed -n '/allocatorRaCoreLivenessLoopJoin:/,/\.ENDS/p' main.asm | grep -q "; register 1 size 1 spill yes phy NONE"
+	grep -q "unused_spill_slot function=allocatorRaCoreLivenessLoopJoin temp=r1 size=1 phy=C coverage=complete fixed_prefix=preserved" compiler.log
+	grep -q "no spill slot function=allocatorRaCoreLivenessLoopJoin r1 phy=C poison_offset=-32768" compiler.log
+	sed -n '/allocatorRaCoreLivenessLoopJoin:/,/\.ENDS/p' main.asm | grep -q "; register 1 size 1 spill no phy C"
 	: && ! sed -n '/allocatorRaCoreLivenessLoopJoin:/,/\.ENDS/p' main.asm | grep -q "; spill: block_exit r1"
 	grep -q "; TAC: r1.u8 (u8) := value.u8 (u8)" main.asm
 	grep -q "; TAC: r1.u8 (u8) := r1.u8 (u8) + 1.u8 (u8)" main.asm
@@ -508,7 +509,7 @@ all: linked.sms core_liveness_storage_test tac_insert_test z80_register_spill_te
 	grep -q "loop_retention_conflict_preflight function=allocatorRaCoreLivenessNestedConflict block=3 temp=r4.*conflict=yes.*owner=r3 action=preserve_stack status=complete" compiler.log
 	: && ! grep -q "loop_retention_apply_preflight function=allocatorRaCoreLivenessNestedConflict block=3 temp=r4" compiler.log
 	test "$$(grep -c "block_exit_spill_decision function=allocatorRaCoreLivenessNestedConflict .*temp=r4 .*spill=required" compiler.log)" -eq 3
-	sed -n '/allocatorRaCoreLivenessNestedConflict:/,/\.ENDS/p' main.asm | grep -q "ADD A,(IX-10)"
+	sed -n '/allocatorRaCoreLivenessNestedConflict:/,/\.ENDS/p' main.asm | grep -q "ADD A,(IX-9)"
 	: && ! sed -n '/allocatorRaCoreLivenessNestedConflict:/,/\.ENDS/p' main.asm | grep -q "retained arg1 in HL"
 	grep -q "loop_exit_profile_preflight function=allocatorRaCoreLivenessBreakExit block=1 entries=1 back_edges=1 exits=2 terminal_exits=1 topology=ready action=inspect_candidate mode=observe_only status=complete" compiler.log
 	grep -q "loop_retention_apply_preflight function=allocatorRaCoreLivenessBreakExit block=1 temp=r1 selected=C slot=4 assignments=5 reservations=6 application=applied ownership=function_scan status=complete" compiler.log

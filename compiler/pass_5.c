@@ -11418,6 +11418,42 @@ static int assign_spill_slot_offsets(struct tree_node *function_node, int *offse
     temp_register = &function_node->local_variables->temp_registers[temp_index];
     temp_size = temp_register->size / 8;
 
+    if (order != NULL && *offset < fixed_limit && temp_register->spill_required == YES) {
+      int instruction_index, retained = Z80_PHY_NONE;
+      for (instruction_index = 0; instruction_index < g_tacs_count; instruction_index++) {
+        struct tac *instruction = &g_tacs[instruction_index];
+        int physical;
+        if (instruction->function_node != function_node || instruction->op == TAC_OP_DEAD ||
+            (_tac_reads_temp_register(instruction, temp_register->register_index) == NO &&
+            _tac_writes_temp_register(instruction, temp_register->register_index) == NO))
+          continue;
+        if (instruction->op == TAC_OP_FUNCTION_CALL || instruction->op == TAC_OP_FUNCTION_CALL_USE_RETURN_VALUE ||
+            instruction->op == TAC_OP_ASM || instruction->op == TAC_OP_REGISTER_SPILL ||
+            instruction->store_retained_to_spill_operand >= 0 || instruction->reload_spill_to_physical_operand >= 0)
+          break;
+        physical = instruction->result_type == TAC_ARG_TYPE_TEMP && (int)instruction->result_d == temp_register->register_index ?
+          instruction->result_physical_register : instruction->arg1_type == TAC_ARG_TYPE_TEMP &&
+          (int)instruction->arg1_d == temp_register->register_index ?
+          instruction->arg1_physical_register : instruction->arg2_physical_register;
+        if (physical == Z80_PHY_NONE || (retained != Z80_PHY_NONE && retained != physical) ||
+            (instruction->result_type == TAC_ARG_TYPE_TEMP && (int)instruction->result_d == temp_register->register_index &&
+            instruction->result_physical_register != physical) ||
+            (instruction->arg1_type == TAC_ARG_TYPE_TEMP && (int)instruction->arg1_d == temp_register->register_index &&
+            instruction->arg1_physical_register != physical) ||
+            (instruction->arg2_type == TAC_ARG_TYPE_TEMP && (int)instruction->arg2_d == temp_register->register_index &&
+            instruction->arg2_physical_register != physical))
+          break;
+        retained = physical;
+      }
+      if (instruction_index == g_tacs_count && retained != Z80_PHY_NONE) {
+        temp_register->spill_required = NO;
+        temp_register->physical_register = retained;
+        RA_TRACE((stderr, "register_allocator: unused_spill_slot function=%s temp=r%d size=%d phy=%s coverage=complete fixed_prefix=preserved\n",
+          function_node->children[1]->label, temp_register->register_index, temp_size,
+          _get_first_allocator_physical_register_name(retained)));
+      }
+    }
+
     if (temp_register->spill_required == YES) {
       int candidate, instruction_index, writes = 0;
       if (shareable != NULL && *offset < fixed_limit) {

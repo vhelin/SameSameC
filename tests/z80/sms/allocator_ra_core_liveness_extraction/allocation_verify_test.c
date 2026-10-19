@@ -958,6 +958,11 @@ int main(int argc, char **argv) {
       slots[temp].spill_required = YES;
       slots[temp].size = (index == 2 && temp == 0 ? 1 : width) * 8;
     }
+    if (index == 2) {
+      layout[0].result_physical_register = layout[1].arg1_physical_register = Z80_PHY_A;
+      layout[0].store_retained_to_spill_operand = layout[1].store_retained_to_spill_operand = -1;
+      layout[0].reload_spill_to_physical_operand = layout[1].reload_spill_to_physical_operand = -1;
+    }
     layout[5].op = TAC_OP_REGISTER_SPILL;
     layout[5].arg1_original_register_index = 2;
     layout[5].arg1_physical_register = width == 1 ? Z80_PHY_A : Z80_PHY_HL;
@@ -1060,6 +1065,70 @@ int main(int argc, char **argv) {
     locals.temp_registers = temps;
     locals.temp_registers_count = 2;
     fprintf(stderr, "spill_slot_test: fixed_prefix=yes shared_suffix=yes invalid_fixed=11 immutable=yes status=complete\n");
+  }
+  {
+    int physical_registers[] = { Z80_PHY_A, Z80_PHY_HL, Z80_PHY_BC, Z80_PHY_B, Z80_PHY_C };
+    struct temp_register saved[2];
+    memcpy(saved, temps, sizeof(saved));
+    for (index = 0; index < 14; index++) {
+      struct tac layout[2], before[2];
+      struct function_argument argument;
+      int instruction_index, offset = -6;
+      int physical = physical_registers[index < 5 ? index : 2];
+      int width = physical == Z80_PHY_HL || physical == Z80_PHY_BC ? 2 : 1;
+      memset(layout, 0, sizeof(layout));
+      memset(temps, 0, sizeof(temps));
+      memset(&argument, 0, sizeof(argument));
+      for (instruction_index = 0; instruction_index < 2; instruction_index++) {
+        layout[instruction_index].function_node = &function;
+        layout[instruction_index].op = TAC_OP_ASSIGNMENT;
+        layout[instruction_index].store_retained_to_spill_operand = -1;
+        layout[instruction_index].reload_spill_to_physical_operand = -1;
+      }
+      layout[0].arg1_type = TAC_ARG_TYPE_CONSTANT;
+      layout[0].result_type = layout[1].arg1_type = TAC_ARG_TYPE_TEMP;
+      layout[0].result_physical_register = layout[1].arg1_physical_register = physical;
+      temps[0].size = width * 8;
+      temps[0].spill_required = YES;
+      if (index == 5) layout[1].arg1_physical_register = Z80_PHY_NONE;
+      if (index == 6) layout[1].arg1_physical_register = Z80_PHY_HL;
+      if (index == 7) layout[1].store_retained_to_spill_operand = TAC_USE_ARG1;
+      if (index == 8) layout[1].reload_spill_to_physical_operand = TAC_USE_ARG1;
+      if (index == 9) {
+        layout[1].op = TAC_OP_FUNCTION_CALL;
+        layout[1].arg1_type = TAC_ARG_TYPE_LABEL;
+        argument.type = TAC_ARG_TYPE_TEMP;
+        layout[1].arguments = &argument;
+        layout[1].arguments_count = 1;
+      }
+      if (index == 10) {
+        layout[1].op = TAC_OP_REGISTER_SPILL;
+        layout[1].result_type = layout[1].arg2_type = TAC_ARG_TYPE_CONSTANT;
+        layout[1].result_d = -7;
+        layout[1].arg2_d = 2;
+      }
+      if (index == 13) layout[1].op = TAC_OP_ASM;
+      g_allocator_enabled = index == 12 ? NO : YES;
+      g_allocator_force_all_spill = index == 11 ? YES : NO;
+      locals.temp_registers_count = 1;
+      g_tacs = layout;
+      g_tacs_count = 2;
+      memcpy(before, layout, sizeof(before));
+      if (assign_spill_slot_offsets(&function, &offset) == FAILED ||
+          memcmp(before, layout, sizeof(before)) != 0 ||
+          offset != (index < 5 ? -6 : -6 - width) ||
+          temps[0].spill_required != (index < 5 ? NO : YES) ||
+          temps[0].offset_to_fp != (index < 5 ? REGISTER_ALLOCATOR_POISON_OFFSET : -5 - width) ||
+          (index < 5 && temps[0].physical_register != physical)) {
+        fprintf(stderr, "spill_slot_test: unused_backing_case=%d status=failed\n", index);
+        return 1;
+      }
+    }
+    memcpy(temps, saved, sizeof(saved));
+    locals.temp_registers_count = 2;
+    g_allocator_enabled = YES;
+    g_allocator_force_all_spill = NO;
+    fprintf(stderr, "spill_slot_test: unused_backing=14 complete_physical_coverage=yes memory_fallbacks=yes tacs_unchanged=yes status=complete\n");
   }
   {
     int physical_registers[] = { Z80_PHY_A, Z80_PHY_HL, Z80_PHY_BC, Z80_PHY_B, Z80_PHY_C };

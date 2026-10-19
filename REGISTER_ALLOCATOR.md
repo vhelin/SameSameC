@@ -13535,6 +13535,12 @@ selection, CLI defaults, production code or test inputs.
       Unproven candidates remain memory-backed; invalid internal retained
       locations or transfer schedules fail explicitly rather than inventing a
       stack slot or accepting partial mutation.
+- [x] Spill layout can omit unused backing after every active operand has
+      already been verified in the same physical register, without memory
+      transfers or call arguments. Fixed spill prefixes remain protected;
+      missing coverage and default/all-spill modes keep their backing. This
+      changes layout, not retention legality. See the measured
+      [step 2d checkpoint](Z80_CODEGEN_PLAN.md#step-2d-checkpoint-2026-10-19).
 - [x] Calls and inline assembly retain their hard-barrier contracts. Inline-asm
       `(@var)` operands use stack/global locations; no retained-register operand
       or preservation contract is implied. Address-taking, aliases, tracked asm

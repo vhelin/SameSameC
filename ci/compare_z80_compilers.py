@@ -305,14 +305,23 @@ def execute(memory_image, symbols, name, parameters, initial_buffer, seed, ticks
     kernel_active = kernel_done = False
     resume = kernel_sp = None
     lowest_sp = frame - 1
+    lowest_access = frame - 1
+    instruction_access = frame - 1
+    below_sp = 0
 
     def read_memory(address):
+        nonlocal lowest_access, instruction_access
+        lowest_access = min(lowest_access, address)
+        instruction_access = min(instruction_access, address)
         if kernel_active:
             counters["kernel_stack_reads"] += 1
         return memory[address]
 
     def write_memory(address, value):
+        nonlocal lowest_access, instruction_access
         if 0xc800 <= address < frame - 1:
+            lowest_access = min(lowest_access, address)
+            instruction_access = min(instruction_access, address)
             if kernel_active:
                 counters["kernel_stack_writes"] += 1
         elif not (buffer_address <= address < buffer_address + 512 or result_address <= address < result_address + 2):
@@ -338,7 +347,11 @@ def execute(memory_image, symbols, name, parameters, initial_buffer, seed, ticks
         counters["instructions"] += 1
         if kernel_active:
             counters["kernel_instructions"] += 1
+        instruction_access = frame - 1
+        before_sp = machine.sp
         cycles = step(machine)
+        # PUSH/POP callbacks can precede the core's SP update.
+        below_sp = max(below_sp, min(before_sp, machine.sp) - instruction_access)
         counters["cycles"] += cycles
         if kernel_active:
             counters["kernel_cycles"] += cycles
@@ -359,6 +372,10 @@ def execute(memory_image, symbols, name, parameters, initial_buffer, seed, ticks
         if int(completed.stdout.strip()) != counters["cycles"]:
             raise RuntimeError(f"Independent emulator cycle mismatch: {name}")
     counters["stack_high_water"] = frame - 1 - lowest_sp
+    counters["stack_access_extent"] = frame - 1 - lowest_access
+    counters["below_sp_extent"] = below_sp
+    # Include the entry return address, not only displacement below entry SP.
+    counters["frame_footprint"] = frame + 1 - min(lowest_sp, lowest_access)
     value = memory[result_address] + 256 * memory[result_address + 1]
     return value, bytes(memory[buffer_address:buffer_address + 512]), counters
 
@@ -459,6 +476,9 @@ def main():
                           "cases": len(samples), "total_kernel_cycles": sum(item["kernel_cycles"] for item in samples),
                           "total_wrapper_cycles": sum(item["cycles"] - item["kernel_cycles"] for item in samples),
                           "max_stack_bytes": max(item["stack_high_water"] for item in samples),
+                          "max_stack_access_bytes": max(item["stack_access_extent"] for item in samples),
+                          "max_below_sp_bytes": max(item["below_sp_extent"] for item in samples),
+                          "max_frame_footprint_bytes": max(item["frame_footprint"] for item in samples),
                           "mean_kernel_cycles": statistics.mean(item["kernel_cycles"] for item in samples)}
                 result["baseline_delta"] = {
                     metric: result[metric] - baseline_rows[name, mode][metric] for metric in METRICS
