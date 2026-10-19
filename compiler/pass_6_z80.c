@@ -5073,7 +5073,7 @@ static char *_get_z80_mul_div_mod_op_name(int op) {
 }
 
 
-static int _generate_asm_mul_div_mod_z80_16bit(struct tac *t, FILE *file_out, struct tree_node *function_node, int op) {
+static int _generate_asm_mul_div_mod_z80_16bit(struct tac *t, FILE *file_out, struct tree_node *function_node, int op, int reuse_remainder) {
 
   struct z80_location result_location;
   struct z80_location arg1_location;
@@ -5094,6 +5094,9 @@ static int _generate_asm_mul_div_mod_z80_16bit(struct tac *t, FILE *file_out, st
 
   if (_resolve_tac_location(t, TAC_USE_ARG2, function_node, &arg2_location) == FAILED)
     return FAILED;
+
+  if (reuse_remainder == YES)
+    goto store_result;
 
   /* generate asm */
 
@@ -5297,52 +5300,15 @@ static int _generate_asm_mul_div_mod_z80_16bit(struct tac *t, FILE *file_out, st
   /* bc / de -> ca (result), hl (remainder) */
   /******************************************************************************************************/
 
-  if (op == TAC_OP_DIV || op == TAC_OP_MOD) {
-    /*
-      ;
-      ; Divide 16-bit values (with 16-bit result)
-      ; In: Divide BC by divider DE
-      ; Out: BC = result, HL = rest
-      ;
-    Div16:
-      ld hl,0
-      ld a,b
-      ld b,8
-    Div16_Loop1:
-      rla
-      adc hl,hl
-      sbc hl,de
-      jr nc,Div16_NoAdd1
-      add hl,de
-    Div16_NoAdd1:
-      djnz Div16_Loop1
-      rla
-      cpl
-      ld b,a
-      ld a,c
-      ld c,b
-      ld b,8
-    Div16_Loop2:
-      rla
-      adc hl,hl
-      sbc hl,de
-      jr nc,Div16_NoAdd2
-      add hl,de
-    Div16_NoAdd2:
-      djnz Div16_Loop2
-      rla
-      cpl
-      ;ld b,c
-      ;ld c,a
-    */
-
+  if (op == TAC_OP_DIV || op == TAC_OP_MOD)
     _divide_bc_by_de_to_ca_hl(file_out);
-  }
 
   /* NOTE!!! */
   _pop_de(file_out);
 
   g_is_ix_de = was_ix_de;
+
+store_result:
 
 #if defined(DEBUG_PASS_6_REGISTER_ALLOCATOR)
   if (g_allocator_enabled == YES) {
@@ -5433,7 +5399,7 @@ static int _generate_asm_mul_div_mod_z80_16bit(struct tac *t, FILE *file_out, st
 }
 
 
-static int _generate_asm_mul_div_mod_z80_8bit(struct tac *t, FILE *file_out, struct tree_node *function_node, int op) {
+static int _generate_asm_mul_div_mod_z80_8bit(struct tac *t, FILE *file_out, struct tree_node *function_node, int op, int reuse_remainder) {
 
   struct z80_location result_location;
   struct z80_location arg1_location;
@@ -5454,6 +5420,9 @@ static int _generate_asm_mul_div_mod_z80_8bit(struct tac *t, FILE *file_out, str
 
   if (_resolve_tac_location(t, TAC_USE_ARG2, function_node, &arg2_location) == FAILED)
     return FAILED;
+
+  if (reuse_remainder == YES)
+    goto store_result;
 
   /* generate asm */
 
@@ -5596,37 +5565,15 @@ static int _generate_asm_mul_div_mod_z80_8bit(struct tac *t, FILE *file_out, str
   /* h / e -> a (result) and b (reminder) */
   /******************************************************************************************************/
 
-  if (op == TAC_OP_DIV || op == TAC_OP_MOD) {
-    /*
-    ;
-    ; Divide 8-bit values
-    ; In: Divide H by divider E
-    ; Out: A = result, B = rest
-    ;
-  Div8:
-    xor a
-    ld b,8
-  Div8_Loop:
-    rl h
-    rla
-    sub e
-    jr nc,Div8_NoAdd
-    add a,e
-  Div8_NoAdd:
-    djnz Div8_Loop
-    ld b,a
-    ld a,h
-    rla
-    cpl
-    */
-
+  if (op == TAC_OP_DIV || op == TAC_OP_MOD)
     _divide_h_by_e_to_a_b(file_out);
-  }
 
   /* NOTE!!! */
   _pop_de(file_out);
 
   g_is_ix_de = was_ix_de;
+
+store_result:
 
 #if defined(DEBUG_PASS_6_REGISTER_ALLOCATOR)
   if (g_allocator_enabled == YES) {
@@ -5801,14 +5748,45 @@ static int _generate_asm_mul_div_mod_z80_8bit(struct tac *t, FILE *file_out, str
 
 static int _generate_asm_mul_div_mod_z80(struct tac *t, FILE *file_out, struct tree_node *function_node, int op) {
 
+  int previous = (int)(t - g_tacs) - 1, reuse_remainder = NO;
+
+  /* Only a memory quotient preserves the divider's remainder without an extra save. */
+  if (op == TAC_OP_MOD && t->arg1_type == TAC_ARG_TYPE_LABEL && t->arg2_type == TAC_ARG_TYPE_LABEL &&
+      t->arg1_node != NULL && t->arg2_node != NULL &&
+      ((t->arg1_node->flags | t->arg2_node->flags) & TREE_NODE_FLAG_GLOBAL) == 0) {
+    while (previous >= 0 && g_tacs[previous].function_node == function_node &&
+           (g_tacs[previous].op == TAC_OP_DEAD ||
+            (g_tacs[previous].op == TAC_OP_CREATE_VARIABLE && g_tacs[previous].result_node != NULL &&
+             g_tacs[previous].result_node->value == 0)))
+      previous--;
+    if (previous >= 0 && g_tacs[previous].function_node == function_node) {
+      struct tac *division = &g_tacs[previous];
+      struct z80_location quotient_location;
+
+      if (division->op == TAC_OP_DIV && division->arg1_type == t->arg1_type && division->arg2_type == t->arg2_type &&
+          division->arg1_node == t->arg1_node && division->arg2_node == t->arg2_node &&
+          division->arg1_var_type == t->arg1_var_type && division->arg2_var_type == t->arg2_var_type &&
+          division->arg1_var_type_promoted == t->arg1_var_type_promoted &&
+          division->arg2_var_type_promoted == t->arg2_var_type_promoted &&
+          division->result_node != t->arg1_node && division->result_node != t->arg2_node) {
+        if (_resolve_tac_location(division, TAC_USE_RESULT, function_node, &quotient_location) == FAILED)
+          return FAILED;
+        if (quotient_location.kind == LOC_STACK_LOCAL || quotient_location.kind == LOC_STACK_SPILL) {
+          reuse_remainder = YES;
+          fprintf(file_out, "      ; reuse remainder from preceding DIV\n");
+        }
+      }
+    }
+  }
+
   /* TODO(register-allocator): retained mul/div/mod operands remain disabled until the input scheduling is migrated. */
   /* 8-bit or 16-bit? */
   if ((t->arg1_var_type_promoted == VARIABLE_TYPE_INT8 || t->arg1_var_type_promoted == VARIABLE_TYPE_UINT8) &&
       (t->arg2_var_type_promoted == VARIABLE_TYPE_INT8 || t->arg2_var_type_promoted == VARIABLE_TYPE_UINT8))
-    return _generate_asm_mul_div_mod_z80_8bit(t, file_out, function_node, op);
+    return _generate_asm_mul_div_mod_z80_8bit(t, file_out, function_node, op, reuse_remainder);
   else if ((t->arg1_var_type_promoted == VARIABLE_TYPE_INT16 || t->arg1_var_type_promoted == VARIABLE_TYPE_UINT16) &&
            (t->arg2_var_type_promoted == VARIABLE_TYPE_INT16 || t->arg2_var_type_promoted == VARIABLE_TYPE_UINT16))
-    return _generate_asm_mul_div_mod_z80_16bit(t, file_out, function_node, op);
+    return _generate_asm_mul_div_mod_z80_16bit(t, file_out, function_node, op, reuse_remainder);
 
   fprintf(stderr, "_generate_asm_mul_div_mod_z80(): 8-bit + 16-bit, this shouldn't happen. Please submit a bug report!\n");
 

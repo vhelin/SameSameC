@@ -310,7 +310,53 @@ def generate_programs(comparison_forms):
             "u8 *target = &ra_buffer[32]; u8 live = b^c; target[a] = live; u16 loaded = target[a]; return loaded+live;",
             "u8 *target = &ra_buffer[32]; u8 live = b^c; s8 index = a^1; target[index] = live; u16 loaded = target[index]; return loaded+live;",
         ]
+        divmod_bodies = [
+            "u16 quotient = a/b; u16 remainder = a%b; ra_words[0] = quotient; return remainder;",
+            "u8 quotient = a/b; u8 remainder = a%b; ra_words[0] = quotient; return remainder;",
+            "u8 quotient = a/b; u16 remainder = a%b; ra_words[0] = quotient; return remainder;",
+            "u16 quotient = a/b; u8 remainder = a%b; ra_words[0] = quotient; return remainder;",
+            "u16 quotient = a/b; s8 remainder = a%b; ra_words[0] = quotient; return remainder;",
+            "u16 quotient = a/b; u16 remainder = a%b; ra_words[0] = quotient; return remainder;",
+            "s16 quotient = a/b; s16 remainder = a%b; ra_words[0] = quotient; return remainder;",
+            "u16 quotient = a/b; u16 remainder = a%b; ra_words[0] = quotient; return remainder;",
+            "u16 quotient = a/b; a = a^c; u16 remainder = a%b; ra_words[0] = quotient; return remainder;",
+            "u16 quotient = a/b; b = b^c; u16 remainder = a%b; ra_words[0] = quotient; return remainder;",
+            "a = a/b; u16 remainder = a%b; ra_words[0] = a; return remainder;",
+            "b = a/b; u16 remainder = a%b; ra_words[0] = b; return remainder;",
+            "u16 remainder = a%b; u16 quotient = a/b; ra_words[0] = quotient; return remainder;",
+            "u16 quotient = a/b; u16 remainder = a%b; u16 again = a%b; ra_words[0] = quotient; ra_words[1] = remainder; return again;",
+            "u16 quotient = a/b; u16 remainder = a%b; u16 again = a/b; u16 last = a%b; ra_words[0] = quotient; ra_words[1] = remainder; ra_words[2] = again; return last;",
+            "u16 quotient = a/b; u8 called = ra_signed_helper(a,b,c); u16 remainder = a%b; ra_words[0] = quotient; ra_words[1] = called; return remainder;",
+            "u16 quotient = a/b; ra_words[1] = c; u16 remainder = a%b; ra_words[0] = quotient; return remainder;",
+            "u16 quotient = a/b; u8 workspace[4] = {3,5,7,11}; u16 remainder = a%b; ra_words[0] = quotient; ra_words[1] = workspace[c&3]; return remainder;",
+            "u16 quotient = a/b; if (c&1) { a = a+1; } u16 remainder = a%b; ra_words[0] = quotient; return remainder;",
+            "u16 quotient = a/b; ra_words[1] = a; a = c; u16 remainder = a%b; ra_words[0] = quotient; return remainder;",
+            "ra_words[2] = a; ra_words[3] = b; u16 quotient = ra_words[2]/ra_words[3]; u16 remainder = ra_words[2]%ra_words[3]; ra_words[0] = quotient; return remainder;",
+            "u16 quotient = (a^c)/b; u16 remainder = (a^c)%b; ra_words[0] = quotient; return remainder;",
+            "u16 quotient = a/b; ra_pointer_helper(&a,c); u16 remainder = a%b; ra_words[0] = quotient; return remainder;",
+            "u16 quotient = a/b; u8 first = a; u8 second = b; u16 remainder = first%second; ra_words[0] = quotient; return remainder;",
+            "return (a^b)^b;",
+            "u16 saved = a+c; saved = saved^b; return saved^b;",
+            "return (a^b)^b;",
+            "return (a^b)^b;",
+            "u16 saved = a^b; ra_words[1] = saved; return saved^b;",
+            "u16 saved = a^b; b = b^c; return saved^b;",
+            "u16 saved = a+c; saved = saved^b; u16 result = saved^b; ra_words[1] = saved; return result;",
+            "u8 saved = a^b; return saved^b;",
+            "s8 saved = a^b; return saved^b;",
+            "return (a^0x9234)^0x9234;",
+            "return (a^0x1234)^0x9234;",
+            "u16 saved = a^b; u8 called = ra_signed_helper(a,b,c); return (saved^b)+called;",
+            "u16 saved = a^b; if (c&1) { b = b+1; } return saved^b;",
+            "u16 saved = a^b; ra_pointer_helper(&b,c); return saved^b;",
+        ]
         functions = [
+            ("matrix_divmod",
+             "s8 a, s8 b, s8 c" if variant in (6, 27) else
+             "u8 a, u8 b, u8 c" if variant in (1, 5, 26) else
+             "s8 a, u16 b, u16 c" if variant == 7 else "u16 a, u16 b, u16 c",
+             divmod_bodies[variant],
+             [1, 1, 1] if variant in (1, 5, 6, 26, 27) else [1, 2, 2] if variant == 7 else [2, 2, 2], 2),
             ("matrix_byte", "u8 a, u8 b, u8 c", f"u8 saved = a^b; return {expression};", [1, 1, 1], 1),
             ("matrix_word", "u16 a, u16 b, u16 c", f"u16 saved = ~b; return {expression};", [2, 2, 2], 2),
             ("matrix_affinity", "u16 a, u16 b, u16 c", f"u16 live = a+b; return {'(~c)' if variant < 4 else 'live'} {['+', '&', '|', '^'][variant % 4]} {'live' if variant < 4 else '(~c)'};", [2, 2, 2], 2),
@@ -475,7 +521,7 @@ def generate_programs(comparison_forms):
             "matrix_rank": 4, "matrix_index_copy": 38, "matrix_bc_alu": 12,
             "matrix_scalar_uses": 30, "matrix_real_index": 1, "matrix_constant_multiply": 33,
             "matrix_constant_shift": 38, "matrix_variable_multiply": 8,
-            "matrix_byte_store": 16,
+            "matrix_byte_store": 16, "matrix_divmod": 38,
         }
         for family, parameters, body, widths, return_width in functions:
             word_boundary = family == "matrix_index_copy" and 30 <= variant <= 32
@@ -483,7 +529,7 @@ def generate_programs(comparison_forms):
                 "matrix_constant_multiply", "matrix_constant_shift", "matrix_variable_multiply",
             )
             # Dedicated cohorts keep the all-spill images within one ROM bank.
-            if family in ("scalar_word_step", "matrix_byte_store") and family not in os.environ.get("RA_FAMILIES", "").split(","):
+            if family in ("scalar_word_step", "matrix_byte_store", "matrix_divmod") and family not in os.environ.get("RA_FAMILIES", "").split(","):
                 continue
             if variant >= (15 if family == "scalar_word_step" else 8) and not family.startswith("matrix_"):
                 continue
@@ -742,6 +788,18 @@ def check_analytical_assertions(output, programs):
         def section_assembly():
             return assembly.split(f'.SECTION "{name}" FREE')[1].split(".ENDS")[0]
 
+        if family == "matrix_divmod":
+            body = section_assembly()
+            if variant < 24:
+                expected_dividers = 1 if variant < 8 else 2
+                expected_reuses = 1 if variant < 8 or variant == 13 else 2 if variant == 14 else 0
+                if body.count("; divide ") != expected_dividers or body.count("; reuse remainder") != expected_reuses:
+                    raise RuntimeError(f"Divider sharing/fallback mismatch: {name}")
+            else:
+                instructions = re.sub(r";[^\n]*", "", body)
+                cancelled = variant in (24, 25, 26, 27, 33)
+                if bool(re.search(r"^\s+XOR ", instructions, re.M)) == cancelled:
+                    raise RuntimeError(f"Pure XOR cancellation/fallback mismatch: {name}")
         if family == "matrix_source_loop" and variant == 0 and not re.search(
             r"LD\s+L,\(IX-7\)\s+LD\s+H,\(IX-6\)\s+ADD HL,BC\s+LD\s+L,\(HL\)", section_assembly(),
         ):
@@ -984,6 +1042,78 @@ def generated_oracle(program, seed, comparison_forms, decision_loop_paths):
     parameters = [byte, other, third]
     expected_ports = []
     match family:
+        case "matrix_divmod":
+            edges = [0, 1, 127, 128, 255, 256, 32768, 65535]
+            parameters = edge_parameters(seed, edges) if seed < 64 else word_parameters(seed)
+            parameters = [value & ((1 << (width * 8)) - 1) for value, width in zip(parameters, program.widths)]
+            first, second, last = parameters
+            numerator = first + (65280 if variant == 7 and first >= 128 else 0)
+            divisor = second
+            if variant == 21:
+                numerator ^= last
+            quotient, remainder = divmod(numerator, divisor) if divisor else (
+                255 if variant in (1, 5, 6) else 65535, numerator,
+            )
+            stored = {}
+            if variant < 24:
+                stored[0] = quotient & (255 if variant in (1, 2) else 65535)
+                expected = remainder
+                if variant in (3, 4):
+                    expected &= 255
+                    if variant == 4 and expected >= 128:
+                        expected -= 256
+                if variant == 6:
+                    stored[0] = quotient - (256 if quotient >= 128 else 0)
+                    expected -= 256 if expected >= 128 else 0
+                if variant in (8, 9, 10, 11, 18, 19, 22, 23):
+                    numerator = (
+                        first ^ last if variant == 8 else quotient if variant == 10 else
+                        (first + (last & 1)) & 65535 if variant == 18 else last if variant == 19 else
+                        (first & 65280) | (last & 255) if variant == 22 else
+                        first & 255 if variant == 23 else first
+                    )
+                    divisor = second ^ last if variant == 9 else quotient if variant == 11 else second & 255 if variant == 23 else second
+                    expected = numerator % divisor if divisor else numerator
+                if variant in (13, 14):
+                    stored[1] = remainder
+                if variant == 14:
+                    stored[2] = quotient
+                if variant in (15, 16, 17):
+                    stored[1] = (first + second + last) & 255 if variant == 15 else last if variant == 16 else (3, 5, 7, 11)[last & 3]
+                if variant == 20:
+                    stored.update({2: first, 3: second})
+                if variant == 19:
+                    stored[1] = first
+            else:
+                expected = first
+                if variant == 25:
+                    expected += last
+                elif variant == 27 and first >= 128:
+                    expected -= 256
+                elif variant == 28:
+                    stored[1] = first ^ second
+                elif variant == 29:
+                    expected ^= last
+                elif variant == 30:
+                    expected += last
+                    stored[1] = (expected & 65535) ^ second
+                elif variant in (31, 32):
+                    narrowed = (first ^ second) & 255
+                    if variant == 32 and narrowed >= 128:
+                        narrowed -= 256
+                    expected = narrowed ^ second
+                elif variant == 34:
+                    expected ^= 0x8000
+                elif variant == 35:
+                    expected += (first + second + last) & 255
+                elif variant == 36:
+                    expected = (first ^ second) ^ ((second + (last & 1)) & 65535)
+                elif variant == 37:
+                    expected = (first ^ second) ^ ((second & 65280) | (last & 255))
+            for index, value in stored.items():
+                expected_buffer[index * 2] = value & 255
+                expected_buffer[index * 2 + 1] = (value >> 8) & 255
+            expected &= 65535
         case "scalar_call_transport":
             parameters = edge_parameters(seed, [0, 1, 127, 128, 255, 256, 32768, 65535]) if seed < 64 else word_parameters(seed)
             first, second, last = parameters
@@ -1606,7 +1736,7 @@ def accumulate(counters, result):
 def buffer_symbol(program):
     if program.family == "matrix_index_copy" and program.variant == 34:
         return "ra_signed"
-    return "ra_words" if program.family == "scalar_remat_word" or (
+    return "ra_words" if program.family in ("scalar_remat_word", "matrix_divmod") or (
         program.family == "matrix_index_copy" and program.variant in (2, 3, 11, 20, 33, 35)
     ) else "ra_buffer"
 
@@ -2402,13 +2532,14 @@ def main():
             cohorts.append("word_steps")
             if os.environ.get("RA_MATRIX_CASES") != "0":
                 cohorts.append("byte_stores")
+                cohorts.append("divmod")
         for cohort in cohorts:
             scalar_cohort = cohort in ("scalar", "word_steps")
             os.environ.update({
                 "RA_SCALAR_CASES": "1" if scalar_cohort else "0",
                 "RA_MATRIX_CASES": "0" if scalar_cohort else "1", "RA_REAL_PROJECTS": "0",
                 "RA_VALUE_CASES": "1" if cohort in ("matrix_values", "byte_stores") else "0",
-                "RA_FAMILIES": "scalar_word_step" if cohort == "word_steps" else "matrix_byte_store" if cohort == "byte_stores" else family_filter,
+                "RA_FAMILIES": "scalar_word_step" if cohort == "word_steps" else "matrix_byte_store" if cohort == "byte_stores" else "matrix_divmod" if cohort == "divmod" else family_filter,
                 "RA_COMPARISON_FORMS": "1" if cohort == "matrix_literals" else "2" if cohort == "matrix_memory" else "0",
                 "RA_EXECUTION_DIR": str(output / cohort), "RA_VERIFIER": harness,
             })

@@ -112,7 +112,7 @@ extraction.
   as well as SP high-water, and pass all checkpoint gates.
 - [x] **2e. Constant addresses and direct loads (new step 1):** fold constant
   array offsets and reuse direct byte/word loads instead of rebuilding addresses.
-- [ ] **2f. Shared quotient/remainder computation (new step 2):** reuse both
+- [x] **2f. Shared quotient/remainder computation (new step 2):** reuse both
   division results for matching `/` and `%`; simplify redundant pure expressions.
 - [ ] **2g. Masked-condition branch folding (new step 3):** avoid materializing
   single-use masked values when a direct bit/flag test suffices.
@@ -817,6 +817,73 @@ Acceptance: independently check both results, zero and word boundaries, changed
 operands and fallback cases; measure standalone and shared-dependency bytes/cycles.
 Do not replace division identities without proving their exceptional cases.
 
+##### Step 2f Implementation Checkpoint
+
+The existing Z80 arithmetic dispatcher now reuses the remainder from a preceding
+division of the same local scalar/argument operands. Operand identities, actual
+types and promotions must match, and the quotient must be stored in a local or
+spill slot without overwriting either input. Only dead TACs and non-emitting
+scalar declarations may intervene. Array initializers, calls, writes, labels and
+other operations remain barriers. Global/temporary operands, physical quotient
+destinations and reverse-order pairs conservatively use the original path.
+
+Both byte and word emitters reuse their existing result transport, including
+truncation and sign/zero extension. The divider itself and its zero-divisor
+behavior are unchanged. There is no new runtime helper, DIVMOD TAC or speculative
+division-identity replacement. Superseded commented copies of both divider
+algorithms were removed instead of duplicating their result-storage code.
+
+The existing adjacent-expression TAC optimizer also cancels matching XOR pairs
+when promotions agree and the intermediate has no other observable use. It
+handles single-use temporaries and unescaped local scalars without explicit calls,
+checking later uses and rejecting relevant control-flow/assembly barriers.
+Changed masks, narrowed intermediates and retained masked values keep their
+existing behavior. Net production growth across the two compiler files is
+**43 lines, with no new functions**.
+
+The full pinned comparison passes: **104 builds, 1856 calls and 24 independent
+timing checks**, with all **78 external controls exact**. Against immediate
+parent `6546a16`, the RA-mode results are:
+
+| Workload | Kernel bytes before / after | Kernel T-states before / after | Calls |
+| --- | ---: | ---: | ---: |
+| Product/restore | 196 / 147 | 61998 / 42415 | 17 |
+| Partition/restore | 192 / 119 | 61426 / 39321 | 17 |
+| Array workload | 1790 / 1668 | 7742998 / 6403660 | 20 |
+| Stencil workload | 1813 / 1740 | 4641994 / 4405850 | 20 |
+| Path workload | 1732 / 1659 | 7198007 / 7172413 | 20 |
+
+Kernel bytes include required dependencies, so the workload rows also measure
+the benefit of shared calculation routines. Both RA and non-RA improve in these
+five workloads; the other eight workloads are unchanged. Geometric RA kernel
+size falls **6.8%**, and kernel T-states **7.9%**. All 26 SSC rows are
+non-regressing in all eight measured fields; wrappers and every stack/frame
+footprint field are unchanged. The immutable original baseline is retained.
+Normal/traced assembly, ROMs and metrics match for all 26 SSC benchmark rows.
+
+The existing execution runner gains one dedicated divmod cohort, not another
+harness. Its 38 new variants separately check quotient snapshots and remainder
+returns, byte/word and signed-extension boundaries, runtime zero divisors,
+changed operands, overwritten inputs, reverse/repeated pairs, calls, aliases,
+bulk initialization and XOR cancellation/fallbacks. The 64-seed focused run
+checks 2944 calls per executed mode. The same independent value/full-buffer
+oracles pass against the saved parent compiler, while the new assembly assertion
+rejects that parent as intended. All five normal/traced focused ROMs match.
+
+All **175 fixtures pass without snapshot updates**. The full nine-cohort
+64-seed allocator corpus, 28 real routines, four-seed ASan corpus and all 32
+immutable verifier rejection controls pass; all 55 traced/ASan allocator and
+real-project ROMs match. The condition corpus and 18 comparison-tool tests pass
+in normal/traced/ASan builds, all 140 condition ROMs match, and the comparison
+tests also pass under `python -O`. MSVC builds, strict ANSI GCC normal/traced
+checks for both changed compiler files and Pylance syntax validation pass.
+
+Both complete calculation projects rebuild with identical normal/traced ROMs.
+Used ROM falls **20764 -> 20691** and **33393 -> 33207** bytes; padded images
+remain 65536 bytes. Evidence is retained privately under
+`C:\cygwin64\tmp\shared-divmod-20261019`, including the full comparison and
+aggregate qualification record. No whole-program competitor parity is claimed.
+
 #### 2g. Masked-Condition Branch Folding
 
 - Fold single-use mask/zero-test conditions into direct bit or flag tests.
@@ -1039,7 +1106,7 @@ to this cross-compiler experiment.
    compiler source growth visible and remove superseded logic. Commit the batch
    locally with the validation summary; do not push.
 
-Steps 1, 2 and 2a-2e are complete. Current implementation target:
-**step 2f, shared quotient/remainder computation**, followed by 2g-2i and then the
+Steps 1, 2 and 2a-2f are complete. Current implementation target:
+**step 2g, masked-condition branch folding**, followed by 2h-2i and then the
 initial SM83 backend. Keep the qualified Z80 behavior and shared core covered
 throughout; do not expand this finite sequence into every possible Z80 optimization.

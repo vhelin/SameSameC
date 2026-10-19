@@ -2202,6 +2202,7 @@ static int _optimize_il_25(int *optimizations_counter) {
 
   while (1) {
     int is_last_function = NO;
+    int start = i;
     int end = _find_end_of_il_function(i, &is_last_function);
     if (end < 0)
       return FAILED;
@@ -2232,6 +2233,70 @@ static int _optimize_il_25(int *optimizations_counter) {
         fprintf(stderr, "_optimize_il_25(): SUCCESS!\n");
   }
 
+      }
+      else if (g_tacs[current].op == TAC_OP_XOR && g_tacs[next].op == TAC_OP_XOR &&
+               ((g_tacs[current].result_type == TAC_ARG_TYPE_TEMP && g_tacs[next].arg1_type == TAC_ARG_TYPE_TEMP &&
+                 (int)g_tacs[current].result_d == (int)g_tacs[next].arg1_d &&
+                 g_register_reads[(int)g_tacs[current].result_d] == 1 && g_register_writes[(int)g_tacs[current].result_d] == 1) ||
+                (g_tacs[current].result_type == TAC_ARG_TYPE_LABEL && g_tacs[next].arg1_type == TAC_ARG_TYPE_LABEL &&
+                 g_tacs[current].result_node != NULL && g_tacs[current].result_node == g_tacs[next].arg1_node &&
+                 (g_tacs[current].result_node->flags & TREE_NODE_FLAG_GLOBAL) == 0 &&
+                 g_tacs[current].result_node->children[0]->value == g_tacs[current].result_var_type_promoted)) &&
+               g_tacs[current].arg1_var_type_promoted != VARIABLE_TYPE_NONE &&
+               g_tacs[current].arg1_var_type_promoted == g_tacs[current].result_var_type_promoted &&
+               g_tacs[current].result_var_type_promoted == g_tacs[next].result_var_type_promoted &&
+               g_tacs[current].result_var_type_promoted == g_tacs[next].arg1_var_type_promoted &&
+               g_tacs[current].arg2_var_type_promoted == g_tacs[next].arg2_var_type_promoted &&
+               g_tacs[current].arg2_type == g_tacs[next].arg2_type &&
+               ((g_tacs[current].arg2_type == TAC_ARG_TYPE_CONSTANT && g_tacs[current].arg2_d == g_tacs[next].arg2_d) ||
+                (g_tacs[current].arg2_type == TAC_ARG_TYPE_TEMP && (int)g_tacs[current].arg2_d == (int)g_tacs[next].arg2_d &&
+                 (int)g_tacs[current].arg2_d != (int)g_tacs[current].result_d) ||
+                (g_tacs[current].arg2_type == TAC_ARG_TYPE_LABEL && g_tacs[current].arg2_node != NULL &&
+                 g_tacs[current].arg2_node == g_tacs[next].arg2_node &&
+                 g_tacs[current].arg2_node != g_tacs[current].result_node &&
+                 (g_tacs[current].arg2_node->flags & TREE_NODE_FLAG_GLOBAL) == 0))) {
+        int j, removable = YES;
+
+        if (g_tacs[current].result_type == TAC_ARG_TYPE_LABEL) {
+          for (j = start; j < end; j++) {
+            if ((g_tacs[j].op == TAC_OP_GET_ADDRESS && g_tacs[j].arg1_node == g_tacs[current].result_node) ||
+                g_tacs[j].op == TAC_OP_ASM || g_tacs[j].op == TAC_OP_FUNCTION_CALL ||
+                g_tacs[j].op == TAC_OP_FUNCTION_CALL_USE_RETURN_VALUE) {
+              removable = NO;
+              break;
+            }
+          }
+        }
+        /* A named XOR may have later users of its masked value. */
+        if (g_tacs[current].result_type == TAC_ARG_TYPE_LABEL) {
+          for (j = next + 1; j < end; j++) {
+            if (g_tacs[j].op == TAC_OP_DEAD || g_tacs[j].op == TAC_OP_CREATE_VARIABLE)
+              continue;
+            if (g_tacs[j].op == TAC_OP_LABEL || _is_register_allocator_jump_op(g_tacs[j].op) == YES ||
+                g_tacs[j].op == TAC_OP_ASM ||
+                ((g_tacs[j].arg1_type == TAC_ARG_TYPE_LABEL && g_tacs[j].arg1_node == g_tacs[current].result_node) ||
+                  (g_tacs[j].arg2_type == TAC_ARG_TYPE_LABEL && g_tacs[j].arg2_node == g_tacs[current].result_node) ||
+                  (g_tacs[j].op == TAC_OP_ARRAY_WRITE && g_tacs[j].result_node == g_tacs[current].result_node))) {
+              removable = NO;
+              break;
+            }
+            if (g_tacs[j].op != TAC_OP_ARRAY_WRITE && g_tacs[j].result_type == TAC_ARG_TYPE_LABEL &&
+                g_tacs[j].result_node == g_tacs[current].result_node)
+              break;
+          }
+        }
+        if (removable == NO) {
+          i = next;
+          continue;
+        }
+        if (tac_set_arg1(&g_tacs[next], g_tacs[current].arg1_type, g_tacs[current].arg1_d, g_tacs[current].arg1_s) == FAILED)
+          return FAILED;
+        g_tacs[next].arg1_node = g_tacs[current].arg1_node;
+        g_tacs[next].arg1_var_type = g_tacs[current].arg1_var_type;
+        g_tacs[next].arg1_var_type_promoted = g_tacs[current].arg1_var_type_promoted;
+        g_tacs[next].op = TAC_OP_ASSIGNMENT;
+        g_tacs[current].op = TAC_OP_DEAD;
+        (*optimizations_counter)++;
       }
 
       i = next;
