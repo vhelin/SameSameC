@@ -105,7 +105,7 @@ extraction.
 - [x] **2b. Remaining frame traffic and accumulator retention:** remove proven
   redundant loads/stores in byte loops and CRC without general CFG promotion
   or weaker alias, clobber and fallback checks.
-- [ ] **2c. Leaf and caller overhead:** reduce redundant argument/result copies
+- [x] **2c. Leaf and caller overhead:** reduce redundant argument/result copies
   and frame setup within the existing ABI first; measure wrappers separately.
 - [ ] **2d. Stack footprint and pre-SM83 qualification:** reduce proven
   unnecessary frame slots, spills or saves, measure the complete frame footprint
@@ -555,10 +555,71 @@ The next implementation target is follow-up 2c, not SM83 yet.
   a whole-call win in a call-heavy workload. Report wrapper/kernel costs
   separately and preserve all existing caller/callee compatibility contracts.
 
+##### Step 2c Checkpoint (2026-10-19)
+
+Complete within the existing ABI. Reuse the current call transport, frame-prefix
+descriptors, location resolution and IX=DE cache; no allocator rules, register
+convention or frame layout change. The production change removes two superseded
+helpers and is four lines smaller overall.
+
+- Form the caller's new frame directly as SP-1, initialize IX from SP using the
+  existing saved-frame offset, and hand the frame to the callee with `EX DE,HL`
+  instead of two byte copies. Pure-assembly calls keep their direct-call path.
+- Skip the unused high-byte read when truncating a memory word argument to a
+  byte. Word transport and signed/unsigned widening retain their existing paths.
+- Store global word call results directly from HL, after existing returned-byte
+  extension and retained-result dispatch. Byte, local, far and retained result
+  paths keep their existing contracts.
+- Reuse IX for return-SP restoration only when the existing cache already
+  proves IX=DE. Invalidate it after decrementing IX; otherwise retain the
+  generic epilogue. No cache propagation across calls or joins is added.
+
+RA results against immediate parent `e6e5c7c`, using identical inputs. T-states
+are totals across all calls; the whole-call column includes kernel and wrapper:
+
+| Routine (calls) | Kernel bytes | Wrapper bytes | Kernel T-states | Wrapper T-states | Whole-call T-states |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Multiply/add (17) | 71 -> 70 | 172 -> 161 | 20217 -> 20098 | 16507 -> 15589 | 36724 -> 35687 |
+| Array workload (20) | 1806 -> 1790 | 158 -> 147 | 7784538 -> 7742998 | 17780 -> 16700 | 7802318 -> 7759698 |
+| Path workload (20) | 1738 -> 1732 | 158 -> 147 | 7198647 -> 7198007 | 17780 -> 16700 | 7216427 -> 7214707 |
+| PackBits + CRC (17) | 936 -> 927 | 96 -> 85 | 14752742 -> 14752198 | 8891 -> 7973 | 14761633 -> 14760171 |
+
+The multiply/add wrapper specifically improves from 172 to 161 bytes and 971
+to 917 T-states per call. Its kernel separately saves one byte and seven
+T-states per call. The call-heavy array workload saves 42620 whole-call
+T-states, about 0.55%; this is a bounded improvement, not competitor parity.
+Stock SDCC's size-profile wrapper remains 20 bytes / 114 T-states.
+
+All 104 builds / 1856 calls / 24 independent timing checks pass; all 78 pinned
+competitor rows reproduce exactly. Both SSC modes are non-regressing against
+the parent in kernel/wrapper bytes, kernel/caller cycles and maximum SP
+displacement. SP high-water is unchanged throughout: these are instruction
+and transport savings, not a frame-footprint improvement. Step 2d remains.
+
+Eight new generated call cases cover word/global results, byte truncation,
+signed and unsigned byte results widened into global words, nested calls, wide
+frames, recursion and escaping pointers. Independent boundary-value oracles
+check the complete buffer and adjacent globals. The full eight-cohort 64-seed
+allocator corpus, 28 real routines and four-seed ASan corpus pass. Final
+strengthened cases also pass focused 64-seed traced/ASan checks and complete
+scalar-cohort rechecks, preserving all 32 immutable verifier rejection controls.
+
+All 175 fixtures pass, including 35 rechecks after updating 83 exact-byte marker
+ranges and one direct-global-store policy assertion. Old/new callers and
+callees interoperate in both directions: 12 mixed-version builds / 228 guarded
+calls pass with exact SP/DE restoration. The 61530 condition executions pass per
+Release/traced/ASan configuration, with all 140 intermediate/linked condition
+ROMs identical across builds. Strict ANSI GCC normal/traced checks, MSVC builds
+and the 17 comparison-tool tests normally and under `python -O` pass.
+
+Fresh full calculation ROMs use 20764 bytes (was 21185) and 33421 bytes (was
+33937). Padded images remain 65536 bytes and normal/traced images are identical.
+The next implementation target is follow-up 2d, not SM83 yet.
+
 **2d. Stack footprint and pre-SM83 qualification**
 
-- Starting point: observed SP high-water is 24 bytes for fill (stock SDCC:
-  eight), 49 for PackBits/CRC and 126 for tile/CRC. This is not total RAM use:
+- Post-2c starting point: observed SP high-water is 22 bytes for fill (stock
+  SDCC: eight), 47 for PackBits/CRC and 126 for tile/CRC. This is not total RAM use:
   SSC also accesses frame storage below SP.
 - Remove only proven unnecessary frame slots, spills or saves through existing
   frame layout and lifetime handling. Record below-SP frame extent as well as
@@ -745,6 +806,6 @@ to this cross-compiler experiment.
    compiler source growth visible and remove superseded logic. Commit the batch
    locally with the validation summary; do not push.
 
-Steps 1, 2, 2a and 2b are complete. Current implementation target: **follow-up 2c,
-leaf and caller overhead**. Complete and qualify follow-ups 2c-2d before
+Steps 1, 2, 2a, 2b and 2c are complete. Current implementation target: **follow-up
+2d, stack footprint and pre-SM83 qualification**. Complete and qualify 2d before
 **step 3, the initial SM83 backend**.

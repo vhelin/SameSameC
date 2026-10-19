@@ -10,8 +10,9 @@ OFILES = main.asm
 
 
 all: linked.sms
-	test "$$(grep -c "target_specialized_address_materialization.*emitter=function_call_result_store" compiler.log)" -eq 3
-	grep -q "function=allocatorRaPolicyCallResultStoreGlobal emitter=function_call_result_store operand=result kind=GLOBAL offset=999999 mode=global_label folded_offset=0 address_target=IY target=z80" compiler.log
+	test "$$(grep -c "target_specialized_address_materialization.*emitter=function_call_result_store" compiler.log)" -eq 2
+	: && ! grep -q "function=allocatorRaPolicyCallResultStoreGlobal emitter=function_call_result_store" compiler.log
+	grep -q "LD  (g_allocator_call_result_store_word),HL" main.asm
 	grep -q "function=allocatorRaPolicyCallResultStoreLocal emitter=function_call_result_store operand=result kind=STACK_LOCAL offset=-9 mode=frame_address folded_offset=0 address_target=IY target=z80" compiler.log
 	grep -q "function=allocatorRaPolicyCallResultStoreFar emitter=function_call_result_store operand=result kind=STACK_LOCAL offset=-149 mode=frame_address folded_offset=0 address_target=IY target=z80" compiler.log
 	grep -q "function_call_return function=allocatorRaPolicyCallResultStoreGlobal.*kind=GLOBAL size=2 phy=NONE var_type=5 promoted_type=5" compiler.log

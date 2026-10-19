@@ -779,16 +779,6 @@ static void _add_de_to_hl(FILE *file_out) {
 }
 
 
-static void _add_bc_to_ix(FILE *file_out) {
-
-  fprintf(file_out, "      ADD IX,BC\n");
-
-  /* NOTE! for _load_de_with_offset_to_ix() optimization every time we touch IX (or create a label)
-     we need to set the variable to say that IX is no longer DE */
-  g_is_ix_de = NO;
-}
-
-
 static void _add_de_to_ix(FILE *file_out) {
 
   fprintf(file_out, "      ADD IX,DE\n");
@@ -985,13 +975,6 @@ static void _load_hl_to_bc(FILE *file_out) {
 static void _load_a_to_b(FILE *file_out) {
 
   fprintf(file_out, "      LD  B,A\n");
-}
-
-
-static void _load_hl_to_de(FILE *file_out) {
-
-  fprintf(file_out, "      LD  D,H\n");
-  fprintf(file_out, "      LD  E,L\n");
 }
 
 
@@ -6196,9 +6179,16 @@ static int _generate_asm_return_z80(struct tac *t, FILE *file_out, struct tree_n
   /* bytes -1 and 0 of stack frame contain the return address */
   fprintf(file_out, "      ; bytes -1 and 0 of stack frame contain the return address\n");
 
-  _load_value_to_hl(return_sp_offset, file_out);
-  _add_de_to_hl(file_out);
-  _load_hl_to_sp(file_out);
+  if (g_is_ix_de == YES && return_sp_offset == -1) {
+    fprintf(file_out, "      DEC IX\n");
+    fprintf(file_out, "      LD  SP,IX\n");
+    g_is_ix_de = NO;
+  }
+  else {
+    _load_value_to_hl(return_sp_offset, file_out);
+    _add_de_to_hl(file_out);
+    _load_hl_to_sp(file_out);
+  }
 
   _ret(file_out);
 
@@ -6419,9 +6409,8 @@ static int _generate_asm_function_call_z80(struct tac *t, FILE *file_out, struct
 #endif
 
   /* sp -> hl (the new stack frame address) */
-  _load_value_to_hl(0, file_out);
+  _load_value_to_hl(-1, file_out);
   fprintf(file_out, "      ADD HL,SP\n");
-  _dec_hl(file_out);
 
   /* address of return address in stack frame -> bc */
   snprintf(return_label, sizeof(return_label), "_return_%d", g_return_id++);
@@ -6520,9 +6509,8 @@ static int _generate_asm_function_call_z80(struct tac *t, FILE *file_out, struct
 
         fprintf(file_out, "      ; new stack frame -> IX\n");
 
-        _load_value_to_ix(0, file_out);
-        _load_hl_to_bc(file_out);
-        _add_bc_to_ix(file_out);
+        _load_value_to_ix(-saved_fp_low_offset, file_out);
+        fprintf(file_out, "      ADD IX,SP\n");
       }
 
       if (source_location.kind == LOC_CONST) {
@@ -6575,7 +6563,8 @@ static int _generate_asm_function_call_z80(struct tac *t, FILE *file_out, struct
         if (argument_transport == RA_ARGUMENT_TRANSPORT_WORD || argument_transport == RA_ARGUMENT_TRANSPORT_TRUNCATE) {
           /* 16-bit */
           _load_from_iy_to_c(source_offset + source_low_offset, file_out);
-          _load_from_iy_to_b(source_offset + source_high_offset, file_out);
+          if (argument_transport == RA_ARGUMENT_TRANSPORT_WORD)
+            _load_from_iy_to_b(source_offset + source_high_offset, file_out);
         }
         else {
           /* 8-bit */
@@ -6638,8 +6627,9 @@ static int _generate_asm_function_call_z80(struct tac *t, FILE *file_out, struct
 
   fprintf(file_out, "      ; new stack frame -> DE\n");
 
-  /* hl (new stack frame) -> de */
-  _load_hl_to_de(file_out);
+  /* HL is dead at the callee entry; DE becomes the new frame pointer. */
+  fprintf(file_out, "      EX  DE,HL\n");
+  g_is_ix_de = NO;
 
   /* jump! */
   _jump_to(t->arg1_node->children[1]->label, file_out);
@@ -6800,6 +6790,12 @@ static int _generate_asm_function_call_z80(struct tac *t, FILE *file_out, struct
 
       fprintf(file_out, "      LD  C,L\n");
       fprintf(file_out, "      ; retained call result in C\n");
+      return SUCCEEDED;
+    }
+
+    if (result_location.kind == LOC_GLOBAL &&
+        (t->result_var_type == VARIABLE_TYPE_INT16 || t->result_var_type == VARIABLE_TYPE_UINT16)) {
+      fprintf(file_out, "      LD  (%s),HL\n", result_location.label);
       return SUCCEEDED;
     }
 

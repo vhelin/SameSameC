@@ -429,6 +429,16 @@ def generate_programs(comparison_forms):
             ("scalar_call_argument", "u8 a, u8 b, u8 c", f"u8 saved = a^b; return ra_arithmetic_{variant}(saved,b,c);", [1, 1, 1], 1),
             ("scalar_across_call", "u8 a, u8 b, u8 c", f"u8 saved = a^b; u8 called = ra_arithmetic_{variant}(a,b,c); return (called+c)+saved;", [1, 1, 1], 1),
             ("scalar_signed_call", "u8 a, u8 b, u8 c", "u16 first = a; return first+ra_signed_helper(a,b,c);", [1, 1, 1], 2),
+            ("scalar_call_transport", "u16 a, u16 b, u16 c", [
+                "return calculationAdd3(a,b,c);",
+                "ra_call_word = calculationAdd3(a,b,c); return ra_call_word;",
+                "ra_call_byte = calculationAdd3(a,b,c); return ra_call_byte;",
+                "ra_call_word = ra_signed_helper(a,b,c); return ra_call_word;",
+                "ra_call_word = ra_arithmetic_0(a,b,c); return calculationAdd3(ra_call_word,b,c);",
+                "u8 workspace[136]; workspace[a&127] = c; u8 first = calculationAdd3(a,b,c); u16 value = first; return value+workspace[a&127];",
+                "return ra_recursive_helper(a&3,b);",
+                "ra_pointer_helper(ra_buffer,a); return calculationAdd3(ra_buffer[0],b,c);",
+            ][variant] if variant < 8 else None, [2, 2, 2], 2),
             ("scalar_slots", "u8 a, u8 b, u8 c", "ra_buffer[0] = ra_buffer[a]^ra_buffer[b]^(a+b); return ra_buffer[c]^ra_buffer[b+1]^(b+c);", [1, 1, 1], 1),
             ("scalar_remat_byte", "u8 first, u8 second", "u8 *base = &ra_buffer[3]; u8 out = base[first]; out = out+base[second]; return out;", [1, 1], 1),
             ("scalar_remat_word", "u8 first, u8 second", "u16 *base = &ra_words[3]; u16 out = base[first]; out = out+base[second]; return out;", [1, 1], 2),
@@ -490,7 +500,7 @@ def generate_programs(comparison_forms):
                     excluded = family.startswith("matrix_") or scalar_family != (os.environ.get("RA_SCALAR_CASES") == "1")
                 if excluded:
                     continue
-            if scalar_family and family not in ("word_bc", "scalar_word_counter", "scalar_word_step") and variant > 1:
+            if scalar_family and family not in ("word_bc", "scalar_word_counter", "scalar_word_step", "scalar_call_transport") and variant > 1:
                 continue
             name = f"ra_{family}_{variant}"
             if family == "matrix_source_loop":
@@ -517,9 +527,14 @@ def generate_programs(comparison_forms):
         "u8 ra_pointer_helper(u8 *target, u8 value) { target[0] = value; return target[1]; }\n"
         "u8 ra_recursive_helper(u8 depth, u8 value) { if (depth) { u8 saved = value^depth; u8 nested = ra_recursive_helper(depth-1,value+1); return nested^saved; } return value; }\n"
     )
-    if any(program.family in ("matrix_real_index", "matrix_scalar_uses", "matrix_source_loop") for program in programs):
+    real_index = any(program.family in ("matrix_real_index", "matrix_scalar_uses", "matrix_source_loop") for program in programs)
+    call_transport = any(program.family == "scalar_call_transport" for program in programs)
+    if call_transport:
+        preamble += "u16 ra_call_word;\nu8 ra_call_byte;\n"
+    if real_index or call_transport:
         main = read_text(ROOT / "tests/z80/sms/calculations-1/main.ssc")
-        preamble += re.search(r"^void convertNumbersToChars16\([^;]+\) \{[\s\S]*?^\}", main, re.M)[0] + "\n"
+        if real_index:
+            preamble += re.search(r"^void convertNumbersToChars16\([^;]+\) \{[\s\S]*?^\}", main, re.M)[0] + "\n"
         preamble += re.search(r"^u16 calculationAdd3\([^;]+\) \{[\s\S]*?^\}", main, re.M)[0] + "\n"
     source = preamble + "\n".join(program.source for program in programs) + "\nvoid main(void) {}\n"
     return programs, preamble, source
@@ -723,6 +738,17 @@ def check_analytical_assertions(output, programs):
                 raise RuntimeError(f"Byte store did not reuse its HL address and low source byte: {name}")
             if variant == 12 and not re.search(r"LD\s+\(IY\+1\),[A-Z0-9]+", body):
                 raise RuntimeError(f"Word store did not preserve its IY fallback: {name}")
+        if family == "scalar_call_transport":
+            body = re.sub(r";[^\n]*", "", section_assembly())
+            if variant == 0 and not all(re.search(pattern, body) for pattern in (
+                r"LD\s+HL,-1\s+ADD HL,SP", r"LD\s+IX,3\s+ADD IX,SP",
+                r"EX\s+DE,HL\s+JP\s+calculationAdd3", r"DEC IX\s+LD\s+SP,IX\s+RET",
+            )):
+                raise RuntimeError(f"Existing-ABI frame setup/return selection missing: {name}")
+            if variant in (1, 3, 4) and not re.search(r"LD\s+\(ra_call_word\),HL", body):
+                raise RuntimeError(f"Global word call result was not stored directly: {name}")
+            if variant == 2 and not re.search(r"LD\s+IY,ra_call_byte\s+LD\s+\(IY\+0\),L", body):
+                raise RuntimeError(f"Byte call result did not preserve its existing store path: {name}")
         if family == "matrix_bc_alu" and variant < 5 and not has(
             r"linear_scan retain .*16-bit in BC .*consumer_tac=\d+\(SUB arg2\)"
         ):
@@ -920,11 +946,40 @@ def generated_oracle(program, seed, comparison_forms, decision_loop_paths):
     other = (seed * 29 + 17) & 255
     third = (seed * 47 + 3) & 255
     global_pointer = (family == "matrix_index_copy" and variant in (21, 29)) or (family == "matrix_byte_store" and variant == 5)
-    buffer = byte_buffer((index * 47 + seed * 11 + variant) for index in range(130 if global_pointer else 128))
+    buffer = byte_buffer((index * 47 + seed * 11 + variant) for index in range(
+        261 if family == "scalar_call_transport" else 130 if global_pointer else 128
+    ))
     expected_buffer = buffer.copy()
     parameters = [byte, other, third]
     expected_ports = []
     match family:
+        case "scalar_call_transport":
+            parameters = edge_parameters(seed, [0, 1, 127, 128, 255, 256, 32768, 65535]) if seed < 64 else word_parameters(seed)
+            first, second, last = parameters
+            expected = (first + second + last) & 65535
+            if variant == 2:
+                expected &= 255
+                expected_buffer[260] = expected
+            elif variant == 3:
+                narrowed = expected & 255
+                expected = (narrowed - (256 if narrowed >= 128 else 0)) & 65535
+            elif variant == 4:
+                called = (first + second + last * 2 + 1) & 255
+                expected = (called + second + last) & 65535
+            elif variant == 5:
+                expected = (expected & 255) + (last & 255)
+            elif variant == 6:
+                depth = first & 3
+                expected = (second + depth) & 255
+                for level in range(depth - 1, -1, -1):
+                    expected ^= ((second + level) & 255) ^ (depth - level)
+            elif variant == 7:
+                expected_buffer[0] = first & 255
+                expected = (expected_buffer[0] + second + last) & 65535
+            if variant in (1, 3, 4):
+                stored = called if variant == 4 else expected
+                expected_buffer[258] = stored & 255
+                expected_buffer[259] = stored >> 8
         case "matrix_byte_store":
             signed = variant in (3, 14)
             index = seed % 63 - 31 if signed else seed % 32
@@ -1589,6 +1644,11 @@ def execute_generated(output, compiler, linker, programs, preamble, compiled, ca
                 args = parameters.copy()
                 for index in program.pointerParameters:
                     args[index] += buffer_address
+                if program.family == "scalar_call_transport" and (
+                    image.symbols["ra_call_word"] != buffer_address + 258
+                    or image.symbols["ra_call_byte"] != buffer_address + 260
+                ):
+                    raise RuntimeError("Call-result snapshot layout mismatch")
                 if global_pointer:
                     if image.symbols["ra_index_pointer"] != buffer_address + 128:
                         raise RuntimeError("Global pointer snapshot layout mismatch")
