@@ -2828,6 +2828,21 @@ static int _aaa_generate_asm_add_sub_or_xor_and_z80_16bit(struct tac *t, FILE *f
   if (_resolve_tac_location(t, TAC_USE_ARG2, function_node, &arg2_location) == FAILED)
     return FAILED;
 
+  if (is_z80_register_allocator_byte_transparent_tac(t, Z80_PHY_BC) == YES) {
+    if (arg2_location.kind != LOC_PHY_HL) {
+      if (_load_location_address_to_ix(&arg2_location, &ix_offset, file_out) == FAILED)
+        return FAILED;
+      _load_from_ix_to_l(ix_offset, file_out);
+    }
+    if (_load_location_address_to_ix(&result_location, &ix_offset, file_out) == FAILED)
+      return FAILED;
+    fprintf(file_out, "      ; in-place word addition preserves BC\n      LD  A,L\n");
+    _add_from_ix_to_a(ix_offset, file_out);
+    _load_a_into_ix(ix_offset, file_out);
+    fprintf(file_out, "      JR  NC,+\n      INC (IX%+d)\n+:\n", ix_offset + 1);
+    return SUCCEEDED;
+  }
+
   if ((op == TAC_OP_ADD || op == TAC_OP_SUB) && arg2_location.kind == LOC_CONST && arg2_location.value == 1 &&
       arg1_location.kind == LOC_PHY_BC && result_location.kind == LOC_PHY_BC) {
     fprintf(file_out, "      ; retained arg1 in BC\n      %s BC\n      ; retained result in BC\n",
@@ -6075,6 +6090,7 @@ static int _bbb_generate_asm_jump_eq_lt_gt_neq_lte_gte_z80_8bit(struct tac *t, F
   int ix_offset = 0;
   int arg1_in_a = NO, arg1_in_register = NO;
   int arg2_in_a = NO;
+  int previous_index = (int)(t - g_tacs) - 1, arg1_from_array = NO;
 
   /* arg1 */
 
@@ -6091,6 +6107,21 @@ static int _bbb_generate_asm_jump_eq_lt_gt_neq_lte_gte_z80_8bit(struct tac *t, F
     arg1_location.kind == LOC_PHY_BC ? YES : NO;
   arg2_in_a = arg2_location.kind == LOC_PHY_A ? YES : NO;
 
+  /* The array reader leaves its stored byte in L; other TACs, including labels, are barriers. */
+  while (previous_index >= 0 && g_tacs[previous_index].op == TAC_OP_DEAD)
+    previous_index--;
+  if (g_allocator_enabled == YES && g_allocator_force_all_spill == NO &&
+      arg1_location.kind == LOC_STACK_LOCAL && arg2_location.kind == LOC_CONST &&
+      previous_index >= 0) {
+    struct tac *previous = &g_tacs[previous_index];
+    arg1_from_array = previous->op == TAC_OP_ARRAY_READ && previous->function_node == function_node &&
+      previous->result_type == TAC_ARG_TYPE_LABEL && previous->result_node != NULL &&
+      previous->result_node == t->arg1_node && previous->result_physical_register == Z80_PHY_NONE &&
+      (previous->result_var_type == VARIABLE_TYPE_UINT8 || previous->result_var_type == VARIABLE_TYPE_INT8) &&
+      (previous->result_var_type_promoted == VARIABLE_TYPE_UINT8 ||
+       previous->result_var_type_promoted == VARIABLE_TYPE_INT8) ? YES : NO;
+  }
+
 #if defined(DEBUG_PASS_6_REGISTER_ALLOCATOR)
   if (g_allocator_enabled == YES) {
     RA_TRACE((stderr, "register_allocator: compare_8bit function=%s op=%d op_name=%s arg1_kind=%s arg1_phy=%s arg2_kind=%s arg2_phy=%s\n",
@@ -6106,7 +6137,10 @@ static int _bbb_generate_asm_jump_eq_lt_gt_neq_lte_gte_z80_8bit(struct tac *t, F
   /* source address (arg1) -> ix */
   /******************************************************************************************************/
 
-  if (arg1_in_a == YES || arg1_in_register == YES) {
+  if (arg1_from_array == YES) {
+    fprintf(file_out, "      ; reuse preceding byte array read in L\n");
+  }
+  else if (arg1_in_a == YES || arg1_in_register == YES) {
     fprintf(file_out, "      ; retained arg1 in %s\n", _get_z80_physical_register_name(arg1_location.phy));
   }
   else if (arg1_location.kind == LOC_CONST) {
@@ -6124,7 +6158,9 @@ static int _bbb_generate_asm_jump_eq_lt_gt_neq_lte_gte_z80_8bit(struct tac *t, F
     if (arg2_in_a == YES)
       _load_a_to_b(file_out);
 
-    if (arg1_in_register == YES) {
+    if (arg1_from_array == YES)
+      fprintf(file_out, "      LD  A,L\n");
+    else if (arg1_in_register == YES) {
       if (_materialize_to_a(&arg1_location, 0, file_out) == FAILED)
         return FAILED;
     }

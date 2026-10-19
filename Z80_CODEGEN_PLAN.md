@@ -116,9 +116,9 @@ extraction.
   division results for matching `/` and `%`; simplify redundant pure expressions.
 - [x] **2g. Masked-condition branch folding (new step 3):** avoid materializing
   single-use masked values when a direct bit/flag test suffices.
-- [ ] **2h. Further loop-state and address retention (new step 4):** retain
+- [x] **2h. Further loop-state and address retention (new step 4):** retain
   eligible accumulators/counters and advance addresses without weaker safety checks.
-- [ ] **2i. Argument staging within the existing ABI (new step 5):** eliminate
+- [x] **2i. Argument staging within the existing ABI (new step 5):** eliminate
   proven redundant caller-temporary copies before considering a new convention.
 - [ ] **3. Initial SM83 backend:** establish correct Game Boy code generation,
   target-specific addressing/spills/calls and execution tests. Use actual
@@ -986,6 +986,93 @@ Acceptance: reduce caller bytes/cycles without altering the convention; cover
 mixed-width arguments, side-effect/alias fallbacks, nested calls and exact SP/DE
 restoration. Keep kernel and wrapper measurements separate.
 
+Checkpoint (2h/2i combined): reuse the existing local optimizer, allocation
+metadata, target-transparency predicate and emitters. The production change is
+**174 net C lines, with no new production functions**, against parent `678a93e`.
+No new IR operation, register-argument convention or shared-core Z80 assumption
+is introduced.
+
+For 2h, retain the bounded unsigned word index in BC across an in-place word
+accumulation when its single-use source is proved to be an unsigned byte array
+read. Add the low byte and increment the accumulator's high byte only on carry;
+keep the backing accumulator current, including when its address escapes.
+The existing target predicate and emitter use the same proof. Signed-byte and
+word-array sources keep the old full-width path; calls and pressure retain
+their existing allocation fallbacks.
+
+Also reuse the array reader's byte in L for an immediately following local-byte
+comparison against a constant. Keep the original backing store for later reads
+and aliases. Skip only dead TACs: labels, calls and other instructions are
+barriers. Word comparisons retain their old path. This removes a real decoder
+frame reload without adding a register cache, CFG promotion or speculative
+incoming-path state.
+
+Immediate-parent RA kernel measurements from the unchanged comparison corpus:
+
+| Workload | Kernel bytes | Kernel T-states | Kernel stack reads | Kernel stack writes |
+| --- | ---: | ---: | ---: | ---: |
+| Sum, 17 calls | 130 -> 102 | 381402 -> 240653 | 10544 -> 5320 | 2932 -> 1480 |
+| PackBits decoder, 16 calls | 567 -> 565 | 160257 -> 159912 | 4456 -> 4433 | 1278 -> 1278 |
+| Packed CRC, 17 calls | 915 -> 913 | 12802502 -> 12801227 | 214591 -> 214506 | 99042 -> 99042 |
+
+For a single 256-byte sum, kernel T-states fall **101862 -> 63872**, stack
+reads **2827 -> 1415** and writes **775 -> 387**. Maximum SP/access extent
+falls **24 -> 22** bytes and complete frame footprint **26 -> 24** bytes.
+The realistic 64-call CRC run separately falls **48197696 -> 48192896**
+T-states and **807744 -> 807424** frame reads. These decoder/CRC gains are
+small, not competitor parity. Copy/fill and all other comparison rows remain
+unchanged; general advancing-address and block-instruction selection remains
+further target-specific work, not an unqualified rewrite in this checkpoint.
+
+For 2i, extend the existing single-use copy optimizer rather than creating a
+second call transport path. Coalesce staging only with one write/read,
+conversion identity and a stable constant, immutable temporary or proven
+unescaped caller local. Named word constants additionally require one reaching
+call use, no escape/control/assembly ambiguity and no later read before
+redefinition or end. Preserve ordinary non-call/switch substitutions and all
+existing banked, cross-file, recursive and assembly-facing conventions.
+
+Focused RA caller sections and total T-states over 64 seeds:
+
+| Scenario | Caller bytes | T-states |
+| --- | ---: | ---: |
+| Local word across nested call | 180 -> 156 | 88704 -> 80128 |
+| Constant across multiple nested calls | 267 -> 231 | 133376 -> 119936 |
+| Mixed-width transport | 295 -> 259 | 142208 -> 129344 |
+| Recursive nested calls | 206 -> 188 | 215840 -> 200720 |
+| Large-frame pressure/named word constant | 590 -> 548 | 275840 -> 261120 |
+
+Escaped-local writes, direct argument updates and mutable-global snapshots are
+three exact byte/cycle/traffic fallbacks. The conservative-mode ROMs remain
+identical to the parent. A named-constant guard was tightened after detecting
+four extra frame reads/writes in `calculateAndPrint5`; final qualification has
+no such regression. With decoder forwarding, that real routine improves
+**1803691 -> 1803541** T-states and **31984 -> 31974** frame reads.
+
+Qualification: all **175 fixtures pass without snapshot changes**. The full
+**104-build / 1856-call** pinned comparison and 24 independent timing checks
+pass; all **26 SSC rows are non-regressing in all eight recorded metrics** and
+all 78 external controls remain exact. Wrappers are unchanged. Normal/traced
+assembly and ROMs match for all 26 SSC builds.
+
+The existing execution harness covers 17 loop/read-forwarding variants and
+eight staging variants, with independent values/full-buffer oracles, boundary
+bytes, zero/one/127/128 counts, word wraps, forward overlap, signed/word-source
+fallbacks, wide frames, aliases, calls and label barriers. Saved-parent oracles
+pass and the parent rejects each new selection assertion. The full 11-cohort
+64-seed allocator corpus, all 28 real routines, four-seed ASan corpus and all
+32 immutable verifier rejection controls pass. All 65 traced/ASan program ROMs
+match; no real routine regresses in cycles, frame reads or writes.
+
+MSVC builds and strict ANSI GCC normal/traced checks pass for both changed C
+files; Pylance reports no harness syntax errors. Condition/comparison suites
+pass all 25 tests in release, traced and ASan configurations, with 300 identical
+program/counter images; all 18 comparison tests also pass under `python -O`.
+Both complete calculation projects rebuild with identical normal/traced ROMs:
+used ROM **20679 -> 20677** and **33134 -> 33134** bytes, still padded to 65536.
+Evidence is retained privately under
+`C:\cygwin64\tmp\loop-call-qualified-20261020`.
+
 ### 3. Maintain Induction Addresses And Select Z80 Loops
 
 Reuse existing array/pointer TAC and Z80 address emitters. Introduce a narrowly
@@ -1170,7 +1257,6 @@ to this cross-compiler experiment.
    compiler source growth visible and remove superseded logic. Commit the batch
    locally with the validation summary; do not push.
 
-Steps 1, 2 and 2a-2g are complete. Current implementation target:
-**step 2h, further loop-state and address retention**, followed by 2i and then the
-initial SM83 backend. Keep the qualified Z80 behavior and shared core covered
-throughout; do not expand this finite sequence into every possible Z80 optimization.
+Steps 1, 2 and 2a-2i are complete. Current implementation target:
+**step 3, initial SM83 backend**. Keep the qualified Z80 behavior and shared core
+covered throughout; do not expand this finite sequence into every possible Z80 optimization.

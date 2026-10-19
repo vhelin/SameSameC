@@ -448,6 +448,25 @@ def generate_programs(comparison_forms):
             ("scalar_call_region", "u8 a, u8 b, u8 c", f"u8 saved = a^b; u8 first = c+saved; u8 loaded = ra_buffer[1]; u8 out = ((((first+loaded)^saved)+saved)^saved)+saved; u8 called = ra_pointer_helper(ra_buffer,ra_signed_helper({'ra_recursive_helper(2,a)' if variant == 1 else 'a'},b,c)); return ((((out^saved)+saved)^saved)+saved)^called;", [1, 1, 1], 1),
             ("scalar_loop_pressure", "u8 a, u8 b, u8 c", "u8 left = a; u8 right = b; while (left < right) { left = left+1; right = right-1; } return left^right;", [1, 1, 1], 1),
             ("scalar_loop_call", "u8 a, u8 b, u8 c", "u8 saved = a^b; u8 value = b; while (c) { value = ra_pointer_helper(ra_buffer,value)+saved; c = c-1; } return value;", [1, 1, 1], 1),
+            ("scalar_loop_memory", "u16 a, u16 b, u16 c", [
+                "u16 total = a; u16 i; for (i = 0; i < b; i++) { total += ra_buffer[i]; } return total;",
+                "s16 total = a; u16 i; for (i = 0; i < b; i++) { total += ra_buffer[i]; } return total;",
+                "u8 workspace[136]; workspace[135] = c; u16 total = a; u16 i; for (i = 0; i < b; i++) { total += ra_buffer[i]; } return total+workspace[135];",
+                "u16 total = a; u16 *escaped = &total; u16 i; for (i = 0; i < b; i++) { total += ra_buffer[i]; } return escaped[0];",
+                "u16 total = a; u16 i; for (i = 0; i < b; i++) { u16 loaded = ra_buffer[i]; ra_pointer_helper(ra_buffer,c); total += loaded; } return total;",
+                "u16 total = a; u16 i; for (i = 0; i < b; i++) { total += ra_buffer[i]; ra_buffer[i+1] = ra_buffer[i]; } return total;",
+                "u16 total = a; u16 i = c; u16 end = c+b; while (i != end) { total += ra_buffer[(i-c)&127]; i++; } return total;",
+                "u16 total = a; u16 other = c; u16 i; for (i = 0; i < b; i++) { total += ra_buffer[i]; other += total; } return total^other;",
+                "u16 words[2]; words[0] = a; words[1] = c; u16 total = a; u16 i; for (i = 0; i < b; i++) { total += words[i&1]; } return total;",
+                "s8 bytes[2]; bytes[0] = a; bytes[1] = c; u16 total = a; u16 i; for (i = 0; i < b; i++) { total += bytes[i&1]; } return total;",
+                "u8 value = ra_buffer[0]; if (value < 128) { return value+b; } return value+c;",
+                "u8 workspace[136]; workspace[135] = c; u8 value = ra_buffer[0]; if (value == 128) { return value+workspace[135]; } return value+b;",
+                "s8 value = ra_buffer[0]; if (value == 128) { return value+b; } return value+c;",
+                "u8 value = ra_buffer[0]; ra_pointer_helper(ra_buffer,c); if (value < 128) { return value+b; } return value+c;",
+                "u8 value = ra_buffer[0]; if (a&1) { ra_buffer[1] = c; } if (value < 128) { return value+b; } return value+c;",
+                "u16 value = ra_buffer[0]; if (value < 256) { return value+b; } return value+c;",
+                "u16 words[2]; words[0] = a; words[1] = c; u8 value = words[0]; if (value < 128) { return value+b; } return value+c;",
+            ][variant] if variant < 17 else None, [2, 2, 2], 2),
             ("scalar_word_counter", "u16 a, u16 b, u16 c", [
                 "u16 i = a; while (i != c) { i++; } return i+1;",
                 "u16 i = a; while (i != c) { if (i&1) { i++; continue; } i++; } return i+b;",
@@ -497,6 +516,16 @@ def generate_programs(comparison_forms):
                 "return ra_recursive_helper(a&3,b);",
                 "ra_pointer_helper(ra_buffer,a); return calculationAdd3(ra_buffer[0],b,c);",
             ][variant] if variant < 8 else None, [2, 2, 2], 2),
+            ("scalar_call_staging", "u16 a, u16 b, u16 c", [
+                "return ra_staging_pair(a,ra_staging_id(b));",
+                "return ra_staging_pair(0x9234,ra_staging_pair(a,ra_staging_id(b)));",
+                "s8 first = a; u8 second = b; return ra_staging_mixed(first,ra_staging_byte(second),c,ra_staging_id(second));",
+                "return ra_staging_pair(a,ra_staging_write(&a,b));",
+                "return ra_staging_pair(a,++a);",
+                "ra_staging_global_write(a); return ra_staging_pair(ra_staging_global,ra_staging_global_write(b));",
+                "return ra_staging_pair(a,ra_staging_recursive(c&3,b));",
+                "u8 workspace[136]; workspace[135] = c; s16 folded = 0x7521; ra_staging_id(folded); u16 v1 = 0x6543; u8 v2 = 0x95; u16 v3 = 10000; u16 v4 = 0x4321; folded = (((v1|v2)%0x1001)<<4)-v3; folded ^= v4; u16 extra = ra_staging_id(folded); ra_staging_id(v1+v2+v3+v4+a); s8 small = a; u16 saved = a+b; return ra_staging_mixed(small,ra_staging_byte(b),saved,ra_staging_id(c))+workspace[135]+extra-29985;",
+            ][variant] if variant < 8 else None, [2, 2, 2], 2),
             ("scalar_slots", "u8 a, u8 b, u8 c", "ra_buffer[0] = ra_buffer[a]^ra_buffer[b]^(a+b); return ra_buffer[c]^ra_buffer[b+1]^(b+c);", [1, 1, 1], 1),
             ("scalar_remat_byte", "u8 first, u8 second", "u8 *base = &ra_buffer[3]; u8 out = base[first]; out = out+base[second]; return out;", [1, 1], 1),
             ("scalar_remat_word", "u8 first, u8 second", "u16 *base = &ra_words[3]; u16 out = base[first]; out = out+base[second]; return out;", [1, 1], 2),
@@ -529,9 +558,9 @@ def generate_programs(comparison_forms):
                 "matrix_constant_multiply", "matrix_constant_shift", "matrix_variable_multiply",
             )
             # Dedicated cohorts keep the all-spill images within one ROM bank.
-            if family in ("scalar_word_step", "matrix_byte_store", "matrix_divmod") and family not in os.environ.get("RA_FAMILIES", "").split(","):
+            if family in ("scalar_word_step", "scalar_loop_memory", "scalar_call_staging", "matrix_byte_store", "matrix_divmod") and family not in os.environ.get("RA_FAMILIES", "").split(","):
                 continue
-            if variant >= (15 if family == "scalar_word_step" else 8) and not family.startswith("matrix_"):
+            if variant >= (15 if family == "scalar_word_step" else 17 if family == "scalar_loop_memory" else 8) and not family.startswith("matrix_"):
                 continue
             if family.startswith("matrix_") and variant >= limits.get(family, 2):
                 continue
@@ -558,7 +587,7 @@ def generate_programs(comparison_forms):
                     excluded = family.startswith("matrix_") or scalar_family != (os.environ.get("RA_SCALAR_CASES") == "1")
                 if excluded:
                     continue
-            if scalar_family and family not in ("word_bc", "scalar_word_counter", "scalar_word_step", "scalar_call_transport") and variant > 1:
+            if scalar_family and family not in ("word_bc", "scalar_word_counter", "scalar_word_step", "scalar_loop_memory", "scalar_call_staging", "scalar_call_transport") and variant > 1:
                 continue
             name = f"ra_{family}_{variant}"
             if family == "matrix_source_loop":
@@ -589,6 +618,17 @@ def generate_programs(comparison_forms):
     call_transport = any(program.family == "scalar_call_transport" for program in programs)
     if call_transport:
         preamble += "u16 ra_call_word;\nu8 ra_call_byte;\n"
+    if any(program.family == "scalar_call_staging" for program in programs):
+        preamble += (
+            "u16 ra_staging_global;\n"
+            "u16 ra_staging_id(u16 value) { return value; }\n"
+            "u8 ra_staging_byte(u8 value) { return value; }\n"
+            "u16 ra_staging_pair(u16 first, u16 second) { return first+second; }\n"
+            "u16 ra_staging_mixed(s16 first, u8 second, u16 third, u16 fourth) { return first+second+third+fourth; }\n"
+            "u16 ra_staging_write(u16 *target, u16 value) { target[0] = value; return value; }\n"
+            "u16 ra_staging_global_write(u16 value) { ra_staging_global = value; return value; }\n"
+            "u16 ra_staging_recursive(u8 depth, u16 value) { if (depth) { return ra_staging_pair(value,ra_staging_recursive(depth-1,value+1)); } return value; }\n"
+        )
     if any(program.family == "matrix_index_copy" and program.variant == 34 for program in programs):
         preamble += "s8 ra_signed[128];\n"
     if real_index or call_transport:
@@ -821,6 +861,20 @@ def check_analytical_assertions(output, programs):
                 raise RuntimeError(f"Global word call result was not stored directly: {name}")
             if variant == 2 and not re.search(r"LD\s+IY,ra_call_byte\s+LD\s+\(IY\+0\),L", body):
                 raise RuntimeError(f"Byte call result did not preserve its existing store path: {name}")
+        if family == "scalar_call_staging":
+            if variant in (0, 1, 2, 6, 7) and not has(r"argument_staging_coalesced .*crossed_calls=[1-9]"):
+                raise RuntimeError(f"Single-use nested argument staging was not coalesced: {name}")
+            if variant in (3, 5) and has(r"argument_staging_coalesced .*source=(?:a|ra_staging_global) "):
+                raise RuntimeError(f"Aliased argument snapshot was moved past a call: {name}")
+            if variant == 2 and not all(has(pattern) for pattern in (
+                r"target_argument_transport .*callee=ra_staging_mixed argument=1 .*transport=sign_extend ",
+                r"target_argument_transport .*callee=ra_staging_id argument=1 .*transport=zero_extend ",
+            )):
+                raise RuntimeError(f"Mixed-width argument extension descriptors were not exercised: {name}")
+            if variant == 7 and not has(r"target_argument_transport .*callee=ra_staging_byte argument=1 .*transport=truncate "):
+                raise RuntimeError(f"Word-to-byte argument truncation was not exercised: {name}")
+            if variant == 7 and not has(r"argument_constant_staging_coalesced .*bits=16 "):
+                raise RuntimeError(f"Named signed-word constant argument staging was not coalesced: {name}")
         if family == "matrix_bc_alu" and variant < 5 and not has(
             r"linear_scan retain .*16-bit in BC .*consumer_tac=\d+\(SUB arg2\)"
         ):
@@ -934,6 +988,21 @@ def check_analytical_assertions(output, programs):
             raise RuntimeError(f"Call-clobbered loop retained: {name}")
         if family == "scalar_decision_loop" and has(r"scalar_copy_promotion .*variable=saved "):
             raise RuntimeError(f"Ambiguous loop definitions promoted: {name}")
+        if family == "scalar_loop_memory":
+            if variant in (0, 1, 2, 3) and (
+                not has(r"loop_retention_apply_preflight .*selected=BC .*application=applied")
+                or "in-place word addition preserves BC" not in section_assembly()
+                or not re.search(r"\bINC BC\b", section_assembly())
+            ):
+                raise RuntimeError(f"Array-sum index was not retained across the word accumulation: {name}")
+            if variant == 4 and has(r"loop_retention_apply_preflight .*application=applied"):
+                raise RuntimeError(f"Call-clobbered array-sum index was retained: {name}")
+            if variant in (8, 9) and "in-place word addition preserves BC" in section_assembly():
+                raise RuntimeError(f"Nonzero or signed high-byte array source used the unsigned-byte accumulation path: {name}")
+            if variant >= 10 and (
+                "reuse preceding byte array read in L" in section_assembly()
+            ) != (variant in (10, 11, 12, 16)):
+                raise RuntimeError(f"Adjacent array-read comparison forwarding or barrier fallback mismatch: {name}")
         if family == "scalar_word_counter":
             if variant == 0 and not has(r"loop_retention_apply_preflight .*selected=BC .*application=applied"):
                 raise RuntimeError(f"Bounded unsigned word counter was not retained: {name}")
@@ -1036,7 +1105,7 @@ def generated_oracle(program, seed, comparison_forms, decision_loop_paths):
     third = (seed * 47 + 3) & 255
     global_pointer = (family == "matrix_index_copy" and variant in (21, 29)) or (family == "matrix_byte_store" and variant == 5)
     buffer = byte_buffer((index * 47 + seed * 11 + variant) for index in range(
-        261 if family == "scalar_call_transport" else 130 if global_pointer else 128
+        261 if family == "scalar_call_transport" else 260 if family == "scalar_call_staging" else 130 if global_pointer else 128
     ))
     expected_buffer = buffer.copy()
     parameters = [byte, other, third]
@@ -1113,6 +1182,26 @@ def generated_oracle(program, seed, comparison_forms, decision_loop_paths):
             for index, value in stored.items():
                 expected_buffer[index * 2] = value & 255
                 expected_buffer[index * 2 + 1] = (value >> 8) & 255
+            expected &= 65535
+        case "scalar_call_staging":
+            parameters = edge_parameters(seed, [0, 1, 127, 128, 255, 256, 32768, 65535]) if seed < 64 else word_parameters(seed)
+            first, second, last = parameters
+            signed = (first & 255) - (256 if first & 128 else 0)
+            expected = first + second
+            if variant == 1:
+                expected += 0x9234
+            elif variant == 2:
+                expected = signed + (second & 255) * 2 + last
+            elif variant == 4:
+                expected = first * 2 + 1
+            elif variant == 5:
+                expected_buffer[258] = second & 255
+                expected_buffer[259] = second >> 8
+            elif variant == 6:
+                depth = last & 3
+                expected = first + (depth + 1) * second + depth * (depth + 1) // 2
+            elif variant == 7:
+                expected = signed + (second & 255) + ((first + second) & 65535) + last + (last & 255)
             expected &= 65535
         case "scalar_call_transport":
             parameters = edge_parameters(seed, [0, 1, 127, 128, 255, 256, 32768, 65535]) if seed < 64 else word_parameters(seed)
@@ -1518,6 +1607,49 @@ def generated_oracle(program, seed, comparison_forms, decision_loop_paths):
                 expected = expected_buffer[count if variant == 10 else 0]
             elif variant == 12:
                 expected = (first + 1 + (last & 255)) & 65535
+        case "scalar_loop_memory":
+            first = (0, 1, 255, 256, 32767, 32768, 65535)[seed % 7]
+            count = (0, 1, 2, 31, 127, 128)[seed % 6]
+            if variant == 5:
+                count = min(count, 127)
+            last = (0, 1, 255, 32768, 65535)[seed % 5]
+            parameters = [first, count, last]
+            if variant >= 10:
+                first = (0, 1, 127, 128, 255, 256, 65535)[seed % 7]
+                parameters[0] = first
+                buffer[0] = expected_buffer[0] = (0, 1, 127, 128, 129, 254, 255)[seed % 7]
+                value = first & 255 if variant == 16 else buffer[0]
+                if variant == 12 and value >= 128:
+                    value -= 256
+                if variant == 13:
+                    expected_buffer[0] = last & 255
+                if variant == 14 and first & 1:
+                    expected_buffer[1] = last & 255
+                if variant == 11:
+                    addend = last & 255 if value == 128 else count
+                elif variant == 12:
+                    addend = count if value == -128 else last
+                else:
+                    addend = count if value < (256 if variant == 15 else 128) else last
+                expected = (value + addend) & 65535
+                if variant == 11 and value == 128:
+                    expected &= 255
+            else:
+                total, other_total = first, last
+                for index in range(count):
+                    value = (last if index & 1 else first) if variant in (8, 9) else expected_buffer[index]
+                    if variant == 9:
+                        value &= 255
+                        if value >= 128:
+                            value -= 256
+                    total = (total + value) & 65535
+                    if variant == 4:
+                        expected_buffer[0] = last & 255
+                    elif variant == 5:
+                        expected_buffer[index + 1] = expected_buffer[index]
+                    elif variant == 7:
+                        other_total = (other_total + total) & 65535
+                expected = (total + (last & 255)) & 65535 if variant == 2 else total ^ other_total if variant == 7 else total
         case "scalar_word_counter" | "scalar_word_prefix":
             start = (0, 255, 256, 65534, 65535)[seed % 5]
             count = (0, 1, 255, 256)[seed % 4]
@@ -1826,6 +1958,8 @@ def execute_generated(output, compiler, linker, programs, preamble, compiled, ca
                     or image.symbols["ra_call_byte"] != buffer_address + 260
                 ):
                     raise RuntimeError("Call-result snapshot layout mismatch")
+                if program.family == "scalar_call_staging" and image.symbols["ra_staging_global"] != buffer_address + 258:
+                    raise RuntimeError("Call-staging snapshot layout mismatch")
                 if global_pointer:
                     if image.symbols["ra_index_pointer"] != buffer_address + 128:
                         raise RuntimeError("Global pointer snapshot layout mismatch")
@@ -1883,6 +2017,11 @@ def execute_generated(output, compiler, linker, programs, preamble, compiled, ca
         for metric in ("frame_reads", "frame_writes"):
             if counter["ra"][metric] * 10 > counter["default"][metric] * 7:
                 raise RuntimeError(f"Word-counter {metric} did not decrease by at least 30%")
+    if cases >= 6 and os.environ.get("RA_BASELINE") != "1" and "ra_scalar_loop_memory_0" in program_totals:
+        counter = program_totals["ra_scalar_loop_memory_0"]
+        for metric in ("frame_reads", "frame_writes"):
+            if counter["ra"][metric] * 10 > counter["default"][metric] * 7:
+                raise RuntimeError(f"Array-sum {metric} did not decrease by at least 30%")
     if ("matrix_source_loop" in os.environ.get("RA_FAMILIES", "").split(",")
             and sum(program.family == "matrix_source_loop" for program in programs) != 2):
         raise RuntimeError("Both source-loop cases must be selected")
@@ -2530,16 +2669,18 @@ def main():
         ]
         if not family_filter:
             cohorts.append("word_steps")
+            cohorts.append("loop_memory")
+            cohorts.append("call_staging")
             if os.environ.get("RA_MATRIX_CASES") != "0":
                 cohorts.append("byte_stores")
                 cohorts.append("divmod")
         for cohort in cohorts:
-            scalar_cohort = cohort in ("scalar", "word_steps")
+            scalar_cohort = cohort in ("scalar", "word_steps", "loop_memory", "call_staging")
             os.environ.update({
                 "RA_SCALAR_CASES": "1" if scalar_cohort else "0",
                 "RA_MATRIX_CASES": "0" if scalar_cohort else "1", "RA_REAL_PROJECTS": "0",
                 "RA_VALUE_CASES": "1" if cohort in ("matrix_values", "byte_stores") else "0",
-                "RA_FAMILIES": "scalar_word_step" if cohort == "word_steps" else "matrix_byte_store" if cohort == "byte_stores" else "matrix_divmod" if cohort == "divmod" else family_filter,
+                "RA_FAMILIES": "scalar_word_step" if cohort == "word_steps" else "scalar_loop_memory" if cohort == "loop_memory" else "scalar_call_staging" if cohort == "call_staging" else "matrix_byte_store" if cohort == "byte_stores" else "matrix_divmod" if cohort == "divmod" else family_filter,
                 "RA_COMPARISON_FORMS": "1" if cohort == "matrix_literals" else "2" if cohort == "matrix_memory" else "0",
                 "RA_EXECUTION_DIR": str(output / cohort), "RA_VERIFIER": harness,
             })

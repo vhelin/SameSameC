@@ -1970,18 +1970,23 @@ static int _optimize_il_23(int *optimizations_counter) {
   */
 
   int i = 0;
+  int argument_staging = g_allocator_enabled == YES && g_allocator_force_all_spill == NO && g_backend == BACKEND_Z80;
 
   while (1) {
     int is_last_function = NO;
+    int start = i;
     int end = _find_end_of_il_function(i, &is_last_function);
     if (end < 0)
       return FAILED;
+
+    while (start > 0 && g_tacs[start].is_function != YES)
+      start--;
 
     if (_count_and_allocate_register_usage(i, end) == FAILED)
       return FAILED;
 
     while (i < end) {
-      int current, next;
+      int current, next, stable_source = NO, crossed_calls = 0, single_staging = NO;
 
       current = _find_next_living_tac(i);
 
@@ -1993,6 +1998,44 @@ static int _optimize_il_23(int *optimizations_counter) {
              g_tacs[current].result_var_type_promoted == VARIABLE_TYPE_INT8) &&
             (g_tacs[current].arg1_var_type_promoted == VARIABLE_TYPE_UINT16 ||
              g_tacs[current].arg1_var_type_promoted == VARIABLE_TYPE_INT16))) {
+        if (argument_staging == YES) {
+          struct tree_node *source = g_tacs[current].arg1_node;
+          int k;
+
+          single_staging = g_tacs[current].result_type == TAC_ARG_TYPE_TEMP &&
+            g_register_reads[(int)g_tacs[current].result_d] == 1 &&
+            g_register_writes[(int)g_tacs[current].result_d] == 1 &&
+            (get_variable_type_size(g_tacs[current].result_var_type_promoted) == 8 ||
+             get_variable_type_size(g_tacs[current].result_var_type_promoted) == 16) &&
+            g_tacs[current].arg1_var_type_promoted == g_tacs[current].result_var_type_promoted;
+          if (single_staging == YES) {
+            for (k = current + 1; k < end; k++) {
+              if ((g_tacs[k].op == TAC_OP_FUNCTION_CALL || g_tacs[k].op == TAC_OP_FUNCTION_CALL_USE_RETURN_VALUE) &&
+                  _aaa_get_argument_index_in_function_call_arguments(&g_tacs[k], TAC_ARG_TYPE_TEMP, NULL,
+                                                                     (int)g_tacs[current].result_d) >= 0)
+                break;
+            }
+            if (k == end)
+              single_staging = NO;
+          }
+          stable_source = g_tacs[current].arg1_type == TAC_ARG_TYPE_CONSTANT ||
+            (g_tacs[current].arg1_type == TAC_ARG_TYPE_TEMP &&
+             g_register_writes[(int)g_tacs[current].arg1_d] == 1);
+          if (g_tacs[current].arg1_type == TAC_ARG_TYPE_LABEL && source != NULL &&
+              (source->type == TREE_NODE_TYPE_CREATE_VARIABLE || source->type == TREE_NODE_TYPE_CREATE_VARIABLE_FUNCTION_ARGUMENT) &&
+              (source->flags & (TREE_NODE_FLAG_GLOBAL | TREE_NODE_FLAG_STATIC | TREE_NODE_FLAG_EXTERN | TREE_NODE_FLAG_ARRAY)) == 0 && source->value == 0) {
+            /* An unescaped caller slot cannot be changed by a nested callee. */
+            stable_source = YES;
+            for (k = start; k < end; k++) {
+              if (g_tacs[k].op == TAC_OP_ASM ||
+                  ((g_tacs[k].op == TAC_OP_GET_ADDRESS || g_tacs[k].op == TAC_OP_GET_ADDRESS_ARRAY) &&
+                   g_tacs[k].arg1_node == source)) {
+                stable_source = NO;
+                break;
+              }
+            }
+          }
+        }
         next = current;
 
         while (1) {
@@ -2003,6 +2046,14 @@ static int _optimize_il_23(int *optimizations_counter) {
 
           if (g_tacs[next].op == TAC_OP_LABEL) {
             /* we cannot search past a label */
+            next = -1;
+            break;
+          }
+          if (single_staging == YES &&
+              (_is_register_allocator_jump_op(g_tacs[next].op) == YES ||
+               g_tacs[next].op == TAC_OP_RETURN || g_tacs[next].op == TAC_OP_RETURN_VALUE ||
+               g_tacs[next].op == TAC_OP_ASM ||
+               (g_tacs[next].op == TAC_OP_ARRAY_WRITE && stable_source == NO))) {
             next = -1;
             break;
           }
@@ -2030,10 +2081,50 @@ static int _optimize_il_23(int *optimizations_counter) {
           }
 
           if (g_tacs[next].op == TAC_OP_FUNCTION_CALL || g_tacs[next].op == TAC_OP_FUNCTION_CALL_USE_RETURN_VALUE) {
-            int index;
+            int index, removable = single_staging;
 
             index = _aaa_get_argument_index_in_function_call_arguments(&g_tacs[next], g_tacs[current].result_type, g_tacs[current].result_node, (int)g_tacs[current].result_d);
-            if (index >= 0) {
+            if (argument_staging == YES && index >= 0 && g_tacs[current].result_type == TAC_ARG_TYPE_LABEL &&
+                g_tacs[current].arg1_type == TAC_ARG_TYPE_CONSTANT &&
+                get_variable_type_size(g_tacs[current].arg1_var_type_promoted) == 16 &&
+                get_variable_type_size(g_tacs[current].result_var_type_promoted) == 16 &&
+                g_tacs[current].result_node != NULL &&
+                g_tacs[current].result_node->type == TREE_NODE_TYPE_CREATE_VARIABLE &&
+                get_variable_type_size(tree_node_get_max_var_type(g_tacs[current].result_node->children[0])) == 16 &&
+                (g_tacs[current].result_node->flags & (TREE_NODE_FLAG_GLOBAL | TREE_NODE_FLAG_STATIC | TREE_NODE_FLAG_EXTERN | TREE_NODE_FLAG_ARRAY)) == 0 &&
+                g_tacs[current].result_node->value == 0) {
+              struct tree_node *destination = g_tacs[current].result_node;
+              int k;
+
+              /* A word constant keeps its bits across signedness changes, but a named snapshot may have later users. */
+              removable = YES;
+              for (k = start; k < end; k++) {
+                if (g_tacs[k].op == TAC_OP_ASM ||
+                    ((g_tacs[k].op == TAC_OP_GET_ADDRESS || g_tacs[k].op == TAC_OP_GET_ADDRESS_ARRAY) &&
+                     g_tacs[k].arg1_node == destination) ||
+                    (k > current && k < next && (_is_register_allocator_jump_op(g_tacs[k].op) == YES ||
+                     g_tacs[k].op == TAC_OP_RETURN || g_tacs[k].op == TAC_OP_RETURN_VALUE)))
+                  removable = NO;
+              }
+              for (k = index + 1; k < g_tacs[next].arguments_count; k++) {
+                if (g_tacs[next].arguments[k].node == destination)
+                  removable = NO;
+              }
+              for (k = next + 1; removable == YES && k < end; k++) {
+                if (g_tacs[k].op == TAC_OP_DEAD || g_tacs[k].op == TAC_OP_CREATE_VARIABLE)
+                  continue;
+                if (g_tacs[k].op == TAC_OP_LABEL || _is_register_allocator_jump_op(g_tacs[k].op) == YES ||
+                    g_tacs[k].arg1_node == destination || g_tacs[k].arg2_node == destination ||
+                    _bbb_get_argument_index_in_function_call_arguments_with_tree_node(&g_tacs[k], destination) >= 0 ||
+                    (g_tacs[k].op == TAC_OP_ARRAY_WRITE && g_tacs[k].result_node == destination))
+                  removable = NO;
+                if (g_tacs[k].result_type == TAC_ARG_TYPE_LABEL && g_tacs[k].result_node == destination)
+                  break;
+              }
+            }
+            if (index >= 0 && (argument_staging == NO || removable == YES) &&
+                (crossed_calls == 0 || (g_tacs[next].arg1_node != NULL &&
+                 (g_tacs[next].arg1_node->flags & TREE_NODE_FLAG_PUREASM) == 0))) {
               /* found match! rX can be removed, variable/constant embedded! */
               struct function_argument *arg = &(g_tacs[next].arguments[index]);
 
@@ -2057,13 +2148,31 @@ static int _optimize_il_23(int *optimizations_counter) {
               g_tacs[current].arg1_node = NULL;
               g_tacs[current].op = TAC_OP_DEAD;
               (*optimizations_counter)++;
+              if (g_register_allocator_trace && argument_staging == YES && g_tacs[current].result_type == TAC_ARG_TYPE_LABEL) {
+                fprintf(stderr, "register_allocator: argument_constant_staging_coalesced function=%s callee=%s argument=%d bits=16 target=z80\n",
+                        g_tacs[start].result_s != NULL ? g_tacs[start].result_s : "<unknown>",
+                        g_tacs[next].arg1_s, index + 1);
+              }
+              if (g_register_allocator_trace && crossed_calls > 0) {
+                fprintf(stderr, "register_allocator: argument_staging_coalesced function=%s callee=%s argument=%d crossed_calls=%d source=%s target=z80\n",
+                        g_tacs[start].result_s != NULL ? g_tacs[start].result_s : "<unknown>",
+                        g_tacs[next].arg1_s, index + 1, crossed_calls,
+                        arg->label != NULL ? arg->label : (arg->type == TAC_ARG_TYPE_CONSTANT ? "constant" : "temporary"));
+              }
   if (g_register_allocator_trace) {
               fprintf(stderr, "_optimize_il_23(): SUCCESS!\n");
   }
 
             }
 
-            /* let's not serach past a function call */
+            if (index < 0 && single_staging == YES && stable_source == YES &&
+                g_tacs[next].arg1_node != NULL &&
+                (g_tacs[next].arg1_node->flags & TREE_NODE_FLAG_PUREASM) == 0) {
+              crossed_calls++;
+              continue;
+            }
+
+            /* Unproved sources and assembly-facing calls keep their snapshots. */
             next = -1;
             break;
           }
@@ -4946,6 +5055,33 @@ static int _is_register_allocator_b_candidate(struct tac *producer, struct tac *
 
 int is_z80_register_allocator_byte_transparent_tac(struct tac *t, int physical_register) {
 
+  if (physical_register == Z80_PHY_BC) {
+    struct temp_register *source;
+    int eligible = g_allocator_enabled == YES && g_allocator_force_all_spill == NO &&
+      t->op == TAC_OP_ADD && t->arg1_physical_register == Z80_PHY_NONE &&
+      t->arg2_type == TAC_ARG_TYPE_TEMP &&
+      (t->arg2_physical_register == Z80_PHY_HL || t->arg2_physical_register == Z80_PHY_NONE) &&
+      t->result_physical_register == Z80_PHY_NONE &&
+      get_variable_type_size(t->arg1_var_type) == 16 && get_variable_type_size(t->arg2_var_type) == 16 &&
+      get_variable_type_size(t->result_var_type) == 16 &&
+      t->arg1_type == t->result_type &&
+      ((t->arg1_type == TAC_ARG_TYPE_TEMP && t->arg1_d == t->result_d) ||
+       (t->arg1_type == TAC_ARG_TYPE_LABEL && t->arg1_node != NULL && t->arg1_node == t->result_node &&
+        (t->arg1_node->type == TREE_NODE_TYPE_CREATE_VARIABLE ||
+         t->arg1_node->type == TREE_NODE_TYPE_CREATE_VARIABLE_FUNCTION_ARGUMENT) &&
+        (t->arg1_node->flags & (TREE_NODE_FLAG_GLOBAL | TREE_NODE_FLAG_STATIC)) == 0 &&
+        t->arg1_node->value == 0));
+    if (eligible == NO)
+      return NO;
+    source = _find_temp_register_info(t->function_node, (int)t->arg2_d);
+    return source != NULL && source->read_count == 1 && source->write_count == 1 &&
+      source->live_start >= 0 && source->live_start < g_tacs_count &&
+      g_tacs[source->live_start].op == TAC_OP_ARRAY_READ &&
+      (g_tacs[source->live_start].arg1_node != NULL ?
+       get_array_item_variable_type(g_tacs[source->live_start].arg1_node) :
+       g_tacs[source->live_start].arg1_var_type) == VARIABLE_TYPE_UINT8 ? YES : NO;
+  }
+
   /* Byte operands can use the byte emitter and preserve the full word result without touching HL. */
   if (physical_register == Z80_PHY_HL)
     return g_allocator_enabled == YES && g_allocator_force_all_spill == NO &&
@@ -5601,6 +5737,8 @@ static int _is_z80_basic_block_transparent_tac_for_physical_register(struct tac 
       scratch_units &= ~RA_Z80_UNIT_C;
     if (is_z80_register_allocator_byte_transparent_tac(t, Z80_PHY_B) == YES)
       scratch_units &= ~RA_Z80_UNIT_B;
+    if (is_z80_register_allocator_byte_transparent_tac(t, Z80_PHY_BC) == YES)
+      scratch_units &= ~(RA_Z80_UNIT_B | RA_Z80_UNIT_C);
     if (_is_register_allocator_jump_op(t->op) == YES && t->op != TAC_OP_JUMP &&
         (t->arg1_var_type_promoted == VARIABLE_TYPE_INT8 ||
         t->arg1_var_type_promoted == VARIABLE_TYPE_UINT8) &&
