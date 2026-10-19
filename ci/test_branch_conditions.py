@@ -49,6 +49,10 @@ class BranchConditionsTests(unittest.TestCase):
                     "u16 condition_calls(u16 a, u16 b) { u16 result = 0; ra_buffer[0] = 0; if (condition_tick(a) < condition_tick(b)) { result = 1; } if (!condition_tick(a)) { result += 2; } if (!(!condition_tick(b))) { result += 4; } if (condition_tick(a)) { result += 8; } return result; }"),
             Program("condition_array_index", "condition_array_index", 0, 0, [2, 2], 2, [],
                     "u16 condition_array_index(u16 a, u16 b) { if (ra_buffer[a < b] == 47) { return 1; } return 0; }"),
+            Program("condition_compound_loops", "condition_compound_loops", 0, 0, [2, 2], 2, [],
+                    "u16 condition_compound_loops(u16 a, u16 b) { u16 i; u16 total = 0; ra_buffer[0] = 0; for (i = 0; i < a && condition_tick(i < b); i++) { if (i == 2) { continue; } if (i == 7) { break; } total += i; } i = 0; while (i < b || condition_tick(i < a)) { i++; if (i == 2) { continue; } if (i == 9) { break; } total += i; } i = 0; do { i++; if (i == 2) { continue; } total += i; } while (i < b && condition_tick(i < a)); return total; }"),
+            Program("condition_compound_increment", "condition_compound_increment", 0, 0, [2, 2], 2, [],
+                    "u16 condition_compound_increment(u16 a, u16 b) { u16 i = a; u16 result = 0; ra_buffer[0] = 0; if (i++ && ++i) { result += 1; } if (i++ || ++i) { result += 2; } if (!(i++ && condition_tick(i))) { result += 4; } if (!(!(++i || condition_tick(i)))) { result += 8; } return result+i; }"),
         ]
         source = (
             "u8 ra_buffer[128];\n"
@@ -56,6 +60,69 @@ class BranchConditionsTests(unittest.TestCase):
             + "\n".join(program.source for program in programs) + "\nvoid main(void) {}\n"
         )
         cls.other = (programs, compile_generated(cls.output / "control", compiler, linker, programs, source))
+        cls.logical_cases = [
+            ("condition_logic_tick(a,1) && condition_logic_tick(b,2)",
+             lambda a, b, tick: bool(tick(a, 1)) and bool(tick(b, 2)), False, True, False),
+            ("condition_logic_tick(a,1) || condition_logic_tick(b,2)",
+             lambda a, b, tick: bool(tick(a, 1)) or bool(tick(b, 2)), False, True, False),
+            ("condition_logic_tick(a,1) || condition_logic_tick(b,2) && condition_logic_tick(a^b,3)",
+             lambda a, b, tick: bool(tick(a, 1)) or (bool(tick(b, 2)) and bool(tick(a ^ b, 3))), False, True, False),
+            ("(condition_logic_tick(a,1) && condition_logic_tick(b,2)) || condition_logic_tick(a^b,3)",
+             lambda a, b, tick: (bool(tick(a, 1)) and bool(tick(b, 2))) or bool(tick(a ^ b, 3)), False, True, False),
+            ("condition_logic_tick(a,1) && (condition_logic_tick(b,2) || condition_logic_tick(a^b,3))",
+             lambda a, b, tick: bool(tick(a, 1)) and (bool(tick(b, 2)) or bool(tick(a ^ b, 3))), False, True, False),
+            ("(condition_logic_tick(a,1) || condition_logic_tick(b,2)) && (condition_logic_tick(a,3) || condition_logic_tick(b,4))",
+             lambda a, b, tick: (bool(tick(a, 1)) or bool(tick(b, 2))) and (bool(tick(a, 3)) or bool(tick(b, 4))), False, True, False),
+            ("a != 0 && condition_logic_tick(b/a,1) > 1",
+             lambda a, b, tick: a != 0 and tick(b // a, 1) > 1, False, True, False),
+            ("a < 0 && condition_logic_tick(b,1)",
+             lambda a, b, tick: a < 0 and bool(tick(b, 1)), True, True, False),
+            ("a < 0 || condition_logic_tick(b,1)",
+             lambda a, b, tick: a < 0 or bool(tick(b, 1)), True, True, False),
+            ("(condition_logic_tick(a,1) && condition_logic_tick(b,2)) + condition_logic_tick(a|b,3)",
+             lambda a, b, tick: int(bool(tick(a, 1)) and bool(tick(b, 2))) + tick(a | b, 3), False, False, True),
+            ("!(condition_logic_tick(a,1) && condition_logic_tick(b,2)) + condition_logic_tick(a|b,3)",
+             lambda a, b, tick: int(not (bool(tick(a, 1)) and bool(tick(b, 2)))) + tick(a | b, 3), False, False, True),
+            ("(condition_logic_tick(a,1) && condition_logic_tick(b,2)) == (condition_logic_tick(a,3) || condition_logic_tick(b,4))",
+             lambda a, b, tick: (bool(tick(a, 1)) and bool(tick(b, 2))) == (bool(tick(a, 3)) or bool(tick(b, 4))), False, False, True),
+            ("condition_logic_tick(a,1) & condition_logic_tick(b,2)",
+             lambda a, b, tick: tick(a, 1) & tick(b, 2), False, False, False),
+            ("condition_logic_tick(a,1) | condition_logic_tick(b,2)",
+             lambda a, b, tick: tick(a, 1) | tick(b, 2), False, False, False),
+            ("!((condition_logic_tick(a,1) && condition_logic_tick(b,2)) + condition_logic_tick(a|b,3))",
+             lambda a, b, tick: not ((int(bool(tick(a, 1)) and bool(tick(b, 2))) + tick(a | b, 3)) & 65535), False, True, True),
+            ("!(!((condition_logic_tick(a,1) && condition_logic_tick(b,2)) + condition_logic_tick(a|b,3)))",
+             lambda a, b, tick: bool((int(bool(tick(a, 1)) and bool(tick(b, 2))) + tick(a | b, 3)) & 65535), False, True, True),
+            ("ra_buffer[(condition_logic_tick(a,1) && condition_logic_tick(b,2)) + 8]",
+             lambda a, b, tick: 8 + int(bool(tick(a, 1)) and bool(tick(b, 2))), False, False, True),
+            ("condition_logic_tick(condition_logic_tick(a,1) && condition_logic_tick(b,2),3)",
+             lambda a, b, tick: tick(int(bool(tick(a, 1)) and bool(tick(b, 2))), 3), False, False, True),
+            ("a < 128 && condition_logic_tick(ra_buffer[a],1)",
+             lambda a, b, tick: a < 128 and bool(tick(a, 1)), False, True, False),
+            ("0 && condition_logic_tick(a,1)",
+             lambda a, b, tick: False, False, None, False),
+            ("1 || condition_logic_tick(a,1)",
+             lambda a, b, tick: True, False, None, False),
+        ]
+        cls.logical = []
+        for start in range(0, len(cls.logical_cases), 3):
+            programs = []
+            for index in range(start, min(start + 3, len(cls.logical_cases))):
+                expression, _, signed, _, _ = cls.logical_cases[index]
+                for form in range(4):
+                    name = f"condition_logical_{index}_{form}"
+                    operand = f"!({expression})" if form == 1 else f"!(!({expression}))" if form == 2 else expression
+                    body = f"return {operand};" if form == 3 else f"if ({operand}) {{ return 1; }} return 0;"
+                    programs.append(Program(
+                        name, "logical", form, index, [2, 2], 2, [],
+                        f"u16 {name}({'s16' if signed else 'u16'} a, u16 b) {{ ra_buffer[0] = 0; {body} }}",
+                    ))
+            source = (
+                "u8 ra_buffer[128];\n"
+                "u16 condition_logic_tick(u16 value, u8 tag) { ra_buffer[0] = ra_buffer[0]+1; ra_buffer[ra_buffer[0]] = tag; return value; }\n"
+                + "\n".join(program.source for program in programs) + "\nvoid main(void) {}\n"
+            )
+            cls.logical.append((programs, compile_generated(cls.output / f"logical_{start}", compiler, linker, programs, source)))
 
     def test_relational_boundaries_and_boolean_values(self):
         calls = 0
@@ -99,9 +166,12 @@ class BranchConditionsTests(unittest.TestCase):
 
     def test_control_flow_calls_and_nested_value_contexts(self):
         programs, compiled = self.other
-        for first in (0, 1, 2, 7, 8, 255, 256):
-            for second in (0, 1, 2, 7, 8):
-                for program in programs:
+        for program in programs:
+            first_values = (0, 1, 2, 7, 8, 255, 256)
+            if program.name == "condition_compound_increment":
+                first_values += (32767, 32768, 65534, 65535)
+            for first in first_values:
+                for second in (0, 1, 2, 7, 8):
                     buffer = bytearray((index * 47) & 255 for index in range(128))
                     expected_buffer = buffer.copy()
                     if program.name == "condition_join":
@@ -113,6 +183,59 @@ class BranchConditionsTests(unittest.TestCase):
                     elif program.name == "condition_calls":
                         expected = int(first < second) + 2 * int(first == 0) + 4 * int(second != 0) + 8 * int(first != 0)
                         expected_buffer[0] = 5
+                    elif program.name == "condition_compound_loops":
+                        i = total = ticks = 0
+                        while i < first:
+                            ticks += 1
+                            if i >= second or i == 7:
+                                break
+                            if i != 2:
+                                total += i
+                            i += 1
+                        i = 0
+                        while True:
+                            if i >= second:
+                                ticks += 1
+                                if i >= first:
+                                    break
+                            i += 1
+                            if i == 9:
+                                break
+                            if i != 2:
+                                total += i
+                        i = 0
+                        while True:
+                            i += 1
+                            if i != 2:
+                                total += i
+                            if i >= second:
+                                break
+                            ticks += 1
+                            if i >= first:
+                                break
+                        expected = total
+                        expected_buffer[0] = ticks & 255
+                    elif program.name == "condition_compound_increment":
+                        i = first
+                        old = i
+                        i = (i + 1) & 65535
+                        if old:
+                            i = (i + 1) & 65535
+                        expected = int(bool(old) and bool(i))
+                        old = i
+                        i = (i + 1) & 65535
+                        if not old:
+                            i = (i + 1) & 65535
+                        expected += 2 * int(bool(old) or bool(i))
+                        old = i
+                        i = (i + 1) & 65535
+                        ticks = int(bool(old))
+                        expected += 4 * int(not (bool(old) and bool(i)))
+                        i = (i + 1) & 65535
+                        ticks += int(i == 0)
+                        expected += 8 * int(i != 0)
+                        expected = (expected + i) & 65535
+                        expected_buffer[0] = ticks
                     else:
                         expected = int(first < second)
                     for mode in ("default", "all_spill", "ra"):
@@ -125,6 +248,51 @@ class BranchConditionsTests(unittest.TestCase):
                         self.assertEqual(result["value"], expected, (program.name, mode, first, second))
                         self.assertEqual(result["buffer"], expected_buffer)
                         self.assertEqual(result["unmapped_instructions"], 0)
+
+    def test_compound_short_circuit_values_and_effects(self):
+        calls = 0
+        for programs, compiled in self.logical:
+            for program in programs:
+                _, oracle, signed, _, _ = self.logical_cases[program.constant]
+                for first in (0, 1, 2, 127, 128, 255, 256, 32767, 32768, 65535):
+                    for second in (0, 1, 2, 255, 256, 32768, 65535):
+                        expected_buffer = bytearray(range(128))
+                        expected_buffer[0] = 0
+
+                        def tick(value, tag):
+                            expected_buffer[0] += 1
+                            expected_buffer[expected_buffer[0]] = tag
+                            return value & 65535
+
+                        left = first - 65536 if signed and first >= 32768 else first
+                        expected = int(oracle(left, second, tick)) & 65535
+                        if program.variant != 3:
+                            expected = int(bool(expected)) ^ int(program.variant == 1)
+                        for mode in ("default", "all_spill", "ra"):
+                            image = compiled[mode]
+                            result = execute(
+                                image.rom, image.symbols[program.name], [first, second], program.widths,
+                                bytes(range(128)), image.symbols["ra_buffer"], 2, image.transfers,
+                            )
+                            self.assertEqual(result["value"], expected, (program.name, mode, first, second))
+                            self.assertEqual(result["buffer"], expected_buffer, (program.name, mode, first, second))
+                            self.assertEqual(result["unmapped_instructions"], 0)
+                            calls += 1
+        print(f"Compound logical/value/side-effect executions: {calls}")
+
+    def test_compound_branches_only_materialize_required_values(self):
+        for programs, _ in self.logical:
+            for mode in ("default", "all_spill", "ra"):
+                assembly = (self.output / f"logical_{programs[0].constant}" / mode / "main.asm").read_text()
+                for program in programs:
+                    _, _, _, logical_root, nested_value = self.logical_cases[program.constant]
+                    if logical_root is None:
+                        continue
+                    body = assembly.split(f'.SECTION "{program.name}" FREE')[1].split(".ENDS")[0]
+                    assignments = re.findall(r"; TAC: (r\d+)\.[^\n]* := ([01])\.", body)
+                    zero = {register for register, value in assignments if value == "0"}
+                    one = {register for register, value in assignments if value == "1"}
+                    self.assertEqual(bool(zero & one), nested_value or (logical_root and program.variant == 3), (program.name, mode))
 
 
 if __name__ == "__main__":

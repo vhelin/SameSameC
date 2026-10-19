@@ -808,7 +808,7 @@ all: linked.sms core_liveness_storage_test tac_insert_test z80_register_spill_te
 	grep -q "join_spill_approval function=coreJoinApprovalReject block=3 site=1 predecessor=2 edge=fallthrough anchor=8 placement=after approved=no status=rejected" core_liveness_storage_test.log
 	grep -q "join_spill_approval function=coreJoinApprovalCallback block=3 site=1 predecessor=2 edge=fallthrough anchor=8 placement=after approved=invalid status=invalid_callback" core_liveness_storage_test.log
 	test "$$(grep -c "join_spill_approval function=.*status=invalid_input" core_liveness_storage_test.log)" -eq 8
-	test "$$(grep -c "join_spill_approval function=.*status=invalid_site" core_liveness_storage_test.log)" -eq 7
+	test "$$(grep -c "join_spill_approval function=.*status=invalid_site" core_liveness_storage_test.log)" -eq 8
 	grep -q "join_spill_mutation function=coreJoinMutationRetained block=3 temp=r0 predecessor=1 edge=jump anchor=5 placement=before action=spill_predecessors phy=4 apply=yes reason=retained_live_in status=complete" core_liveness_storage_test.log
 	grep -q "join_spill_mutation function=coreJoinMutationStack block=3 temp=r1 predecessor=2 edge=fallthrough anchor=8 placement=after action=reload_on_demand phy=-1 apply=no reason=stack_resident status=complete" core_liveness_storage_test.log
 	test "$$(grep -c "join_spill_mutation function=.*status=invalid_input" core_liveness_storage_test.log)" -eq 14

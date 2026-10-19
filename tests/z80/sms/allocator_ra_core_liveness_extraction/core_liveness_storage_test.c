@@ -3763,6 +3763,47 @@ static int test_join_spill_mutation_application(void) {
 
   struct join_spill_apply_context context;
   struct register_allocator_join_spill_mutation mutation;
+  struct join_spill_approval_context approval;
+  struct join_spill_emission_apply_context emitted;
+  struct register_allocator_join_spill_work_item item;
+  struct register_allocator_join_spill_site site;
+  int approved;
+
+  initialize_join_spill_mutation(&mutation);
+  site = mutation.site;
+  site.edge_kind = RA_CFG_EDGE_BRANCH_FALSE;
+  site.placement = RA_JOIN_SPILL_AFTER_ANCHOR;
+  approval.calls = 0;
+  approval.reject_call = approval.invalid_call = -1;
+  memset(&context, 0, sizeof(context));
+  memset(&emitted, 0, sizeof(emitted));
+  if (register_allocator_order_join_spill_sites("coreJoinConditionalFall",
+      3, 12, &site, 1) == FAILED ||
+      register_allocator_approve_join_spill_sites("coreJoinConditionalFall",
+      3, 12, &site, 1, &approval, approve_join_spill_site, &approved) == FAILED ||
+      approved != 1 || approval.calls != 1 ||
+      register_allocator_prepare_join_spill_mutation("coreJoinConditionalFall",
+      3, 2, RA_JOIN_ACTION_SPILL_PREDECESSORS, -1, 4, &site, &mutation) == FAILED ||
+      register_allocator_apply_join_spill_mutation("coreJoinConditionalFall",
+      3, -1, &context, &mutation, apply_join_spill_mutation) == FAILED ||
+      context.calls != 1 || context.site.placement != RA_JOIN_SPILL_AFTER_ANCHOR ||
+      register_allocator_prepare_join_spill_emission("coreJoinConditionalFall",
+      3, -1, &mutation, YES, -6, 2, &item.emission) == FAILED)
+    return FAILED;
+  item.join_block_index = 3;
+  if (register_allocator_order_join_spill_emissions("coreJoinConditionalFall",
+      4, 12, -1, &item, 1) == FAILED ||
+      register_allocator_apply_join_spill_emission("coreJoinConditionalFall",
+      3, -1, &emitted, &item.emission, apply_join_spill_emission) == FAILED ||
+      emitted.calls != 1 || emitted.site.edge_kind != RA_CFG_EDGE_BRANCH_FALSE ||
+      emitted.site.placement != RA_JOIN_SPILL_AFTER_ANCHOR)
+    return FAILED;
+  site.placement = RA_JOIN_SPILL_BEFORE_ANCHOR;
+  approval.calls = 0;
+  if (expect_invalid_join_spill_approval("coreJoinConditionalBefore", 3, 12,
+      &site, 1, &approval, approve_join_spill_site, &approved) == FAILED ||
+      approval.calls != 0)
+    return FAILED;
 
   context.calls = 0;
   context.reject = NO;

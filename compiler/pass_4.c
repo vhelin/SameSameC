@@ -594,11 +594,11 @@ static int _generate_il_create_expression(struct tree_node *node) {
   g_current_line_number = node->line_number;
 
   if (node->type == TREE_NODE_TYPE_EXPRESSION) {
-    if (il_stack_calculate_expression(node, YES, -1) == FAILED)
+    if (il_stack_calculate_expression(node, YES, -1, NO) == FAILED)
       return FAILED;
   }
   else if (node->type == TREE_NODE_TYPE_CONDITION) {
-    if (il_stack_calculate_expression(node->children[0], YES, -1) == FAILED)
+    if (il_stack_calculate_expression(node->children[0], YES, -1, NO) == FAILED)
       return FAILED;
   }
   else if (node->type == TREE_NODE_TYPE_VALUE_STRING) {
@@ -1320,7 +1320,7 @@ static int _generate_il_create_condition(struct tree_node *node, int false_label
     return print_error(g_error_message, ERROR_ERR);
   }
 
-  return il_stack_calculate_expression(node->children[0], YES, false_label_id);
+  return il_stack_calculate_expression(node->children[0], YES, false_label_id, NO);
 }
 
 

@@ -1793,9 +1793,11 @@ int register_allocator_order_join_spill_sites(char *function_name,
         sites[left_index].edge_kind != RA_CFG_EDGE_BRANCH_FALSE) ||
         (sites[left_index].placement != RA_JOIN_SPILL_BEFORE_ANCHOR &&
         sites[left_index].placement != RA_JOIN_SPILL_AFTER_ANCHOR) ||
-        (sites[left_index].edge_kind == RA_CFG_EDGE_FALLTHROUGH &&
+        ((sites[left_index].edge_kind == RA_CFG_EDGE_FALLTHROUGH ||
+        sites[left_index].edge_kind == RA_CFG_EDGE_BRANCH_FALSE) &&
         sites[left_index].placement != RA_JOIN_SPILL_AFTER_ANCHOR) ||
         (sites[left_index].edge_kind != RA_CFG_EDGE_FALLTHROUGH &&
+        sites[left_index].edge_kind != RA_CFG_EDGE_BRANCH_FALSE &&
         sites[left_index].placement != RA_JOIN_SPILL_BEFORE_ANCHOR)) {
       fprintf(stderr, "register_allocator_core: join_spill_order function=%s block=%d instructions=%d sites=%d site=%d predecessor=%d edge=%s anchor=%d placement=%s order=descending_anchor status=invalid_site\n",
           function_name, join_block_index, instruction_count, site_count,
@@ -1866,9 +1868,11 @@ int register_allocator_approve_join_spill_sites(char *function_name,
         sites[site_index].edge_kind != RA_CFG_EDGE_BRANCH_FALSE) ||
         (sites[site_index].placement != RA_JOIN_SPILL_BEFORE_ANCHOR &&
         sites[site_index].placement != RA_JOIN_SPILL_AFTER_ANCHOR) ||
-        (sites[site_index].edge_kind == RA_CFG_EDGE_FALLTHROUGH &&
+        ((sites[site_index].edge_kind == RA_CFG_EDGE_FALLTHROUGH ||
+        sites[site_index].edge_kind == RA_CFG_EDGE_BRANCH_FALSE) &&
         sites[site_index].placement != RA_JOIN_SPILL_AFTER_ANCHOR) ||
         (sites[site_index].edge_kind != RA_CFG_EDGE_FALLTHROUGH &&
+        sites[site_index].edge_kind != RA_CFG_EDGE_BRANCH_FALSE &&
         sites[site_index].placement != RA_JOIN_SPILL_BEFORE_ANCHOR)) {
       fprintf(stderr, "register_allocator_core: join_spill_approval function=%s block=%d site=%d predecessor=%d edge=%s anchor=%d placement=%s approved=no status=invalid_site\n",
           function_name, join_block_index, site_index,
@@ -1948,9 +1952,11 @@ int register_allocator_prepare_join_spill_mutation(char *function_name,
       site->edge_kind != RA_CFG_EDGE_BRANCH_FALSE) ||
       (site->placement != RA_JOIN_SPILL_BEFORE_ANCHOR &&
       site->placement != RA_JOIN_SPILL_AFTER_ANCHOR) ||
-      (site->edge_kind == RA_CFG_EDGE_FALLTHROUGH &&
+      ((site->edge_kind == RA_CFG_EDGE_FALLTHROUGH ||
+      site->edge_kind == RA_CFG_EDGE_BRANCH_FALSE) &&
       site->placement != RA_JOIN_SPILL_AFTER_ANCHOR) ||
       (site->edge_kind != RA_CFG_EDGE_FALLTHROUGH &&
+      site->edge_kind != RA_CFG_EDGE_BRANCH_FALSE &&
       site->placement != RA_JOIN_SPILL_BEFORE_ANCHOR))) ||
       (join_action == RA_JOIN_ACTION_RELOAD_ON_DEMAND &&
       physical_register != no_physical_register) ||
@@ -2016,9 +2022,11 @@ int register_allocator_apply_join_spill_mutation(char *function_name,
       mutation->site.edge_kind != RA_CFG_EDGE_BRANCH_FALSE) ||
       (mutation->site.placement != RA_JOIN_SPILL_BEFORE_ANCHOR &&
       mutation->site.placement != RA_JOIN_SPILL_AFTER_ANCHOR) ||
-      (mutation->site.edge_kind == RA_CFG_EDGE_FALLTHROUGH &&
+      ((mutation->site.edge_kind == RA_CFG_EDGE_FALLTHROUGH ||
+      mutation->site.edge_kind == RA_CFG_EDGE_BRANCH_FALSE) &&
       mutation->site.placement != RA_JOIN_SPILL_AFTER_ANCHOR) ||
       (mutation->site.edge_kind != RA_CFG_EDGE_FALLTHROUGH &&
+      mutation->site.edge_kind != RA_CFG_EDGE_BRANCH_FALSE &&
       mutation->site.placement != RA_JOIN_SPILL_BEFORE_ANCHOR) ||
       apply_mutation == NULL))) {
     fprintf(stderr, "register_allocator_core: join_spill_mutation_apply function=%s block=%d apply=%s predecessor=%d edge=%s anchor=%d placement=%s temp=r%d phy=%d status=invalid_input\n",
@@ -2108,9 +2116,11 @@ int register_allocator_prepare_join_spill_emission(char *function_name,
       mutation->site.edge_kind == RA_CFG_EDGE_BRANCH_FALSE) &&
       (mutation->site.placement == RA_JOIN_SPILL_BEFORE_ANCHOR ||
       mutation->site.placement == RA_JOIN_SPILL_AFTER_ANCHOR) &&
-      ((mutation->site.edge_kind == RA_CFG_EDGE_FALLTHROUGH &&
+      (((mutation->site.edge_kind == RA_CFG_EDGE_FALLTHROUGH ||
+      mutation->site.edge_kind == RA_CFG_EDGE_BRANCH_FALSE) &&
       mutation->site.placement == RA_JOIN_SPILL_AFTER_ANCHOR) ||
       (mutation->site.edge_kind != RA_CFG_EDGE_FALLTHROUGH &&
+      mutation->site.edge_kind != RA_CFG_EDGE_BRANCH_FALSE &&
       mutation->site.placement == RA_JOIN_SPILL_BEFORE_ANCHOR))));
   if (function_name == NULL || join_block_index < 0 || valid_mutation == NO ||
       emission == NULL) {
@@ -2207,9 +2217,11 @@ int register_allocator_order_join_spill_emissions(char *function_name,
         emission->site.edge_kind != RA_CFG_EDGE_BRANCH_FALSE) ||
         (emission->site.placement != RA_JOIN_SPILL_BEFORE_ANCHOR &&
         emission->site.placement != RA_JOIN_SPILL_AFTER_ANCHOR) ||
-        (emission->site.edge_kind == RA_CFG_EDGE_FALLTHROUGH &&
+        ((emission->site.edge_kind == RA_CFG_EDGE_FALLTHROUGH ||
+        emission->site.edge_kind == RA_CFG_EDGE_BRANCH_FALSE) &&
         emission->site.placement != RA_JOIN_SPILL_AFTER_ANCHOR) ||
         (emission->site.edge_kind != RA_CFG_EDGE_FALLTHROUGH &&
+        emission->site.edge_kind != RA_CFG_EDGE_BRANCH_FALSE &&
         emission->site.placement != RA_JOIN_SPILL_BEFORE_ANCHOR)) {
         fprintf(stderr, "register_allocator_core: join_spill_emission_order function=%s blocks=%d instructions=%d items=%d item=%d block=%d emit=%s predecessor=%d edge=%s anchor=%d placement=%s temp=r%d phy=%d destination_offset=%d bytes=%d order=descending_anchor status=invalid_item\n",
           function_name, block_count, instruction_count, work_item_count,
@@ -5791,9 +5803,11 @@ int register_allocator_apply_join_spill_emission(char *function_name,
       emission->site.edge_kind != RA_CFG_EDGE_BRANCH_FALSE) ||
       (emission->site.placement != RA_JOIN_SPILL_BEFORE_ANCHOR &&
       emission->site.placement != RA_JOIN_SPILL_AFTER_ANCHOR) ||
-      (emission->site.edge_kind == RA_CFG_EDGE_FALLTHROUGH &&
+      ((emission->site.edge_kind == RA_CFG_EDGE_FALLTHROUGH ||
+      emission->site.edge_kind == RA_CFG_EDGE_BRANCH_FALSE) &&
       emission->site.placement != RA_JOIN_SPILL_AFTER_ANCHOR) ||
       (emission->site.edge_kind != RA_CFG_EDGE_FALLTHROUGH &&
+      emission->site.edge_kind != RA_CFG_EDGE_BRANCH_FALSE &&
       emission->site.placement != RA_JOIN_SPILL_BEFORE_ANCHOR) ||
       apply_emission == NULL))) {
     fprintf(stderr, "register_allocator_core: join_spill_emission_apply function=%s block=%d emit=%s predecessor=%d edge=%s anchor=%d placement=%s temp=r%d phy=%d destination_offset=%d bytes=%d status=invalid_input\n",

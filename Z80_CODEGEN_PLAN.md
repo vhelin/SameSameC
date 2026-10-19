@@ -88,11 +88,11 @@ Specific evidence worth retaining:
 Complete the shared improvements first, not every Z80-specific optimization.
 The initial SM83 backend should guide further shared-core extraction.
 
-- [ ] **1. Direct branch-only conditions:** remove unnecessary Boolean
+- [x] **1. Direct branch-only conditions:** remove unnecessary Boolean
   temporaries through shared TAC lowering, preserving value-producing Booleans.
   - [x] Lower final relational comparisons, scalar tests and negation directly.
   - [x] Qualify signedness, promotions, side effects and all loop forms.
-  - [ ] Complete compound logical lowering with short-circuit evaluation tests.
+  - [x] Complete compound logical lowering with short-circuit evaluation tests.
   - [x] Record first-batch gains and pass the full checkpoint gates.
 - [ ] **2. Bounded loop-state improvements:** retain profitable counters,
   accumulators and CRC state using existing analysis and legality checks; keep
@@ -221,8 +221,76 @@ existing allocator tests:
 python -m unittest discover -s ci -p test_branch_conditions.py
 ```
 
-**Still open:** compound logical lowering and its short-circuit side-effect
-tests. This first batch does not mark step 1 complete and does not start SM83.
+**First-batch boundary:** compound logical lowering and its short-circuit
+side-effect tests remained open. The completion batch below closes that work.
+
+#### Compound Logical Completion (2026-10-19)
+
+Step 1 is now complete. Compared with parent `f50ded7`, the existing shared
+expression evaluator splits compound conditions before emitting their operands.
+AND/OR and nested negation branch directly; calls, indexed reads, guarded
+division and increments on an unselected right-hand side are not evaluated.
+This intentionally corrects the previous eager evaluation of logical operands,
+including logical expressions used as values. Required 0/1 values in arithmetic,
+comparisons, array indices, arguments and returns remain materialized.
+
+The old eager postfix logical emitter is removed. No production functions are
+added, and the four changed compiler files contain 20 fewer lines overall.
+The existing expression APIs carry branch orientation rather than duplicating
+comparison emission. These changes use shared TAC only, not Z80 instructions
+or assumptions about a future SM83 register set.
+
+Qualification also exposed two coupled issues. Function-call argument lowering
+must restore the enclosing expression's promotion: a word-returning call with
+a final byte argument must not truncate a truth test. Compound joins also
+exercise conditional-false spill edges. All seven core validation stages now
+agree with the existing planner and target adapter: false/fallthrough stores
+belong after the anchor, true/jump stores before it.
+[The existing core regression](tests/z80/sms/allocator_ra_core_liveness_extraction/core_liveness_storage_test.c)
+covers the complete conditional-false spill pipeline and rejects before-anchor
+approval without invoking the target callback. Existing invalid-input,
+immutable-verifier, fixed-prefix and rollback controls remain intact.
+
+Changed RA measurements against `f50ded7`:
+
+| Kernel | Code bytes before -> after | Kernel T-states before -> after | Max stack bytes before -> after |
+| --- | ---: | ---: | ---: |
+| PackBits decoder | 926 -> 626 | 218149 -> 206881 | 42 -> 39 |
+| PackBits plus CRC | 1335 -> 1035 | 22097231 -> 22049036 | 54 -> 51 |
+
+The other eleven RA kernels and every caller-wrapper metric are unchanged.
+No metric regresses in either SameSameC mode against the immediate parent,
+not just the older historical baseline. All 78 pinned competitor rows still
+reproduce exactly; all 104 builds / 1856 calls / 24 independent timing checks
+pass. The RA/stock-SDCC geometric code-size ratio is now 1.98 using its size
+setting, and the cycle ratio is 2.03 using its speed setting. The historical
+baseline, fingerprints and external tool settings are unchanged.
+
+Full RA builds use 22977 bytes in
+[calculations-1](tests/z80/sms/calculations-1), down from 23277, and 35589 bytes
+in [calculations-2](tests/z80/sms/calculations-2), unchanged. Both padded ROMs
+remain 65536 bytes. The existing compressed asset and decompression/CRC
+workload are retained.
+
+[The condition regression](ci/test_branch_conditions.py) now executes 61530
+cases per host build: 43200 relational/Boolean boundary cases, 17640 compound
+logical/value/side-effect cases and 690 control-flow cases. Coverage includes
+all four condition/value forms, signed subconditions, high-byte truth values,
+operator precedence, short-circuit call order, guarded reads/division,
+for/while/do loops, continue/break and wrapping pre/post increments.
+Default, all-spill and RA results match independent oracles, including complete
+buffer contents; default/no-RA and traced/quiet ROM equivalence also pass.
+Normal Release, traced Release and traced ASan builds pass all cases and emit
+the same 70 ROMs byte for byte.
+
+All 175 compiler fixtures pass without byte-snapshot changes. The full
+64-seed allocator corpus and four-seed ASan corpus pass across all six
+generated cohorts and 28 real routines, retaining all 32 immutable rejection
+controls. The 17 comparison-tool tests pass normally and with `python -O`.
+Changed C sources pass strict GCC ANSI/O3 checks; all three MSVC builds retain
+the first batch's settings and warnings-as-errors gates.
+
+The next implementation target is bounded loop-state work, not SM83 yet.
 
 ### 2. Keep Profitable Loop State In Registers
 
@@ -420,5 +488,5 @@ to this cross-compiler experiment.
    compiler source growth visible and remove superseded logic. Commit the batch
    locally with the validation summary; do not push.
 
-Current implementation target: **finish step 1's compound logical lowering and
-short-circuit qualification**, then begin the bounded loop-state work.
+Step 1 is complete. Current implementation target: **step 2's bounded,
+profitable loop-state improvements**, before the initial SM83 backend.
