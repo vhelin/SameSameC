@@ -3092,7 +3092,74 @@ static int _aaa_generate_asm_add_sub_or_xor_and_z80_16bit(struct tac *t, FILE *f
 }
 
 
-static int _generate_asm_add_sub_or_xor_and_z80(struct tac *t, FILE *file_out, struct tree_node *function_node, int op) {
+static int _generate_asm_add_sub_or_xor_and_z80(struct tac *t, FILE *file_out, struct tree_node *function_node, int op, int *tac_index) {
+
+  if (op == TAC_OP_AND && t->result_type == TAC_ARG_TYPE_TEMP &&
+      (t->arg1_type == TAC_ARG_TYPE_CONSTANT || t->arg2_type == TAC_ARG_TYPE_CONSTANT)) {
+    struct temp_register *temporary = _find_z80_temp_register(function_node, (int)t->result_d);
+    int next = *tac_index + 1;
+
+    while (next < g_tacs_count && g_tacs[next].op == TAC_OP_DEAD)
+      next++;
+    if (temporary != NULL && temporary->read_count == 1 && temporary->write_count == 1 &&
+        next < g_tacs_count && g_tacs[next].function_node == function_node &&
+        (g_tacs[next].op == TAC_OP_JUMP_EQ || g_tacs[next].op == TAC_OP_JUMP_NEQ) &&
+        ((g_tacs[next].arg1_type == TAC_ARG_TYPE_TEMP && (int)g_tacs[next].arg1_d == (int)t->result_d &&
+          g_tacs[next].arg2_type == TAC_ARG_TYPE_CONSTANT && g_tacs[next].arg2_d == 0) ||
+         (g_tacs[next].arg2_type == TAC_ARG_TYPE_TEMP && (int)g_tacs[next].arg2_d == (int)t->result_d &&
+          g_tacs[next].arg1_type == TAC_ARG_TYPE_CONSTANT && g_tacs[next].arg1_d == 0))) {
+      int constant_first = t->arg1_type == TAC_ARG_TYPE_CONSTANT;
+      int mask = (int)(constant_first ? t->arg1_d : t->arg2_d) & 65535;
+      int byte_offset = (mask & 255) == 0 ? 1 : 0;
+      int source_type = constant_first ? t->arg2_var_type : t->arg1_var_type;
+      int promoted_type = constant_first ? t->arg2_var_type_promoted : t->arg1_var_type_promoted;
+
+      /* Read just the selected byte; extension or truncation must not supply it. */
+      if (mask != 0 && ((mask & 255) == 0 || mask < 256) &&
+          get_variable_type_size(source_type) > byte_offset * 8 &&
+          get_variable_type_size(promoted_type) > byte_offset * 8 &&
+          get_variable_type_size(t->result_var_type) > byte_offset * 8) {
+        struct z80_location source;
+        int ix_offset = 0, bit = 0, byte_mask = (mask >> (byte_offset * 8)) & 255;
+
+        if (_resolve_tac_location(t, constant_first ? TAC_USE_ARG2 : TAC_USE_ARG1, function_node, &source) == FAILED)
+          return FAILED;
+        if (source.kind == LOC_STACK_LOCAL || source.kind == LOC_STACK_SPILL ||
+            source.kind == LOC_PHY_A || source.kind == LOC_PHY_B || source.kind == LOC_PHY_C ||
+            source.kind == LOC_PHY_HL || source.kind == LOC_PHY_BC) {
+          int memory = source.kind == LOC_STACK_LOCAL || source.kind == LOC_STACK_SPILL;
+          char *byte_name = source.kind == LOC_PHY_HL ? (byte_offset ? "H" : "L") :
+            source.kind == LOC_PHY_BC ? (byte_offset ? "B" : "C") : _get_z80_physical_register_name(source.phy);
+
+          if (memory && _load_location_address_to_ix(&source, &ix_offset, file_out) == FAILED)
+            return FAILED;
+          while ((1 << bit) < byte_mask)
+            bit++;
+          fprintf(file_out, "      ; folded single-use mask/zero branch\n");
+          if ((1 << bit) == byte_mask) {
+            if (memory)
+              fprintf(file_out, "      BIT %d,(IX%+d)\n", bit, ix_offset + byte_offset);
+            else
+              fprintf(file_out, "      BIT %d,%s\n", bit, byte_name);
+          }
+          else {
+            if (memory)
+              _load_from_ix_to_a(ix_offset + byte_offset, file_out);
+            else if (_materialize_to_a(&source, byte_offset, file_out) == FAILED)
+              return FAILED;
+            _and_value_from_a(byte_mask, file_out);
+          }
+          print_tac(&g_tacs[next], YES, file_out);
+          if (g_tacs[next].op == TAC_OP_JUMP_EQ)
+            _jump_z_to(g_tacs[next].result_s, file_out);
+          else
+            _jump_nz_to(g_tacs[next].result_s, file_out);
+          *tac_index = next;
+          return SUCCEEDED;
+        }
+      }
+    }
+  }
 
   /* 8-bit or 16-bit? */
   if (is_z80_register_allocator_byte_transparent_tac(t, Z80_PHY_HL) == YES ||
@@ -7353,7 +7420,7 @@ int generate_asm_z80(FILE *file_out) {
             return FAILED;
         }
         else if (op == TAC_OP_ADD || op == TAC_OP_SUB || op == TAC_OP_OR || op == TAC_OP_AND || op == TAC_OP_XOR) {
-          if (_generate_asm_add_sub_or_xor_and_z80(t, file_out, function_node, op) == FAILED)
+          if (_generate_asm_add_sub_or_xor_and_z80(t, file_out, function_node, op, &i) == FAILED)
             return FAILED;
         }
         else if (op == TAC_OP_COMPLEMENT) {

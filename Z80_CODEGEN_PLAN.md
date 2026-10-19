@@ -114,7 +114,7 @@ extraction.
   array offsets and reuse direct byte/word loads instead of rebuilding addresses.
 - [x] **2f. Shared quotient/remainder computation (new step 2):** reuse both
   division results for matching `/` and `%`; simplify redundant pure expressions.
-- [ ] **2g. Masked-condition branch folding (new step 3):** avoid materializing
+- [x] **2g. Masked-condition branch folding (new step 3):** avoid materializing
   single-use masked values when a direct bit/flag test suffices.
 - [ ] **2h. Further loop-state and address retention (new step 4):** retain
   eligible accumulators/counters and advance addresses without weaker safety checks.
@@ -895,6 +895,70 @@ Acceptance: qualify taken/not-taken branches, byte/word masks and boundary bits,
 plus shared/value-use fallbacks. Reduce CRC condition work and rerun the existing
 condition execution corpus; do not infer correctness from a smaller listing.
 
+##### Step 2g Implementation Checkpoint
+
+The existing Z80 ALU dispatcher now folds a constant AND followed by a zero
+equality/inequality branch when verified temporary metadata proves exactly one
+definition and use. The nonzero mask must fit entirely in one byte of the actual
+source, promoted source and result. Single-bit masks use `BIT` directly on the
+existing physical register byte or indexed frame byte; other one-byte masks
+reuse accumulator materialization and the existing immediate AND flags.
+
+Location/address resolution, branch emission and instruction attribution reuse
+existing machinery. Only dead TACs may intervene; the emitter consumes the
+adjacent branch without changing verified TAC. Global sources, shared/coalesced
+temporaries, raw masked values, dynamic/multi-byte masks, nonzero comparisons,
+extension/truncation hazards and intervening operations retain the original
+path. Calls and short-circuit effects are not skipped. All instruction selection
+stays Z80-local. Net production growth is **67 lines in one existing function's
+path, with no new functions, runtime helpers or TAC opcodes**.
+
+The full pinned comparison passes: **104 builds, 1856 calls and 24 independent
+timing checks**, with all **78 external controls exact**. Against immediate
+parent `5474336`, these four RA-mode workloads improve:
+
+| Workload | Kernel bytes before / after | Kernel T-states before / after | Calls |
+| --- | ---: | ---: | ---: |
+| Packed CRC | 927 / 915 | 14752198 / 12802502 | 17 |
+| Tile workload | 1264 / 1232 | 2375502 / 2165246 | 20 |
+| Array workload | 1668 / 1656 | 6403660 / 6372748 | 20 |
+| Path workload | 1659 / 1648 | 7172413 / 7139013 | 20 |
+
+The CRC high-bit test now uses `BIT 7,(IX-10)` and the original zero branch,
+without constructing a masked word. CRC kernel T-states fall **13.2%**, and
+tile T-states **8.9%**. Across all 13 RA workloads, geometric kernel size falls
+**0.4%** and kernel T-states **1.9%**. The other nine RA rows and all 13 non-RA
+rows are unchanged. All 26 SSC rows are non-regressing in all eight fields;
+wrappers and every stack/frame footprint field are unchanged. Normal/traced
+benchmark assembly, ROMs and metrics match. The immutable baseline is retained.
+
+The existing condition runner now covers **772 typed mask/form combinations**
+and **64848 additional value/branch/width/side-effect executions per build**.
+These include byte/word and signed boundaries, both operand orders, taken and
+not-taken branches, raw/shared values, narrowing, source mutation, dynamic masks,
+physical sum results, wide frames and effectful calls/short-circuit evaluation.
+The same generated sources and independent value/full-buffer oracles pass
+against the saved parent compiler; only the new instruction-selection test
+rejects that parent as intended. All 25 condition/comparison tests pass in
+normal/traced/ASan builds. Their 150 program ROMs and 150 independently assembled
+counter images match across all three builds. The 18 comparison-tool tests also
+pass under `python -O`.
+
+All **175 fixtures qualify**, including one intentional low-byte mask snapshot
+and trace-assertion update: `LD A,(IX-6); AND A,1; SUB A,0` becomes
+`BIT 0,(IX-6)`, reducing that marked sequence from 24 to 21 bytes. The unchanged
+parent snapshots were checked first; the updated fixture passes on recheck.
+The full nine-cohort 64-seed allocator corpus, 28 real routines, four-seed ASan
+corpus and all 32 immutable verifier rejection controls pass. All 55 traced/ASan
+allocator and real-project ROMs match. MSVC builds, strict ANSI GCC normal/traced
+checks and Pylance syntax validation of the condition tests pass.
+
+Both complete calculation projects rebuild with identical normal/traced ROMs.
+Used ROM falls **20691 -> 20679** and **33207 -> 33134** bytes; padded images
+remain 65536 bytes. Evidence is retained privately under
+`C:\cygwin64\tmp\masked-branches-20261020`, including the full comparison and
+aggregate qualification record. No whole-program competitor parity is claimed.
+
 #### 2h. Further Loop-State And Address Retention
 
 - Reuse bounded loop analysis to retain eligible counters/accumulators and replace
@@ -1106,7 +1170,7 @@ to this cross-compiler experiment.
    compiler source growth visible and remove superseded logic. Commit the batch
    locally with the validation summary; do not push.
 
-Steps 1, 2 and 2a-2f are complete. Current implementation target:
-**step 2g, masked-condition branch folding**, followed by 2h-2i and then the
+Steps 1, 2 and 2a-2g are complete. Current implementation target:
+**step 2h, further loop-state and address retention**, followed by 2i and then the
 initial SM83 backend. Keep the qualified Z80 behavior and shared core covered
 throughout; do not expand this finite sequence into every possible Z80 optimization.
