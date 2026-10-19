@@ -85,8 +85,10 @@ Specific evidence worth retaining:
 
 ### Progress Toward Game Boy Support
 
-Complete the shared improvements first, not every Z80-specific optimization.
-The initial SM83 backend should guide further shared-core extraction.
+Complete the shared improvements and the bounded follow-ups 2a-2d below before
+the initial SM83 backend (step 3). This does not require every Z80-specific
+optimization. The initial SM83 backend should still guide further shared-core
+extraction.
 
 - [x] **1. Direct branch-only conditions:** remove unnecessary Boolean
   temporaries through shared TAC lowering, preserving value-producing Booleans.
@@ -97,16 +99,29 @@ The initial SM83 backend should guide further shared-core extraction.
 - [x] **2. Bounded loop-state improvements:** retain profitable counters,
   accumulators and CRC state using existing analysis and legality checks; keep
   register choices and costs target-specific. Stop before speculative expansion.
+- [ ] **2a. Byte sum/copy and induction addressing:** reduce repeated address
+  reconstruction and loop overhead through existing pointer/array emission;
+  qualify target-local byte-loop instruction choices.
+- [ ] **2b. Remaining frame traffic and accumulator retention:** remove proven
+  redundant loads/stores in byte loops and CRC without general CFG promotion
+  or weaker alias, clobber and fallback checks.
+- [ ] **2c. Leaf and caller overhead:** reduce redundant argument/result copies
+  and frame setup within the existing ABI first; measure wrappers separately.
+- [ ] **2d. Stack footprint and pre-SM83 qualification:** reduce proven
+  unnecessary frame slots, spills or saves, measure the complete frame footprint
+  as well as SP high-water, and pass all checkpoint gates.
 - [ ] **3. Initial SM83 backend:** establish correct Game Boy code generation,
   target-specific addressing/spills/calls and execution tests. Use actual
   requirements to identify reusable code; do not assume IX/IY, `DJNZ` or `LDIR`.
 - [ ] **4. Further target-specific improvements:** continue induction-address,
-  instruction-selection, call and arithmetic work with both backends covered.
-  These are not prerequisites for initial Game Boy support. Keep the separate
-  6502 backend/policy boundary described below.
+  instruction-selection, call and arithmetic work beyond the bounded follow-ups
+  with both backends covered. These extensions are not prerequisites for initial
+  Game Boy support. Keep the separate 6502 backend/policy boundary described below.
 
 The numbered detail sections below describe optimization priorities, not a
-requirement to finish every Z80 optimization before implementing SM83.
+requirement to finish every Z80 optimization before implementing SM83. The
+explicit pre-SM83 scope is steps 1, 2 and 2a-2d; priorities 3 and 4 below supply
+the existing implementation guidance for follow-ups 2a and 2c.
 
 Do one bounded, measured change at a time. The numeric observations below are
 baseline anchors, not promised results. Passing a focused test is not permission
@@ -290,7 +305,7 @@ controls. The 17 comparison-tool tests pass normally and with `python -O`.
 Changed C sources pass strict GCC ANSI/O3 checks; all three MSVC builds retain
 the first batch's settings and warnings-as-errors gates.
 
-The next implementation target is bounded loop-state work, not SM83 yet.
+At this checkpoint, the next target was bounded loop-state work, not SM83 yet.
 
 ### 2. Keep Profitable Loop State In Registers
 
@@ -379,9 +394,64 @@ the 17 comparison-tool tests, normally and under `python -O`, also pass.
 This is not general CFG scalar promotion: ambiguous reassignment, signed/byte
 multi-definitions, escaped values, unsupported consumers and pressure/call/asm
 conflicts keep their conservative fallbacks. CRC bit counters are retained;
-multi-definition CRC accumulators need not be. Induction addresses, block
-transfers, broader accumulator retention and cross-block frame-cache propagation
-are not prerequisites for the initial SM83 backend.
+multi-definition CRC accumulators need not be. The measured follow-ups below
+are now required before initial SM83 work; general CFG promotion, unrestricted
+accumulator retention and cross-block frame-cache propagation are not.
+
+#### Required Pre-SM83 Follow-ups
+
+The fresh normal Release comparison at `cdacc98` passed all 104 builds, 1856
+calls and 24 independent timing checks; all 78 competitor rows reproduced
+exactly. Keep these starting anchors and the original `d1e7db1` baseline.
+Measure each follow-up against its immediate parent too, so an earlier step's
+gain cannot stand in for that step's own improvement.
+
+**2a. Byte sum/copy and induction addressing**
+
+- Starting point: sum/copy kernels are 139/148 bytes versus stock SDCC's size
+  profile at 47/59 bytes. Their cycles are 2.98/2.96 times its speed profile.
+- Reuse priority 3 below for advancing addresses, cheaper loop control and
+  legal Z80 loop selection. Do not duplicate address emitters or assume Z80
+  instructions exist on SM83.
+- Acceptance: strictly improve both sum and copy kernel bytes and cycles, plus
+  at least one real decoder/array workload. Preserve zero/one/255/256 counts,
+  wraparound, overlap/source order, aliases, guards and generic fallbacks.
+
+**2b. Remaining frame traffic and accumulator retention**
+
+- Starting point: 256-byte fill takes 70163 kernel T-states and 514 kernel
+  stack writes versus stock SDCC's size profile at 29837 and four. SSC performs
+  2054 kernel stack reads versus 776; counter retention alone is not enough.
+- Profile remaining address, byte-value, accumulator and CRC reload/store
+  chains. Reuse existing promotion, liveness, legality, location resolution and
+  cache invalidation; retain only proven supported values.
+- Acceptance: strictly reduce executed fill frame reads/writes and cycles,
+  and frame traffic in a real CRC/decoder workload. Keep calls, joins, escapes,
+  inline assembly, pressure fallback and immutable verifier rejection covered.
+
+**2c. Leaf and caller overhead**
+
+- Starting point: the multiply/add native-call test wrapper remains 172 bytes
+  and 971 T-states versus stock SDCC's 20 bytes and 114 T-states.
+- Reuse priority 4 below. Remove redundant copies/setup within the current ABI
+  before considering an explicit, gated convention change.
+- Acceptance: strictly reduce that wrapper's bytes and cycles and demonstrate
+  a whole-call win in a call-heavy workload. Report wrapper/kernel costs
+  separately and preserve all existing caller/callee compatibility contracts.
+
+**2d. Stack footprint and pre-SM83 qualification**
+
+- Starting point: observed SP high-water is 24 bytes for fill (stock SDCC:
+  eight), 49 for PackBits/CRC and 126 for tile/CRC. This is not total RAM use:
+  SSC also accesses frame storage below SP.
+- Remove only proven unnecessary frame slots, spills or saves through existing
+  frame layout and lifetime handling. Record below-SP frame extent as well as
+  SP high-water; moving storage below SP is not a footprint improvement.
+- Acceptance: demonstrate a smaller verified frame/stack footprint in at least
+  one representative workload, with nested-call, frame-safety and pressure
+  controls intact. Pass all implementation-batch gates and rebuild both full
+  calculation ROMs before starting step 3; mark 2a-2d complete with actual
+  measurements, not parity claims.
 
 ### 3. Maintain Induction Addresses And Select Z80 Loops
 
@@ -559,5 +629,6 @@ to this cross-compiler experiment.
    compiler source growth visible and remove superseded logic. Commit the batch
    locally with the validation summary; do not push.
 
-Step 1 is complete. Current implementation target: **step 2's bounded,
-profitable loop-state improvements**, before the initial SM83 backend.
+Steps 1 and 2 are complete. Current implementation target: **follow-up 2a,
+byte sum/copy and induction addressing**. Complete and qualify follow-ups
+2a-2d before **step 3, the initial SM83 backend**.
