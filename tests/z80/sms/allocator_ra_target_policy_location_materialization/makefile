@@ -14,7 +14,7 @@ all: linked.sms
 	grep -q "target_location_materialization function=allocatorRaPolicyLocationConstant operand=arg2 source=constant kind=CONST offset=0 size=1 phy=NONE target=z80" compiler.log
 	grep -q "target_location_materialization function=allocatorRaPolicyLocationB operand=result source=global kind=GLOBAL offset=999999 size=1 phy=NONE target=z80" compiler.log
 	grep -q "target_location_materialization function=allocatorRaPolicyLocationB operand=arg1 source=stack_local kind=STACK_LOCAL offset=-5 size=1 phy=NONE target=z80" compiler.log
-	grep -q "target_location_materialization function=allocatorRaPolicyLocationSpill operand=result source=stack_spill kind=STACK_SPILL offset=-8 size=1 phy=NONE target=z80" compiler.log
+	grep -q "target_location_materialization function=allocatorRaPolicyLocationSpill operand=result source=stack_spill kind=STACK_SPILL offset=-10 size=1 phy=NONE target=z80" compiler.log
 	grep -q "target_location_materialization function=allocatorRaPolicyLocationB operand=result source=physical kind=PHY_A offset=0 size=1 phy=A target=z80" compiler.log
 	grep -q "target_location_materialization function=allocatorRaPolicyLocationBc operand=result source=physical kind=PHY_HL offset=0 size=2 phy=HL target=z80" compiler.log
 	grep -q "target_location_materialization function=allocatorRaPolicyLocationBc operand=result source=physical kind=PHY_BC offset=0 size=2 phy=BC target=z80" compiler.log

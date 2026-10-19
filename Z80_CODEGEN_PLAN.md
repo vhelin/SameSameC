@@ -9,8 +9,8 @@ add another optimization framework without a measured need.
 
 The comparison at `d1e7db1` on 2026-10-19 shows substantial remaining opportunities
 in control-flow lowering, loop state, address calculation and the calling
-convention. This plan does not implement those compiler changes. The benchmark,
-reference results and repeatable gates below are implemented.
+convention. Keep those reference results immutable; record implementation
+progress and new measurements separately below.
 
 Reuse the current TAC, CFG/liveness, target-policy, location-resolution and
 emission helpers. Prefer removing redundant work over adding new functions.
@@ -83,6 +83,31 @@ Specific evidence worth retaining:
 
 ## Implementation Order
 
+### Progress Toward Game Boy Support
+
+Complete the shared improvements first, not every Z80-specific optimization.
+The initial SM83 backend should guide further shared-core extraction.
+
+- [ ] **1. Direct branch-only conditions:** remove unnecessary Boolean
+  temporaries through shared TAC lowering, preserving value-producing Booleans.
+  - [x] Lower final relational comparisons, scalar tests and negation directly.
+  - [x] Qualify signedness, promotions, side effects and all loop forms.
+  - [ ] Complete compound logical lowering with short-circuit evaluation tests.
+  - [x] Record first-batch gains and pass the full checkpoint gates.
+- [ ] **2. Bounded loop-state improvements:** retain profitable counters,
+  accumulators and CRC state using existing analysis and legality checks; keep
+  register choices and costs target-specific. Stop before speculative expansion.
+- [ ] **3. Initial SM83 backend:** establish correct Game Boy code generation,
+  target-specific addressing/spills/calls and execution tests. Use actual
+  requirements to identify reusable code; do not assume IX/IY, `DJNZ` or `LDIR`.
+- [ ] **4. Further target-specific improvements:** continue induction-address,
+  instruction-selection, call and arithmetic work with both backends covered.
+  These are not prerequisites for initial Game Boy support. Keep the separate
+  6502 backend/policy boundary described below.
+
+The numbered detail sections below describe optimization priorities, not a
+requirement to finish every Z80 optimization before implementing SM83.
+
 Do one bounded, measured change at a time. The numeric observations below are
 baseline anchors, not promised results. Passing a focused test is not permission
 to skip the full checkpoint gates.
@@ -120,6 +145,84 @@ Acceptance: targeted branch-only conditions have no Boolean spill/reload chain;
 byte fill/sum/copy code and cycles improve strictly from the measured baseline,
 with no unexplained regression elsewhere. Keep actual Boolean-value tests.
 This is the first implementation batch, before a new calling convention.
+
+#### First Batch: Direct Final Conditions
+
+Implemented against source commit `8052a49`, measured against the unchanged
+`d1e7db1` reference. The existing expression/postfix evaluator in
+[il.c](compiler/il.c) accepts a false-branch destination. Final comparisons
+invert their existing jump operation instead of materializing a Boolean,
+joining its 0/1 definitions and reloading it to test against zero. Scalar tests
+and trailing negation use the same path. Boolean values, including comparisons
+used as array indices, still materialize normally. The superseded pass-4 test
+helper was removed; no production functions were added.
+
+Qualification exposed two coupled correctness issues: the dead-store scan must
+stop at conditional jumps, and signed word comparisons must account for
+subtraction overflow. Both branch and value contexts are covered by the new
+boundary tests. The existing spill-layout helper packs its movable suffix
+widest-first, preserving fixed spill owners and avoiding a one-byte pathfinding
+stack regression. Its mixed-width regression now requires that saving rather
+than accepting the old narrower-slot-first layout. Production compiler source
+growth is 57 net lines across the five changed files.
+
+Full comparison results with RA enabled:
+
+| Kernel | Code bytes before -> after | Kernel T-states before -> after | Max stack bytes before -> after |
+| --- | ---: | ---: | ---: |
+| Multiply/add | 71 -> 71 | 20217 -> 20217 | 24 -> 24 |
+| Product restore | 197 -> 197 | 62117 -> 62117 | 28 -> 28 |
+| Shift restore | 84 -> 84 | 12161 -> 12161 | 22 -> 22 |
+| Partition restore | 193 -> 193 | 61545 -> 61545 | 28 -> 28 |
+| Array | 2065 -> 1847 | 8172676 -> 7857958 | 88 -> 88 |
+| Stencil | 2414 -> 1886 | 5989154 -> 4804082 | 122 -> 122 |
+| Tile decoding/CRC | 1866 -> 1427 | 4984256 -> 3183806 | 128 -> 128 |
+| Pathfinding | 2413 -> 1918 | 9977593 -> 7868925 | 187 -> 187 |
+| PackBits decoder | 1090 -> 926 | 280791 -> 218149 | 42 -> 42 |
+| PackBits plus CRC | 1677 -> 1335 | 37937604 -> 22097231 | 54 -> 54 |
+| Byte sum | 182 -> 139 | 627415 -> 435254 | 26 -> 24 |
+| Byte copy | 191 -> 148 | 791598 -> 599437 | 27 -> 27 |
+| Byte fill | 161 -> 118 | 611485 -> 419324 | 26 -> 24 |
+
+Cycles are totals over the unchanged per-kernel input sets, not single-call
+timings. Every caller-wrapper metric is unchanged. Neither SameSameC mode
+regresses in the reference gate; all 78 competitor rows reproduce exactly.
+All 104 builds / 1856 calls / 24 independent whole-call timing checks pass.
+The RA/stock-SDCC geometric code-size ratio improves from 2.44 to 2.08 using
+SDCC's size setting; the cycle ratio improves from 2.53 to 2.04 using its speed
+setting. These remain separate settings, not a joint optimum.
+
+Both full calculation projects rebuild with RA enabled. Used ROM drops from
+24066 to 23277 bytes in [calculations-1](tests/z80/sms/calculations-1), and from
+39647 to 35589 bytes in [calculations-2](tests/z80/sms/calculations-2). These are
+used-byte counts from linker summaries; padded files remain 65536 bytes.
+
+[The condition regression](ci/test_branch_conditions.py) reuses the allocator
+build and native CPU helpers. Per host configuration it executes 43200
+signed/unsigned/mixed-width relational and Boolean-value cases plus 420
+control-flow/call/index cases. Normal Release, traced Release and traced ASan
+builds pass and emit the same 35 ROMs byte for byte. MSVC Release uses
+`/MD /O2 /Ob2 /DNDEBUG /WX`; ASan adds `/fsanitize=address /Zi`. The changed C
+sources also pass GCC `-O3 -ansi -pedantic -Wall -Werror -DNDEBUG`.
+
+The full allocator corpus passes at 64 seeds across all six generated cohorts
+and 28 real calculation routines, including immutable verifier/fixed-prefix
+controls and default/no-RA and traced/quiet equivalence. The ASan compiler also
+passes that corpus at four seeds. The 17 comparison-tool tests pass normally
+and with `python -O`. All 175 existing compiler fixtures pass, including both
+full calculation builds. Boolean-specific assembly/trace fixtures now explicitly
+consume comparison values, retaining their original join-allocation coverage
+alongside the new direct-branch shape/execution tests.
+
+Run the new regression with the same compiler/linker/assembler PATH as the
+existing allocator tests:
+
+```sh
+python -m unittest discover -s ci -p test_branch_conditions.py
+```
+
+**Still open:** compound logical lowering and its short-circuit side-effect
+tests. This first batch does not mark step 1 complete and does not start SM83.
 
 ### 2. Keep Profitable Loop State In Registers
 
@@ -317,4 +420,5 @@ to this cross-compiler experiment.
    compiler source growth visible and remove superseded logic. Commit the batch
    locally with the validation summary; do not push.
 
-Initial implementation target: **step 1, direct branch-only condition lowering**.
+Current implementation target: **finish step 1's compound logical lowering and
+short-circuit qualification**, then begin the bounded loop-state work.

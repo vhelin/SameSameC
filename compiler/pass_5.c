@@ -2880,8 +2880,8 @@ static int _optimize_il_34(int *optimizations_counter) {
           if (next < 0)
             break;
 
-          if (g_tacs[next].op == TAC_OP_LABEL) {
-            /* we cannot search past a label */
+          if (g_tacs[next].op == TAC_OP_LABEL || _is_register_allocator_jump_op(g_tacs[next].op) == YES) {
+            /* The later write may not execute on every outgoing path. */
             next = -1;
             break;
           }
@@ -11261,6 +11261,7 @@ static int assign_spill_slot_offsets(struct tree_node *function_node, int *offse
   struct register_allocator_liveness_storage storage;
   char *live_sets = NULL;
   char *shareable = NULL;
+  int *order = NULL;
 
   for (j = 0; g_allocator_enabled == YES && j < g_tacs_count; j++) {
     if (g_tacs[j].function_node == function_node && g_tacs[j].op == TAC_OP_REGISTER_SPILL) {
@@ -11283,17 +11284,40 @@ static int assign_spill_slot_offsets(struct tree_node *function_node, int *offse
         register_allocator_plan_liveness_storage(function_node->children[1]->label, block_count, count, &storage) == FAILED)
       goto cleanup;
     shareable = (char *)calloc((size_t)count, 1);
+    order = (int *)calloc((size_t)count, sizeof(int));
     live_sets = (char *)calloc(4, storage.buffer_bytes);
-    if (shareable == NULL || live_sets == NULL ||
-        _compute_register_allocator_live_sets(function_node, blocks, block_count, edges, edge_count,
+    if (shareable == NULL || order == NULL || live_sets == NULL) {
+      print_error("Out of memory while laying out register spill slots.\n", ERROR_ERR);
+      goto cleanup;
+    }
+    if (_compute_register_allocator_live_sets(function_node, blocks, block_count, edges, edge_count,
           live_sets, live_sets + storage.buffer_bytes, live_sets + storage.buffer_bytes * 2,
           live_sets + storage.buffer_bytes * 3, &storage, &iterations) == FAILED)
       goto cleanup;
+    for (j = 0; j < count; j++)
+      order[j] = j;
   }
 
   for (j = 0; j < count; j++) {
-    struct temp_register *temp_register = &(function_node->local_variables->temp_registers[j]);
-    int temp_size = temp_register->size / 8;
+    struct temp_register *temp_register;
+    int temp_index = j, temp_size;
+
+    /* Preserve fixed owners; pack the shareable suffix largest-first. */
+    if (order != NULL) {
+      int candidate;
+      for (candidate = j + 1; *offset < fixed_limit && candidate < count; candidate++) {
+        struct temp_register *current = &function_node->local_variables->temp_registers[order[j]];
+        struct temp_register *next = &function_node->local_variables->temp_registers[order[candidate]];
+        if (next->spill_required == YES && (current->spill_required == NO || next->size > current->size)) {
+          int previous = order[j];
+          order[j] = order[candidate];
+          order[candidate] = previous;
+        }
+      }
+      temp_index = order[j];
+    }
+    temp_register = &function_node->local_variables->temp_registers[temp_index];
+    temp_size = temp_register->size / 8;
 
     if (temp_register->spill_required == YES) {
       int candidate, instruction_index, writes = 0;
@@ -11316,20 +11340,20 @@ static int assign_spill_slot_offsets(struct tree_node *function_node, int *offse
         }
         if (writes > 0 && temp_register->live_end >= 0 &&
             _tac_reads_temp_register(&g_tacs[temp_register->live_start], temp_register->register_index) == NO) {
-          shareable[j] = YES;
+          shareable[temp_index] = YES;
           for (instruction_index = temp_register->live_start; instruction_index <= temp_register->live_end; instruction_index++) {
             if (g_tacs[instruction_index].op != TAC_OP_LABEL &&
                 _is_register_allocator_jump_op(g_tacs[instruction_index].op) == NO &&
                 g_tacs[instruction_index].op != TAC_OP_FUNCTION_CALL &&
                 g_tacs[instruction_index].op != TAC_OP_FUNCTION_CALL_USE_RETURN_VALUE &&
                 _get_hard_boundary_spill_reason(&g_tacs[instruction_index]) != Z80_SPILL_REASON_NONE) {
-              shareable[j] = NO;
+              shareable[temp_index] = NO;
               break;
             }
           }
         }
-        for (instruction_index = 0; shareable[j] == YES && instruction_index < block_count; instruction_index++) {
-          int set_index = instruction_index * count + j;
+        for (instruction_index = 0; shareable[temp_index] == YES && instruction_index < block_count; instruction_index++) {
+          int set_index = instruction_index * count + temp_index;
           if (live_sets[storage.buffer_bytes * 2 + set_index] != NO &&
               blocks[instruction_index].start_tac < temp_register->live_start)
             temp_register->live_start = blocks[instruction_index].start_tac;
@@ -11337,22 +11361,22 @@ static int assign_spill_slot_offsets(struct tree_node *function_node, int *offse
               blocks[instruction_index].end_tac > temp_register->live_end)
             temp_register->live_end = blocks[instruction_index].end_tac;
         }
-        for (candidate = 0; shareable[j] == YES && candidate < j; candidate++) {
-          struct temp_register *slot = &function_node->local_variables->temp_registers[candidate];
+        for (candidate = 0; shareable[temp_index] == YES && candidate < j; candidate++) {
+          struct temp_register *slot = &function_node->local_variables->temp_registers[order[candidate]];
           int owner;
-          if (shareable[candidate] != YES || slot->size < temp_register->size)
+          if (shareable[order[candidate]] != YES || slot->size < temp_register->size)
             continue;
           for (owner = 0; owner < j; owner++) {
-            struct temp_register *previous = &function_node->local_variables->temp_registers[owner];
+            struct temp_register *previous = &function_node->local_variables->temp_registers[order[owner]];
             if (previous->spill_required == YES && previous->offset_to_fp == slot->offset_to_fp &&
                 previous->live_start <= temp_register->live_end && temp_register->live_start <= previous->live_end) {
               int block_index;
               for (block_index = 0; block_index < block_count; block_index++) {
                 int first[2], last[2], value;
                 for (value = 0; value < 2; value++) {
-                  int temp_index = value == 0 ? j : owner;
-                  int register_index = function_node->local_variables->temp_registers[temp_index].register_index;
-                  int set_index = block_index * count + temp_index;
+                  int index = value == 0 ? temp_index : order[owner];
+                  int register_index = function_node->local_variables->temp_registers[index].register_index;
+                  int set_index = block_index * count + index;
                   first[value] = live_sets[storage.buffer_bytes * 2 + set_index] != NO ?
                     blocks[block_index].start_tac : blocks[block_index].end_tac + 1;
                   last[value] = live_sets[storage.buffer_bytes * 3 + set_index] != NO ?
@@ -11382,7 +11406,7 @@ static int assign_spill_slot_offsets(struct tree_node *function_node, int *offse
             break;
           }
         }
-        if (shareable[j] == YES && candidate < j)
+        if (shareable[temp_index] == YES && candidate < j)
           continue;
       }
       temp_register->offset_to_fp = *offset - (temp_size - 1);
@@ -11406,6 +11430,7 @@ static int assign_spill_slot_offsets(struct tree_node *function_node, int *offse
 
   status = SUCCEEDED;
 cleanup:
+  free(order);
   free(shareable);
   free(live_sets);
   free(blocks);

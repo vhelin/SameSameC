@@ -12,9 +12,9 @@ OFILES = main.asm
 all: linked.sms
 	test "$$(grep -c "join_path_reservation_commit function=allocatorRaCompareCRelational .*reservations=4 .*committed=4 .*commit=committed status=complete" compiler.log)" -eq 4
 	test "$$(grep -c "join_assignment_apply_entry function=allocatorRaCompareCRelational temp=r[0-9]* .*phy=C status=complete" compiler.log)" -eq 12
-	for instruction in 23 47 71 95; do grep -q "join_assignment_apply_entry function=allocatorRaCompareCRelational temp=r[0-9]* assignment=2 role=consumer instruction=$$instruction operand=1 phy=C status=complete" compiler.log || exit 1; done
+	for instruction in 24 49 74 99; do grep -q "join_assignment_apply_entry function=allocatorRaCompareCRelational temp=r[0-9]* assignment=2 role=consumer instruction=$$instruction operand=1 phy=C status=complete" compiler.log || exit 1; done
 	test "$$(grep -c "block_exit_spill_decision function=allocatorRaCompareCRelational .*temp=r[0-9]* .*spill=exempt" compiler.log)" -eq 12
-	test "$$(grep -c "compare_8bit function=allocatorRaCompareCRelational.*op_name=JUMP_EQ.*arg1_kind=PHY_C.*arg2_kind=CONST" compiler.log)" -eq 4
+	test "$$(grep -c "compare_8bit function=allocatorRaCompareCRelational.*op_name=JUMP_NEQ.*arg1_kind=PHY_C.*arg2_kind=CONST" compiler.log)" -eq 4
 	test $$(grep -c "retained arg1 in C" main.asm) -eq 8
 	: && ! grep -q "retained arg1 in B" main.asm
 	test $$(grep -c "SUB A,B" main.asm) -ge 4

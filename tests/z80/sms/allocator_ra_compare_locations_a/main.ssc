@@ -1,12 +1,12 @@
 // @BT linked.sms
 // @BT TEST-01 01 START
-// @BT 0E 00 DD 21 00 00 DD 19 DD 7E FB DD 21 00 C0 DD 46 00 90 CA BC 00 C3 BE 00 0E 01 79 D6 00 CA D3 00 DD 21 01 C0 DD 7E 00 3C DD 21 01 C0 DD 77 00
+// @BT 0E 00 DD 21 00 00 DD 19 DD 7E FB DD 21 00 C0 DD 46 00 90 CA BC 00 C3 BE 00 0E 01 79 D6 01 C2 D3 00 DD 21 01 C0 DD 7E 00 3C DD 21 01 C0 DD 77 00
 // @BT END
 // @BT TEST-02 02 START
-// @BT 0E 00 DD 21 00 C0 DD 7E 00 D6 2A C2 50 01 C3 52 01 0E 01 79 D6 00 CA 67 01 DD 21 01 C0 DD 7E 00 3C DD 21 01 C0 DD 77 00
+// @BT 0E 00 DD 21 00 C0 DD 7E 00 D6 2A C2 50 01 C3 52 01 0E 01 79 D6 01 C2 67 01 DD 21 01 C0 DD 7E 00 3C DD 21 01 C0 DD 77 00
 // @BT END
 // @BT TEST-03 03 START
-// @BT DD 21 00 00 DD 19 DD 7E FB DD 86 FA 0E 00 DD 21 00 C0 DD 46 00 90 CA 2A 00 C3 2C 00 0E 01 79 D6 00 CA 41 00 DD 21 01 C0 DD 7E 00 3C DD 21 01 C0 DD 77 00
+// @BT DD 21 00 00 DD 19 DD 7E FB DD 86 FA 0E 00 DD 21 00 C0 DD 46 00 90 CA 2A 00 C3 2C 00 0E 01 79 D6 01 C2 41 00 DD 21 01 C0 DD 7E 00 3C DD 21 01 C0 DD 77 00
 // @BT END
 // @BT TEST-04 04 START
 // @BT DD 21 00 00 DD 19 DD 7E FB DD 86 FA DD 21 00 C0 47 DD 7E 00 90 CA 0F 01 C3 1E 01 DD 21 01 C0 DD 7E 00 3C DD 21 01 C0 DD 77 00
@@ -18,7 +18,8 @@ u8 g_compare_target = 0;
 u8 allocatorRaCompareLocationsAStackGlobal(u8 a) {
 
   __asm(".DB \"01>\"");
-  if (a == g_compare_value) {
+  // Keep a Boolean value consumer so this still exercises allocator joins.
+  if ((a == g_compare_value) == 1) {
     g_compare_target = g_compare_target + 1;
   }
   __asm(".DB \"<01\"");
@@ -29,7 +30,7 @@ u8 allocatorRaCompareLocationsAStackGlobal(u8 a) {
 u8 allocatorRaCompareLocationsAGlobalConst(void) {
 
   __asm(".DB \"02>\"");
-  if (g_compare_value != 42) {
+  if ((g_compare_value != 42) == 1) {
     g_compare_target = g_compare_target + 1;
   }
   __asm(".DB \"<02\"");
@@ -40,7 +41,7 @@ u8 allocatorRaCompareLocationsAGlobalConst(void) {
 u8 allocatorRaCompareLocationsATempGlobal(u8 a, u8 b) {
 
   __asm(".DB \"03>\"");
-  if ((a + b) == g_compare_value) {
+  if (((a + b) == g_compare_value) == 1) {
     g_compare_target = g_compare_target + 1;
   }
   __asm(".DB \"<03\"");

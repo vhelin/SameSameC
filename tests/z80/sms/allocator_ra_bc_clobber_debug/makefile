@@ -14,7 +14,7 @@ all: linked.sms
 	grep -q "z80_clobber function=allocatorRaBcClobberAdd8.*(ADD).*may_clobber_bc=yes.*clobbers=A|BC|HL|IX|FLAGS" compiler.log
 	grep -q "z80_clobber function=allocatorRaBcClobberComplement16.*(COMPLEMENT).*may_clobber_bc=no.*clobbers=A|HL|IX|FLAGS" compiler.log
 	grep -q "z80_clobber function=allocatorRaBcClobberSignedAssignment.*(ASSIGNMENT).*may_clobber_bc=yes.*clobbers=A|BC|HL|IX|IY|FLAGS" compiler.log
-	grep -q "z80_clobber function=allocatorRaBcClobberJump8.*(JUMP_EQ).*may_clobber_bc=yes.*clobbers=A|BC|HL|IX|FLAGS" compiler.log
+	grep -q "z80_clobber function=allocatorRaBcClobberJump8.*(JUMP_NEQ).*may_clobber_bc=yes.*clobbers=A|BC|HL|IX|FLAGS" compiler.log
 	: && ! grep -q "z80_clobber function=allocatorRaBcClobberComplement16.*(COMPLEMENT).*may_clobber_bc=yes" compiler.log
 
 

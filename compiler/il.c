@@ -77,7 +77,7 @@ static int _generate_il_create_array_read_pointer_base_temp(struct tree_node *no
 }
 
 
-int il_stack_calculate_expression(struct tree_node *node, int calculate_max_var_type) {
+int il_stack_calculate_expression(struct tree_node *node, int calculate_max_var_type, int false_label_id) {
 
   struct stack_item si[64];
   struct tree_node *child, temp_expression, *temp_children[1];
@@ -472,7 +472,7 @@ int il_stack_calculate_expression(struct tree_node *node, int calculate_max_var_
         return FAILED;
       }
       g_max_var_types[g_max_var_type_index++] = g_max_var_type;
-      if (il_stack_calculate_expression(child->children[0], YES) == FAILED)
+      if (il_stack_calculate_expression(child->children[0], YES, -1) == FAILED)
         return FAILED;
       index_max_var_type = g_max_var_type;
       g_max_var_type = g_max_var_types[--g_max_var_type_index];
@@ -564,11 +564,11 @@ int il_stack_calculate_expression(struct tree_node *node, int calculate_max_var_
   if (b != 0)
     return print_error("Unbalanced parentheses.\n", ERROR_STC);
   
-  return il_stack_calculate(si, z, rresult);
+  return il_stack_calculate(si, z, rresult, false_label_id);
 }
 
 
-int il_stack_calculate(struct stack_item *si, int q, int rresult) {
+int il_stack_calculate(struct stack_item *si, int q, int rresult, int false_label_id) {
 
   int b, d, k, op[64];
   struct stack_item ta[64];
@@ -689,7 +689,7 @@ int il_stack_calculate(struct stack_item *si, int q, int rresult) {
   s.linenumber = g_current_line_number;
   s.filename_id = g_current_filename_id;
 
-  if (il_compute_stack(&s, d, rresult) == FAILED)
+  if (il_compute_stack(&s, d, rresult, false_label_id) == FAILED)
     return FAILED;
     
   return SUCCEEDED;
@@ -843,28 +843,48 @@ static void _turn_stack_item_into_a_register(struct stack_item *si[64], struct s
 }
 
 
-static int _add_comparison(struct stack_item *si[64], struct stack_item sit[64], double v[64], int index, int op) {
+static int _add_comparison(struct stack_item *si[64], struct stack_item sit[64], double v[64], int index, int op, int false_label_id, int condition_negated) {
 
-  int label_true = ++g_temp_label_id, label_false = ++g_temp_label_id;
-  int tresult = g_temp_r++, r1, r2;
+  int label_true, label_false = -1, tresult = -1, r1, r2;
   struct tac *ta;
-          
-  ta = add_tac();
-  if (ta == NULL)
-    return FAILED;
 
-  /* load 0 - false */
-  ta->op = TAC_OP_ASSIGNMENT;
-  tac_set_result(ta, TAC_ARG_TYPE_TEMP, (double)tresult, NULL);
-  tac_set_arg1(ta, TAC_ARG_TYPE_CONSTANT, 0.0, NULL);
+  if (false_label_id >= 0) {
+    label_true = false_label_id;
+    if (condition_negated == NO) {
+      switch (op) {
+      case TAC_OP_JUMP_EQ: op = TAC_OP_JUMP_NEQ; break;
+      case TAC_OP_JUMP_NEQ: op = TAC_OP_JUMP_EQ; break;
+      case TAC_OP_JUMP_LT: op = TAC_OP_JUMP_GTE; break;
+      case TAC_OP_JUMP_GT: op = TAC_OP_JUMP_LTE; break;
+      case TAC_OP_JUMP_LTE: op = TAC_OP_JUMP_GT; break;
+      case TAC_OP_JUMP_GTE: op = TAC_OP_JUMP_LT; break;
+      }
+    }
+  }
+  else {
+    label_true = ++g_temp_label_id;
+    label_false = ++g_temp_label_id;
+    tresult = g_temp_r++;
 
-  /* promote to the maximum of this expression */
-  ta->result_var_type_promoted = g_max_var_type;
-  ta->arg1_var_type_promoted = g_max_var_type;
+    ta = add_tac();
+    if (ta == NULL)
+      return FAILED;
+
+    /* load 0 - false */
+    ta->op = TAC_OP_ASSIGNMENT;
+    tac_set_result(ta, TAC_ARG_TYPE_TEMP, (double)tresult, NULL);
+    tac_set_arg1(ta, TAC_ARG_TYPE_CONSTANT, 0.0, NULL);
+
+    /* promote to the maximum of this expression */
+    ta->result_var_type_promoted = g_max_var_type;
+    ta->arg1_var_type_promoted = g_max_var_type;
+  }
   
   /* comparison + jump if true, to label true */
   r1 = _load_to_register(si, v, index-2);
   r2 = _load_to_register(si, v, index-1);
+  if (r1 < 0 || r2 < 0)
+    return FAILED;
 
   ta = add_tac();
   if (ta == NULL)
@@ -879,6 +899,9 @@ static int _add_comparison(struct stack_item *si[64], struct stack_item sit[64],
   /* promote to the maximum of this expression */
   ta->arg1_var_type_promoted = g_max_var_type;
   ta->arg2_var_type_promoted = g_max_var_type;
+
+  if (false_label_id >= 0)
+    return SUCCEEDED;
 
   /* jump to label false */
   ta = add_tac();
@@ -925,14 +948,21 @@ static int _add_comparison(struct stack_item *si[64], struct stack_item sit[64],
 }
 
 
-int il_compute_stack(struct stack *sta, int count, int rresult) {
+int il_compute_stack(struct stack *sta, int count, int rresult, int false_label_id) {
 
   struct stack_item *s, *si[64], sit[64];
   struct tac *ta;
   double v[64];
-  int r, t, r1, r2, tresult;
+  int r, t, r1, r2, tresult, condition_negated = NO, comparison_label;
 
   v[0] = 0.0;
+
+  if (false_label_id >= 0) {
+    while (count > 0 && sta->stack[count-1].type == STACK_ITEM_TYPE_OPERATOR && sta->stack[count-1].value == SI_OP_NOT) {
+      condition_negated = condition_negated == NO ? YES : NO;
+      count--;
+    }
+  }
 
   s = sta->stack;
   for (r = 0, t = 0; r < count; r++, s++) {
@@ -950,6 +980,7 @@ int il_compute_stack(struct stack *sta, int count, int rresult) {
       t++;
     }
     else {
+      comparison_label = r == count - 1 ? false_label_id : -1;
       switch ((int)s->value) {
       case SI_OP_ADD:
         if (t - 2 < 0) {
@@ -1164,33 +1195,45 @@ int il_compute_stack(struct stack *sta, int count, int rresult) {
         t--;
         break;
       case SI_OP_COMPARE_LT:
-        if (_add_comparison(si, sit, v, t, TAC_OP_JUMP_LT) == FAILED)
+        if (_add_comparison(si, sit, v, t, TAC_OP_JUMP_LT, comparison_label, condition_negated) == FAILED)
           return FAILED;
+        if (comparison_label >= 0)
+          return SUCCEEDED;
         t--;
         break;
       case SI_OP_COMPARE_GT:
-        if (_add_comparison(si, sit, v, t, TAC_OP_JUMP_GT) == FAILED)
+        if (_add_comparison(si, sit, v, t, TAC_OP_JUMP_GT, comparison_label, condition_negated) == FAILED)
           return FAILED;
+        if (comparison_label >= 0)
+          return SUCCEEDED;
         t--;
         break;
       case SI_OP_COMPARE_LTE:
-        if (_add_comparison(si, sit, v, t, TAC_OP_JUMP_LTE) == FAILED)
+        if (_add_comparison(si, sit, v, t, TAC_OP_JUMP_LTE, comparison_label, condition_negated) == FAILED)
           return FAILED;
+        if (comparison_label >= 0)
+          return SUCCEEDED;
         t--;
         break;
       case SI_OP_COMPARE_GTE:
-        if (_add_comparison(si, sit, v, t, TAC_OP_JUMP_GTE) == FAILED)
+        if (_add_comparison(si, sit, v, t, TAC_OP_JUMP_GTE, comparison_label, condition_negated) == FAILED)
           return FAILED;
+        if (comparison_label >= 0)
+          return SUCCEEDED;
         t--;
         break;
       case SI_OP_COMPARE_EQ:
-        if (_add_comparison(si, sit, v, t, TAC_OP_JUMP_EQ) == FAILED)
+        if (_add_comparison(si, sit, v, t, TAC_OP_JUMP_EQ, comparison_label, condition_negated) == FAILED)
           return FAILED;
+        if (comparison_label >= 0)
+          return SUCCEEDED;
         t--;
         break;
       case SI_OP_COMPARE_NEQ:
-        if (_add_comparison(si, sit, v, t, TAC_OP_JUMP_NEQ) == FAILED)
+        if (_add_comparison(si, sit, v, t, TAC_OP_JUMP_NEQ, comparison_label, condition_negated) == FAILED)
           return FAILED;
+        if (comparison_label >= 0)
+          return SUCCEEDED;
         t--;
         break;
       case SI_OP_LOGICAL_OR:
@@ -1575,19 +1618,25 @@ int il_compute_stack(struct stack *sta, int count, int rresult) {
   if (rresult == g_temp_r - 1 && t == 1)
     _load_to_register(si, v, t-1);
 
-  /* move the result to the result register */
   ta = add_tac();
 
   if (ta == NULL)
     return FAILED;
 
-  ta->op = TAC_OP_ASSIGNMENT;
-
-  tac_set_result(ta, TAC_ARG_TYPE_TEMP, (double)rresult, NULL);
   tac_set_arg1(ta, TAC_ARG_TYPE_TEMP, (double)(g_temp_r - 1), NULL);
+  if (false_label_id >= 0) {
+    ta->op = condition_negated == YES ? TAC_OP_JUMP_NEQ : TAC_OP_JUMP_EQ;
+    tac_set_arg2(ta, TAC_ARG_TYPE_CONSTANT, 0.0, NULL);
+    tac_set_result(ta, TAC_ARG_TYPE_LABEL, 0.0, generate_temp_label(false_label_id));
+    ta->arg2_var_type_promoted = g_max_var_type;
+  }
+  else {
+    ta->op = TAC_OP_ASSIGNMENT;
+    tac_set_result(ta, TAC_ARG_TYPE_TEMP, (double)rresult, NULL);
+    ta->result_var_type_promoted = g_max_var_type;
+  }
 
   /* promote to the maximum of this expression */
-  ta->result_var_type_promoted = g_max_var_type;
   ta->arg1_var_type_promoted = g_max_var_type;
 
   return SUCCEEDED;

@@ -933,8 +933,8 @@ int main(int argc, char **argv) {
     memcpy(before, layout, sizeof(before));
     if (assign_spill_slot_offsets(&function, &offset) == FAILED ||
         memcmp(before, layout, sizeof(before)) != 0 ||
-        offset != (index == 0 || index == 3 || index == 8 ? -8 : -9) ||
-        (temps[0].offset_to_fp == temps[1].offset_to_fp) != (index == 0 || index == 3 || index == 8))
+        offset != (index == 0 || index == 3 || index == 5 || index == 8 ? -8 : -9) ||
+        (temps[0].offset_to_fp == temps[1].offset_to_fp) != (index == 0 || index == 3 || index == 5 || index == 8))
       return 1;
   }
   fprintf(stderr, "spill_slot_test: cases=10 overlap_width_boundary_redefinition_controls=yes tacs_unchanged=yes status=complete\n");

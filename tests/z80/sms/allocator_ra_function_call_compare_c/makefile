@@ -16,7 +16,7 @@ all: linked.sms
 	grep -q "join_path_reservation_commit function=allocatorRaFunctionCallCompareC temp=r2 .*reservations=4 .*committed=4 .*commit=committed status=complete" compiler.log
 	test "$$(grep -c "join_assignment_apply_entry function=allocatorRaFunctionCallCompareC temp=r2 .*phy=C status=complete" compiler.log)" -eq 3
 	test "$$(grep -c "block_exit_spill_decision function=allocatorRaFunctionCallCompareC .*temp=r2 .*spill=exempt" compiler.log)" -eq 3
-	grep -q "compare_8bit function=allocatorRaFunctionCallCompareC.*op_name=JUMP_EQ.*arg1_kind=PHY_C.*arg2_kind=CONST" compiler.log
+	grep -q "compare_8bit function=allocatorRaFunctionCallCompareC.*op_name=JUMP_NEQ.*arg1_kind=PHY_C.*arg2_kind=CONST" compiler.log
 	: && ! grep -q "retained call result in C" main.asm
 	grep -q "retained arg1 in C" main.asm
 	: && ! grep -q "stack offset requested for retained" compiler.log

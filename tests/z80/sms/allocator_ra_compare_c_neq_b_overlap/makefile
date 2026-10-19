@@ -12,7 +12,7 @@ OFILES = main.asm
 all: linked.sms
 	grep -q "linear_scan alternate function=allocatorRaCompareCNeqBOverlap.*primary=A alternate=C" compiler.log
 	test "$$(grep -c "join_assignment_apply_entry function=allocatorRaCompareCNeqBOverlap temp=r4 .*phy=C status=complete" compiler.log)" -eq 3
-	grep -q "join_assignment_apply_entry function=allocatorRaCompareCNeqBOverlap temp=r4 assignment=2 role=consumer instruction=23 operand=1 phy=C status=complete" compiler.log
+	grep -q "join_assignment_apply_entry function=allocatorRaCompareCNeqBOverlap temp=r4 assignment=2 role=consumer instruction=24 operand=1 phy=C status=complete" compiler.log
 	test "$$(grep -c "block_exit_spill_decision function=allocatorRaCompareCNeqBOverlap .*temp=r4 .*spill=exempt" compiler.log)" -eq 3
 	grep -q "linear_scan retain.*function=allocatorRaCompareCNeqBOverlap.*8-bit in C.*XOR arg1" compiler.log
 	grep -q "compare_8bit function=allocatorRaCompareCNeqBOverlap.*arg1_kind=PHY_C.*arg2_kind=CONST" compiler.log

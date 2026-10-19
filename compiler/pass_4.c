@@ -594,11 +594,11 @@ static int _generate_il_create_expression(struct tree_node *node) {
   g_current_line_number = node->line_number;
 
   if (node->type == TREE_NODE_TYPE_EXPRESSION) {
-    if (il_stack_calculate_expression(node, YES) == FAILED)
+    if (il_stack_calculate_expression(node, YES, -1) == FAILED)
       return FAILED;
   }
   else if (node->type == TREE_NODE_TYPE_CONDITION) {
-    if (il_stack_calculate_expression(node->children[0], YES) == FAILED)
+    if (il_stack_calculate_expression(node->children[0], YES, -1) == FAILED)
       return FAILED;
   }
   else if (node->type == TREE_NODE_TYPE_VALUE_STRING) {
@@ -1309,10 +1309,7 @@ static int _generate_il_create_return(struct tree_node *node) {
 }
 
 
-static int _generate_il_create_condition_test(struct tree_node *node, int false_label_id, int condition_register) {
-
-  struct tac *t;
-  int type;
+static int _generate_il_create_condition(struct tree_node *node, int false_label_id) {
 
   /* update file id and line number for all TACs and error messages */
   g_current_filename_id = node->file_id;
@@ -1323,35 +1320,7 @@ static int _generate_il_create_condition_test(struct tree_node *node, int false_
     return print_error(g_error_message, ERROR_ERR);
   }
 
-  /* compare with 0 */
-  t = add_tac();
-  if (t == NULL)
-    return FAILED;
-
-  t->op = TAC_OP_JUMP_EQ;
-  tac_set_arg1(t, TAC_ARG_TYPE_TEMP, (double)condition_register, NULL);
-  tac_set_arg2(t, TAC_ARG_TYPE_CONSTANT, 0.0, NULL);
-  tac_set_result(t, TAC_ARG_TYPE_LABEL, 0.0, generate_temp_label(false_label_id));
-
-  /* set promotions */
-  type = tree_node_get_max_var_type(node->children[0]);
-  tac_promote_argument(t, type, TAC_USE_ARG1);
-  tac_promote_argument(t, type, TAC_USE_ARG2);
-
-  return SUCCEEDED;
-}
-
-
-static int _generate_il_create_condition(struct tree_node *node, int false_label_id) {
-
-  int condition_register;
-
-  condition_register = g_temp_r;
-
-  if (_generate_il_create_expression(node->children[0]) == FAILED)
-    return FAILED;
-
-  return _generate_il_create_condition_test(node, false_label_id, condition_register);
+  return il_stack_calculate_expression(node->children[0], YES, false_label_id);
 }
 
 

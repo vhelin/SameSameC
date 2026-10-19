@@ -1,7 +1,7 @@
 // @BT linked.sms
 // @BT TEST-01 01 START
 // @BT 0E 00 DD 21 00 00 DD 19 DD 7E FB DD 46 FA 90 CA
-// @BT 33 03 C3 35 03 0E 01 79 D6 00 CA 4B 03 DD 21 00
+// @BT 33 03 C3 35 03 0E 01 79 D6 01 C2 4B 03 DD 21 00
 // @BT 00 DD 19 DD 7E F9 3C DD 77 F9 C3 59 03 DD 21 00
 // @BT 00 DD 19 DD 7E F9 C6 02 DD 77 F9 DD 21 00 C0 FD
 // @BT 21 F9 FF FD 19 FD 7E 00 DD 77 00
@@ -18,7 +18,8 @@ u8 g_allocator_core_liveness_sink;
 u8 allocatorRaCoreLivenessDiamond(u8 left, u8 right, u8 condition) {
 
   __asm(".DB \"01>\"");
-  if (left == right) {
+  // Keep a Boolean value consumer so this still exercises allocator joins.
+  if ((left == right) == 1) {
     condition = condition + 1;
   }
   else {
