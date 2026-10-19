@@ -85,7 +85,7 @@ Specific evidence worth retaining:
 
 ### Progress Toward Game Boy Support
 
-Complete the shared improvements and the bounded follow-ups 2a-2i below before
+Complete the shared improvements and the bounded follow-ups 2a-2n below before
 the initial SM83 backend (step 3). This does not require every Z80-specific
 optimization. The initial SM83 backend should still guide further shared-core
 extraction.
@@ -120,9 +120,23 @@ extraction.
   eligible accumulators/counters and advance addresses without weaker safety checks.
 - [x] **2i. Argument staging within the existing ABI (new step 5):** eliminate
   proven redundant caller-temporary copies before considering a new convention.
+- [ ] **2j. Advancing-pointer copy/fill loops:** replace repeated address
+  reconstruction, then select profitable target-local loop/block instructions.
+- [ ] **2k. Constant byte arithmetic and multiplication setup:** specialize
+  byte shifts/multiplies and remove unused setup from existing constant word chains.
+- [ ] **2l. Proven bounded-counter narrowing:** use byte execution for counters
+  whose ranges and observable uses permit it, without changing source semantics.
+- [ ] **2m. Lowering-aware costs and local address reuse:** refine existing
+  profitability estimates and address caching rather than adding a framework.
+- [ ] **2n. Leaf-frame and helper-contract audit:** remove only measured,
+  provably redundant frame work or preservation within the existing ABI.
 - [ ] **3. Initial SM83 backend:** establish correct Game Boy code generation,
   target-specific addressing/spills/calls and execution tests. Use actual
   requirements to identify reusable code; do not assume IX/IY, `DJNZ` or `LDIR`.
+  - [ ] Reuse shared loop proofs, but select SM83 auto-increment/decrement HL
+    accesses and `LDH` only with their target-specific legality checks.
+  - [ ] Qualify SM83 stack-relative addressing, spill/frame handling and calls
+    without carrying over Z80 block-instruction or register assumptions.
 - [ ] **4. Further target-specific improvements:** continue induction-address,
   instruction-selection, call and arithmetic work beyond the bounded follow-ups
   with both backends covered. These extensions are not prerequisites for initial
@@ -130,8 +144,8 @@ extraction.
 
 The numbered detail sections below describe optimization priorities, not a
 requirement to finish every Z80 optimization before implementing SM83. The
-explicit pre-SM83 scope is steps 1, 2 and 2a-2i; priorities 3 and 4 below supply
-the existing implementation guidance for follow-ups 2a and 2c.
+explicit pre-SM83 scope is steps 1, 2 and 2a-2n; priorities 3-5 below supply
+additional implementation guidance for the loop, call and arithmetic follow-ups.
 
 Do one bounded, measured change at a time. The numeric observations below are
 baseline anchors, not promised results. Passing a focused test is not permission
@@ -1073,6 +1087,104 @@ used ROM **20679 -> 20677** and **33134 -> 33134** bytes, still padded to 65536.
 Evidence is retained privately under
 `C:\cygwin64\tmp\loop-call-qualified-20261020`.
 
+### Source-Guided Follow-ups After Step 2i (2026-10-20)
+
+Complete these five bounded steps in order before initial SM83 work. The source
+study examined [stock SDCC r17016](https://svn.code.sf.net/p/sdcc/code/!svn/bc/17016/trunk/sdcc/src/z80/gen.c),
+its allocator and SM83 rules, and sccz80 plus the SDCC patches shipped with
+[z88dk 2.4](https://github.com/z88dk/z88dk/releases/tag/v2.4). The shipped patch
+targets SDCC r15248, not the measured z88dk/SDCC binary's r15242; treat it as
+algorithmic guidance, not exact binary provenance.
+
+Reuse existing TAC/loop analysis, target costs, location resolution and emitters.
+Do not replace the allocator, import a large peephole rule engine or duplicate
+completed constant word shifts/multiplies, quotient/remainder reuse and masked
+branches. These are prospective improvements, not measured gains or completed
+implementation claims. Existing checkpoint gates apply to every code change.
+
+#### 2j. Advancing-Pointer Copy/Fill Loops
+
+- [ ] Recognize bounded simple loops using existing analysis; maintain advancing
+  addresses instead of reconstructing `base + index` on every iteration.
+- [ ] Compare scalar pointer loops, tiny straight-line sequences, `DJNZ`,
+  unrolled `LDI` and `LDIR` using full setup/preservation costs. Keep a generic
+  word-count fallback; competitor builtin lowering does not prove arbitrary
+  source loops are recognized or eligible.
+- [ ] Preserve DE's frame-pointer contract, source-order overlap behavior,
+  zero/256 counts, address wrap, clobbers and observable memory effects.
+  Seed-plus-`LDIR` fills introduce reads and must not replace store-only loops
+  where those reads are observable. Keep instruction selection target-local.
+
+Acceptance: reduce byte-copy/fill bytes and cycles without regression, and
+measure a real decoder/array workload. Check complete buffers and guards,
+zero/one/255/256 counts, word wraps, overlapping source/destination in both
+directions, calls, aliases, register pressure and complete frame footprint.
+
+#### 2k. Constant Byte Arithmetic And Multiplication Setup
+
+- [ ] Specialize constant byte shifts in the existing emitter; compare unrolled
+  shifts with accumulator rotate-and-mask sequences for unsigned values,
+  including transfers, result width and flag/register clobbers.
+- [ ] Add only profitable constant byte multiplication sequences within the
+  existing arithmetic path. Cost additions and subtractions for the actual
+  operand width; do not assume byte signed-digit choices also suit word results.
+- [ ] Select existing constant word multiply chains before unnecessary generic
+  operand setup, DE saves/loads and restoration. Preserve the established word
+  shift/multiply paths, budgets and conservative fallbacks.
+
+Acceptance: exhaustively check byte operands for selected constants and shift
+counts, plus signed/promoted results, word boundaries, aliases and pressure.
+Show exact instruction-selection changes and measured bytes/cycles; preserve
+the compiler's existing shift semantics and default size/speed contract.
+
+#### 2l. Proven Bounded-Counter Narrowing
+
+- [ ] Reuse bounded-loop analysis to prove initialization, bounds and updates
+  before selecting byte execution for a source word counter.
+- [ ] Check all counter uses, values observed after exit, conversions, escapes
+  and wrap behavior. Reject unknown ranges or interfering updates; do not infer
+  safety from array undefined-behavior assumptions borrowed from another compiler.
+- [ ] Start with the CRC's proven 0-7 bit counter, which SDCC executes in one
+  byte while SameSameC retains BC. Measure register availability and compare/
+  increment costs before considering a separate countdown/`DJNZ` selection.
+
+Acceptance: reduce a measured hot-loop cost without changing language-level
+types or observable values. Cover zero-trip loops, nested loops, early exits,
+post-loop reads, 255/256 boundaries, wrapping/escaped counters and unchanged
+fallbacks. Keep any byte-counter instruction choice target-specific.
+
+#### 2m. Lowering-Aware Costs And Local Address Reuse
+
+- [ ] Extend current profitability hooks to account for actual address setup,
+  transfers, width extension and saves/restores where estimates currently omit
+  them. Keep frequency and size/cycle policy explicit.
+- [ ] Reuse existing address helpers/cache for proven nearby addresses within
+  basic blocks rather than introducing parallel state or a new optimizer.
+- [ ] Invalidate facts on relevant register writes, calls, assembly and control
+  boundaries. Do not retain cached addresses across joins without proving every
+  incoming path establishes the same value.
+
+Acceptance: correlate changed decisions with emitted sequences and measured
+bytes/cycles/frame traffic. Exercise cache hits and invalidation, wide offsets,
+pressure and unknown-cost fallbacks. Preserve immutable verification and
+normal/traced equivalence; do not add a dry-run framework without measured need.
+
+#### 2n. Leaf-Frame And Helper-Contract Audit
+
+- [ ] Measure leaf prologue/epilogue and call-heavy costs after the preceding
+  improvements; identify redundant work in existing frame/call lowering.
+- [ ] Audit existing helper input, result and preserved-register metadata.
+  Tighten only demonstrably over-conservative clobbers; qualify actual helper
+  effects before removing saves or retaining values across them.
+- [ ] Keep the existing DE/frame and caller/callee ABI contracts. Frame-pointer
+  omission or register arguments require a separate explicit, gated proposal,
+  not a silent convention change to force an optimization.
+
+Acceptance: record measured safe removals, or explicitly close the audit with
+no profitable supported case. For changes, verify mixed widths, nested,
+recursive, banked, cross-file and assembly-facing calls, exact SP/DE restoration
+and complete frame footprint. Report caller and kernel costs separately.
+
 ### 3. Maintain Induction Addresses And Select Z80 Loops
 
 Reuse existing array/pointer TAC and Z80 address emitters. Introduce a narrowly
@@ -1258,5 +1370,6 @@ to this cross-compiler experiment.
    locally with the validation summary; do not push.
 
 Steps 1, 2 and 2a-2i are complete. Current implementation target:
+**step 2j, advancing-pointer copy/fill loops**, followed by 2k-2n and then
 **step 3, initial SM83 backend**. Keep the qualified Z80 behavior and shared core
 covered throughout; do not expand this finite sequence into every possible Z80 optimization.
