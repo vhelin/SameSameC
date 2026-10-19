@@ -81,39 +81,13 @@ definition absent for normal builds; defining it as `0` still enables tracing.
 Clean and rebuild when changing GNU make flags, for example with
 `make -C compiler -f makefile.gcc clean`.
 
-The allocator regression suite, `ci/check_register_allocator.mjs` and
+The allocator regression suite, `ci/check_register_allocator.py` and
 `ci/measure_register_allocator.sh` require a trace-enabled compiler on `PATH`
 (or the checker's `SAMESAMECC` override). Runtime `-q` still suppresses the
 existing allocator traces in that build, but is not a substitute for compiling
 them out. CI opts into tracing for these assertions; the Windows XP publishing
 pipeline rebuilds without tracing before packaging user binaries. Host core,
 TAC-storage and spill-emitter tests also run with tracing compiled out.
-
-
-# Compressed ROM Test Data
-
-The `calculations-1` test includes an original 256-byte tile-pattern page as
-the 104-byte `tiles.packbits` file, using standard
-[PackBits RLE](https://www.nesdev.org/wiki/Tile_compression).
-Bank 1 includes it with `__incbin()`. SameSameC code decompresses it into RAM,
-checks packet/input/output bounds and calculates CRC-16/CCITT-FALSE
-(polynomial `0x1021`, initial value `0xFFFF`, no reflection or final XOR).
-The expected CRC is `0xCC7D`; the third `$A5C3` calculation XORs the measured
-CRC and that reference into its result, so an error changes the displayed value.
-Malformed packets or insufficient destination space return `0xFFFF` from the
-decoder; a successfully decoded prefix can remain in RAM on failure.
-
-Regenerate the committed binary deterministically with:
-
-```sh
-node tests/z80/sms/calculations-1/generate_compressed_tiles.mjs
-```
-
-The fixture makefile tracks the binary dependency. The existing CPU execution
-runner checks decoded bytes, CRC, RAM guards and 16 PackBits boundary/error
-vectors in default/all-spill/allocator modes. It also mutates ROM payload bytes
-to check different CRCs and verifies the full bank-1 display output: changing
-the last asset byte by one changes only the third `$A5C3` value to `$B5E2`.
 
 
 # TODO

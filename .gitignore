@@ -33,6 +33,7 @@ ImportGenerators.cmake
 *.so
 *.a
 *.exe
+__pycache__/
 
 # Visual Studio generated files
 *.vcxproj*

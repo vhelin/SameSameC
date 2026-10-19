@@ -9347,11 +9347,13 @@ Batch results (bounded implementations):
 
 ### Step 296 Completed: Reproducible Differential Execution
 
-- `ci/check_register_allocator.mjs` builds the verifier harness and generates
+- `ci/check_register_allocator.py` builds the verifier harness and generates
       eight deterministic variants each of byte/word arithmetic, branches,
       bounded loops, nested array reads, pointer updates, and calls. It compiles
       and links actual default, `-no-ra`, all-spill, and RA ROMs, resolves linker
-      symbols, and executes complete functions with `z80-emulator@2.3.0`.
+      symbols, and executes complete functions. The current runner uses Python
+      and the native `z80==1.2.0` emulator; the historical measurements below
+      used `z80-emulator@2.3.0`.
 - Default/all-spill/RA results and updated buffer contents must match independent
       mathematical expectations. Default/`-no-ra` ROMs must match byte-for-byte.
       Execution also checks allowed memory writes, DE/SP restoration, and an
@@ -9359,19 +9361,20 @@ Batch results (bounded implementations):
       function, seed, parameters, and expected values in the output directory.
       The demonstrated byte-clobber cases are pinned in existing fixtures;
       no further compiler failing seed was found in this generated workload.
-- The emulator stays an external, pinned test dependency. Its npm package is
-      deprecated, so no application dependency or vendored emulator was added.
-      `RA_Z80_EMULATOR` names its `dist/index.js`; `SAMESAMECC`, `SAMESAMECL`,
-      and `CC` optionally select tools. `RA_VERIFIER` reuses a prebuilt harness,
+- The emulator stays an external, pinned test dependency, installed with
+      Python 3.10+ and `python -m pip install -r ci/requirements.txt`. No Node.js,
+      JavaScript emulator, `RA_Z80_EMULATOR` path or vendored emulator is needed.
+      `SAMESAMECC`, `SAMESAMECL`, and `CC` optionally select tools.
+      `RA_VERIFIER` reuses a prebuilt harness,
       including one built with native ASan. `RA_EXECUTION_DIR` selects retained
       artifacts and `RA_CASES` selects 1..4096 seeds per generated function
       (default 64). For the local Cygwin tools in PowerShell:
 
 ```powershell
 $env:PATH = "C:\cygwin64\bin;$PWD\binaries;$PWD\wla-dx\binaries;$env:PATH"
-$env:RA_Z80_EMULATOR = "C:\cygwin64\tmp\ra295-emulator\node_modules\z80-emulator\dist\index.js"
 $env:RA_CASES = "512"
-node ci/check_register_allocator.mjs
+python -m pip install -r ci\requirements.txt
+python ci\check_register_allocator.py
 ```
 
 - Cygwin GCC and the isolated native ASan compiler each pass 28,672 executions
@@ -10038,7 +10041,7 @@ from these counts or treat further policy extraction as an optimization gain.
       combinations. This is broader coverage, not permission to postpone such
       checks for combinations introduced in earlier batches.
 - [x] **314. Expand structural differential generation and failure reduction.**
-      Reuse `ci/check_register_allocator.mjs` and its independent oracles. Vary
+      Reuse `ci/check_register_allocator.py` and its independent oracles. Vary
       program structure, live-value pressure, aliasing within valid buffers,
       signed/mixed widths, branch paths, nested loops, and call placement rather
       than merely increasing seeds or constants. Avoid undefined inputs and
@@ -10103,7 +10106,8 @@ from these counts or treat further policy extraction as an optimization gain.
                         oracle checking the entire output buffer and index-pointer update.
                         Software shift/division loops execute; hardware-facing source loops and
                         bank switching are not qualified. Node 22.18.0 and pinned z80-emulator
-                        2.3.0 were used; the runner now rejects a different emulator version.
+                        2.3.0 were used for that qualification. The current Python runner
+                        instead pins its native emulator in `ci/requirements.txt`.
 
                   - Failures retain their source, exact seed/input, assembly, ROM, and logs.
                         The existing catch path dependency-slices generated functions and replays
@@ -13577,7 +13581,7 @@ Close-out validation on 2026-10-19:
   Each verifier also passes traced and quiet modes with 32 immutable rejection
   and seven immutable acceptance controls, plus the independent 10,200-endpoint
   legality table.
-- The existing [execution runner](ci/check_register_allocator.mjs) passes pointer,
+- The existing [execution runner](ci/check_register_allocator.py) passes pointer,
   walk, nested, join/call, escape/rematerialization, typed-index, structural and
   wide-frame cohorts at `RA_CASES=128`, including all 25 real routines. This is
   16,000 generated cases (including repeated shared arithmetic controls) and
