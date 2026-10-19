@@ -13601,6 +13601,10 @@ claiming a new full-suite run.
 
 ### Optional Extensions, Not Completion Blockers
 
+For prioritized, competitor-measured backend improvements after allocator v1,
+follow [Z80_CODEGEN_PLAN.md](Z80_CODEGEN_PLAN.md). Its persistent cross-compiler
+benchmark keeps SDCC and both z88dk backends as controls for future work.
+
 Leave these unchecked until an actual implementation is measured and qualified.
 They replace the former duplicated phase-by-phase "remaining to 100%" checklist;
 the numbered phases above retain the detailed implementation history.

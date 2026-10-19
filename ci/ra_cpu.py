@@ -17,6 +17,20 @@ EXECUTION_METRICS = [
 ]
 
 
+def step(machine, pc_limit=0xc000):
+    cycles = 0
+    while True:
+        if machine.pc >= pc_limit:
+            raise RuntimeError("Instruction bound/PC escape")
+        before = machine.frame_tick
+        machine.ticks_to_stop = 1
+        machine.run()
+        # The pinned core wraps every 100,000 T-states and steps DD/FD prefixes separately.
+        cycles += (machine.frame_tick - before) % 100000
+        if machine.index_rp_kind == HL:
+            return cycles
+
+
 def execute(code, entry, parameters, widths, buffer, buffer_address, return_width,
             transfers=None, ports_allowed=False, instruction_limit=20000, frame_bytes=256):
     if transfers is None:
@@ -100,17 +114,7 @@ def execute(code, entry, parameters, widths, buffer, buffer_address, return_widt
         if opcode & 0xc0 == 0x40 and opcode & 7 != 6 and (opcode >> 3) & 7 != 6:
             register_moves += 1
         previous_pc = machine.pc
-        while True:
-            if machine.pc >= 0xc000:
-                raise RuntimeError("Instruction bound/PC escape")
-            before = machine.frame_tick
-            machine.ticks_to_stop = 1
-            machine.run()
-            # The pinned core wraps its tick counter every 100,000 T-states.
-            cycles += (machine.frame_tick - before) % 100000
-            # Native stepping exposes DD/FD prefixes separately.
-            if machine.index_rp_kind == HL:
-                break
+        cycles += step(machine)
         if instruction_metadata is not None and instruction_metadata.get("branch") and machine.pc <= previous_pc:
             section = instruction_metadata.get("section")
             if (transfers.get(machine.pc) or {}).get("section") == section:
