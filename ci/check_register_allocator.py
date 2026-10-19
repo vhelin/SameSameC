@@ -372,6 +372,18 @@ def generate_programs(comparison_forms):
             ("scalar_call_region", "u8 a, u8 b, u8 c", f"u8 saved = a^b; u8 first = c+saved; u8 loaded = ra_buffer[1]; u8 out = ((((first+loaded)^saved)+saved)^saved)+saved; u8 called = ra_pointer_helper(ra_buffer,ra_signed_helper({'ra_recursive_helper(2,a)' if variant == 1 else 'a'},b,c)); return ((((out^saved)+saved)^saved)+saved)^called;", [1, 1, 1], 1),
             ("scalar_loop_pressure", "u8 a, u8 b, u8 c", "u8 left = a; u8 right = b; while (left < right) { left = left+1; right = right-1; } return left^right;", [1, 1, 1], 1),
             ("scalar_loop_call", "u8 a, u8 b, u8 c", "u8 saved = a^b; u8 value = b; while (c) { value = ra_pointer_helper(ra_buffer,value)+saved; c = c-1; } return value;", [1, 1, 1], 1),
+            ("scalar_word_counter", "u16 a, u16 b, u16 c", [
+                "u16 i = a; while (i != c) { i++; } return i+1;",
+                "u16 i = a; while (i != c) { if (i&1) { i++; continue; } i++; } return i+b;",
+                "u16 i = a; while (i != c) { if (i == b) { break; } i++; } return i+b;",
+                "u16 i = a; while (i != c) { u16 j; for (j = 0; j < 2; j++) {} ra_buffer[0] = j; i++; } return i+b;",
+                "u16 i = a; while (i != c) { ra_pointer_helper(ra_buffer,b); i++; } return i+b;",
+                "u16 i = a; u16 *escaped = &i; while (i != c) { i++; } return escaped[0]+b;",
+                "u16 i = a; while (i != c) { if (i == b) { return i+b; } i++; } return i+b;",
+                "u16 i = a; u16 crc = b; while (i != c) { if (crc&1) { crc = (crc>>1)^0xA001; } else { crc = crc>>1; } i++; } return crc+i;",
+            ][variant] if variant < 8 else None, [2, 2, 2], 2),
+            ("scalar_word_prefix", "u16 a, u16 b, u16 c",
+             f"u16 i = a; u16 first = i+b; while (i != c) {{ i++; }} {'i = a; while (i != c) { i++; }' if variant else ''} return first+i;", [2, 2, 2], 2),
             ("scalar_decision_loop", "u16 a, u8 count, u8 value", f"u16 saved = a; u16 out = a^0x4321; u8 left = value; u8 right = count+value; while (count) {{ if (count&1) {{ saved = out^count; }} else {{ saved = saved+left; }} left = left+1; right = right-1; {'left = left+ra_pointer_helper(ra_buffer,right);' if variant else ''} u8 combined = left+right; out = (out+saved)^combined; ra_buffer[count] = left^right; count = count-1; }} return out+saved+left+right;", [2, 1, 1], 2),
             ("scalar_cost_reject_byte", "u8 a, u8 b, u8 c", "u8 saved = a^b; u8 first = c+saved; u8 loaded = ra_buffer[1]; return ((first+loaded)^saved)+saved;", [1, 1, 1], 1),
             ("scalar_split_word", "u16 a, u16 b, u16 c", "u16 saved = ~c; u16 first = a+saved; u16 loaded = ra_buffer[1]; return ((first+loaded)^saved)+b+saved;", [2, 2, 2], 2),
@@ -438,7 +450,7 @@ def generate_programs(comparison_forms):
                     excluded = family.startswith("matrix_") or scalar_family != (os.environ.get("RA_SCALAR_CASES") == "1")
                 if excluded:
                     continue
-            if scalar_family and family != "word_bc" and variant > 1:
+            if scalar_family and family not in ("word_bc", "scalar_word_counter") and variant > 1:
                 continue
             name = f"ra_{family}_{variant}"
             if family == "matrix_source_loop":
@@ -761,6 +773,18 @@ def check_analytical_assertions(output, programs):
             raise RuntimeError(f"Call-clobbered loop retained: {name}")
         if family == "scalar_decision_loop" and has(r"scalar_copy_promotion .*variable=saved "):
             raise RuntimeError(f"Ambiguous loop definitions promoted: {name}")
+        if family == "scalar_word_counter":
+            if variant == 0 and not has(r"loop_retention_apply_preflight .*selected=BC .*application=applied"):
+                raise RuntimeError(f"Bounded unsigned word counter was not retained: {name}")
+            if variant == 5 and has(r"scalar_copy_promotion .*variable=i "):
+                raise RuntimeError(f"Escaped word counter was promoted: {name}")
+            if variant == 4 and has(r"loop_retention_apply_preflight .*application=applied"):
+                raise RuntimeError(f"Call-clobbered word counter was retained: {name}")
+        if family == "scalar_word_prefix" and (
+            has(r"loop_retention_apply_preflight .*application=applied")
+            or (variant == 1 and has(r"scalar_copy_promotion .*variable=i "))
+        ):
+            raise RuntimeError(f"Unsupported prefix or reused counter escaped conservative fallback: {name}")
         if family.startswith("scalar_remat_"):
             body = assembly.split(f"{name}:")[1].split(".ENDS")[0]
             if ("; rematerialize " in body) != (family != "scalar_remat_pointer"):
@@ -1140,6 +1164,24 @@ def generated_oracle(program, seed, comparison_forms, decision_loop_paths):
                 expected_buffer[0] = value
                 value = (buffer[1] + (byte ^ other)) & 255
             expected = value
+        case "scalar_word_counter" | "scalar_word_prefix":
+            start = (0, 255, 256, 65534, 65535)[seed % 5]
+            count = (0, 1, 255, 256)[seed % 4]
+            value = (start + 2) & 65535 if variant in (2, 6) else word_parameters(seed, variant)[1]
+            parameters = [start, value, (start + count) & 65535]
+            iterations = min(count, 2) if variant in (2, 6) else count
+            expected = ((start + iterations) + value) & 65535
+            if family == "scalar_word_prefix":
+                expected = (start + value + parameters[2]) & 65535
+            elif variant == 0:
+                expected = (parameters[2] + 1) & 65535
+            if family == "scalar_word_counter" and count and variant in (3, 4):
+                expected_buffer[0] = 2 if variant == 3 else value & 255
+            if family == "scalar_word_counter" and variant == 7:
+                crc = value
+                for _ in range(count):
+                    crc = (crc >> 1) ^ (0xA001 if crc & 1 else 0)
+                expected = (crc + parameters[2]) & 65535
         case "scalar_decision_loop":
             parameters = [(seed * 7919 + 32767) & 65535, seed % 8, third]
             first, count, value = parameters
@@ -1445,6 +1487,14 @@ def execute_generated(output, compiler, linker, programs, preamble, compiled, ca
                             raise RuntimeError(f"{program.name}: frequency-loop backedges={result['entry_backedges']}, expected={backedges}")
                     if program.family == "scalar_decision_loop" and result["entry_backedges"] != parameters[1]:
                         raise RuntimeError(f"{program.name}: decision-loop backedges={result['entry_backedges']}, expected={parameters[1]}")
+                    if program.family in ("scalar_word_counter", "scalar_word_prefix"):
+                        count = (parameters[2] - parameters[0]) & 65535
+                        if program.family == "scalar_word_prefix":
+                            backedges = count * (2 if program.variant else 1)
+                        else:
+                            backedges = min(count, 2) if program.variant in (2, 6) else count * (3 if program.variant == 3 else 1)
+                        if result["entry_backedges"] != backedges:
+                            raise RuntimeError(f"{program.name}: word-counter backedges={result['entry_backedges']}, expected={backedges}")
                     if mode == "ra" and os.environ.get("RA_BASELINE") != "1" and program.family in (
                         "scalar_split_byte", "scalar_split_word", "scalar_call_region",
                     ):
@@ -1467,6 +1517,11 @@ def execute_generated(output, compiler, linker, programs, preamble, compiled, ca
         print(compact_json({"mode": mode, **counters, "compile_seconds": compiled[mode].compileSeconds}))
     write_json(output / "execution-summary.json", totals)
     write_json(output / "program-execution-summary.json", program_totals)
+    if cases >= 4 and os.environ.get("RA_BASELINE") != "1" and "ra_scalar_word_counter_0" in program_totals:
+        counter = program_totals["ra_scalar_word_counter_0"]
+        for metric in ("frame_reads", "frame_writes"):
+            if counter["ra"][metric] * 10 > counter["default"][metric] * 7:
+                raise RuntimeError(f"Word-counter {metric} did not decrease by at least 30%")
     if ("matrix_source_loop" in os.environ.get("RA_FAMILIES", "").split(",")
             and sum(program.family == "matrix_source_loop" for program in programs) != 2):
         raise RuntimeError("Both source-loop cases must be selected")

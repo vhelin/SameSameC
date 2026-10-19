@@ -36,7 +36,7 @@ all: linked.sms
 	grep -q "shift_physical_result function=allocatorRaShiftLeftLoop op=SHIFT_LEFT result_phy=C value_register=L transfer=LD_C_L store=none status=complete" compiler.log
 	grep -q "shift_physical_result function=allocatorRaShiftRightLoop op=SHIFT_RIGHT result_phy=C value_register=L transfer=LD_C_L store=none status=complete" compiler.log
 	grep -q "loop_register_path_reservation_preflight function=allocatorRaShiftLoopConflict.*candidate=C.*transparent=no.*blocking=.*status=complete" compiler.log
-	grep -q "loop_register_path_reservation_preflight function=allocatorRaShiftLoopConflict.*candidate=B.*transparent=no.*blocking=.*status=complete" compiler.log
+	grep -q "loop_retention_apply_preflight function=allocatorRaShiftLoopConflict.*selected=C.*application=applied.*status=complete" compiler.log
 	grep -q "loop_register_selection function=allocatorRaShiftLoopConflict.*selected=-1 phy=0.*selection=ineligible reason=no_path_safe_register status=complete" compiler.log
 	grep -q "shift_result function=allocatorRaShiftLoopConflict op=SHIFT_LEFT kind=STACK_SPILL size=1 phy=NONE var_type=4 promoted_type=4" compiler.log
 	sed -n '/allocatorRaShiftLeftLoop:/,/\.ENDS/p' main.asm | grep -q "ADD HL,HL"
@@ -49,7 +49,7 @@ all: linked.sms
 	: && ! sed -n '/allocatorRaShiftLeftLoop:/,/\.ENDS/p' main.asm | grep -q "(IX-7)\|(IY-7)"
 	: && ! sed -n '/allocatorRaShiftRightLoop:/,/\.ENDS/p' main.asm | grep -q "(IX-7)\|(IY-7)"
 	sed -n '/allocatorRaShiftLoopConflict:/,/\.ENDS/p' main.asm | grep -q "LD  (IX-9),L"
-	: && ! sed -n '/allocatorRaShiftLoopConflict:/,/\.ENDS/p' main.asm | grep -q "retained result in C"
+	sed -n '/allocatorRaShiftLoopConflict:/,/\.ENDS/p' main.asm | grep -q "retained result in C"
 	: && ! grep -q "stack offset requested for retained" compiler.log
 	$(BT) -s main.ssc
 

@@ -6050,11 +6050,11 @@ static void initialize_loop_path_fixture(
 static int test_loop_join_path_reservation_planning(void) {
 
   struct register_allocator_basic_block blocks[5];
-  struct register_allocator_cfg_edge edges[5];
+  struct register_allocator_cfg_edge edges[6];
   struct register_allocator_loop_join loop_join;
-  struct register_allocator_join_assignment assignments[3];
+  struct register_allocator_join_assignment assignments[4];
   struct register_allocator_join_schedule schedule;
-  struct register_allocator_join_block_reservation reservations[4];
+  struct register_allocator_join_block_reservation reservations[5];
   struct register_allocator_join_path_reservation path_reservation;
 
   initialize_loop_path_fixture(blocks, edges, &loop_join, assignments,
@@ -6080,6 +6080,26 @@ static int test_loop_join_path_reservation_planning(void) {
       reservations[3].start_instruction != 8 ||
       reservations[3].end_instruction != 10)
     return FAILED;
+
+  edges[5].from_block = 4;
+  edges[5].to_block = 0;
+  edges[5].kind = RA_CFG_EDGE_JUMP;
+  if (register_allocator_plan_loop_join_path_reservations(
+      "coreLoopPathNested", 5, 14, blocks, edges, 6, 1, 2, 7,
+      &loop_join, assignments, 3, &schedule, reservations, 4,
+      &path_reservation) == FAILED || path_reservation.block_count != 4 ||
+      reservations[0].block_index != 0 || reservations[3].block_index != 3)
+    return FAILED;
+  assignments[3] = assignments[2];
+  assignments[3].instruction = 12;
+  schedule.assignment_count = 4;
+  if (register_allocator_plan_loop_join_path_reservations(
+      "coreLoopPathNestedExitRead", 5, 14, blocks, edges, 6, 1, 2, 7,
+      &loop_join, assignments, 4, &schedule, reservations, 5,
+      &path_reservation) == FAILED || path_reservation.block_count != 5 ||
+      reservations[4].block_index != 4)
+    return FAILED;
+  schedule.assignment_count = 3;
 
   path_reservation.status = 99;
   path_reservation.block_count = 99;

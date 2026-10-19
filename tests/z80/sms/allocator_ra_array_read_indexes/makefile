@@ -13,13 +13,13 @@ all: linked.sms
 	grep -q "linear_scan retain.*function=allocatorRaArrayReadIndexA.*producer_tac=.*ADD.*consumer_tac=.*ARRAY_READ.*arg2" compiler.log
 	grep -q "linear_scan retain.*function=allocatorRaArrayReadIndexHl.*producer_tac=.*XOR.*consumer_tac=.*ARRAY_READ.*arg2" compiler.log
 	grep -q "resolve function=allocatorRaArrayReadIndexA operand=arg2 kind=PHY_A" compiler.log
-	grep -q "resolve function=allocatorRaArrayReadIndexHl operand=arg2 kind=PHY_HL" compiler.log
+	grep -q "resolve function=allocatorRaArrayReadIndexHl operand=arg2 kind=PHY_BC" compiler.log
 	grep -q "array_read_index function=allocatorRaArrayReadIndexA kind=PHY_A" compiler.log
-	grep -q "array_read_index function=allocatorRaArrayReadIndexHl kind=PHY_HL" compiler.log
+	grep -q "array_read_index function=allocatorRaArrayReadIndexHl kind=PHY_BC" compiler.log
 	: && ! grep -q "reason=unmigrated_emitter.*ARRAY_READ" compiler.log
 	: && ! grep -q "stack offset requested for retained" compiler.log
 	grep -q "retained arg2 in A" main.asm
-	grep -q "retained arg2 in HL" main.asm
+	grep -q "retained arg2 in BC" main.asm
 	$(BT) -s main.ssc
 
 

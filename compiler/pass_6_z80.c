@@ -916,15 +916,20 @@ static void _xor_from_ix_to_a(int offset, FILE *file_out) {
 }
 
 
-static void _bitwise_bc_hl(FILE *file_out, int op, int result_in_bc) {
+static void _bitwise_hl(FILE *file_out, int op, int result_in_bc, struct z80_location *constant) {
 
   char *mnemonic = op == TAC_OP_OR ? "OR " : op == TAC_OP_XOR ? "XOR" : "AND";
-  fprintf(file_out, "      LD  A,B\n");
-  fprintf(file_out, "      %s A,H\n", mnemonic);
-  fprintf(file_out, "      LD  %s,A\n", result_in_bc == YES ? "B" : "H");
-  fprintf(file_out, "      LD  A,C\n");
-  fprintf(file_out, "      %s A,L\n", mnemonic);
-  fprintf(file_out, "      LD  %s,A\n", result_in_bc == YES ? "C" : "L");
+  int byte_offset;
+
+  for (byte_offset = 1; byte_offset >= 0; byte_offset--) {
+    if (constant == NULL)
+      fprintf(file_out, "      LD  A,%s\n", byte_offset == 1 ? "B" : "C");
+    else
+      fprintf(file_out, "      LD  A,%d\n", (constant->value >> (byte_offset * 8)) & 255);
+    fprintf(file_out, "      %s A,%s\n", mnemonic, byte_offset == 1 ? "H" : "L");
+    fprintf(file_out, "      LD  %s,A\n", result_in_bc == YES ?
+        (byte_offset == 1 ? "B" : "C") : (byte_offset == 1 ? "H" : "L"));
+  }
 }
 
 
@@ -2820,6 +2825,7 @@ static int _aaa_generate_asm_add_sub_or_xor_and_z80_16bit(struct tac *t, FILE *f
   struct z80_location result_location;
   struct z80_location arg1_location;
   struct z80_location arg2_location;
+  struct z80_location *constant_operand = NULL;
   int ix_offset = 0;
   int arg1_in_hl = NO, arg2_in_hl = NO, result_in_hl = NO, operand_is_constant_one = NO;
   int arg1_in_bc = NO, arg2_in_bc = NO, result_in_bc = NO;
@@ -2845,6 +2851,12 @@ static int _aaa_generate_asm_add_sub_or_xor_and_z80_16bit(struct tac *t, FILE *f
   arg1_in_bc = arg1_location.kind == LOC_PHY_BC ? YES : NO;
   arg2_in_bc = arg2_location.kind == LOC_PHY_BC ? YES : NO;
   result_in_bc = result_location.kind == LOC_PHY_BC ? YES : NO;
+  if (op == TAC_OP_AND || op == TAC_OP_OR || op == TAC_OP_XOR) {
+    if (arg2_location.kind == LOC_CONST)
+      constant_operand = &arg2_location;
+    else if (arg1_location.kind == LOC_CONST && arg2_in_hl == YES)
+      constant_operand = &arg1_location;
+  }
 
   if (result_in_bc == YES && (op == TAC_OP_AND || op == TAC_OP_OR || op == TAC_OP_XOR) &&
       (arg1_location.kind == LOC_CONST || arg1_location.kind == LOC_PHY_HL || arg1_location.kind == LOC_PHY_BC ||
@@ -2981,7 +2993,9 @@ static int _aaa_generate_asm_add_sub_or_xor_and_z80_16bit(struct tac *t, FILE *f
   /* copy data (arg2) -> bc */
   /******************************************************************************************************/
 
-  if (arg2_in_bc == YES) {
+  if (constant_operand != NULL) {
+  }
+  else if (arg2_in_bc == YES) {
   }
   else if (arg2_in_hl == YES) {
     if (arg1_location.kind == LOC_CONST) {
@@ -3028,7 +3042,7 @@ static int _aaa_generate_asm_add_sub_or_xor_and_z80_16bit(struct tac *t, FILE *f
       _sub_bc_from_hl(file_out);
   }
   else if (op == TAC_OP_OR || op == TAC_OP_XOR || op == TAC_OP_AND)
-    _bitwise_bc_hl(file_out, op, result_in_bc);
+    _bitwise_hl(file_out, op, result_in_bc, constant_operand);
   else {
     fprintf(stderr, "_aaa_generate_asm_add_sub_or_xor_and_z80_16bit(): Unsupported TAC op %d! Please submit a bug report!\n", op);
     return FAILED;
@@ -5738,8 +5752,9 @@ static int _generate_asm_mul_div_mod_z80(struct tac *t, FILE *file_out, struct t
 
 static int _aaa_generate_asm_jump_eq_lt_gt_neq_lte_gte_z80_16bit(struct tac *t, FILE *file_out, struct tree_node *function_node, int op) {
 
-  struct z80_location arg1_location;
+  struct z80_location arg1_location, swapped_location;
   struct z80_location arg2_location;
+  struct tac swapped;
   int ix_offset = 0;
   int arg1_in_hl = NO, arg2_in_hl = NO;
 
@@ -5753,6 +5768,23 @@ static int _aaa_generate_asm_jump_eq_lt_gt_neq_lte_gte_z80_16bit(struct tac *t, 
   if (_resolve_tac_location(t, TAC_USE_ARG2, function_node, &arg2_location) == FAILED)
     return FAILED;
 
+  /* Reverse the comparison rather than overwriting an incoming BC value. */
+  if (arg1_location.kind == LOC_PHY_BC && arg2_location.kind != LOC_PHY_BC) {
+    swapped = *t;
+    tac_swap_args(&swapped);
+    t = &swapped;
+    swapped_location = arg1_location;
+    arg1_location = arg2_location;
+    arg2_location = swapped_location;
+    if (op == TAC_OP_JUMP_LT)
+      op = TAC_OP_JUMP_GT;
+    else if (op == TAC_OP_JUMP_GT)
+      op = TAC_OP_JUMP_LT;
+    else if (op == TAC_OP_JUMP_LTE)
+      op = TAC_OP_JUMP_GTE;
+    else if (op == TAC_OP_JUMP_GTE)
+      op = TAC_OP_JUMP_LTE;
+  }
   arg1_in_hl = arg1_location.kind == LOC_PHY_HL ? YES : NO;
   arg2_in_hl = arg2_location.kind == LOC_PHY_HL ? YES : NO;
 
@@ -5765,7 +5797,7 @@ static int _aaa_generate_asm_jump_eq_lt_gt_neq_lte_gte_z80_16bit(struct tac *t, 
   if (arg1_in_hl == YES) {
     fprintf(file_out, "      ; retained arg1 in HL\n");
   }
-  else if (arg1_location.kind == LOC_CONST) {
+  else if (arg1_location.kind == LOC_CONST || arg1_location.kind == LOC_PHY_BC) {
   }
   else if (_load_location_address_to_ix(&arg1_location, &ix_offset, file_out) == FAILED)
     return FAILED;
@@ -5775,6 +5807,10 @@ static int _aaa_generate_asm_jump_eq_lt_gt_neq_lte_gte_z80_16bit(struct tac *t, 
   /******************************************************************************************************/
 
   if (arg1_in_hl == YES) {
+  }
+  else if (arg1_location.kind == LOC_PHY_BC) {
+    if (_materialize_to_hl(&arg1_location, file_out) == FAILED)
+      return FAILED;
   }
   else {
     if (arg2_in_hl == YES)
@@ -5818,13 +5854,22 @@ static int _aaa_generate_asm_jump_eq_lt_gt_neq_lte_gte_z80_16bit(struct tac *t, 
   /* source address (arg2) -> ix */
   /******************************************************************************************************/
 
+  if (arg2_location.kind == LOC_CONST && arg2_location.value == 0 &&
+      (op == TAC_OP_JUMP_EQ || op == TAC_OP_JUMP_NEQ)) {
+    fprintf(file_out, "      LD  A,H\n      OR  L\n");
+    if (op == TAC_OP_JUMP_EQ)
+      _jump_z_to(t->result_s, file_out);
+    else
+      _jump_nz_to(t->result_s, file_out);
+    return SUCCEEDED;
+  }
   if (arg2_in_hl == YES) {
     fprintf(file_out, "      ; retained arg2 in HL\n");
   }
   else {
     ix_offset = 0;
 
-    if (arg2_location.kind == LOC_CONST) {
+    if (arg2_location.kind == LOC_CONST || arg2_location.kind == LOC_PHY_BC) {
     }
     else if (_load_location_address_to_ix(&arg2_location, &ix_offset, file_out) == FAILED)
       return FAILED;
@@ -5834,39 +5879,11 @@ static int _aaa_generate_asm_jump_eq_lt_gt_neq_lte_gte_z80_16bit(struct tac *t, 
   /* copy data (arg2) -> bc */
   /******************************************************************************************************/
 
-  if (arg2_in_hl == YES) {
-  }
-  else if (arg2_location.kind == LOC_CONST) {
-    /* 16-bit */
-    _load_value_to_bc(arg2_location.value, file_out);
-  }
-  else {
-    if (t->arg2_var_type == VARIABLE_TYPE_INT16 || t->arg2_var_type == VARIABLE_TYPE_UINT16) {
-      /* 16-bit */
-      _load_from_ix_to_c(ix_offset, file_out);
-      _load_from_ix_to_b(ix_offset + 1, file_out);
-    }
-    else {
-      /* 8-bit */
-      _load_from_ix_to_c(ix_offset, file_out);
-
-      /* sign extend 8-bit -> 16-bit? */
-      if (t->arg2_var_type == VARIABLE_TYPE_INT8 && (t->arg2_var_type_promoted == VARIABLE_TYPE_INT16 ||
-                                                     t->arg2_var_type_promoted == VARIABLE_TYPE_UINT16)) {
-        /* yes */
-        _sign_extend_c_to_bc(file_out);
-      }
-      else if (t->arg2_var_type == VARIABLE_TYPE_UINT8 && (t->arg2_var_type_promoted == VARIABLE_TYPE_INT16 ||
-                                                           t->arg2_var_type_promoted == VARIABLE_TYPE_UINT16)) {
-        /* upper byte -> 0 */
-        _load_value_to_b(0, file_out);
-      }
-      else {
-        fprintf(stderr, "_aaa_generate_asm_jump_eq_lt_gt_neq_lte_gte_z80_16bit(): Unhandled 8-bit ARG2! Please submit a bug report!\n");
-        print_tac(t, NO, stderr);
-        return FAILED;
-      }
-    }
+  if (arg2_in_hl == NO || arg1_in_hl == YES) {
+    if (arg2_location.kind == LOC_CONST && arg2_location.value == 0)
+      _load_value_to_bc(0, file_out);
+    else if (_materialize_array_index_to_bc(&arg2_location, t->arg2_var_type, ix_offset, NO, file_out) == FAILED)
+      return FAILED;
   }
 
   /******************************************************************************************************/

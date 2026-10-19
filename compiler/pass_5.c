@@ -156,6 +156,7 @@ static int _promote_register_allocator_local_values(void) {
     struct tree_node *variable;
     int reads = 0, uses = 0, crossed_barrier = NO, eligible = YES, pointer_base;
     int definitions = 1, control_flow = NO, word_definitions = YES;
+    int first_read = g_tacs_count, last_definition = -1, loop_definitions = NO;
 
     producer = &g_tacs[producer_index];
     if (producer->op == TAC_OP_LABEL && producer->is_function == YES) {
@@ -217,7 +218,8 @@ static int _promote_register_allocator_local_values(void) {
       if (instruction_index > producer_index &&
           (instruction->op == TAC_OP_ASM || (pointer_base == YES &&
           (instruction->op == TAC_OP_LABEL || _is_register_allocator_jump_op(instruction->op) == YES)) ||
-          instruction->op == TAC_OP_RETURN))
+          (instruction->op == TAC_OP_RETURN &&
+           (pointer_base == YES || variable->children[0]->value != VARIABLE_TYPE_UINT16))))
         crossed_barrier = YES;
       if (instruction->op == TAC_OP_FUNCTION_CALL || instruction->op == TAC_OP_FUNCTION_CALL_USE_RETURN_VALUE) {
         int argument_index;
@@ -230,6 +232,8 @@ static int _promote_register_allocator_local_values(void) {
             if (pointer_base == YES || instruction_index <= producer_index || crossed_barrier == YES)
               eligible = NO;
             else {
+              if (instruction_index < first_read)
+                first_read = instruction_index;
               reads++;
               uses++;
             }
@@ -256,6 +260,8 @@ static int _promote_register_allocator_local_values(void) {
         eligible = NO;
       if ((instruction->arg1_type == TAC_ARG_TYPE_LABEL && instruction->arg1_node == variable) ||
           (pointer_base == NO && instruction->arg2_type == TAC_ARG_TYPE_LABEL && instruction->arg2_node == variable)) {
+        if (instruction_index < first_read)
+          first_read = instruction_index;
         if ((pointer_base == YES ? (instruction->op != TAC_OP_ARRAY_READ &&
             (instruction->op != TAC_OP_ASSIGNMENT || instruction->result_type != TAC_ARG_TYPE_TEMP ||
             instruction_index + 1 >= function_end || g_tacs[instruction_index + 1].op != TAC_OP_GET_ADDRESS_ARRAY ||
@@ -279,33 +285,62 @@ static int _promote_register_allocator_local_values(void) {
       if (pointer_base == NO && instruction->result_type == TAC_ARG_TYPE_LABEL && instruction->result_node == variable &&
           instruction->op != TAC_OP_CREATE_VARIABLE &&
           get_variable_type_size(get_max_variable_type_4(instruction->arg1_var_type, instruction->arg2_var_type,
-            instruction->arg1_var_type_promoted, instruction->arg2_var_type_promoted)) != 16)
+            instruction->arg1_var_type_promoted, instruction->arg2_var_type_promoted)) != 16 &&
+          !(instruction == producer && instruction->op == TAC_OP_ASSIGNMENT &&
+            instruction->arg1_type == TAC_ARG_TYPE_CONSTANT))
         word_definitions = NO;
       if (instruction->result_type == TAC_ARG_TYPE_LABEL && instruction->result_node == variable &&
           instruction != producer && instruction->op != TAC_OP_CREATE_VARIABLE) {
         if (pointer_base == NO && instruction_index > producer_index && crossed_barrier == NO &&
             (variable->children[0]->value == VARIABLE_TYPE_UINT16 || variable->children[0]->value == VARIABLE_TYPE_INT16) &&
             (instruction->op == TAC_OP_ASSIGNMENT || instruction->op == TAC_OP_ADD || instruction->op == TAC_OP_SUB ||
-             instruction->op == TAC_OP_AND || instruction->op == TAC_OP_OR || instruction->op == TAC_OP_XOR || instruction->op == TAC_OP_COMPLEMENT))
+             instruction->op == TAC_OP_AND || instruction->op == TAC_OP_OR || instruction->op == TAC_OP_XOR ||
+             instruction->op == TAC_OP_COMPLEMENT)) {
           definitions++;
+          last_definition = instruction_index;
+        }
         else if (pointer_base == NO || instruction->op != TAC_OP_ARRAY_WRITE || instruction_index <= producer_index || crossed_barrier == YES)
           eligible = NO;
         else
           uses++;
       }
-      if (instruction->op == TAC_OP_RETURN_VALUE)
+      if (instruction->op == TAC_OP_RETURN_VALUE && instruction_index > producer_index)
         crossed_barrier = YES;
       if (eligible == NO)
         break;
     }
-    if (eligible == NO || (definitions > 1 && (control_flow == YES || word_definitions == NO)) || (pointer_base == YES ? reads < 2 : reads < 1))
+    if (eligible == YES && control_flow == YES && definitions == 2 &&
+        producer->op == TAC_OP_ASSIGNMENT && variable->children[0]->value == VARIABLE_TYPE_UINT16 &&
+        last_definition >= 0 && g_tacs[last_definition].op == TAC_OP_ADD &&
+        g_tacs[last_definition].arg1_type == TAC_ARG_TYPE_LABEL && g_tacs[last_definition].arg1_node == variable &&
+        g_tacs[last_definition].arg2_type == TAC_ARG_TYPE_CONSTANT && g_tacs[last_definition].arg2_d == 1.0) {
+      int jump_index = last_definition + 1;
+      while (jump_index < function_end && g_tacs[jump_index].op == TAC_OP_DEAD)
+        jump_index++;
+      if (jump_index < function_end && g_tacs[jump_index].op == TAC_OP_JUMP) {
+        for (instruction_index = producer_index + 1; instruction_index < last_definition; instruction_index++) {
+          if (g_tacs[instruction_index].op == TAC_OP_LABEL && first_read >= instruction_index &&
+              strcmp(g_tacs[instruction_index].result_s, g_tacs[jump_index].result_s) == 0)
+            loop_definitions = YES;
+        }
+      }
+    }
+    if (eligible == NO || (definitions > 1 && (word_definitions == NO ||
+        (control_flow == YES && loop_definitions == NO))) ||
+        (pointer_base == YES ? reads < 2 : reads < 1))
       continue;
     if (next_temp == INT_MAX)
       return FAILED;
 
     RA_TRACE((stderr, "register_allocator: %s_promotion function=%s variable=%s temp=r%d reads=%d uses=%d scope=%s status=complete\n",
       pointer_base == YES ? "pointer_base" : "scalar_copy", function_node->children[1]->label, producer->result_s, next_temp, reads, uses,
-      pointer_base == YES ? "single_block" : definitions > 1 ? "linear_definitions" : "function_value"));
+      pointer_base == YES ? "single_block" : definitions > 1 ?
+      (control_flow == YES ? "cfg_definitions" : "linear_definitions") : "function_value"));
+    if (definitions > 1 && producer->op == TAC_OP_ASSIGNMENT &&
+        producer->arg1_type == TAC_ARG_TYPE_CONSTANT)
+      producer->arg1_var_type_promoted = variable->children[0]->value;
+    if (definitions > 1 && control_flow == YES)
+      producer->arg1_var_type_promoted = VARIABLE_TYPE_UINT16;
     for (instruction_index = function_start; instruction_index < function_end; instruction_index++) {
       struct tac *instruction;
 
@@ -4881,6 +4916,17 @@ static int _is_z80_register_allocator_candidate_allowed_for_physical_register(st
     return physical_register == Z80_PHY_BC ?
       _is_register_allocator_bc_candidate(producer, consumer, temp_register, consumer_arg) : NO;
 
+  if (temp_register->size == 16 && physical_register == Z80_PHY_BC &&
+      (_is_first_allocator_producer(producer->op) == YES ||
+       (producer->op == TAC_OP_ASSIGNMENT &&
+        ((producer->arg1_type == TAC_ARG_TYPE_CONSTANT && producer->arg1_d >= 0.0 && producer->arg1_d <= 65535.0) ||
+         producer->arg1_var_type == VARIABLE_TYPE_UINT16 || producer->arg1_var_type == VARIABLE_TYPE_INT16))) &&
+        ((_is_register_allocator_jump_op(consumer->op) == YES && consumer->op != TAC_OP_JUMP) ||
+         (consumer->op == TAC_OP_ADD && consumer_arg == TAC_USE_ARG1 &&
+          consumer->arg2_type == TAC_ARG_TYPE_CONSTANT && consumer->arg2_d == 1.0) ||
+         ((consumer->op == TAC_OP_ARRAY_READ || consumer->op == TAC_OP_ARRAY_WRITE ||
+           consumer->op == TAC_OP_GET_ADDRESS_ARRAY) && consumer_arg == TAC_USE_ARG2)))
+    return YES;
   if (producer->op == TAC_OP_ASSIGNMENT) {
     if (producer->arg1_type != TAC_ARG_TYPE_CONSTANT && temp_register->size == 16 && physical_register == Z80_PHY_BC &&
       (producer->arg1_var_type == VARIABLE_TYPE_UINT16 || producer->arg1_var_type == VARIABLE_TYPE_INT16) &&
@@ -5464,6 +5510,21 @@ static int _is_z80_basic_block_transparent_tac_for_physical_register(struct tac 
       (t->arg1_var_type_promoted == VARIABLE_TYPE_UINT16 || t->arg1_var_type_promoted == VARIABLE_TYPE_INT16))
     scratch_units = RA_Z80_UNIT_A;
   else {
+    if (t->arg2_physical_register == Z80_PHY_BC &&
+        (t->op == TAC_OP_ARRAY_READ || t->op == TAC_OP_ARRAY_WRITE || t->op == TAC_OP_GET_ADDRESS_ARRAY))
+      scratch_units &= ~(RA_Z80_UNIT_B | RA_Z80_UNIT_C);
+    if ((t->arg1_var_type_promoted == VARIABLE_TYPE_UINT16 || t->arg1_var_type_promoted == VARIABLE_TYPE_INT16) &&
+        (t->arg2_var_type_promoted == VARIABLE_TYPE_UINT16 || t->arg2_var_type_promoted == VARIABLE_TYPE_INT16) &&
+        (((t->op == TAC_OP_AND || t->op == TAC_OP_OR || t->op == TAC_OP_XOR) &&
+          (t->arg2_type == TAC_ARG_TYPE_CONSTANT ||
+           (t->arg1_type == TAC_ARG_TYPE_CONSTANT && t->arg2_physical_register == Z80_PHY_HL))) ||
+         ((t->op == TAC_OP_SHIFT_LEFT || t->op == TAC_OP_SHIFT_RIGHT) &&
+          t->arg2_type == TAC_ARG_TYPE_CONSTANT && t->arg2_d == 1.0) ||
+         (_is_register_allocator_jump_op(t->op) == YES && t->op != TAC_OP_JUMP &&
+          (t->arg1_physical_register == Z80_PHY_BC || t->arg2_physical_register == Z80_PHY_BC ||
+           ((t->op == TAC_OP_JUMP_EQ || t->op == TAC_OP_JUMP_NEQ) &&
+            t->arg2_type == TAC_ARG_TYPE_CONSTANT && t->arg2_d == 0.0)))))
+      scratch_units &= ~(RA_Z80_UNIT_B | RA_Z80_UNIT_C);
     if ((t->op == TAC_OP_ADD || t->op == TAC_OP_SUB) && t->arg2_type == TAC_ARG_TYPE_CONSTANT && t->arg2_d == 1.0 &&
         t->arg2_physical_register == Z80_PHY_NONE &&
         (t->arg1_var_type_promoted == VARIABLE_TYPE_UINT16 || t->arg1_var_type_promoted == VARIABLE_TYPE_INT16) &&
@@ -8445,6 +8506,44 @@ select_loop_candidate:
         return FAILED;
       }
       memcpy(candidate_live_in, live_in, storage.buffer_bytes);
+      if (effective_loop_join.status == RA_LOOP_JOIN_READY &&
+          loop_flow_profile.back_edge_count <= 1) {
+        for (path_state_index = 0; path_state_index < temp_count;
+            path_state_index++) {
+          struct register_allocator_loop_facts facts;
+          int set_index = block_index * temp_count + path_state_index;
+
+          if (candidate_live_in[set_index] != YES ||
+              function_node->local_variables->temp_registers[path_state_index].size != 16)
+            continue;
+          if (register_allocator_discover_loop_join_facts(
+              function_node->children[1]->label, block_count,
+              instruction_count, blocks, block_index, path_state_index,
+              &effective_loop_join, function_node,
+              _register_allocator_instruction_is_active,
+              _register_allocator_instruction_reads_temp,
+              _register_allocator_instruction_writes_temp,
+              _register_allocator_instruction_get_consumer_operand,
+              &facts) == FAILED) {
+            free(candidate_live_in);
+            free(work_items);
+            free(sites);
+            free(live_use);
+            free(live_def);
+            free(live_in);
+            free(live_out);
+            return FAILED;
+          }
+          if (facts.status != RA_LOOP_FACTS_READY) {
+            candidate_live_in[set_index] = NO;
+            RA_TRACE((stderr, "register_allocator: loop_candidate_definition_filter function=%s block=%d temp=r%d entry=%d latch=%d consumer=%d reason=%d action=preserve_stack status=complete\n",
+                function_node->children[1]->label, block_index,
+                path_state_index, facts.entry_definition,
+                facts.latch_definition, facts.consumer_instruction,
+                facts.reason));
+          }
+        }
+      }
       filtered_owner_count = 0;
       for (path_state_index = 0; path_state_index < *path_state_count;
           path_state_index++) {

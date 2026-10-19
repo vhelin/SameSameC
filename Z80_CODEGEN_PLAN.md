@@ -94,7 +94,7 @@ The initial SM83 backend should guide further shared-core extraction.
   - [x] Qualify signedness, promotions, side effects and all loop forms.
   - [x] Complete compound logical lowering with short-circuit evaluation tests.
   - [x] Record first-batch gains and pass the full checkpoint gates.
-- [ ] **2. Bounded loop-state improvements:** retain profitable counters,
+- [x] **2. Bounded loop-state improvements:** retain profitable counters,
   accumulators and CRC state using existing analysis and legality checks; keep
   register choices and costs target-specific. Stop before speculative expansion.
 - [ ] **3. Initial SM83 backend:** establish correct Game Boy code generation,
@@ -311,6 +311,77 @@ location resolution in [pass_6_z80.c](compiler/pass_6_z80.c).
 Acceptance: demonstrate fewer executed frame accesses in byte loops and CRC,
 not merely fewer emitted spill comments. Record code, cycles and stack changes.
 Preserve immutable verifier rejection, transaction rollback and fallback tests.
+
+#### Bounded Loop-State Checkpoint (2026-10-19)
+
+Step 2 is complete within its bounded scope. Profiling showed that named word
+counters stayed in their frames even when the existing loop allocator could
+retain equivalent TAC temps. Byte fill repeatedly reloaded its counter for the
+comparison, array index and increment; CRC loops repeatedly loaded and stored
+their bit counters.
+
+The existing scalar-promotion pass now exposes canonical unsigned word
+counters: one initialization, one unit increment, a backward loop edge, stable
+word width, and no earlier counter reads. Existing loop-definition discovery
+filters non-loop-carried word live-ins before candidate selection. Shared path
+planning stops reverse traversal at the loop header rather than extending an
+inner counter's lifetime through its enclosing loop. Exit consumers still
+reserve the paths they actually need.
+
+Z80 legality and emission now support retained BC counters in comparisons and
+indices. Operand reversal reuses existing comparison/materialization helpers.
+Word equality/inequality against zero tests H/L directly; constant word bitwise
+operations use immediate bytes instead of clobbering BC. Constant single-bit
+shifts and retained-index array operations report their actual BC preservation.
+Existing cost ranking, pair-overlap checks, reservations, transactions and the
+immutable verifier remain authoritative. No production functions or new
+allocation framework are added. Existing frame-cache invalidation remains
+conservative across calls, assembly and joins; no incoming cache state is guessed.
+
+Measured RA kernel results against parent `8559b1e`, using the unchanged pinned
+comparison corpus:
+
+| Kernel | Code bytes | Total kernel cycles | Maximum stack bytes |
+| --- | ---: | ---: | ---: |
+| Byte fill | 118 -> 81 | 419324 -> 262114 | 24 -> 24 |
+| PackBits + CRC | 1035 -> 1004 | 22049036 -> 16272236 | 51 -> 49 |
+| Tile/CRC workload | 1427 -> 1380 | 3183806 -> 2594520 | 128 -> 126 |
+
+These are executed frame-region accesses summed over the same inputs, not
+static spill-comment counts or buffer accesses:
+
+| Kernel | Frame reads | Frame writes |
+| --- | ---: | ---: |
+| Byte fill | 13338 -> 7646 (-42.7%) | 3840 -> 1920 (-50.0%) |
+| PackBits + CRC | 420869 -> 272901 (-35.2%) | 200872 -> 122536 (-39.0%) |
+| Tile/CRC workload | 64770 -> 50014 (-22.8%) | 30014 -> 22202 (-26.0%) |
+
+All 104 builds / 1856 calls / 24 independent timing checks pass. All 78
+competitor rows reproduce exactly; neither SSC mode regresses in code, wrapper,
+kernel cycles or stack against the immediate parent. Array, path and stencil
+kernels also improve through BC-preserving emission. Byte sum/copy remain
+unchanged. Fresh full calculation builds use 22929 bytes in calculations-1
+(was 22977) and 35409 in calculations-2 (was 35589); padded ROMs remain 65536.
+
+The existing allocator runner adds ten counter shapes covering 0/1/255/256
+iterations, word wraparound, nesting, CRC updates, continue/break/early return,
+calls, address escape and reused definitions. Independent values, complete
+buffer checks and exact backedge counts are verified. Its positive word-counter
+case requires at least 30% fewer executed frame reads and writes than no-RA.
+The 64-seed six-cohort/real-project corpus and four-seed ASan corpus pass,
+including all 32 immutable rejection controls. All 175 fixtures pass, including
+new nested-path/exit-read controls; exact-byte expectations track the smaller
+zero tests, immediate bitwise operations, cheaper BC indices and relocations.
+All 61530 condition executions pass per Release/traced/ASan configuration, with
+70 linked ROMs byte-identical across configurations. Strict GCC/MSVC builds and
+the 17 comparison-tool tests, normally and under `python -O`, also pass.
+
+This is not general CFG scalar promotion: ambiguous reassignment, signed/byte
+multi-definitions, escaped values, unsupported consumers and pressure/call/asm
+conflicts keep their conservative fallbacks. CRC bit counters are retained;
+multi-definition CRC accumulators need not be. Induction addresses, block
+transfers, broader accumulator retention and cross-block frame-cache propagation
+are not prerequisites for the initial SM83 backend.
 
 ### 3. Maintain Induction Addresses And Select Z80 Loops
 

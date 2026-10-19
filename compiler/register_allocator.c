@@ -4717,7 +4717,9 @@ int register_allocator_plan_loop_join_path_reservations(char *function_name,
     do {
       changed = NO;
       for (block_index = 0; block_index < edge_count; block_index++) {
-        if (reverse_blocks[edges[block_index].to_block] == YES &&
+        /* The header starts this value's path; do not follow an enclosing loop back through its entry. */
+        if (edges[block_index].to_block != join_block_index &&
+            reverse_blocks[edges[block_index].to_block] == YES &&
             reverse_blocks[edges[block_index].from_block] == NO) {
           reverse_blocks[edges[block_index].from_block] = YES;
           changed = YES;
@@ -4750,7 +4752,8 @@ int register_allocator_plan_loop_join_path_reservations(char *function_name,
     do {
       changed = NO;
       for (block_index = 0; block_index < edge_count; block_index++) {
-        if (reverse_blocks[edges[block_index].to_block] == YES &&
+        if (edges[block_index].to_block != join_block_index &&
+            reverse_blocks[edges[block_index].to_block] == YES &&
             reverse_blocks[edges[block_index].from_block] == NO) {
           reverse_blocks[edges[block_index].from_block] = YES;
           changed = YES;

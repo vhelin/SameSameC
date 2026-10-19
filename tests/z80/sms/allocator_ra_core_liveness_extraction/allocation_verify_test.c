@@ -399,18 +399,18 @@ int main(int argc, char **argv) {
         { TAC_OP_GET_ADDRESS_ARRAY, TAC_USE_ARG2, 25, 2, 24, 4, NO },
         { TAC_OP_ARRAY_WRITE, TAC_USE_ARG1, 1, 2, 0, 0, NO },
         { TAC_OP_ARRAY_WRITE, TAC_USE_ARG2, 25, 2, 24, 4, NO },
-        { TAC_OP_JUMP_EQ, TAC_USE_ARG1, 17, 2, 16, 0, NO },
-        { TAC_OP_JUMP_EQ, TAC_USE_ARG2, 9, 2, 8, 0, NO },
-        { TAC_OP_JUMP_NEQ, TAC_USE_ARG1, 17, 2, 16, 0, NO },
-        { TAC_OP_JUMP_NEQ, TAC_USE_ARG2, 9, 2, 8, 0, NO },
-        { TAC_OP_JUMP_LT, TAC_USE_ARG1, 17, 2, 16, 0, NO },
-        { TAC_OP_JUMP_LT, TAC_USE_ARG2, 9, 2, 8, 0, NO },
-        { TAC_OP_JUMP_GT, TAC_USE_ARG1, 17, 2, 16, 0, NO },
-        { TAC_OP_JUMP_GT, TAC_USE_ARG2, 9, 2, 8, 0, NO },
-        { TAC_OP_JUMP_LTE, TAC_USE_ARG1, 17, 2, 16, 0, NO },
-        { TAC_OP_JUMP_LTE, TAC_USE_ARG2, 9, 2, 8, 0, NO },
-        { TAC_OP_JUMP_GTE, TAC_USE_ARG1, 17, 2, 16, 0, NO },
-        { TAC_OP_JUMP_GTE, TAC_USE_ARG2, 9, 2, 8, 0, NO }
+        { TAC_OP_JUMP_EQ, TAC_USE_ARG1, 17, 2, 16, 4, NO },
+        { TAC_OP_JUMP_EQ, TAC_USE_ARG2, 9, 2, 8, 4, NO },
+        { TAC_OP_JUMP_NEQ, TAC_USE_ARG1, 17, 2, 16, 4, NO },
+        { TAC_OP_JUMP_NEQ, TAC_USE_ARG2, 9, 2, 8, 4, NO },
+        { TAC_OP_JUMP_LT, TAC_USE_ARG1, 17, 2, 16, 4, NO },
+        { TAC_OP_JUMP_LT, TAC_USE_ARG2, 9, 2, 8, 4, NO },
+        { TAC_OP_JUMP_GT, TAC_USE_ARG1, 17, 2, 16, 4, NO },
+        { TAC_OP_JUMP_GT, TAC_USE_ARG2, 9, 2, 8, 4, NO },
+        { TAC_OP_JUMP_LTE, TAC_USE_ARG1, 17, 2, 16, 4, NO },
+        { TAC_OP_JUMP_LTE, TAC_USE_ARG2, 9, 2, 8, 4, NO },
+        { TAC_OP_JUMP_GTE, TAC_USE_ARG1, 17, 2, 16, 4, NO },
+        { TAC_OP_JUMP_GTE, TAC_USE_ARG2, 9, 2, 8, 4, NO }
       };
       int producers[] = { TAC_OP_ASSIGNMENT, TAC_OP_ADD, TAC_OP_SUB, TAC_OP_AND,
         TAC_OP_OR, TAC_OP_XOR, TAC_OP_COMPLEMENT, TAC_OP_ARRAY_READ,
@@ -442,10 +442,11 @@ int main(int argc, char **argv) {
                   expected_mask |= 16;
                 else if (constant_source)
                   expected_mask &= ~16;
-                if (constant_source && endpoint->operand == TAC_USE_ARG2 &&
-                    (endpoint->op == TAC_OP_ARRAY_READ || endpoint->op == TAC_OP_ARRAY_WRITE || endpoint->op == TAC_OP_GET_ADDRESS_ARRAY))
-                  expected_mask &= ~4;
               }
+              if (temp.size == 16 && producer_index >= 1 && producer_index <= 6 &&
+                  (endpoint_index == 17 || endpoint_index == 19 ||
+                   endpoint_index == 21 || endpoint_index >= 22))
+                expected_mask |= 4;
               if (producer_index >= 10)
                 expected_mask &= ~8;
               if (producer.op == TAC_OP_COMPLEMENT && temp.size == 16 && endpoint->complement_bc == YES)
