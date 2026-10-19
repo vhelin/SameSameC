@@ -3953,6 +3953,8 @@ static int _generate_asm_array_read_z80(struct tac *t, FILE *file_out, struct tr
   struct z80_location result_location;
   struct z80_location arg1_location;
   struct z80_location arg2_location;
+  char address_label[MAX_NAME_LENGTH + 32];
+  int constant_address = NO, byte_offset;
   int var_type, result_needs_16_bit, ix_offset = 0, base_memory_pointer_load = NO, arg2_is_zero = NO, base_materialized = NO, base_in_hl;
 
   /* OVERRIDE for __z80_in */
@@ -3989,6 +3991,30 @@ static int _generate_asm_array_read_z80(struct tac *t, FILE *file_out, struct tr
     var_type = get_array_item_variable_type(t->arg1_node);
   else
     var_type = t->arg1_var_type;
+
+  if (base_memory_pointer_load == NO && arg2_location.kind == LOC_CONST &&
+      (arg1_location.kind == LOC_GLOBAL || arg1_location.kind == LOC_STACK_LOCAL) &&
+      (var_type == VARIABLE_TYPE_UINT8 || var_type == VARIABLE_TYPE_INT8 ||
+       var_type == VARIABLE_TYPE_UINT16 || var_type == VARIABLE_TYPE_INT16)) {
+    byte_offset = arg2_location.value & 65535;
+    if (var_type == VARIABLE_TYPE_INT16 || var_type == VARIABLE_TYPE_UINT16)
+      byte_offset *= 2;
+    byte_offset &= 65535;
+
+    if (arg1_location.kind == LOC_GLOBAL) {
+      if (byte_offset != 0) {
+        snprintf(address_label, sizeof(address_label), "%s+%d&65535", arg1_location.label, byte_offset);
+        arg1_location.label = address_label;
+      }
+    }
+    else {
+      arg1_location.offset = ((arg1_location.offset & 65535) + byte_offset) & 65535;
+      if (arg1_location.offset > 32767)
+        arg1_location.offset -= 65536;
+    }
+    arg2_location.value = 0;
+    constant_address = YES;
+  }
 
   if (arg2_location.kind == LOC_CONST && arg2_location.value == 0)
     arg2_is_zero = YES;
@@ -4055,6 +4081,15 @@ static int _generate_asm_array_read_z80(struct tac *t, FILE *file_out, struct tr
                         t->result_var_type_promoted == VARIABLE_TYPE_INT16 ||
                         t->result_var_type_promoted == VARIABLE_TYPE_UINT16;
 
+  if (constant_address == YES && arg1_location.kind == LOC_GLOBAL) {
+    if (var_type == VARIABLE_TYPE_UINT8 || var_type == VARIABLE_TYPE_INT8) {
+      if (_load_location_address_to_hl(&arg1_location, file_out) == FAILED)
+        return FAILED;
+      base_in_hl = YES;
+    }
+    base_materialized = YES;
+  }
+
   base_in_hl = base_in_hl == YES || (g_allocator_enabled == YES && g_allocator_force_all_spill == NO &&
                base_materialized == NO && (var_type == VARIABLE_TYPE_UINT8 ||
                  var_type == VARIABLE_TYPE_INT16 || var_type == VARIABLE_TYPE_UINT16) &&
@@ -4067,7 +4102,7 @@ static int _generate_asm_array_read_z80(struct tac *t, FILE *file_out, struct tr
   /* add bc -> hl/iy */
   /******************************************************************************************************/
 
-  if (!(t->arg2_type == TAC_ARG_TYPE_CONSTANT && ((int)t->arg2_d) == 0)) {
+  if (arg2_is_zero == NO) {
     if (base_in_hl == YES)
       _add_bc_to_hl(file_out);
     else
@@ -4092,7 +4127,9 @@ static int _generate_asm_array_read_z80(struct tac *t, FILE *file_out, struct tr
   else {
     if (var_type == VARIABLE_TYPE_INT16 || var_type == VARIABLE_TYPE_UINT16) {
       /* 16-bit */
-      if (base_in_hl == YES) {
+      if (constant_address == YES && arg1_location.kind == LOC_GLOBAL)
+        fprintf(file_out, "      LD  HL,(%s)\n", arg1_location.label);
+      else if (base_in_hl == YES) {
         fprintf(file_out, "      LD  A,(HL)\n");
         _inc_hl(file_out);
         fprintf(file_out, "      LD  H,(HL)\n");

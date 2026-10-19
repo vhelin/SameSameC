@@ -85,7 +85,7 @@ Specific evidence worth retaining:
 
 ### Progress Toward Game Boy Support
 
-Complete the shared improvements and the bounded follow-ups 2a-2d below before
+Complete the shared improvements and the bounded follow-ups 2a-2i below before
 the initial SM83 backend (step 3). This does not require every Z80-specific
 optimization. The initial SM83 backend should still guide further shared-core
 extraction.
@@ -110,6 +110,16 @@ extraction.
 - [x] **2d. Stack footprint and pre-SM83 qualification:** reduce proven
   unnecessary frame slots, spills or saves, measure the complete frame footprint
   as well as SP high-water, and pass all checkpoint gates.
+- [x] **2e. Constant addresses and direct loads (new step 1):** fold constant
+  array offsets and reuse direct byte/word loads instead of rebuilding addresses.
+- [ ] **2f. Shared quotient/remainder computation (new step 2):** reuse both
+  division results for matching `/` and `%`; simplify redundant pure expressions.
+- [ ] **2g. Masked-condition branch folding (new step 3):** avoid materializing
+  single-use masked values when a direct bit/flag test suffices.
+- [ ] **2h. Further loop-state and address retention (new step 4):** retain
+  eligible accumulators/counters and advance addresses without weaker safety checks.
+- [ ] **2i. Argument staging within the existing ABI (new step 5):** eliminate
+  proven redundant caller-temporary copies before considering a new convention.
 - [ ] **3. Initial SM83 backend:** establish correct Game Boy code generation,
   target-specific addressing/spills/calls and execution tests. Use actual
   requirements to identify reusable code; do not assume IX/IY, `DJNZ` or `LDIR`.
@@ -120,7 +130,7 @@ extraction.
 
 The numbered detail sections below describe optimization priorities, not a
 requirement to finish every Z80 optimization before implementing SM83. The
-explicit pre-SM83 scope is steps 1, 2 and 2a-2d; priorities 3 and 4 below supply
+explicit pre-SM83 scope is steps 1, 2 and 2a-2i; priorities 3 and 4 below supply
 the existing implementation guidance for follow-ups 2a and 2c.
 
 Do one bounded, measured change at a time. The numeric observations below are
@@ -696,9 +706,154 @@ stack space.
 
 Both full calculation projects rebuild successfully. Used ROM remains 20764
 and 33421 bytes; padded images remain 65536 bytes and normal/traced images are
-identical. Steps 1, 2 and 2a-2d are qualified; the next implementation target is
-step 3, the initial SM83 backend. Further frame optimization remains optional,
-not a claim that these finite tests establish every program's maximum RAM use.
+identical. Steps 1, 2 and 2a-2d are qualified. Further frame optimization remains
+optional, not a claim that these finite tests establish every program's maximum
+RAM use.
+
+### Measured Follow-ups After Step 2d
+
+The post-2d profile at `dc828c8` passes 104 builds, 1856 calls and 24 independent
+timing checks, with all 78 pinned competitor controls unchanged. Against the
+previous profile at `cdacc98`, geometric mean kernel size falls 6.3% and kernel
+T-states 9.1%. Current size/cycle ratios are 1.788/1.714 against stock SDCC,
+1.508/1.605 against z88dk/SDCC and 1.120/1.010 against sccz80. Size uses competitor
+size settings; cycles use speed settings. These are corpus results, not general
+C or whole-game parity.
+
+The next five steps are 2e-2i above, in this order. Reuse existing TAC passes,
+location materializers, transport and emitters; avoid another allocator framework.
+Keep semantic proofs CPU-neutral and instruction selection target-specific.
+Each step must pass the implementation-batch gates below before being checked.
+
+#### 2e. Constant Addresses And Direct Loads
+
+- Fold constant array indices into known object addresses with the correct
+  element stride and target address arithmetic. Distinguish an array object
+  from a pointer variable whose stored address must still be loaded.
+- Reuse existing load/result transport for direct word and byte reads, preserving
+  byte signedness, widening/truncation and physical-register contracts.
+- Keep dynamic indices, pointer bases, port operations and unsupported address
+  forms on their existing safe paths. Cover zero/nonzero indices, signed offsets,
+  byte/word arrays, aliases, retained operands and wide frames.
+- Measure wrappers separately: the multiply/add caller still builds the address
+  of `bench_params[1]` using two index additions instead of a direct word load.
+
+Acceptance: exact assembly controls and independent value/buffer oracles prove
+the new selections and conservative fallbacks. Reduce constant-address setup
+and the 161-byte/917-T-state caller without changing the ABI or regressing any
+reference workload. Record compiler source growth and remove superseded logic.
+
+##### Step 2e Checkpoint (2026-10-19)
+
+Complete within the constant array-object read scope. The existing array-read
+emitter folds byte/word constant indices into global or local object addresses,
+with 16-bit address wrap. Global word reads use `LD HL,(address)`; global byte
+reads reuse the existing HL address materializer and `LD L,(HL)`, without adding
+an A clobber. Local reads reuse the existing IY materializer at the folded frame
+offset. Existing signed/unsigned extension and result transport remain shared.
+No TAC, ABI, allocator legality or arithmetic policy changes are required.
+
+Pointer variables still load their stored addresses. Retained bases, dynamic
+indices and port operations retain their existing paths; array writes are not
+changed. No production helper is added: the existing emitter grows by 37 net
+lines. Five new cases extend the existing index-copy family rather than adding
+another harness or execution cohort.
+
+RA wrapper measurements against immediate parent `dc828c8`:
+
+| Caller | Wrapper bytes | Wrapper T-states per call |
+| --- | ---: | ---: |
+| Multiply/add | 161 -> 126 | 917 -> 729 |
+| Product, shift and partition/restore | 161 -> 126 | 917 -> 729 |
+| Array, stencil, tile and path workloads | 147 -> 126 | 835 -> 723 |
+| Byte sum, copy and fill | 147 -> 126 | 835 -> 723 |
+| PackBits decoder | 179 -> 151 | 1020 -> 868 |
+| PackBits + CRC | 85 -> 85 | 469 -> 469 |
+
+Kernel bytes/T-states and all stack/frame observations are unchanged in both
+SSC modes. All 26 SSC rows are non-regressing in all eight measured fields.
+The full 104-build/1856-call comparison and 24 independent timing checks pass;
+all 78 pinned competitor controls remain exact. Kernel-only competitor ratios
+therefore remain at the post-2d values above; these gains are caller overhead.
+All 26 SSC benchmark assemblies and ROMs are identical between normal and traced
+builds, with identical measurements.
+
+The focused 64-seed index-copy corpus passes value/full-buffer oracles in
+default, all-spill and RA modes, and passes against the pre-optimization compiler
+at `cddbdf1` as a separate baseline control. New cases cover global word indices
+0/1/63, signed byte indices 0/1/127 with explicit widening, word-to-byte
+truncation, and byte/word local arrays spanning a wide frame. Existing pointer,
+alias, signed-index and port controls remain intact. Raw assembler probes pin
+immediate versus indirect addressing and positive/negative 16-bit address wrap.
+
+All 175 fixtures pass, including three rechecks after updating ten byte-marker
+ranges and one exact-policy assertion. Before updating snapshots, all 174
+available fixture assemblies are proved identical outside the qualified
+constant-read replacements; unchanged instruction sequences and frame layouts
+are not normalized away. The new policy assertions pin both byte and word
+folded frame offsets.
+
+The full eight-cohort 64-seed allocator corpus, 28 real routines, four-seed ASan
+corpus and all 32 immutable verifier rejection controls pass. All 50 traced/ASan
+allocator and real-project ROMs match. The existing condition corpus and 18
+comparison-tool tests pass under normal/traced/ASan builds; all 140 condition
+ROMs match, and the comparison tests also pass under `python -O`. MSVC builds,
+Pylance syntax validation and strict ANSI GCC normal/traced checks pass.
+
+Both complete calculation projects rebuild. Used ROM is 20764 bytes (unchanged)
+and 33393 bytes (28 fewer than 33421); padded images remain 65536 bytes and
+normal/traced images match. No whole-program competitor parity is claimed.
+
+#### 2f. Shared Quotient/Remainder Computation
+
+- Reuse the existing divider's quotient and remainder for matching operand pairs
+  when no intervening mutation, alias, clobber or observable effect invalidates it.
+- Start with the duplicate divisions in partition/restore; preserve the compiler's
+  defined zero-divisor behavior and all result lifetimes/widths.
+- Simplify redundant pure arithmetic, including consecutive XORs with the same
+  unchanged mask, through existing TAC optimization rather than new runtime helpers.
+
+Acceptance: independently check both results, zero and word boundaries, changed
+operands and fallback cases; measure standalone and shared-dependency bytes/cycles.
+Do not replace division identities without proving their exceptional cases.
+
+#### 2g. Masked-Condition Branch Folding
+
+- Fold single-use mask/zero-test conditions into direct bit or flag tests.
+  The CRC high-bit condition currently materializes an entire masked word first.
+- Preserve value-producing masks, other live uses, widths, side effects and
+  short-circuit behavior. Keep target instruction legality in the backend.
+
+Acceptance: qualify taken/not-taken branches, byte/word masks and boundary bits,
+plus shared/value-use fallbacks. Reduce CRC condition work and rerun the existing
+condition execution corpus; do not infer correctness from a smaller listing.
+
+#### 2h. Further Loop-State And Address Retention
+
+- Reuse bounded loop analysis to retain eligible counters/accumulators and replace
+  repeated base-plus-index reconstruction with advancing addresses.
+- Prioritize sum/copy and CRC. A 256-byte copy still performs 4105 kernel stack
+  reads and 1029 writes, versus stock SDCC speed mode's 1548 reads and eight writes.
+- Preserve alias, escape, clobber, overflow, boundary and fallback contracts.
+  Consider block instructions only after proving zero-count and overlap semantics;
+  do not generalize Z80 register/instruction assumptions into the shared core.
+
+Acceptance: reduce measured frame traffic and kernel cycles in byte loops and
+at least one realistic workload. Check full buffers, wraps, overlap direction,
+calls/pressure fallbacks and complete frame footprint, not just SP displacement.
+
+#### 2i. Argument Staging Within The Existing ABI
+
+- Coalesce single-use argument staging only when source evaluation order,
+  intervening effects, aliases, widths and final argument slots are proved safe.
+- Avoid loading a value into a caller-frame temporary only to copy it into the
+  callee frame immediately afterwards. Reuse existing call transport descriptors.
+- Preserve banked, cross-file, recursive, nested, indirect and assembly-facing
+  contracts. Any register-argument ABI remains a separate explicit, gated change.
+
+Acceptance: reduce caller bytes/cycles without altering the convention; cover
+mixed-width arguments, side-effect/alias fallbacks, nested calls and exact SP/DE
+restoration. Keep kernel and wrapper measurements separate.
 
 ### 3. Maintain Induction Addresses And Select Z80 Loops
 
@@ -884,6 +1039,7 @@ to this cross-compiler experiment.
    compiler source growth visible and remove superseded logic. Commit the batch
    locally with the validation summary; do not push.
 
-Steps 1, 2, 2a, 2b, 2c and 2d are complete. Current implementation target:
-**step 3, the initial SM83 backend**. Keep the qualified Z80 behavior and shared
-core covered while introducing the new target's addressing, spill and call rules.
+Steps 1, 2 and 2a-2e are complete. Current implementation target:
+**step 2f, shared quotient/remainder computation**, followed by 2g-2i and then the
+initial SM83 backend. Keep the qualified Z80 behavior and shared core covered
+throughout; do not expand this finite sequence into every possible Z80 optimization.

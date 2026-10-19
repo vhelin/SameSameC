@@ -16,7 +16,9 @@ all: linked.sms
 	test "$$(grep -c "target=IX kind=STACK_LOCAL offset=-5 mode=frame_displacement folded_offset=-5 target_policy=z80" compiler.log)" -eq 5
 	test "$$(grep -c "target=IX kind=STACK_LOCAL offset=-147 mode=frame_address folded_offset=0 target_policy=z80" compiler.log)" -eq 4
 	test "$$(grep -c "target=IX kind=STACK_SPILL offset=-148 mode=frame_address folded_offset=0 target_policy=z80" compiler.log)" -eq 2
-	test "$$(grep -c "target=IY kind=STACK_LOCAL offset=-146 mode=frame_address folded_offset=0 target_policy=z80" compiler.log)" -eq 4
+	test "$$(grep -c "target=IY kind=STACK_LOCAL offset=-146 mode=frame_address folded_offset=0 target_policy=z80" compiler.log)" -eq 3
+	grep -q "function=allocatorRaPolicyAddressFar emitter=array_read_base_address operand=arg1 kind=STACK_LOCAL offset=-7 mode=frame_address folded_offset=0 address_target=IY target=z80" compiler.log
+	grep -q "function=allocatorRaPolicyAddressArrayWord emitter=array_read_base_address operand=arg1 kind=STACK_LOCAL offset=-13 mode=frame_address folded_offset=0 address_target=IY target=z80" compiler.log
 	grep -q "target=HL kind=STACK_LOCAL offset=-12 mode=frame_address folded_offset=0 target_policy=z80" compiler.log
 	grep -q "target=HL kind=STACK_LOCAL offset=-21 mode=frame_address folded_offset=0 target_policy=z80" compiler.log
 	: && ! grep -q "target_address_materialization.*mode=invalid" compiler.log

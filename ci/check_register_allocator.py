@@ -221,7 +221,7 @@ def generate_programs(comparison_forms):
         call_argument = "previous" if variant & 1 else f"alias[start+row+{inner}]"
         call = f"u8 called = ra_signed_helper({call_argument},selector,row);"
         scalar_type = "u8" if variant >= 12 or variant in (4, 7, 9, 11) else "s8" if variant in (6, 8) else "u16"
-        pointer_index = variant == 9 or variant >= 12
+        pointer_index = variant == 9 or 12 <= variant <= 32
         byte_index = variant in (14, 15, 16, 20, 21, 22, 23, 24)
         # Out-of-range rows are constructed, then excluded by the same family
         # predicates as the original runner.
@@ -261,6 +261,17 @@ def generate_programs(comparison_forms):
             "u16 first = target[a]; ra_pointer_helper(&target[a],b); return first+target[a];",
             "ra_index_pointer = target; u8 called = ra_signed_helper(b,a,0); u16 first = ra_index_pointer[a]; ra_index_pointer = alias; return first+ra_index_pointer[a]+called;",
         ]
+        index_bodies.extend(
+            index_bodies[26].replace("workspace[136]", f"workspace[{size}]", 1)
+            for size in (113, 114, 115)
+        )
+        index_bodies.extend([
+            "return ra_words[0]+ra_words[1]+ra_words[63];",
+            "s16 first = ra_signed[0]; s16 second = ra_signed[1]; s16 last = ra_signed[127]; return first+second+last;",
+            "u8 low = ra_words[63]; return a+low;",
+            "u8 workspace[136]; workspace[0] = a; workspace[135] = b; u16 first = workspace[0]; return first+workspace[135];",
+            "u16 workspace[68]; workspace[0] = a; workspace[67] = a^b; return workspace[0]+workspace[67];",
+        ])
         scalar_bodies = [
             "u16 saved = a^b; if (saved < c) { return a; } return b;",
             "u16 saved = a^b; return saved << (c&15);",
@@ -319,7 +330,7 @@ def generate_programs(comparison_forms):
              f"{'u8 *target = &ra_buffer[0]; ' if variant else ''}u16 index = ~a; return {'target' if variant else 'ra_buffer'}[index];", [2], 1),
             ("matrix_index_copy",
              f"{'u16' if variant == 20 else 'u8'} *target, u8 *alias, {'u8' if byte_index else 'u16'} a, u8 b" if pointer_index else f"{'s8' if variant == 5 else 'u8' if variant == 4 else 'u16'} a, u8 b",
-             index_bodies[26 if variant >= 30 else variant].replace("workspace[136]", f"workspace[{variant + 83 if variant >= 30 else 136}]", 1),
+             index_bodies[variant],
              [2, 2, 1 if byte_index else 2, 1] if pointer_index else [1 if variant in (4, 5) else 2, 1],
              2 if variant >= 30 or variant in (2, 3, 10, 11, 14, 15, 16, 17, 20, 21, 22, 23, 24, 26, 27, 28, 29) else 1),
             ("matrix_bc_alu", "u16 a, u16 b, u16 c",
@@ -461,13 +472,13 @@ def generate_programs(comparison_forms):
             "matrix_byte": 10, "matrix_word": 10, "matrix_compare_byte": 12,
             "matrix_compare_word": 12, "matrix_compare_signed": 12, "matrix_low_byte": 10,
             "matrix_structural": 12, "matrix_sentinel": 10, "matrix_affinity": 8,
-            "matrix_rank": 4, "matrix_index_copy": 33, "matrix_bc_alu": 12,
+            "matrix_rank": 4, "matrix_index_copy": 38, "matrix_bc_alu": 12,
             "matrix_scalar_uses": 30, "matrix_real_index": 1, "matrix_constant_multiply": 33,
             "matrix_constant_shift": 38, "matrix_variable_multiply": 8,
             "matrix_byte_store": 16,
         }
         for family, parameters, body, widths, return_width in functions:
-            word_boundary = family == "matrix_index_copy" and variant >= 30
+            word_boundary = family == "matrix_index_copy" and 30 <= variant <= 32
             arithmetic_family = family in (
                 "matrix_constant_multiply", "matrix_constant_shift", "matrix_variable_multiply",
             )
@@ -532,6 +543,8 @@ def generate_programs(comparison_forms):
     call_transport = any(program.family == "scalar_call_transport" for program in programs)
     if call_transport:
         preamble += "u16 ra_call_word;\nu8 ra_call_byte;\n"
+    if any(program.family == "matrix_index_copy" and program.variant == 34 for program in programs):
+        preamble += "s8 ra_signed[128];\n"
     if real_index or call_transport:
         main = read_text(ROOT / "tests/z80/sms/calculations-1/main.ssc")
         if real_index:
@@ -781,7 +794,7 @@ def check_analytical_assertions(output, programs):
             r"LD\s+L,\(IY\+0\)\s+LD\s+H,\(IY\+1\)\s+LD\s+L,\(HL\)", section_assembly(),
         ):
             raise RuntimeError(f"Zero-index unsigned pointer read did not reuse HL: {name}")
-        if family == "matrix_index_copy" and variant >= 25 and not any(
+        if family == "matrix_index_copy" and 25 <= variant <= 32 and not any(
             f"arg1_kind={'GLOBAL' if variant == 29 else 'STACK_LOCAL'} arg1_phy=NONE arg1_size=2 result_kind=PHY_HL " in line
             for line in lines
         ):
@@ -791,7 +804,7 @@ def check_analytical_assertions(output, programs):
             if (match := re.search(r"emitter=assignment_arg1_address operand=arg1 kind=STACK_LOCAL offset=(-?\d+) ", line))
         ):
             raise RuntimeError(f"Wide pointer-slot assignment not exercised: {name}")
-        if family == "matrix_index_copy" and variant >= 30:
+        if family == "matrix_index_copy" and 30 <= variant <= 32:
             offset, use_ix = -97 - variant, variant < 32
             address = (
                 f"offset={offset} mode={'frame_displacement' if use_ix else 'frame_address'} "
@@ -802,6 +815,23 @@ def check_analytical_assertions(output, programs):
                 for line in lines
             ):
                 raise RuntimeError(f"Word assignment displacement boundary not exercised: {name}")
+        if family == "matrix_index_copy" and variant in (33, 35):
+            offsets = (0, 2, 126) if variant == 33 else (126,)
+            for offset in offsets:
+                address = "ra_words" + (rf"\+{offset}&65535" if offset else "")
+                if not re.search(rf"LD\s+HL,\({address}\)", section_assembly()):
+                    raise RuntimeError(f"Constant global word read was not loaded directly: {name}, offset={offset}")
+        if family == "matrix_index_copy" and variant == 34 and not re.search(
+            r"LD\s+HL,ra_signed\+127&65535\s+LD\s+L,\(HL\)", section_assembly(),
+        ):
+            raise RuntimeError(f"Constant signed byte read did not reuse its folded HL address: {name}")
+        if family == "matrix_index_copy" and variant in (36, 37):
+            reads = [
+                block for block in section_assembly().split("; TAC:")
+                if re.match(r" [^\n]* := [^\n]*workspace[^\n]*\[", block)
+            ]
+            if len(reads) != 2 or any(re.search(r"LD\s+BC,|ADD IY,BC", block) for block in reads):
+                raise RuntimeError(f"Constant local array reads retained runtime index arithmetic: {name}")
         if family == "matrix_index_copy" and variant == 25 and not re.search(
             r"LD\s+IX,0\s+ADD IX,DE\s+LD\s+L,\(IX-6\)\s+LD\s+H,\(IX-5\)", section_assembly(),
         ):
@@ -1120,7 +1150,21 @@ def generated_oracle(program, seed, comparison_forms, decision_loop_paths):
                 seed % (64 if word or variant >= 30 or variant in (15, 16, 21, 26, 27, 28, 29) else 128)
             )
             parameters = [index & (255 if variant == 5 else 65535), other]
-            if variant >= 12:
+            if variant >= 33:
+                parameters = [edge_parameters(seed, [0, 1, 127, 128, 255, 256, 32768, 65535])[0], other]
+                first = parameters[0]
+                if variant == 33:
+                    expected = sum(buffer[index] + buffer[index + 1] * 256 for index in (0, 2, 126))
+                elif variant == 34:
+                    expected = sum(buffer[index] - (256 if buffer[index] >= 128 else 0) for index in (0, 1, 127))
+                elif variant == 35:
+                    expected = first + buffer[126]
+                elif variant == 36:
+                    expected = (first & 255) + other
+                else:
+                    expected = first + (first ^ other)
+                expected &= 65535
+            elif variant >= 12:
                 parameters = [offset, offset if seed & 1 else 16, index & 65535, other]
                 previous = (
                     buffer[(offset + index) * 2] + buffer[(offset + index) * 2 + 1] * 256
@@ -1560,8 +1604,10 @@ def accumulate(counters, result):
 
 
 def buffer_symbol(program):
+    if program.family == "matrix_index_copy" and program.variant == 34:
+        return "ra_signed"
     return "ra_words" if program.family == "scalar_remat_word" or (
-        program.family == "matrix_index_copy" and program.variant in (2, 3, 11, 20)
+        program.family == "matrix_index_copy" and program.variant in (2, 3, 11, 20, 33, 35)
     ) else "ra_buffer"
 
 
