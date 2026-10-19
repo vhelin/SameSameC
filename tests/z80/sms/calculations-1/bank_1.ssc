@@ -1,4 +1,6 @@
 
+const u8 packedTiles[] = __incbin("tiles.packbits");
+
 void convertNumbersToChars16QUICK(u16 value, u8 **chars);
 void printCalculationLine(u8 *chars, u8 addressLow, u8 addressHigh, u16 expected, u16 first, u16 second, u16 third);
 u16 calculationAdd3(u16 first, u16 second, u16 third);
@@ -10,6 +12,7 @@ void calculateAndPrint5(u8 *chars, u8 one, u8 zero) {
 
   u8 *start = chars;
   u8 *buffer = chars;
+  u8 unpackedTiles[256];
   u16 extra1;
   u16 extra2;
   u16 extra3;
@@ -109,6 +112,7 @@ void calculateAndPrint5(u8 *chars, u8 one, u8 zero) {
   extra2 = calculationMultiplyAdd(0x0A5C, 0x0010, 3);
   extra3 = calculationXorRoundTrip(extra2, 0x55AA);
   extra3 = calculationQuotientRoundTrip(extra3, 43);
+  extra3 ^= calculationPackedCrc(unpackedTiles) ^ 0xCC7D;
   printCalculationLine(chars, 0x40, 0x7D, 0xA5C3, extra1, extra2, extra3);
 
   extra1 = (0x0C0D << 4) | 0x000E;
@@ -124,4 +128,56 @@ void calculateAndPrint5(u8 *chars, u8 one, u8 zero) {
   extra3 = calculationQuotientRoundTrip(extra3, 59);
   extra3 = calculationXorRoundTrip(extra3, 0x5AA5);
   printCalculationLine(chars, 0xC0, 0x7D, 0xEDCB, extra1, extra2, extra3);
+}
+
+u16 unpackPackBits(u8 *source, u16 packedSize, u8 *target, u16 capacity) {
+
+  u16 read = 0;
+  u16 written = 0;
+  u16 length;
+  u16 i;
+  u8 control;
+  u8 value;
+
+  while (read < packedSize) {
+    control = source[read++];
+    if (control < 128) {
+      length = control + 1;
+      if (length > packedSize - read || length > capacity - written)
+        return 0xFFFF;
+      for (i = 0; i < length; i++)
+        target[written++] = source[read++];
+    }
+    else if (control > 128) {
+      length = 257 - control;
+      if (read == packedSize || length > capacity - written)
+        return 0xFFFF;
+      value = source[read++];
+      for (i = 0; i < length; i++)
+        target[written++] = value;
+    }
+  }
+  return written;
+}
+
+u16 calculationPackedCrc(u8 *bytes) {
+
+  u16 length;
+  u16 i;
+  u16 bit;
+  u16 crc = 0xFFFF;
+
+  length = unpackPackBits(packedTiles, sizeof(packedTiles), bytes, 256);
+  if (length != 256)
+    return 0xFFFF;
+  for (i = 0; i < length; i++) {
+    crc ^= bytes[i] << 8;
+    for (bit = 0; bit < 8; bit++) {
+      if ((crc & 0x8000) != 0)
+        crc = (crc << 1) ^ 0x1021;
+      else
+        crc <<= 1;
+    }
+  }
+  return crc;
 }

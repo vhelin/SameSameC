@@ -1249,7 +1249,8 @@ console.log(`PASS:verifier_failures=${verifierFailures} immutable=yes differenti
 if (process.env.RA_REAL_PROJECTS !== '0') {
   const realTotals = {};
   for (const [project, routines] of [
-    ['calculations-1', ['calculationAdd3', 'calculationMultiplyAdd', 'calculationXorRoundTrip', 'calculationQuotientRoundTrip', 'convertNumbersToChars16']],
+    ['calculations-1', ['calculationAdd3', 'calculationMultiplyAdd', 'calculationXorRoundTrip', 'calculationQuotientRoundTrip', 'convertNumbersToChars16',
+      'unpackPackBits', 'calculationPackedCrc', 'calculateAndPrint5']],
     ['calculations-2', ['calculationProductRestore', 'calculationShiftRestore', 'calculationPartitionRestore', 'convertNumbersToChars16',
       'calculationArrayWorkload', 'calculationSortWorkload', 'calculationStencilWorkload', 'calculationRecordWorkload',
       'gameRamAllocate', 'gameRamRelease',
@@ -1258,9 +1259,31 @@ if (process.env.RA_REAL_PROJECTS !== '0') {
       'calculateAndPrintComplexBank1', 'calculateAndPrintComplexBank2', 'calculateAndPrintComplexBank3']]
   ]) {
     const images = new Map();
+    const packedTiles = project === 'calculations-1' ?
+      readFileSync(join(root, 'tests/z80/sms', project, 'tiles.packbits')) : null;
+    const packBitsVectors = [
+      {data: [], capacity: 0, bytes: []},
+      {data: [128], capacity: 0, bytes: []},
+      {data: [0, 128], capacity: 1, bytes: [128]},
+      {data: [127, ...Array.from({length: 128}, (_, i) => i)], capacity: 128,
+        bytes: Array.from({length: 128}, (_, i) => i)},
+      {data: [129, 85], capacity: 128, bytes: Array(128).fill(85)},
+      {data: [255, 170], capacity: 2, bytes: [170, 170]},
+      {data: [128, 1, 0, 255, 128, 255, 7, 128], capacity: 4, bytes: [0, 255, 7, 7]},
+      {data: [0], capacity: 1, bytes: [], invalid: true},
+      {data: [127, ...Array(127).fill(3)], capacity: 128, bytes: [], invalid: true},
+      {data: [2, 1, 2, 3], capacity: 2, bytes: [], invalid: true},
+      {data: [129], capacity: 128, bytes: [], invalid: true},
+      {data: [255, 3], capacity: 1, bytes: [], invalid: true},
+      {data: [0, 7, 1, 9], capacity: 4, bytes: [7], invalid: true},
+      {data: [0, 7, 129, 9], capacity: 128, bytes: [7], invalid: true},
+      {data: [0, 9, 128], capacity: 1, bytes: [9]},
+      {data: [0, 9, 0, 5], capacity: 1, bytes: [9], invalid: true}
+    ];
     for (const [mode, flags] of modes) {
       const directory = join(output, project, mode);
       mkdirSync(directory, {recursive: true});
+      if (packedTiles) writeFileSync(join(directory, 'tiles.packbits'), packedTiles);
       const sources = ['interrupts', 'main', 'bank_1', 'bank_2', 'bank_3'];
       for (const name of sources) {
         writeFileSync(join(directory, `${name}.ssc`), readFileSync(join(root, 'tests/z80/sms', project, `${name}.ssc`)));
@@ -1284,7 +1307,10 @@ if (process.env.RA_REAL_PROJECTS !== '0') {
       realTotals[project][name] = routineTotals;
       qualityTotals[`${project}/${name}`] = routineTotals;
       const workload = name.endsWith('Workload');
-      const display = name.startsWith('calculateAndPrintComplexBank');
+      const packedCrc = name === 'calculationPackedCrc';
+      const packBits = name === 'unpackPackBits';
+      const packedDisplay = name === 'calculateAndPrint5';
+      const display = packedDisplay || name.startsWith('calculateAndPrintComplexBank');
       const displaySeed = {calculationArrayWorkload: 0x47c1, calculationSortWorkload: 0x253a,
         calculationStencilWorkload: 0x36b9, calculationRecordWorkload: 0x5a13,
         calculationHeapWorkload: 0x4219, calculationActorWorkload: 0x2d57,
@@ -1301,7 +1327,7 @@ if (process.env.RA_REAL_PROJECTS !== '0') {
           .map(([key, metadata]) => [key & 65535, metadata]));
         return [mode, {...image, rom, transfers}];
       }));
-      for (let seed = 0; seed < (display ? 1 : cases + (workload ? 3 : 0)); seed++) {
+      for (let seed = 0; seed < (packBits ? packBitsVectors.length : packedDisplay ? 2 : display ? 1 : cases + (workload ? 3 : 0)); seed++) {
         const value = seed >= cases ? [displaySeed, 0, 65535][seed - cases] : (seed * 7919 + 32767) & 65535;
         const other = (seed * 5113 + 17) & 65535;
         const third = (seed * 3571 + 3) & 65535;
@@ -1310,6 +1336,38 @@ if (process.env.RA_REAL_PROJECTS !== '0') {
         let expectedPorts;
         let buffer = new Uint8Array(0), expectedBuffer = buffer, bufferAddress = 0, returnWidth = 2;
         switch (name) {
+          case 'unpackPackBits': {
+            const vector = packBitsVectors[seed];
+            bufferAddress = 0xc100;
+            buffer = new Uint8Array(512).fill(0xa5);
+            buffer.set(vector.data);
+            expectedBuffer = buffer.slice();
+            expectedBuffer.set(vector.bytes, 160);
+            parameters = [bufferAddress, vector.data.length, bufferAddress + 160, vector.capacity];
+            expected = vector.invalid ? 65535 : vector.bytes.length;
+            break;
+          }
+          case 'calculationPackedCrc': {
+            bufferAddress = 0xc100;
+            buffer = Uint8Array.from({length: 258}, (_, index) => (index * 47 + seed * 11) & 255);
+            expectedBuffer = buffer.slice();
+            expectedBuffer.set([
+              ...Array(128).fill(0),
+              ...Array.from({length: 64}, (_, index) => (index * 37) & 255),
+              ...Array(16).fill(255), ...Array(16).fill(170),
+              ...Array.from({length: 32}, (_, index) => (index * 13 + 7) & 255)
+            ], 1);
+            expectedBuffer[256] ^= seed & 255;
+            parameters = [bufferAddress + 1];
+            expected = 65535;
+            for (const byte of expectedBuffer.subarray(1, 257))
+              for (let bit = 7; bit >= 0; bit--) {
+                const feedback = (expected >> 15) ^ ((byte >> bit) & 1);
+                expected = ((expected << 1) & 65535) ^ (feedback ? 0x1021 : 0);
+              }
+            if (seed === 0 && expected !== 0xcc7d) throw new Error('Packed-tile CRC known-answer mismatch');
+            break;
+          }
           case 'calculationArrayWorkload':
           case 'calculationSortWorkload':
           case 'calculationStencilWorkload':
@@ -1587,6 +1645,7 @@ if (process.env.RA_REAL_PROJECTS !== '0') {
             }
             break;
           }
+          case 'calculateAndPrint5':
           case 'calculateAndPrintComplexBank1':
           case 'calculateAndPrintComplexBank2':
           case 'calculateAndPrintComplexBank3': {
@@ -1594,17 +1653,20 @@ if (process.env.RA_REAL_PROJECTS !== '0') {
             buffer = new Uint8Array(80);
             parameters = [bufferAddress, 1, 0];
             returnWidth = 0;
-            const source = readFileSync(join(root, 'tests/z80/sms', project, `bank_${name.slice(-1)}.ssc`), 'utf8');
+            const source = readFileSync(join(root, 'tests/z80/sms', project, `bank_${packedDisplay ? 1 : name.slice(-1)}.ssc`), 'utf8');
             const rows = Array.from(source.matchAll(/printCalculationLine\(chars,\s*(0x[\da-f]+),\s*(0x[\da-f]+),\s*(0x[\da-f]+),/gi));
             if (!rows.length || rows.length !== (source.match(/printCalculationLine\(chars,/g) || []).length)
               throw new Error(`Incomplete display oracle for ${name}`);
+            if (packedDisplay) rows.unshift([null, '0x00', '0x7d', '0x7521']);
             expectedPorts = [];
             for (const row of rows) {
               expectedPorts.push([0xbf, Number(row[1])], [0xbf, Number(row[2])]);
               for (let column = 0; column < 4; column++) {
                 if (column) expectedPorts.push(...[0, 0, 0x1d, 0, 0, 0].map(byte => [0xbe, byte]));
                 expectedPorts.push([0xbe, 4], [0xbe, 0]);
-                for (const digit of Number(row[3]).toString(16).padStart(4, '0')) {
+                // Flipping the final payload bit changes this CRC by its polynomial.
+                const expectedValue = Number(row[3]) ^ (packedDisplay && seed && Number(row[3]) === 0xa5c3 && column === 3 ? 0x1021 : 0);
+                for (const digit of expectedValue.toString(16).padStart(4, '0')) {
                   const value = parseInt(digit, 16);
                   expectedPorts.push([0xbe, value + (value < 10 ? 0x10 : 0x17)], [0xbe, 0]);
                 }
@@ -1646,10 +1708,19 @@ if (process.env.RA_REAL_PROJECTS !== '0') {
         const displayPorts = {};
         for (const mode of Object.keys(totals)) {
           const image = routineImages.get(mode);
+          let rom = image.rom;
+          if ((packedCrc && (seed & 255)) || (packedDisplay && seed)) {
+            const address = image.symbols.get('packedTiles');
+            if (!Number.isInteger(address) || image.banks.get('packedTiles') !== image.banks.get(name) ||
+                address < 0x8000 || address + packedTiles.length > 0xc000)
+              throw new Error('Packed asset is not in the mapped routine bank');
+            rom = Buffer.from(rom);
+            rom[address + packedTiles.length - 1] ^= packedCrc ? seed & 255 : 1;
+          }
           let result;
           try {
-            result = execute(image.rom, image.symbols.get(name), parameters, display ? [2, 1, 1] : parameters.map(() => 2),
-              buffer, bufferAddress, returnWidth, image.transfers, display, display ? 1000000 : workload ? 250000 : 20000, workload || display ? 512 : 256);
+            result = execute(rom, image.symbols.get(name), parameters, display ? [2, 1, 1] : parameters.map(() => 2),
+              buffer, bufferAddress, returnWidth, image.transfers, display, display ? 1000000 : workload || packedCrc ? 250000 : 20000, workload || display ? 512 : 256);
             if ((returnWidth && result.value !== expected) || (display ?
                 JSON.stringify(result.port_writes) !== JSON.stringify(expectedPorts) : !Buffer.from(result.buffer).equals(Buffer.from(expectedBuffer))))
               throw new Error(`Return/buffer/VDP mismatch: expected ${expected}, got ${result.value}`);
@@ -1662,7 +1733,7 @@ if (process.env.RA_REAL_PROJECTS !== '0') {
             throw new Error(`Failure ${project}/${name} seed=${seed} mode=${mode}: ${error}; artifacts=${output}`);
           }
         }
-        if (display) writeFileSync(join(output, project, `${name}-display.json`),
+        if (display) writeFileSync(join(output, project, `${name}${packedDisplay ? `-${seed}` : ''}-display.json`),
           JSON.stringify({expected: expectedPorts, actual: displayPorts}, null, 2));
       }
       console.log(JSON.stringify({project, routine: name, ...routineTotals}));

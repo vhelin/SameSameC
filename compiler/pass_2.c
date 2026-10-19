@@ -4258,7 +4258,8 @@ static void _check_ast_simple_tree_node(struct tree_node *node) {
 
   if (node->type == TREE_NODE_TYPE_VALUE_STRING || node->type == TREE_NODE_TYPE_GET_ADDRESS) {
   }
-  else if (node->type == TREE_NODE_TYPE_VALUE_INT || node->type == TREE_NODE_TYPE_VALUE_DOUBLE || node->type == TREE_NODE_TYPE_SYMBOL) {
+  else if (node->type == TREE_NODE_TYPE_VALUE_INT || node->type == TREE_NODE_TYPE_VALUE_DOUBLE ||
+           node->type == TREE_NODE_TYPE_BYTES || node->type == TREE_NODE_TYPE_SYMBOL) {
     return;
   }
   else if (node->type == TREE_NODE_TYPE_STRUCT_ACCESS) {

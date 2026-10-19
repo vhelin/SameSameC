@@ -21,7 +21,7 @@ main.asm: main.ssc
 interrupts.asm: interrupts.ssc
 	$(CC) $(CFLAGS) interrupts.asm interrupts.ssc
 
-bank_1.asm: bank_1.ssc
+bank_1.asm: bank_1.ssc tiles.packbits
 	$(CC) -b 1 -s 2 $(CFLAGS) bank_1.asm bank_1.ssc
 
 bank_2.asm: bank_2.ssc
