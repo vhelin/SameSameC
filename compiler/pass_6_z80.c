@@ -3761,11 +3761,13 @@ static int _materialize_array_base(struct tac *tac, struct z80_location *base_lo
     }
     fprintf(file_out, "      ; retained %s in %s\n", operand_name, base_location->kind == LOC_PHY_HL ? "HL" : "BC");
   }
-  else if (base_memory_pointer_load == YES && is_write == NO && (arg2_is_zero == NO || keep_hl == YES) &&
+  else if (base_memory_pointer_load == YES && (is_write == NO || keep_hl == YES) &&
+           (arg2_is_zero == NO || keep_hl == YES) &&
            g_allocator_enabled == YES && g_allocator_force_all_spill == NO && g_is_ix_de == YES &&
            get_register_allocator_address_materialization_mode(base_location->kind, RA_ADDRESS_TARGET_IX,
              base_location->offset) == RA_ADDRESS_MODE_FRAME_DISPLACEMENT) {
-    _trace_z80_specialized_address_materialization(function_node, "array_read_base_address",
+    _trace_z80_specialized_address_materialization(function_node,
+        is_write == YES ? "array_write_base_address" : "array_read_base_address",
         operand_name, base_location, RA_ADDRESS_TARGET_IX, base_location->offset);
     _load_from_ix_to_l(base_location->offset, file_out);
     _load_from_ix_to_h(base_location->offset + 1, file_out);
@@ -3778,7 +3780,8 @@ static int _materialize_array_base(struct tac *tac, struct z80_location *base_lo
         is_write == YES ? "array_write_base_address" : "array_read_base_address",
         operand_name, base_location, RA_ADDRESS_TARGET_IY, 0);
 
-    if (base_memory_pointer_load == YES && is_write == NO && (arg2_is_zero == NO || keep_hl == YES) &&
+    if (base_memory_pointer_load == YES && (is_write == NO || keep_hl == YES) &&
+        (arg2_is_zero == NO || keep_hl == YES) &&
         g_allocator_enabled == YES && g_allocator_force_all_spill == NO) {
       if (_materialize_to_hl(base_location, file_out) == FAILED)
         return FAILED;
@@ -4294,7 +4297,7 @@ static int _generate_asm_z80_out_write_z80(struct tac *t, FILE *file_out, struct
 }
 
 
-static int _materialize_array_write_value_to_iy(struct tac *tac, struct z80_location *arg1_location, int var_type, int ix_offset, struct tree_node *function_node, FILE *file_out) {
+static int _materialize_array_write_value(struct tac *tac, struct z80_location *arg1_location, int var_type, int ix_offset, int base_in_hl, struct tree_node *function_node, FILE *file_out) {
 
   int value;
   int value_bytes;
@@ -4318,6 +4321,21 @@ static int _materialize_array_write_value_to_iy(struct tac *tac, struct z80_loca
             arg1_location->size, _get_z80_physical_register_name(arg1_location->phy)));
   }
 #endif
+
+  if (base_in_hl == YES) {
+    if (value_bytes != 1) {
+      fprintf(stderr, "_materialize_array_write_value(): Cannot store a word through HL! Please submit a bug report!\n");
+      return FAILED;
+    }
+    if (arg1_location->kind == LOC_GLOBAL || arg1_location->kind == LOC_STACK_LOCAL || arg1_location->kind == LOC_STACK_SPILL)
+      _load_from_ix_to_a(ix_offset, file_out);
+    else if (_materialize_to_a(arg1_location, 0, file_out) == FAILED)
+      return FAILED;
+    fprintf(file_out, "      LD  (HL),A\n");
+    if (arg1_location->kind == LOC_PHY_A)
+      fprintf(file_out, "      ; retained arg1 in A\n");
+    return SUCCEEDED;
+  }
 
   if (arg1_location->kind == LOC_CONST) {
     value = arg1_location->value;
@@ -4355,7 +4373,7 @@ static int _materialize_array_write_value_to_iy(struct tac *tac, struct z80_loca
 
   source_is_16_bit = arg1_location->size == 2 ||
                     tac->arg1_var_type == VARIABLE_TYPE_INT16 || tac->arg1_var_type == VARIABLE_TYPE_UINT16;
-  if (source_is_16_bit == YES) {
+  if (source_is_16_bit == YES && value_bytes == 2) {
     _load_from_ix_to_l(ix_offset, file_out);
     _load_from_ix_to_h(ix_offset + 1, file_out);
   }
@@ -4368,7 +4386,7 @@ static int _materialize_array_write_value_to_iy(struct tac *tac, struct z80_loca
       else if (tac->arg1_var_type == VARIABLE_TYPE_UINT8)
         _load_value_to_h(0, file_out);
       else {
-        fprintf(stderr, "_materialize_array_write_value_to_iy(): Unhandled 8-bit ARG1! Please submit a bug report!\n");
+        fprintf(stderr, "_materialize_array_write_value(): Unhandled 8-bit ARG1! Please submit a bug report!\n");
         print_tac(tac, NO, stderr);
         return FAILED;
       }
@@ -4393,6 +4411,7 @@ static int _generate_asm_array_write_z80(struct tac *t, FILE *file_out, struct t
   struct z80_location arg1_location;
   struct z80_location arg2_location;
   int var_type, arg2_is_zero, preserve_a_for_arg1, ix_offset = 0, result_materialized = NO;
+  int base_in_hl, base_memory_pointer_load;
 
   /* OVERRIDE for __z80_out */
   if (t->result_type == TAC_ARG_TYPE_LABEL && strcmp(t->result_s, "__z80_out") == 0)
@@ -4493,22 +4512,31 @@ static int _generate_asm_array_write_z80(struct tac *t, FILE *file_out, struct t
 #endif
 
   /******************************************************************************************************/
-  /* result address (result) -> iy */
+  /* result address (result) -> hl/iy */
   /******************************************************************************************************/
 
+  var_type = t->result_var_type;
+  base_memory_pointer_load = _base_needs_memory_pointer_load(t->result_type, t->result_node, &result_location);
+  base_in_hl = g_allocator_enabled == YES && g_allocator_force_all_spill == NO && result_materialized == NO &&
+      (var_type == VARIABLE_TYPE_UINT8 || var_type == VARIABLE_TYPE_INT8) &&
+      (arg1_location.kind == LOC_CONST || arg1_location.kind == LOC_PHY_A ||
+       arg1_location.kind == LOC_GLOBAL || arg1_location.kind == LOC_STACK_LOCAL || arg1_location.kind == LOC_STACK_SPILL) &&
+      (result_location.kind == LOC_PHY_HL ||
+       (base_memory_pointer_load == YES && (result_location.kind == LOC_GLOBAL ||
+        result_location.kind == LOC_STACK_LOCAL || result_location.kind == LOC_STACK_SPILL)));
   if (result_materialized == NO && _materialize_array_base(t, &result_location,
-      _base_needs_memory_pointer_load(t->result_type, t->result_node, &result_location), arg2_is_zero, NO, function_node, file_out) == FAILED)
+      base_memory_pointer_load, arg2_is_zero, base_in_hl, function_node, file_out) == FAILED)
     return FAILED;
 
   /******************************************************************************************************/
-  /* add index bc -> iy */
+  /* add index bc -> hl/iy */
   /******************************************************************************************************/
 
-  /* NOTE! var_type is actually the type of the item we have inside result array */
-  var_type = t->result_var_type;
-
   if (arg2_is_zero == NO) {
-    _add_bc_to_iy(file_out);
+    if (base_in_hl == YES)
+      _add_bc_to_hl(file_out);
+    else
+      _add_bc_to_iy(file_out);
 
     if (var_type == VARIABLE_TYPE_INT16 || var_type == VARIABLE_TYPE_UINT16) {
       /* the array has 16-bit items -> add bc -> ix twice! */
@@ -4527,7 +4555,7 @@ static int _generate_asm_array_write_z80(struct tac *t, FILE *file_out, struct t
       return FAILED;
   }
 
-  return _materialize_array_write_value_to_iy(t, &arg1_location, var_type, ix_offset, function_node, file_out);
+  return _materialize_array_write_value(t, &arg1_location, var_type, ix_offset, base_in_hl, function_node, file_out);
 }
 
 

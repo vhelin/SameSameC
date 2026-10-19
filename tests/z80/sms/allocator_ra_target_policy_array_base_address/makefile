@@ -15,7 +15,7 @@ all: linked.sms
 	grep -q "function=allocatorRaPolicyArrayBaseGlobalRead emitter=array_read_base_address operand=arg1 kind=GLOBAL offset=999999 mode=global_label folded_offset=0 address_target=IY target=z80" compiler.log
 	grep -q "function=allocatorRaPolicyArrayBaseGlobalWrite emitter=array_write_base_address operand=result kind=GLOBAL offset=999999 mode=global_label folded_offset=0 address_target=IY target=z80" compiler.log
 	grep -q "function=allocatorRaPolicyArrayBaseNearRead emitter=array_read_base_address operand=arg1 kind=STACK_LOCAL offset=-5 mode=frame_displacement folded_offset=-5 address_target=IX target=z80" compiler.log
-	grep -q "function=allocatorRaPolicyArrayBaseNearWrite emitter=array_write_base_address operand=result kind=STACK_LOCAL offset=-5 mode=frame_address folded_offset=0 address_target=IY target=z80" compiler.log
+	grep -q "function=allocatorRaPolicyArrayBaseNearWrite emitter=array_write_base_address operand=result kind=STACK_LOCAL offset=-5 mode=frame_displacement folded_offset=-5 address_target=IX target=z80" compiler.log
 	grep -q "function=allocatorRaPolicyArrayBaseFarRead emitter=array_read_base_address operand=arg1 kind=STACK_LOCAL offset=-148 mode=frame_address folded_offset=0 address_target=IY target=z80" compiler.log
 	grep -q "function=allocatorRaPolicyArrayBaseFarWrite emitter=array_write_base_address operand=result kind=STACK_LOCAL offset=-151 mode=frame_address folded_offset=0 address_target=IY target=z80" compiler.log
 	grep -q "function=allocatorRaPolicyArrayBaseFarWrite emitter=array_read_base_address operand=arg1 kind=STACK_LOCAL offset=-151 mode=frame_address folded_offset=0 address_target=IY target=z80" compiler.log

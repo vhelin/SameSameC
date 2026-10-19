@@ -18,7 +18,7 @@ all: linked.sms
 	grep -q "resolve function=allocatorRaArrayWritePointerBaseHl operand=result kind=STACK_LOCAL" compiler.log
 	grep -q "array_write_base function=allocatorRaArrayWritePointerBaseA kind=STACK_LOCAL memory_pointer_load=yes" compiler.log
 	grep -q "array_write_base function=allocatorRaArrayWritePointerBaseHl kind=STACK_LOCAL memory_pointer_load=yes" compiler.log
-	grep -q "function=allocatorRaArrayWritePointerBaseA emitter=array_write_base_address operand=result kind=STACK_LOCAL offset=-6 mode=frame_address folded_offset=0 address_target=IY target=z80" compiler.log
+	grep -q "function=allocatorRaArrayWritePointerBaseA emitter=array_write_base_address operand=result kind=STACK_LOCAL offset=-6 mode=frame_displacement folded_offset=-6 address_target=IX target=z80" compiler.log
 	grep -q "function=allocatorRaArrayWritePointerBaseHl emitter=array_write_base_address operand=result kind=STACK_LOCAL offset=-7 mode=frame_address folded_offset=0 address_target=IY target=z80" compiler.log
 	: && ! grep -q "reason=unmigrated_emitter.*ARRAY_WRITE" compiler.log
 	: && ! grep -q "stack offset requested for retained" compiler.log

@@ -344,6 +344,24 @@ def generate_programs(comparison_forms):
              sentinel_bodies[variant] if variant < len(sentinel_bodies) else None, [1, 1, 1] if variant >= 8 else [1, 1, 2] if variant in (2, 3) else [2, 2, 2], 2),
             ("matrix_structural", "u8 *target, u8 *alias, u8 start, u8 count, u8 selector, u8 value",
              f"u16 total = value; u8 saved = selector^value; u8 row = 0; while (row < count) {{ {'u8 column = 0; while (column < 2) {' if variant & 4 else ''} u8 previous = target[start+row+{inner}]; {call if variant & 1 else ''} if ((previous^selector)&1) {{ alias[start+row+{inner}] = previous+saved; }} else {{ target[start+row+{inner}] = previous^saved; }} {'' if variant & 1 else call} total = total+target[start+row+{inner}]+called; {('u8 narrowed = total; if (row&1) { total = ' + ('narrowed+total' if variant & 2 else 'total+narrowed') + '; } else { total = total+(selector&7); }') if variant >= 8 else ''} {'column = column+1; }' if variant & 4 else ''} row = row+1; }} return total;", [2, 2, 1, 1, 1, 1], 2),
+            ("matrix_byte_store", "u8 *target, u8 *alias, u16 a, u16 b", [
+                "target[a] = b; return target[a];",
+                "target[a] = 173; return target[a];",
+                "u8 value = b^a; target[a] = value; return target[a];",
+                "s8 index = a; s8 value = b; target[index] = value; return target[index];",
+                "target[0] = b; return target[0];",
+                "ra_index_pointer = alias; ra_index_pointer[a] = b; return target[a];",
+                "u8 workspace[136]; workspace[a] = b; target[a] = workspace[a]; u16 first = workspace[a]; return target[a]+first;",
+                "if (b&1) { target[a] = b; } else { alias[a] = b; } u16 first = target[a]; return first+alias[a];",
+                "u8 value = b; u8 *escaped = &value; target[a] = escaped[0]; return target[a];",
+                "u8 called = ra_signed_helper(b,a,0); target[a] = called; return target[a];",
+                "u16 value = b^0x9234; target[a] = value; return target[a]+value;",
+                "u16 i; for (i = 0; i < a; i++) { target[i] = alias[i]; } return target[0];",
+                "u16 *words = target; words[a] = b; return words[a];",
+                "u16 first = a+b; u16 second = a^b; target[a] = first; return second+target[a]+first;",
+                "s8 index = a; u8 value = b^a; target[index] = value; u16 first = target[index]; return first+value;",
+                "target[a] = b; alias[a] = target[a]+1; u16 first = target[a]; return first+alias[a];",
+            ][variant] if variant < 16 else None, [2, 2, 2, 2], 2),
             ("scalar_byte", "u8 a, u8 b, u8 c", "u8 saved = a^b; return (c+c)+saved;", [1, 1, 1], 1),
             ("scalar_signed_byte", "s8 a, s8 b, s8 c", "s8 saved = a^b; return (c|7)^saved;", [1, 1, 1], 1),
             ("scalar_signed_word", "s16 a, s16 b, s16 c", "s16 saved = a^b; return (c|7)^saved;", [2, 2, 2], 2),
@@ -435,13 +453,17 @@ def generate_programs(comparison_forms):
             "matrix_rank": 4, "matrix_index_copy": 33, "matrix_bc_alu": 12,
             "matrix_scalar_uses": 30, "matrix_real_index": 1, "matrix_constant_multiply": 33,
             "matrix_constant_shift": 38, "matrix_variable_multiply": 8,
+            "matrix_byte_store": 16,
         }
         for family, parameters, body, widths, return_width in functions:
             word_boundary = family == "matrix_index_copy" and variant >= 30
             arithmetic_family = family in (
                 "matrix_constant_multiply", "matrix_constant_shift", "matrix_variable_multiply",
             )
-            if variant >= 8 and not family.startswith("matrix_"):
+            # Dedicated cohorts keep the all-spill images within one ROM bank.
+            if family in ("scalar_word_step", "matrix_byte_store") and family not in os.environ.get("RA_FAMILIES", "").split(","):
+                continue
+            if variant >= (15 if family == "scalar_word_step" else 8) and not family.startswith("matrix_"):
                 continue
             if family.startswith("matrix_") and variant >= limits.get(family, 2):
                 continue
@@ -454,6 +476,7 @@ def generate_programs(comparison_forms):
             value_family = family in (
                 "matrix_index_copy", "matrix_bc_alu", "matrix_scalar_uses",
                 "matrix_real_index", "matrix_source_loop",
+                "matrix_byte_store",
             )
             if not word_boundary and family.startswith("matrix_") and value_family != (os.environ.get("RA_VALUE_CASES") == "1"):
                 continue
@@ -474,7 +497,7 @@ def generate_programs(comparison_forms):
                 pointer_parameters = [0, 1] if variant else [0]
             elif family == "matrix_real_index":
                 pointer_parameters = [0]
-            elif family == "matrix_structural" or (family == "matrix_index_copy" and pointer_index):
+            elif family in ("matrix_structural", "matrix_byte_store") or (family == "matrix_index_copy" and pointer_index):
                 pointer_parameters = [0, 1]
             elif family in ("pointer", "walk", "nested", "join_call", "scalar_remat_pointer"):
                 pointer_parameters = [0]
@@ -694,6 +717,12 @@ def check_analytical_assertions(output, programs):
             r"LD\s+L,\(IX-7\)\s+LD\s+H,\(IX-6\)\s+ADD HL,BC\s+LD\s+L,\(HL\)", section_assembly(),
         ):
             raise RuntimeError(f"Unsigned pointer read did not reuse its HL address: {name}")
+        if family == "matrix_byte_store":
+            body = re.sub(r";[^\n]*", "", section_assembly())
+            if variant == 0 and not re.search(r"ADD HL,BC\s+LD\s+A,\(IX[+-]\d+\)\s+LD\s+\(HL\),A", body):
+                raise RuntimeError(f"Byte store did not reuse its HL address and low source byte: {name}")
+            if variant == 12 and not re.search(r"LD\s+\(IY\+1\),[A-Z0-9]+", body):
+                raise RuntimeError(f"Word store did not preserve its IY fallback: {name}")
         if family == "matrix_bc_alu" and variant < 5 and not has(
             r"linear_scan retain .*16-bit in BC .*consumer_tac=\d+\(SUB arg2\)"
         ):
@@ -890,12 +919,58 @@ def generated_oracle(program, seed, comparison_forms, decision_loop_paths):
     byte = (seed * 73 + variant * 19) & 255
     other = (seed * 29 + 17) & 255
     third = (seed * 47 + 3) & 255
-    global_pointer = family == "matrix_index_copy" and variant in (21, 29)
+    global_pointer = (family == "matrix_index_copy" and variant in (21, 29)) or (family == "matrix_byte_store" and variant == 5)
     buffer = byte_buffer((index * 47 + seed * 11 + variant) for index in range(130 if global_pointer else 128))
     expected_buffer = buffer.copy()
     parameters = [byte, other, third]
     expected_ports = []
     match family:
+        case "matrix_byte_store":
+            signed = variant in (3, 14)
+            index = seed % 63 - 31 if signed else seed % 32
+            parameters = [32 if signed else seed & 1, 32 if signed else (seed + 1) & 1,
+                          index & 65535, [0, 1, 127, 128, 255, 256, 32768, 65535][seed % 8]]
+            target, alias, _, value = parameters
+            destination = target + index
+            stored = value & 255
+            if variant == 11:
+                for offset in range(index):
+                    expected_buffer[target + offset] = expected_buffer[alias + offset]
+                expected = expected_buffer[target]
+            elif variant == 12:
+                expected_buffer[target + index * 2] = stored
+                expected_buffer[target + index * 2 + 1] = value >> 8
+                expected = value
+            else:
+                if variant == 1:
+                    stored = 173
+                elif variant in (2, 14):
+                    stored = (value ^ parameters[2]) & 255
+                elif variant == 9:
+                    stored = (value + index) & 255
+                elif variant == 10:
+                    stored = (value ^ 0x9234) & 255
+                elif variant == 13:
+                    stored = (index + value) & 255
+                if variant == 4:
+                    destination = target
+                elif variant == 5 or (variant == 7 and not value & 1):
+                    destination = alias + index
+                expected_buffer[destination] = stored
+                expected = stored
+                if variant == 5:
+                    expected = expected_buffer[target + index]
+                elif variant in (6, 14):
+                    expected = stored * 2
+                elif variant == 7:
+                    expected = expected_buffer[target + index] + expected_buffer[alias + index]
+                elif variant == 10:
+                    expected = (stored + (value ^ 0x9234)) & 65535
+                elif variant == 13:
+                    expected = ((index ^ value) + stored + ((index + value) & 65535)) & 65535
+                elif variant == 15:
+                    expected_buffer[alias + index] = (stored + 1) & 255
+                    expected = expected_buffer[target + index] + expected_buffer[alias + index]
         case "matrix_constant_shift":
             edges = [0, 1, 255, 256, 32767, 32768, 65534, 65535]
             parameters = edge_parameters(seed, edges) if seed < 64 else word_parameters(seed)
@@ -2212,14 +2287,21 @@ def main():
         execute_real_projects(output, compiler, linker, cases, quality_totals)
     write_quality_summary(output, quality_totals)
     if os.environ.get("RA_SCALAR_CASES") != "1" and os.environ.get("RA_MATRIX_CASES") != "1":
+        family_filter = os.environ.get("RA_FAMILIES", "")
         cohorts = ["scalar"] if os.environ.get("RA_MATRIX_CASES") == "0" else [
             "scalar", "matrix", "matrix_literals", "matrix_memory", "matrix_values",
         ]
+        if not family_filter:
+            cohorts.append("word_steps")
+            if os.environ.get("RA_MATRIX_CASES") != "0":
+                cohorts.append("byte_stores")
         for cohort in cohorts:
+            scalar_cohort = cohort in ("scalar", "word_steps")
             os.environ.update({
-                "RA_SCALAR_CASES": "1" if cohort == "scalar" else "0",
-                "RA_MATRIX_CASES": "0" if cohort == "scalar" else "1", "RA_REAL_PROJECTS": "0",
-                "RA_VALUE_CASES": "1" if cohort == "matrix_values" else "0",
+                "RA_SCALAR_CASES": "1" if scalar_cohort else "0",
+                "RA_MATRIX_CASES": "0" if scalar_cohort else "1", "RA_REAL_PROJECTS": "0",
+                "RA_VALUE_CASES": "1" if cohort in ("matrix_values", "byte_stores") else "0",
+                "RA_FAMILIES": "scalar_word_step" if cohort == "word_steps" else "matrix_byte_store" if cohort == "byte_stores" else family_filter,
                 "RA_COMPARISON_FORMS": "1" if cohort == "matrix_literals" else "2" if cohort == "matrix_memory" else "0",
                 "RA_EXECUTION_DIR": str(output / cohort), "RA_VERIFIER": harness,
             })
