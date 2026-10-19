@@ -11627,11 +11627,12 @@ int optimize_for_inc(void) {
 
   int i;
 
-  /* here we go through TACs and if we find TAC_OP_ADD with 1 in arg1 we'll swap arg1 and arg2 */
+  /* Put unit and page increments in arg2 for the Z80 word emitter. */
 
   for (i = 0; i < g_tacs_count; i++) {
     struct tac *t = &g_tacs[i];
-    if (t->op == TAC_OP_ADD && t->arg1_type == TAC_ARG_TYPE_CONSTANT && ((int)t->arg1_d) == 1) {
+    if (t->op == TAC_OP_ADD && t->arg1_type == TAC_ARG_TYPE_CONSTANT &&
+        (t->arg1_d == 1.0 || t->arg1_d == 256.0)) {
       tac_swap_args(t);
       RA_TRACE((stderr, "register_allocator: optimize_for_inc swapped TAC %d so constant increment is arg2\n", i));
 

@@ -28,8 +28,8 @@
 // @BT C0 DD 77 00
 // @BT END
 // @BT TEST-05 05 START
-// @BT DD 21 00 00 DD 19 DD 7E FA E6 01 D6 00 CA 2B 00
-// @BT DD 6E F8 DD 66 F9 23 DD 75 F8 DD 74 F9
+// @BT DD 21 00 00 DD 19 DD 7E FA E6 01 D6 00 CA 26 00
+// @BT DD 34 F8 20 03 DD 34 F9
 // @BT END
 
 u8 g_allocator_compare_c_relational_target;

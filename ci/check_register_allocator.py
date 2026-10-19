@@ -384,6 +384,23 @@ def generate_programs(comparison_forms):
             ][variant] if variant < 8 else None, [2, 2, 2], 2),
             ("scalar_word_prefix", "u16 a, u16 b, u16 c",
              f"u16 i = a; u16 first = i+b; while (i != c) {{ i++; }} {'i = a; while (i != c) { i++; }' if variant else ''} return first+i;", [2, 2, 2], 2),
+            ("scalar_word_step", "u16 a, u16 b, u16 c", [
+                "a++; return a;",
+                "u16 value = a+1; return value^a;",
+                "u16 value = a; u16 *escaped = &value; value++; return escaped[0];",
+                "u8 value = a; u16 widened = value; widened++; return widened;",
+                "s8 value = a; s16 widened = value; widened++; return widened;",
+                "return a+256;",
+                "return 256+a;",
+                "return a-256;",
+                "a = a+256; return a;",
+                "u8 *next = &ra_buffer[a&15]; next = next+256; next = next-256; next++; return next[0];",
+                "u16 i; u16 count = b&31; for (i = 0; i < count; i++) { ra_buffer[i+1] = ra_buffer[i]; } return ra_buffer[count];",
+                "u16 i; u16 count = b&31; for (i = 0; i < count; i++) { ra_buffer[i] = ra_buffer[i+1]; } return ra_buffer[0];",
+                "u8 workspace[136]; u16 value = a; u16 *escaped = &value; workspace[b&127] = c; value++; return escaped[0]+workspace[b&127];",
+                "return a+255;",
+                "return a+(0-256);",
+            ][variant] if variant < 15 else None, [2, 2, 2], 2),
             ("scalar_decision_loop", "u16 a, u8 count, u8 value", f"u16 saved = a; u16 out = a^0x4321; u8 left = value; u8 right = count+value; while (count) {{ if (count&1) {{ saved = out^count; }} else {{ saved = saved+left; }} left = left+1; right = right-1; {'left = left+ra_pointer_helper(ra_buffer,right);' if variant else ''} u8 combined = left+right; out = (out+saved)^combined; ra_buffer[count] = left^right; count = count-1; }} return out+saved+left+right;", [2, 1, 1], 2),
             ("scalar_cost_reject_byte", "u8 a, u8 b, u8 c", "u8 saved = a^b; u8 first = c+saved; u8 loaded = ra_buffer[1]; return ((first+loaded)^saved)+saved;", [1, 1, 1], 1),
             ("scalar_split_word", "u16 a, u16 b, u16 c", "u16 saved = ~c; u16 first = a+saved; u16 loaded = ra_buffer[1]; return ((first+loaded)^saved)+b+saved;", [2, 2, 2], 2),
@@ -450,7 +467,7 @@ def generate_programs(comparison_forms):
                     excluded = family.startswith("matrix_") or scalar_family != (os.environ.get("RA_SCALAR_CASES") == "1")
                 if excluded:
                     continue
-            if scalar_family and family not in ("word_bc", "scalar_word_counter") and variant > 1:
+            if scalar_family and family not in ("word_bc", "scalar_word_counter", "scalar_word_step") and variant > 1:
                 continue
             name = f"ra_{family}_{variant}"
             if family == "matrix_source_loop":
@@ -776,6 +793,8 @@ def check_analytical_assertions(output, programs):
         if family == "scalar_word_counter":
             if variant == 0 and not has(r"loop_retention_apply_preflight .*selected=BC .*application=applied"):
                 raise RuntimeError(f"Bounded unsigned word counter was not retained: {name}")
+            if variant == 0 and not re.search(r"\bINC BC\b", section_assembly()):
+                raise RuntimeError(f"Retained word counter was not incremented directly: {name}")
             if variant == 5 and has(r"scalar_copy_promotion .*variable=i "):
                 raise RuntimeError(f"Escaped word counter was promoted: {name}")
             if variant == 4 and has(r"loop_retention_apply_preflight .*application=applied"):
@@ -785,6 +804,14 @@ def check_analytical_assertions(output, programs):
             or (variant == 1 and has(r"scalar_copy_promotion .*variable=i "))
         ):
             raise RuntimeError(f"Unsupported prefix or reused counter escaped conservative fallback: {name}")
+        if family == "scalar_word_step":
+            body = section_assembly()
+            if variant in (0, 2, 12) and not re.search(r"INC \(IX[+-]\d+\)\s+JR\s+NZ,\+\s+INC \(IX[+-]\d+\)", body):
+                raise RuntimeError(f"In-place word increment was not selected: {name}")
+            if variant in (5, 6, 8) and not re.search(r"\bINC H\b", body):
+                raise RuntimeError(f"Page address increment was not selected: {name}")
+            if variant == 7 and not re.search(r"\bDEC H\b", body):
+                raise RuntimeError(f"Page address decrement was not selected: {name}")
         if family.startswith("scalar_remat_"):
             body = assembly.split(f"{name}:")[1].split(".ENDS")[0]
             if ("; rematerialize " in body) != (family != "scalar_remat_pointer"):
@@ -1164,6 +1191,28 @@ def generated_oracle(program, seed, comparison_forms, decision_loop_paths):
                 expected_buffer[0] = value
                 value = (buffer[1] + (byte ^ other)) & 255
             expected = value
+        case "scalar_word_step":
+            parameters = edge_parameters(seed, [0, 1, 254, 255, 256, 32767, 32768, 65535]) if seed < 64 else word_parameters(seed)
+            first, second, last = parameters
+            expected = (first + 1) & 65535
+            if variant == 1:
+                expected ^= first
+            elif variant in (3, 4):
+                narrowed = first & 255
+                expected = (narrowed + 1 - (256 if variant == 4 and narrowed >= 128 else 0)) & 65535
+            elif variant in (5, 6, 8, 13):
+                expected = (first + (255 if variant == 13 else 256)) & 65535
+            elif variant in (7, 14):
+                expected = (first - 256) & 65535
+            elif variant == 9:
+                expected = buffer[(first & 15) + 1]
+            elif variant in (10, 11):
+                count = second & 31
+                for index in range(count):
+                    expected_buffer[index + (variant == 10)] = expected_buffer[index + (variant == 11)]
+                expected = expected_buffer[count if variant == 10 else 0]
+            elif variant == 12:
+                expected = (first + 1 + (last & 255)) & 65535
         case "scalar_word_counter" | "scalar_word_prefix":
             start = (0, 255, 256, 65534, 65535)[seed % 5]
             count = (0, 1, 255, 256)[seed % 4]

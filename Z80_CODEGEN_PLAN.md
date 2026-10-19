@@ -99,7 +99,7 @@ extraction.
 - [x] **2. Bounded loop-state improvements:** retain profitable counters,
   accumulators and CRC state using existing analysis and legality checks; keep
   register choices and costs target-specific. Stop before speculative expansion.
-- [ ] **2a. Byte sum/copy and induction addressing:** reduce repeated address
+- [x] **2a. Byte sum/copy and induction addressing:** reduce repeated address
   reconstruction and loop overhead through existing pointer/array emission;
   qualify target-local byte-loop instruction choices.
 - [ ] **2b. Remaining frame traffic and accumulator retention:** remove proven
@@ -417,6 +417,63 @@ gain cannot stand in for that step's own improvement.
   at least one real decoder/array workload. Preserve zero/one/255/256 counts,
   wraparound, overlap/source order, aliases, guards and generic fallbacks.
 
+##### Step 2a Checkpoint (2026-10-19)
+
+Complete within the measured scope. Reuse the existing constant normalization,
+word arithmetic and comparison emitters; no production functions or allocation
+framework are added.
+
+- Retained word unit steps use `INC BC` / `DEC BC` directly instead of copying
+  through HL.
+- An in-place word increment in a local/spill frame slot increments its low
+  byte directly and updates the high byte only on carry. Both operands must
+  describe the same two-byte storage and have actual word types; byte
+  widening, different destinations and other locations retain existing paths.
+- Word address/index steps of plus/minus 256 increment/decrement H instead of
+  materializing a second word and adding/subtracting it. Constant-left addition
+  uses the existing operand swap before allocation.
+- Unsigned word greater-or-equal exits use one carry test; zero already implies
+  no borrow. Signed comparisons keep their separate overflow-aware path.
+
+These are bounded selections for existing counter/address TAC, not a new
+cross-iteration induction-pointer rewrite. Array access order, index widths,
+aliases and overlap behavior are unchanged. No `DJNZ`, `LDIR`, byte-counter
+narrowing or speculative pointer-range assumptions are introduced.
+
+RA results against immediate parent `ea10114` (compiler code `cdacc98`), with
+identical sources, inputs and pinned competitor settings:
+
+| Kernel | Code bytes | Total kernel cycles | Cycle reduction |
+| --- | ---: | ---: | ---: |
+| Byte sum | 139 -> 131 | 435254 -> 381521 | 12.3% |
+| Byte copy | 148 -> 137 | 599437 -> 529673 | 11.6% |
+| Byte fill | 81 -> 77 | 262114 -> 247026 | 5.8% |
+| PackBits decoder | 626 -> 582 | 206881 -> 171316 | 17.2% |
+| PackBits + CRC | 1004 -> 948 | 16272236 -> 14931174 | 8.2% |
+| Tile/CRC workload | 1380 -> 1283 | 2594520 -> 2400124 | 7.5% |
+
+All 104 builds / 1856 calls / 24 independent timing checks pass. All 78
+competitor rows reproduce exactly. Neither SSC mode regresses against the
+immediate parent in kernel/wrapper bytes, kernel/caller cycles or observed
+maximum SP displacement. Stack high-water is unchanged; further frame traffic,
+accumulator retention and footprint work remain in 2b and 2d.
+
+Fifteen new generated word-step cases cover carry/wrap boundaries, unsigned/
+signed byte extension before increment, non-in-place and wide-frame fallbacks,
+page steps in both operand orders, pointer steps and both directions of
+overlapping forward copies with complete buffer checks. The 64-seed six-cohort
+allocator/28-real-routine corpus and four-seed ASan corpus pass, preserving all
+32 immutable verifier rejection controls. All 175 compiler fixtures pass after
+updating five byte snapshots and two frame-fallback emission assertions.
+The 61530 condition executions pass per Release/traced/ASan configuration; all
+140 intermediate/linked condition ROMs match across builds. Strict ANSI GCC
+normal/traced checks, MSVC builds and the 17 comparison-tool tests normally and
+under `python -O` pass.
+
+Fresh full calculation ROMs use 22457 bytes (was 22929) and 34886 bytes (was
+35409); padded images remain 65536 bytes. Normal Release and traced ROMs are
+identical. The next implementation target is follow-up 2b, not SM83 yet.
+
 **2b. Remaining frame traffic and accumulator retention**
 
 - Starting point: 256-byte fill takes 70163 kernel T-states and 514 kernel
@@ -629,6 +686,6 @@ to this cross-compiler experiment.
    compiler source growth visible and remove superseded logic. Commit the batch
    locally with the validation summary; do not push.
 
-Steps 1 and 2 are complete. Current implementation target: **follow-up 2a,
-byte sum/copy and induction addressing**. Complete and qualify follow-ups
-2a-2d before **step 3, the initial SM83 backend**.
+Steps 1, 2 and 2a are complete. Current implementation target: **follow-up 2b,
+remaining frame traffic and accumulator retention**. Complete and qualify
+follow-ups 2b-2d before **step 3, the initial SM83 backend**.

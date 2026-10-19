@@ -434,9 +434,10 @@ all: linked.sms core_liveness_storage_test tac_insert_test z80_register_spill_te
 	: && ! grep -q "loop_retention_apply_preflight function=allocatorRaCoreLivenessLoopJoin16" compiler.log
 	: && ! grep -q "block_exit_spill_decision function=allocatorRaCoreLivenessLoopJoin16 .*temp=r1 .*spill=exempt" compiler.log
 	sed -n '/allocatorRaCoreLivenessLoopJoin16:/,/\.ENDS/p' main.asm | grep -q "ADD HL,BC"
-	sed -n '/allocatorRaCoreLivenessLoopJoin16:/,/\.ENDS/p' main.asm | grep -q "INC HL"
+	sed -n '/allocatorRaCoreLivenessLoopJoin16:/,/\.ENDS/p' main.asm | grep -q "INC (IX-10)"
+	sed -n '/allocatorRaCoreLivenessLoopJoin16:/,/\.ENDS/p' main.asm | grep -q "JR  NZ,+"
 	sed -n '/allocatorRaCoreLivenessLoopJoin16:/,/\.ENDS/p' main.asm | grep -q "LD  L,(IX-10)"
-	sed -n '/allocatorRaCoreLivenessLoopJoin16:/,/\.ENDS/p' main.asm | grep -q "LD  (IX-10),L"
+	sed -n '/allocatorRaCoreLivenessLoopJoin16:/,/\.ENDS/p' main.asm | grep -q "INC (IX-9)"
 	grep -q "post_mutation_fixed_point function=allocatorRaCoreLivenessTwoLoops pass=1 inserted=0 rewritten=5 added_temps=1 rebuild=yes status=complete" compiler.log
 	grep -q "post_mutation_fixed_point function=allocatorRaCoreLivenessTwoLoops pass=2 inserted=0 rewritten=5 added_temps=1 rebuild=yes status=complete" compiler.log
 	grep -q "post_mutation_fixed_point function=allocatorRaCoreLivenessTwoLoops pass=3 inserted=0 rewritten=0 added_temps=0 rebuild=no status=complete" compiler.log
@@ -501,7 +502,9 @@ all: linked.sms core_liveness_storage_test tac_insert_test z80_register_spill_te
 	: && ! grep -q "loop_retention_apply_preflight function=allocatorRaCoreLivenessNestedDisjoint block=3 temp=r4" compiler.log
 	test "$$(grep -c "block_exit_spill_decision function=allocatorRaCoreLivenessNestedDisjoint .*temp=r4 .*spill=required" compiler.log)" -eq 3
 	: && ! sed -n '/allocatorRaCoreLivenessNestedDisjoint:/,/\.ENDS/p' main.asm | grep -q "retained arg2 in HL"
-	sed -n '/allocatorRaCoreLivenessNestedDisjoint:/,/\.ENDS/p' main.asm | grep -q "INC HL"
+	sed -n '/allocatorRaCoreLivenessNestedDisjoint:/,/\.ENDS/p' main.asm | grep -q "INC (IX-12)"
+	sed -n '/allocatorRaCoreLivenessNestedDisjoint:/,/\.ENDS/p' main.asm | grep -q "JR  NZ,+"
+	sed -n '/allocatorRaCoreLivenessNestedDisjoint:/,/\.ENDS/p' main.asm | grep -q "INC (IX-11)"
 	grep -q "loop_retention_conflict_preflight function=allocatorRaCoreLivenessNestedConflict block=3 temp=r4.*conflict=yes.*owner=r3 action=preserve_stack status=complete" compiler.log
 	: && ! grep -q "loop_retention_apply_preflight function=allocatorRaCoreLivenessNestedConflict block=3 temp=r4" compiler.log
 	test "$$(grep -c "block_exit_spill_decision function=allocatorRaCoreLivenessNestedConflict .*temp=r4 .*spill=required" compiler.log)" -eq 3

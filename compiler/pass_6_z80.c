@@ -2827,7 +2827,7 @@ static int _aaa_generate_asm_add_sub_or_xor_and_z80_16bit(struct tac *t, FILE *f
   struct z80_location arg2_location;
   struct z80_location *constant_operand = NULL;
   int ix_offset = 0;
-  int arg1_in_hl = NO, arg2_in_hl = NO, result_in_hl = NO, operand_is_constant_one = NO;
+  int arg1_in_hl = NO, arg2_in_hl = NO, result_in_hl = NO, constant_step = 0;
   int arg1_in_bc = NO, arg2_in_bc = NO, result_in_bc = NO;
 
   /* result */
@@ -2844,6 +2844,24 @@ static int _aaa_generate_asm_add_sub_or_xor_and_z80_16bit(struct tac *t, FILE *f
 
   if (_resolve_tac_location(t, TAC_USE_ARG2, function_node, &arg2_location) == FAILED)
     return FAILED;
+
+  if ((op == TAC_OP_ADD || op == TAC_OP_SUB) && arg2_location.kind == LOC_CONST && arg2_location.value == 1 &&
+      arg1_location.kind == LOC_PHY_BC && result_location.kind == LOC_PHY_BC) {
+    fprintf(file_out, "      ; retained arg1 in BC\n      %s BC\n      ; retained result in BC\n",
+        op == TAC_OP_ADD ? "INC" : "DEC");
+    return SUCCEEDED;
+  }
+  if (op == TAC_OP_ADD && arg2_location.kind == LOC_CONST && arg2_location.value == 1 &&
+      (arg1_location.kind == LOC_STACK_LOCAL || arg1_location.kind == LOC_STACK_SPILL) &&
+      result_location.kind == arg1_location.kind && result_location.offset == arg1_location.offset &&
+      (t->arg1_var_type == VARIABLE_TYPE_INT16 || t->arg1_var_type == VARIABLE_TYPE_UINT16) &&
+      (t->result_var_type == VARIABLE_TYPE_INT16 || t->result_var_type == VARIABLE_TYPE_UINT16) &&
+      arg1_location.size == 2 && result_location.size == 2) {
+    if (_load_location_address_to_ix(&arg1_location, &ix_offset, file_out) == FAILED)
+      return FAILED;
+    fprintf(file_out, "      INC (IX%+d)\n      JR  NZ,+\n      INC (IX%+d)\n+:\n", ix_offset, ix_offset + 1);
+    return SUCCEEDED;
+  }
 
   arg1_in_hl = arg1_location.kind == LOC_PHY_HL ? YES : NO;
   arg2_in_hl = arg2_location.kind == LOC_PHY_HL ? YES : NO;
@@ -3000,8 +3018,8 @@ static int _aaa_generate_asm_add_sub_or_xor_and_z80_16bit(struct tac *t, FILE *f
   else if (arg2_in_hl == YES) {
     if (arg1_location.kind == LOC_CONST) {
       /* 16-bit */
-      if (op == TAC_OP_ADD && arg1_location.value == 1)
-        operand_is_constant_one = YES;
+      if (op == TAC_OP_ADD && (arg1_location.value == 1 || arg1_location.value == 256))
+        constant_step = arg1_location.value;
       else
         _load_value_to_bc(arg1_location.value, file_out);
     }
@@ -3014,8 +3032,8 @@ static int _aaa_generate_asm_add_sub_or_xor_and_z80_16bit(struct tac *t, FILE *f
   }
   else if (arg2_location.kind == LOC_CONST) {
     /* 16-bit */
-    if ((op == TAC_OP_ADD || op == TAC_OP_SUB) && arg2_location.value == 1) {
-      operand_is_constant_one = YES;
+    if ((op == TAC_OP_ADD || op == TAC_OP_SUB) && (arg2_location.value == 1 || arg2_location.value == 256)) {
+      constant_step = arg2_location.value;
     }
     else
       _load_value_to_bc(arg2_location.value, file_out);
@@ -3030,14 +3048,18 @@ static int _aaa_generate_asm_add_sub_or_xor_and_z80_16bit(struct tac *t, FILE *f
   /******************************************************************************************************/
 
   if (op == TAC_OP_ADD) {
-    if (operand_is_constant_one == YES)
+    if (constant_step == 1)
       _inc_hl(file_out);
+    else if (constant_step == 256)
+      fprintf(file_out, "      INC H\n");
     else
       _add_bc_to_hl(file_out);
   }
   else if (op == TAC_OP_SUB) {
-    if (operand_is_constant_one == YES)
+    if (constant_step == 1)
       _dec_hl(file_out);
+    else if (constant_step == 256)
+      fprintf(file_out, "      DEC H\n");
     else
       _sub_bc_from_hl(file_out);
   }
@@ -5927,7 +5949,6 @@ static int _aaa_generate_asm_jump_eq_lt_gt_neq_lte_gte_z80_16bit(struct tac *t, 
     _jump_c_to(t->result_s, file_out);
   }
   else if (op == TAC_OP_JUMP_GTE) {
-    _jump_z_to(t->result_s, file_out);
     _jump_nc_to(t->result_s, file_out);
   }
 
