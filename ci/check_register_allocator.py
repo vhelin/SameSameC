@@ -205,6 +205,7 @@ def verify_allocator(output):
 
 
 def generate_programs(comparison_forms):
+    requested_families = set(filter(None, os.environ.get("RA_FAMILIES", "").split(",")))
     real_loop_body = read_text(ROOT / "tests/z80/sms/calculations-1/bank_2.ssc").split(
         "void calculateAndPrint3(u8 *chars, u8 one, u8 zero) {"
     )[1].split("\n  extra1 =")[0]
@@ -473,7 +474,44 @@ def generate_programs(comparison_forms):
             ("scalar_signed_byte", "s8 a, s8 b, s8 c", "s8 saved = a^b; return (c|7)^saved;", [1, 1, 1], 1),
             ("scalar_signed_word", "s16 a, s16 b, s16 c", "s16 saved = a^b; return (c|7)^saved;", [2, 2, 2], 2),
             ("scalar_widen", "u8 a, u8 b, u8 c", "u16 saved = a+b; return (c+c)+saved;", [1, 1, 1], 2),
-            ("scalar_word", "u16 a, u16 b, u16 c", "u16 saved = a^b; return (c+c)+saved;", [2, 2, 2], 2),
+            ("scalar_word",
+             "s16 a, s16 b, s16 c" if variant == 24 else "u8 a, u8 b, u16 c" if variant in (25, 32) else
+             "u8 a, u16 b, u16 c" if variant == 26 else "s8 a, u16 b, u16 c" if variant == 27 else "u16 a, u16 b, u16 c", [
+                "u16 saved = a^b; return (c+c)+saved;",
+                "u16 saved = a^b; return (c+c)+saved;",
+                "u16 saved = a*b; return saved+c;",
+                "u16 saved = a/(b|1); return saved+c;",
+                "u16 saved = a%(b|1); return saved+c;",
+                "u16 saved = a*b; return saved/(c|1)+saved;",
+                "u16 saved = a*b; return saved%(c|1)+saved;",
+                "u16 saved = a*b; saved = saved/(c|1); return saved+c;",
+                "u16 saved = a*b; saved = saved%(c|1); return saved+c;",
+                "u16 saved = a*b; u16 *alias = &saved; return saved+alias[0]+c;",
+                "u16 saved = a*b; u8 called = ra_signed_helper(a,b,c); return saved+called;",
+                "u16 saved = a*b; ra_pointer_helper(&saved,c); return saved+c;",
+                "u8 saved = a*b; return saved+c;",
+                "s8 saved = a*b; s16 wide = saved; return wide+c;",
+                "u16 saved = a^b; saved ^= b; return saved+c;",
+                "u16 saved = a^b; u16 result = saved^b; return result+saved+c;",
+                "u16 saved = a^b; u16 *alias = &saved; saved ^= b; return alias[0]+c;",
+                "u16 saved = a^b; b ^= c; saved ^= b; return saved+c;",
+                "s16 saved = a*b; return saved+c;",
+                "u16 saved = a*b; if (c&1) { saved = a+c; } return saved+b;",
+                "u16 saved = a*b; ra_buffer[0] = saved; return saved+c;",
+                "s16 saved = a*b; ra_buffer[0] = saved; return (saved+c)^a;",
+                "u16 saved = a/(b|1); saved = saved*c; return saved+c;",
+                "u16 saved = a%(b|1); saved = saved*c; return saved+c;",
+                "s16 saved = a*b; return saved+c;",
+                "u16 saved = a*b; return saved+c;",
+                "u16 saved = a*b; return saved+c;",
+                "u16 saved = a*b; return saved+c;",
+                "u16 saved = a*b+c; u16 divisor = b|1; u16 quotient = saved/divisor; u16 residue = saved%divisor; return quotient+residue;",
+                "u16 saved = a<<(b&15); return saved+c;",
+                "u16 saved = a>>(b&15); return saved+c;",
+                "u16 saved = (a<<(b&15))^c; saved ^= c; return saved>>(b&15);",
+                "u16 saved = a<<(b&7); return saved+c;",
+            ][variant] if variant < 33 else None,
+             [1, 1, 2] if variant in (25, 32) else [1, 2, 2] if variant in (26, 27) else [2, 2, 2], 2),
             ("scalar_reassigned_word", "u16 a, u16 b, u16 c", f"u16 saved = a^b; u16 first = c+saved; {'if (a&1) {' if variant else ''} saved = b^c; {'}' if variant else ''} return (first+saved)^saved;", [2, 2, 2], 2),
             ("scalar_reassigned_byte", f"{'s8' if variant else 'u8'} a, {'s8' if variant else 'u8'} b, {'s8' if variant else 'u8'} c",
              f"{'s8' if variant else 'u8'} saved = a^b; {'s8' if variant else 'u8'} first = c+saved; saved = a^c; return (first+saved)^saved;", [1, 1, 1], 1),
@@ -650,22 +688,26 @@ def generate_programs(comparison_forms):
             "matrix_byte_store": 16, "matrix_divmod": 38,
         }
         for family, parameters, body, widths, return_width in functions:
+            arithmetic_local = family == "scalar_word" and variant >= 2
+            selected_family = family in requested_families or (
+                arithmetic_local and "scalar_call_staging" in requested_families
+            )
             word_boundary = family == "matrix_index_copy" and 30 <= variant <= 32
             arithmetic_family = family in (
                 "matrix_constant_multiply", "matrix_constant_shift", "matrix_variable_multiply",
             )
             # Dedicated cohorts keep the all-spill images within one ROM bank.
-            if family in ("scalar_frame_address", "scalar_word_counter", "scalar_word_step", "scalar_loop_memory", "scalar_byte_loop", "scalar_byte_multiply", "scalar_byte_shift", "scalar_call_staging", "matrix_byte_store", "matrix_divmod") and family not in os.environ.get("RA_FAMILIES", "").split(","):
+            if (family in ("scalar_frame_address", "scalar_word_counter", "scalar_word_step", "scalar_loop_memory", "scalar_byte_loop", "scalar_byte_multiply", "scalar_byte_shift", "scalar_call_staging", "matrix_byte_store", "matrix_divmod") or arithmetic_local) and not selected_family:
                 continue
-            if variant >= (38 if family in ("scalar_word_counter", "scalar_byte_loop", "scalar_byte_multiply", "scalar_byte_shift") else 24 if family == "scalar_frame_address" else 16 if family == "scalar_call_staging" else 15 if family == "scalar_word_step" else 17 if family == "scalar_loop_memory" else 8) and not family.startswith("matrix_"):
+            if variant >= (38 if family in ("scalar_word_counter", "scalar_byte_loop", "scalar_byte_multiply", "scalar_byte_shift") else 33 if family == "scalar_word" else 24 if family == "scalar_frame_address" else 16 if family == "scalar_call_staging" else 15 if family == "scalar_word_step" else 17 if family == "scalar_loop_memory" else 8) and not family.startswith("matrix_"):
                 continue
             if family.startswith("matrix_") and variant >= limits.get(family, 2):
                 continue
-            if arithmetic_family and comparison_forms != 1 and not os.environ.get("RA_FAMILIES"):
+            if arithmetic_family and comparison_forms != 1 and not requested_families:
                 continue
             if comparison_forms and family != "arithmetic" and not family.startswith("matrix_compare_") and not arithmetic_family:
                 continue
-            if os.environ.get("RA_FAMILIES") and family != "arithmetic" and family not in os.environ["RA_FAMILIES"].split(","):
+            if requested_families and family != "arithmetic" and not selected_family:
                 continue
             value_family = family in (
                 "matrix_index_copy", "matrix_bc_alu", "matrix_scalar_uses",
@@ -684,7 +726,7 @@ def generate_programs(comparison_forms):
                     excluded = family.startswith("matrix_") or scalar_family != (os.environ.get("RA_SCALAR_CASES") == "1")
                 if excluded:
                     continue
-            if scalar_family and family not in ("word_bc", "scalar_frame_address", "scalar_word_counter", "scalar_word_step", "scalar_loop_memory", "scalar_byte_loop", "scalar_byte_multiply", "scalar_byte_shift", "scalar_call_staging", "scalar_call_transport") and variant > 1:
+            if scalar_family and family not in ("word_bc", "scalar_word", "scalar_frame_address", "scalar_word_counter", "scalar_word_step", "scalar_loop_memory", "scalar_byte_loop", "scalar_byte_multiply", "scalar_byte_shift", "scalar_call_staging", "scalar_call_transport") and variant > 1:
                 continue
             name = f"ra_{family}_{variant}"
             if family == "matrix_source_loop":
@@ -966,6 +1008,19 @@ def check_analytical_assertions(output, programs):
         def section_assembly():
             return assembly.split(f'.SECTION "{name}" FREE')[1].split(".ENDS")[0]
 
+        if family == "scalar_word" and variant >= 2:
+            promoted = has(r"scalar_copy_promotion .*variable=saved ")
+            if variant in (2, 3, 4, 10, 18, 22, 23, 24, 26, 27, 29, 30, 31, 32) and not promoted:
+                raise RuntimeError(f"Arithmetic-produced local was not promoted: {name}")
+            if variant in (5, 6, 7, 8, 9, 11, 12, 13, 16, 19, 25, 28) and promoted:
+                raise RuntimeError(f"Escaping, narrowing or ambiguous local was promoted: {name}")
+            body = re.sub(r";[^\n]*", "", section_assembly())
+            if variant == 28 and section_assembly().count("reuse remainder from preceding DIV") != 1:
+                raise RuntimeError(f"Local promotion lost quotient/remainder sharing: {name}")
+            if variant in (14, 15, 16, 17, 31):
+                xors = len(re.findall(r"^\s+XOR ", body, re.M))
+                if xors != {14: 0, 15: 4, 16: 4, 17: 6, 31: 0}[variant]:
+                    raise RuntimeError(f"Overwrite-aware XOR cancellation/fallback mismatch: {name}")
         if family == "scalar_frame_address":
             body = section_assembly()
             if variant in (5, 6, 7) and len(re.findall(r"\bINC IX\b", body)) != {5: 1, 6: 2, 7: 0}[variant]:
@@ -2059,8 +2114,59 @@ def generated_oracle(program, seed, comparison_forms, decision_loop_paths):
               | "scalar_multi_word" | "scalar_multi_rmw" | "scalar_split_word" | "scalar_rank_fallback"
               | "scalar_reassigned_word" | "scalar_lifetime_hole" | "scalar_narrow" | "word_bc"):
             parameters = word_parameters(seed, variant)
+            if family == "scalar_word" and variant >= 2:
+                parameters = (
+                    edge_parameters(seed, [0, 1, 255, 256, 32767, 32768, 65534, 65535]) if seed < 64 else
+                    edge_parameters(seed - 64, [0, 1, 7, 15, 127, 128, 254, 255]) if seed < 128 else parameters
+                )
+                parameters = [value & ((1 << (width * 8)) - 1) for value, width in zip(parameters, program.widths)]
             first, second, third_word = parameters
-            if family == "scalar_lifetime_hole":
+            if family == "scalar_word" and variant >= 2:
+                product = ((first - (256 if variant == 27 and first >= 128 else 0)) * second) & 65535
+                divisor = second | 1
+                if variant in (2, 18, 24, 25, 26, 27):
+                    expected = product + third_word
+                elif variant == 3:
+                    expected = first // divisor + third_word
+                elif variant == 4:
+                    expected = first % divisor + third_word
+                elif variant in (5, 6, 7, 8):
+                    result = product // (third_word | 1) if variant in (5, 7) else product % (third_word | 1)
+                    expected = result + (product if variant in (5, 6) else third_word)
+                elif variant == 9:
+                    expected = 2 * product + third_word
+                elif variant == 11:
+                    expected = (product & 0xff00 | third_word & 255) + third_word
+                elif variant == 10:
+                    expected = product + ((first + second + third_word) & 255)
+                elif variant in (12, 13):
+                    narrowed = product & 255
+                    expected = narrowed - (256 if variant == 13 and narrowed >= 128 else 0) + third_word
+                elif variant in (14, 16):
+                    expected = first + third_word
+                elif variant == 15:
+                    expected = first + (first ^ second) + third_word
+                elif variant == 17:
+                    expected = (first ^ third_word) + third_word
+                elif variant == 19:
+                    expected = ((first + third_word) & 65535 if third_word & 1 else product) + second
+                elif variant in (20, 21):
+                    expected_buffer[0] = product & 255
+                    expected = product + third_word
+                    if variant == 21:
+                        expected = (expected & 65535) ^ first
+                elif variant in (22, 23):
+                    value = first // divisor if variant == 22 else first % divisor
+                    expected = ((value * third_word) & 65535) + third_word
+                elif variant == 28:
+                    dividend = (product + third_word) & 65535
+                    expected = dividend // divisor + dividend % divisor
+                else:
+                    count = second & (7 if variant == 32 else 15)
+                    shifted = first >> count if variant == 30 else (first << count) & 65535
+                    expected = shifted >> count if variant == 31 else shifted + third_word
+                expected &= 65535
+            elif family == "scalar_lifetime_hole":
                 called = ((first & 255) + (second & 255) + (third_word & 255)) & 255 if variant else 0
                 middle = (second + third_word + called) & 65535
                 expected = ((((third_word + (first ^ second)) & 65535) ^ middle) + (((first + third_word) & 65535) ^ middle)) & 65535

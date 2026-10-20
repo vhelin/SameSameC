@@ -46,6 +46,9 @@ static int g_register_reads_and_writes_count = 0, g_local_variable_running_index
 
 static int _promote_register_allocator_local_values(void);
 static int _is_register_allocator_jump_op(int op);
+static int _is_first_allocator_producer(int op);
+static int _is_first_allocator_consumer(int op);
+static int _is_register_allocator_linear_scan_producer(struct tac *producer);
 
 static void _debug_register_allocator_temp_compaction_stage(char *stage);
 
@@ -168,10 +171,8 @@ static int _promote_register_allocator_local_values(void) {
       }
     }
     pointer_base = producer->op == TAC_OP_GET_ADDRESS || producer->op == TAC_OP_GET_ADDRESS_ARRAY;
-    if ((pointer_base == NO && producer->op != TAC_OP_ASSIGNMENT &&
-      producer->op != TAC_OP_ADD && producer->op != TAC_OP_SUB &&
-      producer->op != TAC_OP_AND && producer->op != TAC_OP_OR &&
-      producer->op != TAC_OP_XOR && producer->op != TAC_OP_COMPLEMENT) ||
+    if (_is_register_allocator_linear_scan_producer(producer) == NO ||
+        producer->op == TAC_OP_ARRAY_READ || producer->op == TAC_OP_FUNCTION_CALL_USE_RETURN_VALUE ||
         producer->result_type != TAC_ARG_TYPE_LABEL || function_node == NULL ||
         (function_node->flags & TREE_NODE_FLAG_PUREASM) != 0 ||
         strcmp(function_node->children[1]->label, "mainmain") == 0)
@@ -189,6 +190,8 @@ static int _promote_register_allocator_local_values(void) {
     if (pointer_base == NO &&
         (variable->children[0]->value == VARIABLE_TYPE_UINT8 || variable->children[0]->value == VARIABLE_TYPE_INT8)) {
       int operand_index;
+      if (producer->op != TAC_OP_ASSIGNMENT && _is_first_allocator_producer(producer->op) == NO)
+        continue;
       for (operand_index = 0; operand_index < (producer->op == TAC_OP_ASSIGNMENT || producer->op == TAC_OP_COMPLEMENT ? 1 : 2); operand_index++) {
         struct tree_node *source = operand_index == 0 ? producer->arg1_node : producer->arg2_node;
         int type = operand_index == 0 ? producer->arg1_type : producer->arg2_type;
@@ -260,6 +263,7 @@ static int _promote_register_allocator_local_values(void) {
         eligible = NO;
       if ((instruction->arg1_type == TAC_ARG_TYPE_LABEL && instruction->arg1_node == variable) ||
           (pointer_base == NO && instruction->arg2_type == TAC_ARG_TYPE_LABEL && instruction->arg2_node == variable)) {
+        /* Named division inputs preserve the existing quotient/remainder sharing. */
         if (instruction_index < first_read)
           first_read = instruction_index;
         if ((pointer_base == YES ? (instruction->op != TAC_OP_ARRAY_READ &&
@@ -267,11 +271,10 @@ static int _promote_register_allocator_local_values(void) {
             instruction_index + 1 >= function_end || g_tacs[instruction_index + 1].op != TAC_OP_GET_ADDRESS_ARRAY ||
             g_tacs[instruction_index + 1].arg1_type != TAC_ARG_TYPE_TEMP ||
             g_tacs[instruction_index + 1].arg1_d != instruction->result_d)) :
-            (instruction->op != TAC_OP_ASSIGNMENT && instruction->op != TAC_OP_ADD &&
-            instruction->op != TAC_OP_SUB && instruction->op != TAC_OP_AND &&
-            instruction->op != TAC_OP_OR && instruction->op != TAC_OP_XOR &&
-            instruction->op != TAC_OP_COMPLEMENT && instruction->op != TAC_OP_SHIFT_LEFT &&
-            instruction->op != TAC_OP_SHIFT_RIGHT && instruction->op != TAC_OP_RETURN_VALUE && _is_register_allocator_jump_op(instruction->op) == NO &&
+            (instruction->op != TAC_OP_ASSIGNMENT && instruction->op != TAC_OP_COMPLEMENT &&
+            (_is_first_allocator_consumer(instruction->op) == NO ||
+             instruction->op == TAC_OP_DIV || instruction->op == TAC_OP_MOD) &&
+            _is_register_allocator_jump_op(instruction->op) == NO &&
             !(instruction->arg2_node == variable && (instruction->op == TAC_OP_ARRAY_READ ||
             instruction->op == TAC_OP_ARRAY_WRITE || instruction->op == TAC_OP_GET_ADDRESS_ARRAY)))) ||
             instruction_index <= producer_index || crossed_barrier == YES ||
@@ -293,9 +296,8 @@ static int _promote_register_allocator_local_values(void) {
           instruction != producer && instruction->op != TAC_OP_CREATE_VARIABLE) {
         if (pointer_base == NO && instruction_index > producer_index && crossed_barrier == NO &&
             (variable->children[0]->value == VARIABLE_TYPE_UINT16 || variable->children[0]->value == VARIABLE_TYPE_INT16) &&
-            (instruction->op == TAC_OP_ASSIGNMENT || instruction->op == TAC_OP_ADD || instruction->op == TAC_OP_SUB ||
-             instruction->op == TAC_OP_AND || instruction->op == TAC_OP_OR || instruction->op == TAC_OP_XOR ||
-             instruction->op == TAC_OP_COMPLEMENT)) {
+            (instruction->op == TAC_OP_ASSIGNMENT || _is_first_allocator_producer(instruction->op) == YES ||
+             instruction->op == TAC_OP_MUL || instruction->op == TAC_OP_DIV || instruction->op == TAC_OP_MOD)) {
           definitions++;
           last_definition = instruction_index;
         }
@@ -325,8 +327,10 @@ static int _promote_register_allocator_local_values(void) {
         }
       }
     }
-    if (eligible == NO || (definitions > 1 && (word_definitions == NO ||
-        (control_flow == YES && loop_definitions == NO))) ||
+    if (eligible == NO || (word_definitions == NO && (definitions > 1 ||
+        (pointer_base == NO && producer->op != TAC_OP_ASSIGNMENT &&
+         _is_first_allocator_producer(producer->op) == NO))) ||
+        (definitions > 1 && control_flow == YES && loop_definitions == NO) ||
         (pointer_base == YES ? reads < 2 : reads < 1))
       continue;
     if (next_temp == INT_MAX)
@@ -2376,8 +2380,10 @@ static int _optimize_il_25(int *optimizations_counter) {
             }
           }
         }
-        /* A named XOR may have later users of its masked value. */
-        if (g_tacs[current].result_type == TAC_ARG_TYPE_LABEL) {
+        /* A different destination leaves the named masked value observable. */
+        if (g_tacs[current].result_type == TAC_ARG_TYPE_LABEL &&
+            (g_tacs[next].result_type != TAC_ARG_TYPE_LABEL ||
+             g_tacs[next].result_node != g_tacs[current].result_node)) {
           for (j = next + 1; j < end; j++) {
             if (g_tacs[j].op == TAC_OP_DEAD || g_tacs[j].op == TAC_OP_CREATE_VARIABLE)
               continue;

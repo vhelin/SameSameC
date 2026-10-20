@@ -130,7 +130,7 @@ extraction.
   profitability estimates and address caching rather than adding a framework.
 - [x] **2n. Leaf-frame and helper-contract audit:** remove only measured,
   provably redundant frame work or preservation within the existing ABI.
-- [ ] **2o. Arithmetic-produced locals and existing pure-expression folds:**
+- [x] **2o. Arithmetic-produced locals and existing pure-expression folds:**
   extend safe local promotion and make existing simplifications effective.
 - [ ] **2p. Advancing-pointer reductions and scaled induction:** extend proven
   loop/address retention beyond copy/fill to sums and complex calculation loops.
@@ -1593,14 +1593,14 @@ The existing checkpoint gates apply to each implementation batch.
 
 #### 2o. Arithmetic-Produced Locals And Existing Pure-Expression Folds
 
-- [ ] Extend the existing local-promotion eligibility where proven safe for
-  multiply/divide/modulo-produced named scalars. The multiply/add kernel still
-  stores its product to the frame and immediately reloads it; prefer existing
+- [x] Extend the existing local-promotion eligibility where proven safe for
+  multiply/divide/modulo-produced named scalars. The multiply/add kernel previously
+  stored its product to the frame and immediately reloaded it; prefer existing
   temporary retention and location resolution over another forwarding helper.
-- [ ] Diagnose why the existing XOR-cancellation rule does not remove the two
+- [x] Diagnose why the existing XOR-cancellation rule does not remove the two
   XORs in shift/restore. Correct eligibility or pass ordering where justified;
   do not add a duplicate rule or assume SDCC already cancels this example.
-- [ ] Preserve matching types, promotions, operand stability, observable reads,
+- [x] Preserve matching types, promotions, operand stability, observable reads,
   escapes, aliases and call/assembly barriers. Keep the full arithmetic TAC
   clobber contracts and necessary DE saves audited in 2n.
 
@@ -1609,6 +1609,76 @@ traffic or redundant pure work with measured byte/cycle gains. Check mixed
 widths, signed boundaries, narrowing, multiple definitions/uses, escaping
 locals and intervening calls/writes. Measure caller, kernel and complete frame
 footprint separately; retain conservative fallbacks.
+
+#### Step 2o Checkpoint (2026-10-20)
+
+Reuse the existing local-promotion pass and three existing producer/consumer
+predicates rather than adding another forwarding helper or optimizer pass.
+Eligible word multiply/divide/modulo results now reach existing temporary
+retention. Reuse the same producer predicate for word shifts: after cancellation,
+shift/restore's initial shift otherwise becomes a named destination that cannot
+share temporary storage, increasing its frame footprint by two bytes.
+No production function is added; production C grows by **six net lines**.
+
+The existing XOR rule rejected later reads of the first named destination even
+when the second XOR overwrote that same destination with the restored value.
+Skip that later-read rejection only for this same-destination case. Keep the
+matching-type, stable-mask, escape, call and assembly guards; different
+destinations and changed masks retain their original behavior.
+
+Keep byte arithmetic-produced locals conservative. Reuse the existing
+`word_definitions` proof before promoting a new arithmetic producer: a named
+word product of two byte operands otherwise becomes a byte temporary and loses
+its high byte. Proven word-width mixed operands and shifts still qualify.
+Also keep **DIV/MOD consumers** on the original named-input path. Unrestricted
+promotion broke the existing shared quotient/remainder computation in product/
+restore and array workloads; reject that version and add a sharing regression.
+Arithmetic helper bodies, full TAC clobber masks, necessary DE saves and the
+public ABI remain unchanged.
+
+Against parent `b39815e` (the qualified `141338d` compiler), RA measurements are:
+
+| Workload | Kernel bytes before/after | Kernel T-states before/after | Observed whole-call frame bytes before/after |
+| --- | ---: | ---: | ---: |
+| Multiply/add | 70 / 58 | 20098 / 18806 | 26 / 24 |
+| Product/restore | 147 / 135 | 42415 / 41123 | 30 / 28 |
+| Shift/restore | 83 / 59 | 12042 / 9934 | 22 / 22 |
+| Array | 1641 / 1605 | 6351978 / 6241578 | 90 / 88 |
+| Stencil | 1717 / 1693 | 4336246 / 4267798 | 120 / 120 |
+
+Cycles aggregate 17 calls for the three small kernels and 20 for each workload;
+frame observations are maxima, not global RAM or unexecuted-path bounds.
+Multiply/add removes two product frame reads and two writes per call, saving
+76 T-states. Shift/restore removes both redundant XORs without enlarging its
+frame. Caller costs are unchanged, including multiply/add's 126 bytes/729
+T-states per call. All 26 RA/no-RA rows are non-regressing in bytes, cycles,
+caller costs and observed stack/frame metrics against the immediate parent.
+No-RA also benefits from XOR cancellation: shift/restore shrinks 131 to 83 bytes.
+Whole used calculation ROMs shrink **20637 to 20625** and **31591 to 31555**
+bytes; padded files remain 65536 bytes.
+
+Add 31 cases to the existing scalar-word generator/oracle and reuse the existing
+call-staging cohort to stay within one ROM bank; add no generator or cohort.
+The focused 41-function cohort passes **10496 calls per reported mode/build**
+with independent results, complete buffers and SP/DE checks. Cover signed and
+mixed-width products, byte-to-word widening, narrowing, redefinitions, multiple
+uses, escaping aliases, calls/writes, shifts, XOR guards and quotient/remainder
+sharing. The saved parent fails the new promotion selection; the rejected
+unrestricted version fails the division-input fallback.
+
+Final release/traced/ASan qualification passes: all **175 fixtures without
+snapshot updates**, 16 immutable allocator cohorts and 28 real routines,
+90 allocator and 300 condition ROM identities, 26 combined condition/comparison
+unit tests plus 19 optimized comparison units per build, and strict normal/
+traced C89 compilation. The full comparison passes **104 builds/1856 calls**,
+unchanged corpus fingerprints and all **78 external controls**. There are
+**36 independent timing checks** and **12 mixed-version builds/228 guarded
+calls** in both old/new directions. The separately documented escaped-counter
+alias defect remains 42740 rather than 50814 and is not counted as passing.
+
+Saved parent binaries, source hashes, rejected-version controls and final
+qualification are retained in `C:\cygwin64\tmp\arithmetic-locals-20261020`.
+No push. Step 2p is next; 2q-2s remain pending before the initial SM83 backend.
 
 #### 2p. Advancing-Pointer Reductions And Scaled Induction
 
@@ -1881,8 +1951,8 @@ to this cross-compiler experiment.
    compiler source growth visible and remove superseded logic. Commit the batch
    locally with the validation summary; do not push.
 
-Steps 1, 2 and 2a-2n are complete. Current implementation target:
-**step 2o, arithmetic-produced locals and existing pure-expression folds**.
-Complete the bounded follow-ups 2o-2s in order, then start step 3, the initial
+Steps 1, 2 and 2a-2o are complete. Current implementation target:
+**step 2p, advancing-pointer reductions and scaled induction**.
+Complete the bounded follow-ups 2p-2s in order, then start step 3, the initial
 SM83 backend. Keep the qualified Z80 behavior and shared core covered throughout;
 do not expand this finite sequence into every possible Z80 optimization.
