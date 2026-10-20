@@ -29,6 +29,10 @@ MULTIPLY_CONSTANTS = [
 ]
 BYTE_MULTIPLY_CONSTANTS = [3, 5, 7, 15, 31, 127, 129, 254, 255]
 BYTE_SHIFT_COUNTS = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 15, 16, 17, 31, 255, 256, -1, -256]
+COUNTER_BOUNDS = [
+    (0, 0), (0, 1), (0, 8), (0, 127), (0, 128), (0, 254), (0, 255), (1, 255),
+    (7, 8), (8, 8), (255, 1), (255, 255), (0, 256), (255, 256), (256, 257), (65535, 8),
+]
 
 
 @dataclass
@@ -210,6 +214,26 @@ def generate_programs(comparison_forms):
         read_text(ROOT / "tests/z80/sms/calculations-1/bank_1.ssc"), re.M,
     )[0]
     programs = []
+    counter_step = "if (total&0x8000) { total = (total<<1)^0x1021; } else { total <<= 1; }"
+    counter_bodies = [
+        f"u16 total = a; u16 i; for (i = {start}; i < {limit}; i++) {{ {counter_step} }} return total+i;"
+        for start, limit in COUNTER_BOUNDS
+    ] + [
+        f"u16 total = a; u16 i; u16 j; for (j = 0; j < 3; j++) {{ for (i = 0; i < 8; i++) {{ {counter_step} }} }} return total+i+j;",
+        f"u16 total = a; u16 i; for (i = 0; i < 8; i++) {{ if (i == (b&7)) {{ break; }} {counter_step} }} return total+i;",
+        f"u16 total = a; u16 i; for (i = 0; i < 8; i++) {{ if (i == (b&7)) {{ continue; }} {counter_step} }} return total+i;",
+        f"u16 total = a; u16 i = a; u16 *escaped = &i; while (i < 8) {{ {counter_step} i++; }} return total+escaped[0];",
+        f"u16 total = a; u16 i; for (i = 0; i < 8; i++) {{ {counter_step} if (b&1) {{ i++; }} }} return total+i;",
+        f"u16 total = a; u16 i; u16 limit = b&255; for (i = 0; i < limit; i++) {{ {counter_step} }} return total+i;",
+        f"u16 total = a; u16 i = 65534; do {{ {counter_step} i++; }} while (i != 1); return total+i;",
+        f"u16 total = a; u16 i; for (i = 0; i < 255; i++) {{ {counter_step} }} s8 narrowed = i; u16 promoted = narrowed; return total+i+promoted;",
+        "u16 total = a; u16 i; for (i = 0; i < 8; i++) { u8 called = ra_pointer_helper(ra_buffer,c); total = total+called; } return total+i;",
+        f"u16 total = a; s16 i; for (i = 0; i < 8; i++) {{ {counter_step} }} return total+i;",
+        f"u8 workspace[136]; workspace[135] = c; u16 total = a; u16 other = b; u16 i; for (i = 0; i < 8; i++) {{ {counter_step} other ^= total; }} return total+other+i+workspace[135];",
+        f"u16 total = a; u16 i; for (i = 0; i < 255; i++) {{ {counter_step} ra_buffer[i&127] = i; }} return total+i+ra_buffer[126];",
+        f"u16 total = a; u16 i; for (i = 0; i < 8; i++) {{ {counter_step} }} u16 first = i; for (i = 0; i < 3; i++) {{ {counter_step} }} return total+first+i;",
+        f"u16 total = a; u16 i = 8; while (i > 0) {{ {counter_step} i--; }} return total+i;",
+    ]
     for variant in range(38):
         constant = 1 + variant * 7
         operator = ["+", "-", "&", "|", "^"][variant % 5]
@@ -528,7 +552,7 @@ def generate_programs(comparison_forms):
                 "u16 i = a; u16 *escaped = &i; while (i != c) { i++; } return escaped[0]+b;",
                 "u16 i = a; while (i != c) { if (i == b) { return i+b; } i++; } return i+b;",
                 "u16 i = a; u16 crc = b; while (i != c) { if (crc&1) { crc = (crc>>1)^0xA001; } else { crc = crc>>1; } i++; } return crc+i;",
-            ][variant] if variant < 8 else None, [2, 2, 2], 2),
+            ][variant] if variant < 8 else counter_bodies[variant - 8], [2, 2, 2], 2),
             ("scalar_word_prefix", "u16 a, u16 b, u16 c",
              f"u16 i = a; u16 first = i+b; while (i != c) {{ i++; }} {'i = a; while (i != c) { i++; }' if variant else ''} return first+i;", [2, 2, 2], 2),
             ("scalar_word_step", "u16 a, u16 b, u16 c", [
@@ -610,9 +634,9 @@ def generate_programs(comparison_forms):
                 "matrix_constant_multiply", "matrix_constant_shift", "matrix_variable_multiply",
             )
             # Dedicated cohorts keep the all-spill images within one ROM bank.
-            if family in ("scalar_word_step", "scalar_loop_memory", "scalar_byte_loop", "scalar_byte_multiply", "scalar_byte_shift", "scalar_call_staging", "matrix_byte_store", "matrix_divmod") and family not in os.environ.get("RA_FAMILIES", "").split(","):
+            if family in ("scalar_word_counter", "scalar_word_step", "scalar_loop_memory", "scalar_byte_loop", "scalar_byte_multiply", "scalar_byte_shift", "scalar_call_staging", "matrix_byte_store", "matrix_divmod") and family not in os.environ.get("RA_FAMILIES", "").split(","):
                 continue
-            if variant >= (38 if family in ("scalar_byte_loop", "scalar_byte_multiply", "scalar_byte_shift") else 15 if family == "scalar_word_step" else 17 if family == "scalar_loop_memory" else 8) and not family.startswith("matrix_"):
+            if variant >= (38 if family in ("scalar_word_counter", "scalar_byte_loop", "scalar_byte_multiply", "scalar_byte_shift") else 15 if family == "scalar_word_step" else 17 if family == "scalar_loop_memory" else 8) and not family.startswith("matrix_"):
                 continue
             if family.startswith("matrix_") and variant >= limits.get(family, 2):
                 continue
@@ -1093,6 +1117,13 @@ def check_analytical_assertions(output, programs):
             if variant >= 36 and "constant byte shift" in body:
                 raise RuntimeError(f"Variable byte shift used a constant path: {name}")
         if family == "scalar_word_counter":
+            body = section_assembly()
+            narrowed = variant in ({3, 24, 25, 26, 31, 34, 36} | set(range(8, 20)))
+            if any(
+                (f"bounded word counter {operation}; high byte preserved" in body) != narrowed
+                for operation in ("comparison", "increment")
+            ):
+                raise RuntimeError(f"Bounded word-counter narrowing or conservative fallback mismatch: {name}")
             if variant == 0 and not has(r"loop_retention_apply_preflight .*selected=BC .*application=applied"):
                 raise RuntimeError(f"Bounded unsigned word counter was not retained: {name}")
             if variant == 0 and not re.search(r"\bINC BC\b", section_assembly()):
@@ -1837,6 +1868,38 @@ def generated_oracle(program, seed, comparison_forms, decision_loop_paths):
                 for _ in range(count):
                     crc = (crc >> 1) ^ (0xA001 if crc & 1 else 0)
                 expected = (crc + parameters[2]) & 65535
+            if family == "scalar_word_counter" and variant >= 8:
+                first, second, last = word_parameters(seed, variant)
+                if variant == 27:
+                    first = (0, 1, 7, 8, 255, 256, 65535)[seed % 7]
+                parameters = [first, second, last]
+                if variant < 24:
+                    start, limit = COUNTER_BOUNDS[variant - 8]
+                    iterations, final = max(0, limit - start), max(start, limit)
+                else:
+                    iterations, final = {
+                        24: (24, 11), 25: (second & 7, second & 7), 26: (7, 8),
+                        27: (max(0, 8 - first), max(8, first)), 28: (4 if second & 1 else 8, 8),
+                        29: (second & 255, second & 255), 30: (3, 1),
+                        31: (255, 254), 32: (0, 8), 33: (8, 8),
+                        34: (8, 8), 35: (255, 255), 36: (11, 11), 37: (8, 0),
+                    }[variant]
+                total, other = first, second
+                for _ in range(iterations):
+                    total = ((total << 1) ^ (0x1021 if total & 0x8000 else 0)) & 65535
+                    if variant == 34:
+                        other ^= total
+                expected = total + final
+                if variant == 32:
+                    expected += 8 * buffer[1]
+                    expected_buffer[0] = last & 255
+                elif variant == 34:
+                    expected += other + (last & 255)
+                elif variant == 35:
+                    for index in range(255):
+                        expected_buffer[index & 127] = index
+                    expected += expected_buffer[126]
+                expected &= 65535
         case "scalar_decision_loop":
             parameters = [(seed * 7919 + 32767) & 65535, seed % 8, third]
             first, count, value = parameters
@@ -2138,7 +2201,7 @@ def execute_generated(output, compiler, linker, programs, preamble, compiled, ca
                     result = execute(
                         image.rom, image.symbols[program.name], args, program.widths,
                         buffer, buffer_address, program.returnWidth, image.transfers, program.family == "matrix_source_loop",
-                        instruction_limit=60000 if program.family == "scalar_byte_loop" else 20000,
+                        instruction_limit=60000 if program.family in ("scalar_byte_loop", "scalar_word_counter") else 20000,
                     )
                     if result["unmapped_instructions"]:
                         raise RuntimeError(f"{program.name}: unmapped executed instructions")
@@ -2152,7 +2215,7 @@ def execute_generated(output, compiler, linker, programs, preamble, compiled, ca
                             raise RuntimeError(f"{program.name}: frequency-loop backedges={result['entry_backedges']}, expected={backedges}")
                     if program.family == "scalar_decision_loop" and result["entry_backedges"] != parameters[1]:
                         raise RuntimeError(f"{program.name}: decision-loop backedges={result['entry_backedges']}, expected={parameters[1]}")
-                    if program.family in ("scalar_word_counter", "scalar_word_prefix"):
+                    if program.family == "scalar_word_prefix" or (program.family == "scalar_word_counter" and program.variant < 8):
                         count = (parameters[2] - parameters[0]) & 65535
                         if program.family == "scalar_word_prefix":
                             backedges = count * (2 if program.variant else 1)
@@ -2838,6 +2901,7 @@ def main():
             "scalar", "matrix", "matrix_literals", "matrix_memory", "matrix_values",
         ]
         if not family_filter:
+            cohorts.append("word_counters")
             cohorts.append("word_steps")
             cohorts.append("loop_memory")
             cohorts.append("byte_loops")
@@ -2848,12 +2912,12 @@ def main():
                 cohorts.append("byte_stores")
                 cohorts.append("divmod")
         for cohort in cohorts:
-            scalar_cohort = cohort in ("scalar", "word_steps", "loop_memory", "byte_loops", "byte_multiply", "byte_shifts", "call_staging")
+            scalar_cohort = cohort in ("scalar", "word_counters", "word_steps", "loop_memory", "byte_loops", "byte_multiply", "byte_shifts", "call_staging")
             os.environ.update({
                 "RA_SCALAR_CASES": "1" if scalar_cohort else "0",
                 "RA_MATRIX_CASES": "0" if scalar_cohort else "1", "RA_REAL_PROJECTS": "0",
                 "RA_VALUE_CASES": "1" if cohort in ("matrix_values", "byte_stores") else "0",
-                "RA_FAMILIES": "scalar_word_step" if cohort == "word_steps" else "scalar_loop_memory" if cohort == "loop_memory" else "scalar_byte_loop" if cohort == "byte_loops" else "scalar_byte_multiply" if cohort == "byte_multiply" else "scalar_byte_shift" if cohort == "byte_shifts" else "scalar_call_staging" if cohort == "call_staging" else "matrix_byte_store" if cohort == "byte_stores" else "matrix_divmod" if cohort == "divmod" else family_filter,
+                "RA_FAMILIES": "scalar_word_counter" if cohort == "word_counters" else "scalar_word_step" if cohort == "word_steps" else "scalar_loop_memory" if cohort == "loop_memory" else "scalar_byte_loop" if cohort == "byte_loops" else "scalar_byte_multiply" if cohort == "byte_multiply" else "scalar_byte_shift" if cohort == "byte_shifts" else "scalar_call_staging" if cohort == "call_staging" else "matrix_byte_store" if cohort == "byte_stores" else "matrix_divmod" if cohort == "divmod" else family_filter,
                 "RA_COMPARISON_FORMS": "1" if cohort == "matrix_literals" else "2" if cohort == "matrix_memory" else "0",
                 "RA_EXECUTION_DIR": str(output / cohort), "RA_VERIFIER": harness,
             })

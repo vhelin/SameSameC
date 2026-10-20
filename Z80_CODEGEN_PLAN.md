@@ -124,7 +124,7 @@ extraction.
   reconstruction, then select profitable target-local loop/block instructions.
 - [x] **2k. Constant byte arithmetic and multiplication setup:** specialize
   byte shifts/multiplies and remove unused setup from existing constant word chains.
-- [ ] **2l. Proven bounded-counter narrowing:** use byte execution for counters
+- [x] **2l. Proven bounded-counter narrowing:** use byte execution for counters
   whose ranges and observable uses permit it, without changing source semantics.
 - [ ] **2m. Lowering-aware costs and local address reuse:** refine existing
   profitability estimates and address caching rather than adding a framework.
@@ -1283,12 +1283,12 @@ Step-2k checkpoint (2026-10-20):
 
 #### 2l. Proven Bounded-Counter Narrowing
 
-- [ ] Reuse bounded-loop analysis to prove initialization, bounds and updates
+- [x] Reuse bounded-loop analysis to prove initialization, bounds and updates
   before selecting byte execution for a source word counter.
-- [ ] Check all counter uses, values observed after exit, conversions, escapes
+- [x] Check all counter uses, values observed after exit, conversions, escapes
   and wrap behavior. Reject unknown ranges or interfering updates; do not infer
   safety from array undefined-behavior assumptions borrowed from another compiler.
-- [ ] Start with the CRC's proven 0-7 bit counter, which SDCC executes in one
+- [x] Start with the CRC's proven 0-7 bit counter, which SDCC executes in one
   byte while SameSameC retains BC. Measure register availability and compare/
   increment costs before considering a separate countdown/`DJNZ` selection.
 
@@ -1296,6 +1296,72 @@ Acceptance: reduce a measured hot-loop cost without changing language-level
 types or observable values. Cover zero-trip loops, nested loops, early exits,
 post-loop reads, 255/256 boundaries, wrapping/escaped counters and unchanged
 fallbacks. Keep any byte-counter instruction choice target-specific.
+
+Step-2l checkpoint (2026-10-20):
+
+- Extracted the existing copy/fill loop's initialization, guard and latch checks
+  into one shared target-local counter proof. Byte selection requires a source
+  `u16` temporary, an initialization and constant upper bound in 0-255, exactly
+  two definitions, a guarded unit increment and one canonical backedge. Reject
+  side entries, extra writes, address-taking, inline assembly and calls inside
+  the loop; unknown bounds, signed counters and 256/wrapping cases keep the
+  existing word paths. This does not infer ranges from array undefined behavior.
+- Reused the existing unsigned byte comparison emitter and direct increment
+  paths. A retained BC counter compares C and uses `INC C`; a spilled word
+  counter compares/increments its low byte without carry handling. Original
+  word initialization keeps the high byte zero, including on zero-trip and
+  early-exit paths. Source types, word-sized backing slots and full-word reads
+  after the loop remain unchanged, including subsequent signed narrowing.
+- BC remains reserved as a word pair: B is not opportunistically allocated to
+  another value. No allocator metadata, frame packing, ABI or pass-5 changes,
+  and no countdown/`DJNZ` rewrite or value reconstruction. The CRC's existing
+  BC reservation is sufficient: its guard is three bytes shorter, and its
+  increment drops from six to four T-states.
+- Immediate-parent (`7ac07df`) RA workload measurements; kernel bytes include
+  the same required helpers, and cycles cover the existing benchmark inputs:
+
+  | Kernel | Bytes before -> after | T-states before -> after |
+  |---|---:|---:|
+  | Packed CRC | 913 -> 910 | 12,801,227 -> 12,026,571 |
+  | Stencil | 1,735 -> 1,717 | 4,400,146 -> 4,336,246 |
+  | Tile | 1,212 -> 1,209 | 2,150,676 -> 2,073,424 |
+
+  CRC is 6.1% faster, stencil 1.5% and tile 3.6%. All 104 comparison builds /
+  1,856 calls are non-regressing in size, cycles and stack measurements.
+  All 78 external rows, 13 no-RA rows and caller costs stay exact; all 26
+  normal/traced comparison images match.
+- Extended the existing word-counter family by 30 variants and moved it into a
+  dedicated cohort rather than adding a parallel generator. Its 38 variants
+  plus eight controls run 2,944 cases per mode with 64 seeds. Cover zero trips,
+  nonzero starts, nested loops, break/continue, post-loop word reads, signed
+  conversions, 255/256 boundaries, escaped reads, interfering updates, calls,
+  reused counters and pressure. Nineteen variants select byte execution; the
+  other nineteen retain exact sizes, cycles and frame traffic.
+- Every focused function is non-regressing against the saved parent. Parent,
+  release, traced and ASan executions pass independent value/full-buffer oracles;
+  current images match across all five build modes in release/traced/ASan.
+  Parent/current default and all-spill images stay identical, and the saved
+  parent fails the new selection assertion. All 24 standard independent timing
+  checks pass, plus 34 additional counter/fallback/workload checks using
+  `z88dk-ticks`, exact values and complete buffers.
+- All 175 fixtures pass without snapshot updates; 15 allocator cohorts pass
+  32 immutable verifier-rejection controls each; all 28 real routines have
+  non-regressing cycles/frame traffic; and 85 traced/ASan ROMs match. All
+  25 condition/comparison tests pass in release, traced and ASan, with 300
+  identical ROM/counter images; 18 comparison tests also pass under Python
+  `-O`. MSVC, Python syntax/diagnostics and strict ANSI C normal/traced builds
+  pass; the latter excludes only pre-existing unused-parameter warnings.
+- Complete calculation ROM used sizes fall 20,677 -> 20,674 and
+  32,819 -> 32,798 bytes, with identical normal/traced padded images.
+  Production growth is **99 net C lines and one shared helper**, including the
+  removed duplicate copy/fill checks. No new allocator state or test helpers.
+  Qualification, source/binary hashes and saved-parent evidence:
+  `C:\cygwin64\tmp\bounded-counter-20261020\final`.
+- A separate alias-written counter already fails in the saved parent and
+  remains unchanged in the final compiler. Its reproduction is retained as
+  `known-parent-escape-before-init.json` in that evidence directory, not counted
+  as a passing control or silently fixed here. The escaped-read fallback above
+  passes independently; the unrelated alias-write optimizer issue remains open.
 
 #### 2m. Lowering-Aware Costs And Local Address Reuse
 
@@ -1513,7 +1579,7 @@ to this cross-compiler experiment.
    compiler source growth visible and remove superseded logic. Commit the batch
    locally with the validation summary; do not push.
 
-Steps 1, 2 and 2a-2k are complete. Current implementation target:
-**step 2l, proven bounded-counter narrowing**, followed by 2m-2n and then
+Steps 1, 2 and 2a-2l are complete. Current implementation target:
+**step 2m, lowering-aware costs and local address reuse**, followed by 2n and then
 **step 3, initial SM83 backend**. Keep the qualified Z80 behavior and shared core
 covered throughout; do not expand this finite sequence into every possible Z80 optimization.

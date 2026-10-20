@@ -2903,6 +2903,107 @@ static int _bbb_generate_asm_add_sub_or_xor_and_z80_8bit(struct tac *t, FILE *fi
 }
 
 
+static int _is_z80_bounded_counter(struct tac *t, struct tree_node *function_node, int maximum) {
+
+  struct temp_register *counter;
+  struct tac *initial, *header = NULL, *bound = NULL, *update = NULL, *backedge, *exit;
+  int index, i, j, end;
+
+  if (g_allocator_enabled == NO || g_allocator_force_all_spill == YES ||
+      (function_node->flags & TREE_NODE_FLAG_PUREASM) != 0 ||
+      strcmp(function_node->children[1]->label, "mainmain") == 0 ||
+      (t->op != TAC_OP_ASSIGNMENT && t->op != TAC_OP_ADD && t->op != TAC_OP_JUMP_GTE) ||
+      (t->op == TAC_OP_ASSIGNMENT ? t->result_type : t->arg1_type) != TAC_ARG_TYPE_TEMP)
+    return NO;
+  index = (int)(t->op == TAC_OP_ASSIGNMENT ? t->result_d : t->arg1_d);
+  counter = _find_z80_temp_register(function_node, index);
+  if (counter == NULL || counter->write_count != 2 || counter->live_start < 0 ||
+      counter->live_end >= g_tacs_count || counter->live_end <= counter->live_start)
+    return NO;
+  initial = &g_tacs[counter->live_start];
+  if (initial->op != TAC_OP_ASSIGNMENT || initial->function_node != function_node ||
+      initial->arg1_type != TAC_ARG_TYPE_CONSTANT || initial->arg1_d < 0.0 ||
+      initial->arg1_d > maximum || initial->arg1_d != (int)initial->arg1_d ||
+      initial->result_type != TAC_ARG_TYPE_TEMP || (int)initial->result_d != index ||
+      initial->result_var_type != VARIABLE_TYPE_UINT16 ||
+      initial->result_var_type_promoted != VARIABLE_TYPE_UINT16)
+    return NO;
+  for (i = counter->live_start + 1; i <= counter->live_end; i++) {
+    struct tac *current = &g_tacs[i];
+    if (current->op == TAC_OP_DEAD)
+      continue;
+    if (current->function_node != function_node || current->is_function == YES)
+      return NO;
+    if (header == NULL) {
+      if (current->op != TAC_OP_LABEL)
+        return NO;
+      header = current;
+    }
+    else if (bound == NULL) {
+      if (current->op != TAC_OP_JUMP_GTE || current->arg1_type != TAC_ARG_TYPE_TEMP ||
+          (int)current->arg1_d != index || current->arg1_var_type != VARIABLE_TYPE_UINT16 ||
+          current->arg1_var_type_promoted != VARIABLE_TYPE_UINT16 ||
+          current->arg2_var_type_promoted != VARIABLE_TYPE_UINT16 ||
+          (current->arg2_type == TAC_ARG_TYPE_CONSTANT ?
+           (current->arg2_d < 0.0 || current->arg2_d > maximum || current->arg2_d != (int)current->arg2_d) :
+           (maximum != 65535 || current->arg2_type != TAC_ARG_TYPE_LABEL ||
+            current->arg2_var_type != VARIABLE_TYPE_UINT16)))
+        return NO;
+      bound = current;
+    }
+    else if (current->op != TAC_OP_ARRAY_WRITE && current->result_type == TAC_ARG_TYPE_TEMP &&
+             (int)current->result_d == index) {
+      if (update != NULL || current->op != TAC_OP_ADD ||
+          current->arg1_type != TAC_ARG_TYPE_TEMP || (int)current->arg1_d != index ||
+          current->arg1_var_type != VARIABLE_TYPE_UINT16 ||
+          current->arg1_var_type_promoted != VARIABLE_TYPE_UINT16 ||
+          current->arg2_type != TAC_ARG_TYPE_CONSTANT || current->arg2_d != 1.0 ||
+          current->arg2_var_type_promoted != VARIABLE_TYPE_UINT16 ||
+          current->result_var_type != VARIABLE_TYPE_UINT16 ||
+          current->result_var_type_promoted != VARIABLE_TYPE_UINT16)
+        return NO;
+      update = current;
+    }
+  }
+  if (update == NULL || (t != initial && t != bound && t != update))
+    return NO;
+  for (i = (int)(update - g_tacs) + 1; i < g_tacs_count && g_tacs[i].op == TAC_OP_DEAD; i++)
+    ;
+  if (i >= g_tacs_count || g_tacs[i].op != TAC_OP_JUMP ||
+      g_tacs[i].function_node != function_node || strcmp(g_tacs[i].result_s, header->result_s) != 0)
+    return NO;
+  backedge = &g_tacs[i];
+  for (end = i + 1; end < g_tacs_count && g_tacs[end].op == TAC_OP_DEAD; end++)
+    ;
+  if (end >= g_tacs_count || g_tacs[end].op != TAC_OP_LABEL ||
+      g_tacs[end].is_function == YES || g_tacs[end].function_node != function_node ||
+      strcmp(g_tacs[end].result_s, bound->result_s) != 0)
+    return NO;
+  exit = &g_tacs[end];
+  for (i = 0; i < g_tacs_count; i++) {
+    struct tac *current = &g_tacs[i];
+    if (current->function_node != function_node || current->op == TAC_OP_DEAD)
+      continue;
+    if (current->op == TAC_OP_ASM ||
+        ((current->op == TAC_OP_GET_ADDRESS || current->op == TAC_OP_GET_ADDRESS_ARRAY) &&
+         current->arg1_type == TAC_ARG_TYPE_TEMP && (int)current->arg1_d == index) ||
+        (current > bound && current < exit &&
+         (current->op == TAC_OP_FUNCTION_CALL || current->op == TAC_OP_FUNCTION_CALL_USE_RETURN_VALUE)))
+      return NO;
+    if (current->op < TAC_OP_JUMP || current->op > TAC_OP_JUMP_GTE)
+      continue;
+    for (j = (int)(header - g_tacs); j < end; j++) {
+      if (g_tacs[j].op != TAC_OP_LABEL || strcmp(current->result_s, g_tacs[j].result_s) != 0)
+        continue;
+      if (current <= bound || current >= exit || (&g_tacs[j] == header && current != backedge))
+        return NO;
+    }
+  }
+
+  return YES;
+}
+
+
 static int _aaa_generate_asm_add_sub_or_xor_and_z80_16bit(struct tac *t, FILE *file_out, struct tree_node *function_node, int op) {
 
   struct z80_location result_location;
@@ -2945,8 +3046,11 @@ static int _aaa_generate_asm_add_sub_or_xor_and_z80_16bit(struct tac *t, FILE *f
 
   if ((op == TAC_OP_ADD || op == TAC_OP_SUB) && arg2_location.kind == LOC_CONST && arg2_location.value == 1 &&
       arg1_location.kind == LOC_PHY_BC && result_location.kind == LOC_PHY_BC) {
-    fprintf(file_out, "      ; retained arg1 in BC\n      %s BC\n      ; retained result in BC\n",
-        op == TAC_OP_ADD ? "INC" : "DEC");
+    int byte_counter = op == TAC_OP_ADD && _is_z80_bounded_counter(t, function_node, 255) == YES;
+    if (byte_counter)
+      fprintf(file_out, "      ; bounded word counter increment; high byte preserved\n");
+    fprintf(file_out, "      ; retained arg1 in BC\n      %s %s\n      ; retained result in BC\n",
+        op == TAC_OP_ADD ? "INC" : "DEC", byte_counter ? "C" : "BC");
     return SUCCEEDED;
   }
   if (op == TAC_OP_ADD && arg2_location.kind == LOC_CONST && arg2_location.value == 1 &&
@@ -2957,7 +3061,10 @@ static int _aaa_generate_asm_add_sub_or_xor_and_z80_16bit(struct tac *t, FILE *f
       arg1_location.size == 2 && result_location.size == 2) {
     if (_load_location_address_to_ix(&arg1_location, &ix_offset, file_out) == FAILED)
       return FAILED;
-    fprintf(file_out, "      INC (IX%+d)\n      JR  NZ,+\n      INC (IX%+d)\n+:\n", ix_offset, ix_offset + 1);
+    if (_is_z80_bounded_counter(t, function_node, 255) == YES)
+      fprintf(file_out, "      ; bounded word counter increment; high byte preserved\n      INC (IX%+d)\n", ix_offset);
+    else
+      fprintf(file_out, "      INC (IX%+d)\n      JR  NZ,+\n      INC (IX%+d)\n+:\n", ix_offset, ix_offset + 1);
     return SUCCEEDED;
   }
 
@@ -6294,6 +6401,16 @@ static int _bbb_generate_asm_jump_eq_lt_gt_neq_lte_gte_z80_8bit(struct tac *t, F
 
 static int _generate_asm_jump_eq_lt_gt_neq_lte_gte_z80(struct tac *t, FILE *file_out, struct tree_node *function_node, int op) {
 
+  if (op == TAC_OP_JUMP_GTE && _is_z80_bounded_counter(t, function_node, 255) == YES) {
+    struct z80_location counter;
+    if (_resolve_tac_location(t, TAC_USE_ARG1, function_node, &counter) == FAILED)
+      return FAILED;
+    if (counter.kind == LOC_PHY_BC || counter.kind == LOC_STACK_LOCAL || counter.kind == LOC_STACK_SPILL) {
+      fprintf(file_out, "      ; bounded word counter comparison; high byte preserved\n");
+      return _bbb_generate_asm_jump_eq_lt_gt_neq_lte_gte_z80_8bit(t, file_out, function_node, op);
+    }
+  }
+
   /* 8-bit or 16-bit? */
   if ((t->arg1_var_type_promoted == VARIABLE_TYPE_INT8 || t->arg1_var_type_promoted == VARIABLE_TYPE_UINT8) &&
       (t->arg2_var_type_promoted == VARIABLE_TYPE_INT8 || t->arg2_var_type_promoted == VARIABLE_TYPE_UINT8))
@@ -7346,13 +7463,8 @@ static int _generate_asm_byte_loop_z80(int *tac_index, FILE *file_out, struct tr
   char loop_label[48];
 
   initial = &g_tacs[*tac_index];
-  if (g_allocator_enabled == NO || g_allocator_force_all_spill == YES ||
-      (function_node->flags & TREE_NODE_FLAG_PUREASM) != 0 ||
-      initial->op != TAC_OP_ASSIGNMENT || initial->arg1_type != TAC_ARG_TYPE_CONSTANT ||
-      initial->arg1_d != 0.0 || initial->result_type != TAC_ARG_TYPE_TEMP ||
-      initial->result_var_type != VARIABLE_TYPE_UINT16 ||
-      initial->result_var_type_promoted != VARIABLE_TYPE_UINT16 ||
-      strcmp(function_node->children[1]->label, "mainmain") == 0)
+  if (initial->op != TAC_OP_ASSIGNMENT || initial->arg1_d != 0.0 ||
+      _is_z80_bounded_counter(initial, function_node, 65535) == NO)
     return SUCCEEDED;
   for (i = *tac_index; i < g_tacs_count && count < 16; i++) {
     if (g_tacs[i].function_node != function_node || g_tacs[i].is_function == YES)
@@ -7373,20 +7485,7 @@ static int _generate_asm_byte_loop_z80(int *tac_index, FILE *file_out, struct tr
       strcmp(sequence[count - 1]->result_s, sequence[1]->result_s) != 0)
     return SUCCEEDED;
   bound = sequence[2];
-  if (bound->arg1_type != TAC_ARG_TYPE_TEMP || bound->arg1_d != initial->result_d ||
-      bound->arg1_var_type_promoted != VARIABLE_TYPE_UINT16 ||
-      bound->arg2_var_type_promoted != VARIABLE_TYPE_UINT16 ||
-      (bound->arg2_type != TAC_ARG_TYPE_LABEL && bound->arg2_type != TAC_ARG_TYPE_CONSTANT) ||
-      (bound->arg2_type == TAC_ARG_TYPE_LABEL && bound->arg2_var_type != VARIABLE_TYPE_UINT16) ||
-      (bound->arg2_type == TAC_ARG_TYPE_CONSTANT &&
-       (bound->arg2_d <= 0.0 || bound->arg2_d > 65535.0 || bound->arg2_d != (int)bound->arg2_d)) ||
-      sequence[count - 2]->arg1_type != TAC_ARG_TYPE_TEMP ||
-      sequence[count - 2]->arg1_d != initial->result_d ||
-      sequence[count - 2]->arg2_type != TAC_ARG_TYPE_CONSTANT ||
-      sequence[count - 2]->arg2_d != 1.0 || sequence[count - 2]->result_type != TAC_ARG_TYPE_TEMP ||
-      sequence[count - 2]->result_d != initial->result_d ||
-      sequence[count - 2]->arg1_var_type != VARIABLE_TYPE_UINT16 ||
-      sequence[count - 2]->result_var_type != VARIABLE_TYPE_UINT16)
+  if (bound->arg2_type == TAC_ARG_TYPE_CONSTANT && bound->arg2_d == 0.0)
     return SUCCEEDED;
   for (end = indices[count - 1] + 1; end < g_tacs_count && g_tacs[end].op == TAC_OP_DEAD; end++)
     ;
