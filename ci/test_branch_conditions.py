@@ -15,6 +15,121 @@ from ra_cpu import execute
 
 
 class BranchConditionsTests(unittest.TestCase):
+    def test_unsigned_power_of_two_arithmetic(self):
+        compiler = os.environ.get("SAMESAMECC") or "samesamecc"
+        linker = os.environ.get("SAMESAMECL") or "samesamecl"
+        programs = []
+        for kind, parameter, result in (("byte", "u8", "u8"), ("word", "u16", "u16"),
+                                         ("widen", "u8", "u16"), ("truncate", "u16", "u8")):
+            for shift in range(16):
+                for operation, symbol in (("div", "/"), ("mod", "%")):
+                    name = f"power_{kind}_{operation}_{shift}"
+                    prefix = "u16 wide = a; " if kind == "widen" else ""
+                    operand = "wide" if kind == "widen" else "a"
+                    programs.append(Program(name, operation, shift, 1 << shift,
+                                            [1 if parameter == "u8" else 2], 1 if result == "u8" else 2, [],
+                                            f"{result} {name}({parameter} a) {{ "
+                                            f"{prefix}return {operand}{symbol}{1 << shift}; }}"))
+        for name, body in (
+            ("power_pair", "u16 q=a/256; u16 r=a%256; return (q<<8)|r;"),
+            ("power_post", "u16 before=a++ /256; return (before<<8)|(a&255);"),
+            ("power_call", "return power_side(a)%256;"),
+            ("power_call_zero", "return power_side(a)%1;"),
+            ("power_call_identity", "return power_side(a)/1;"),
+            ("power_post_zero", "u16 before=a++%1; return before+a;"),
+        ):
+            programs.append(Program(name, name, 0, 1 if name.endswith(("zero", "identity")) else 256,
+                                    [2], 2, [], f"u16 {name}(u16 a) {{ {body} }}"))
+        source = ("u8 ra_buffer[128];\nu16 power_side(u16 a) { ra_buffer[0]=ra_buffer[0]+1; return a; }\n"
+                  + "\n".join(program.source for program in programs) + "\nvoid main(void) {}\n")
+        directory = self.output / "power-of-two"
+        images = compile_generated(directory, compiler, linker, programs, source)
+        for mode in images:
+            sections = dict(re.findall(r'\.SECTION "([^"]+)" FREE\n(.*?)\.ENDS',
+                                       (directory / mode / "main.asm").read_text(), re.S))
+            for program in programs:
+                if not (program.name.startswith("power_byte_") and 8 <= program.variant < 15):
+                    self.assertNotIn("ssc_arithmetic_begin", sections[program.name], (program.name, mode))
+        calls = 0
+        initial = bytearray((index * 37 + 11) & 255 for index in range(128))
+        for program in programs:
+            mask = (1 << (8 * program.widths[0])) - 1
+            values = range(256) if mask == 255 else sorted({
+                *(value & mask for value in (0, 1, 2, 3, 7, 15, 16, 127, 128, 255, 256, 257,
+                                             32767, 32768, 65535, program.constant - 1,
+                                             program.constant, program.constant + 1)),
+                *((index * 811 ^ 0xa55a) & mask for index in range(64)),
+            })
+            for value in values:
+                expected_buffer = bytearray(initial)
+                if program.family == "power_pair":
+                    expected = value
+                elif program.family == "power_post":
+                    expected = ((value // 256) << 8) | ((value + 1) & 255)
+                elif program.family == "power_post_zero":
+                    expected = value + 1
+                elif program.family.startswith("power_call"):
+                    expected = value if program.family.endswith("identity") else value % program.constant
+                    expected_buffer[0] = (expected_buffer[0] + 1) & 255
+                else:
+                    expected = value // program.constant if program.family == "div" else value % program.constant
+                expected &= (1 << (8 * program.returnWidth)) - 1
+                for mode, image in images.items():
+                    result = execute(image.rom, image.symbols[program.name], [value], program.widths,
+                                     initial, image.symbols["ra_buffer"], program.returnWidth, image.transfers)
+                    self.assertEqual((result["value"], result["buffer"], result["port_writes"]),
+                                     (expected, expected_buffer, []), (program.name, value, mode))
+                    self.assertEqual(result["unmapped_instructions"], 0)
+                    calls += 1
+        print(f"Power-of-two arithmetic oracle executions: {calls}", flush=True)
+
+    def test_power_of_two_fallbacks_and_invalid_literals(self):
+        compiler = os.environ.get("SAMESAMECC") or "samesamecc"
+        linker = os.environ.get("SAMESAMECL") or "samesamecl"
+        programs = [
+            Program(f"power_fallback_{index}", operation, index, int(float(divisor)), [2], 2, [],
+                    f"{kind} power_fallback_{index}({kind} a) {{ return a{operation}({divisor}); }}")
+            for index, (kind, operation, divisor) in enumerate((
+                ("s16", "/", 256), ("s16", "%", 16), ("s16", "%", 256),
+                ("u16", "/", -256), ("u16", "%", -256), ("u16", "/", 257), ("u16", "%", 257),
+                ("u16", "/", "2.5"), ("u16", "%", "2.5"), ("u16", "/", "256.5"), ("u16", "%", "256.5"),
+            ))
+        ]
+        source = "u8 ra_buffer[128];\n" + "\n".join(program.source for program in programs) + "\nvoid main(void) {}\n"
+        directory = self.output / "power-fallbacks"
+        images = compile_generated(directory, compiler, linker, programs, source)
+        for mode, image in images.items():
+            assembly = (directory / mode / "main.asm").read_text()
+            self.assertEqual(assembly.count("ssc_arithmetic_begin 2 "), len(programs))
+            for program in programs:
+                for value in (0, 1, 15, 16, 127, 128, 255, 256, 257, 32767, 32768, 65535):
+                    divisor = program.constant & 65535
+                    expected = value // divisor if program.family == "/" else value % divisor
+                    result = execute(image.rom, image.symbols[program.name], [value], [2], bytearray(128),
+                                     image.symbols["ra_buffer"], 2, image.transfers)
+                    self.assertEqual((result["value"], result["buffer"], result["port_writes"]),
+                                     (expected, bytearray(128), []), (program.name, value, mode))
+                    self.assertEqual(result["unmapped_instructions"], 0)
+        for index, (operation, literal) in enumerate(
+            (operation, literal) for operation in ("/", "%") for literal in ("0", "65536", "-65536")
+        ):
+            output = self.output / f"power-invalid-{index}"
+            output.mkdir()
+            (output / "main.ssc").write_text(f"u16 invalid(u16 a) {{ return a{operation}({literal}); }}\nvoid main(void) {{}}\n")
+            completed = subprocess.run([compiler, "-mz80", "-rs", "3", "-o", "main.asm", "main.ssc"],
+                                       cwd=output, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+            (output / "compiler.log").write_bytes(completed.stdout)
+            if literal == "0":
+                self.assertNotEqual(completed.returncode, 0, operation)
+                self.assertIn(b"zero", completed.stdout)
+            else:
+                self.assertEqual(completed.returncode, 0, (operation, literal))
+                self.assertIn("ssc_arithmetic_begin 2 ", (output / "main.asm").read_text())
+                completed = subprocess.run([linker, "-lsms", "-o", "linked.sms", "main.asm"],
+                                           cwd=output, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+                (output / "linker.log").write_bytes(completed.stdout)
+                self.assertNotEqual(completed.returncode, 0, (operation, literal))
+
     def test_opt_in_arithmetic_sharing(self):
         compiler = os.environ.get("SAMESAMECC") or "samesamecc"
         linker = os.environ.get("SAMESAMECL") or "samesamecl"

@@ -68,9 +68,12 @@ int pass_5(void) {
 
   if (optimize_for_inc() == FAILED)
     return FAILED;
-  if (turn_some_muls_and_divs_into_shifts() == FAILED)
+  if (turn_some_muls_and_divs_into_shifts(NO) == FAILED)
     return FAILED;
   if (optimize_il() == FAILED)
+    return FAILED;
+  /* Keep new unsigned folds after the existing constant-expression handling. */
+  if (turn_some_muls_and_divs_into_shifts(YES) == FAILED)
     return FAILED;
   if (g_allocator_enabled == YES && g_allocator_force_all_spill == NO &&
       g_backend == BACKEND_Z80 &&
@@ -11894,24 +11897,32 @@ int optimize_for_inc(void) {
 }
 
 
-int turn_some_muls_and_divs_into_shifts(void) {
+int turn_some_muls_and_divs_into_shifts(int unsigned_only) {
 
-  int i, shift, multiplier;
+  int i, shift, multiplier, unsigned_operands;
 
   for (i = 0; i < g_tacs_count; i++) {
     struct tac *t = &g_tacs[i];
 
-    shift = 1;
-    multiplier = 2;
+    if (t->arg2_type != TAC_ARG_TYPE_CONSTANT ||
+        (unsigned_only == YES ? (t->op != TAC_OP_DIV && t->op != TAC_OP_MOD) :
+                               (t->op != TAC_OP_MUL && t->op != TAC_OP_DIV)))
+      continue;
+    unsigned_operands = (t->arg1_var_type_promoted == VARIABLE_TYPE_UINT8 ||
+                         t->arg1_var_type_promoted == VARIABLE_TYPE_UINT16) &&
+                        (t->arg2_var_type_promoted == VARIABLE_TYPE_UINT8 ||
+                         t->arg2_var_type_promoted == VARIABLE_TYPE_UINT16);
+    if (unsigned_only == YES && !unsigned_operands)
+      continue;
+    shift = unsigned_only == YES ? 0 : 1;
+    multiplier = 1 << shift;
 
-    while (shift < 8) {
-      if (t->op == TAC_OP_MUL && t->arg2_type == TAC_ARG_TYPE_CONSTANT && ((int)t->arg2_d) == multiplier) {
-        t->op = TAC_OP_SHIFT_LEFT;
-        t->arg2_d = shift;
-      }
-      if (t->op == TAC_OP_DIV && t->arg2_type == TAC_ARG_TYPE_CONSTANT && ((int)t->arg2_d) == multiplier) {
-        t->op = TAC_OP_SHIFT_RIGHT;
-        t->arg2_d = shift;
+    while (shift < (unsigned_only == YES ? 16 : 8)) {
+      if (t->arg2_d == multiplier) {
+        t->arg2_d = t->op == TAC_OP_MOD ? multiplier - 1 : shift;
+        t->op = t->op == TAC_OP_MUL ? TAC_OP_SHIFT_LEFT :
+                t->op == TAC_OP_DIV ? TAC_OP_SHIFT_RIGHT : TAC_OP_AND;
+        break;
       }
 
       shift++;

@@ -2122,6 +2122,87 @@ existing-ABI opportunities in 2o-2r first; any later ABI proposal needs dedicate
 mixed-version, cross-file, banked, recursive and assembly-facing compatibility
 tests and documentation.
 
+#### Post-2s checkpoint: unsigned power-of-two arithmetic [DONE]
+
+Complete the previously measured unsigned division/remainder improvement
+without adding another mandatory pre-SM83 step. Reuse
+`turn_some_muls_and_divs_into_shifts()` in `compiler/pass_5.c`: exact positive
+integer divisors **1 through 32768** become logical shifts for division and
+`divisor - 1` masks for remainder when both existing promoted operand types
+prove unsigned. This includes `/1` and `%1`; evaluating an operand's call or
+increment must still happen exactly once.
+
+The existing small multiply/divide shifts remain in their early position.
+Only the new unsigned folds run after `optimize_il()`, through the same
+function and its updated internal declaration. A rejected early placement
+interacted with negative unsigned constant propagation. Parent/current
+diagnostic controls now preserve that existing constant-expression handling;
+the pre-existing negative constant-conversion defects are not numerical
+oracle passes. No new type pass, AST resolver, emitter, production function,
+ABI or arithmetic-helper protocol was added: **11 net production C lines**,
+plus a one-line internal header signature change.
+
+Signed-promoted operands, negative/non-power divisors and fractional literals
+retain their arithmetic fallback. In particular, directly dividing a byte
+by a large signed-promoting literal is not treated as proof of unsigned word
+arithmetic; an explicitly widened unsigned word is covered. Exact literal
+matching avoids the old cast-based classification of fractions as powers.
+Existing accepted fractional-literal fallback behavior remains accepted.
+Literal zero still fails compilation; `65536` and `-65536` still reach the
+assembler and fail there, rather than becoming a valid-looking shift/mask.
+
+Measured complete kernel/dependency code and kernel T-state totals over the
+same **77 edge/pseudorandom inputs**, with allocation enabled:
+
+| Expression | Parent/current code bytes | Parent/current kernel T-states | Parent/current frame footprint |
+| --- | ---: | ---: | ---: |
+| `u16 % 16` | 68 / 36 | 95891 / 14784 | 24 / 22 |
+| `u16 / 256` | 70 / 31 | 97443 / 13321 | 24 / 22 |
+| `u16 % 256` | 68 / 36 | 96827 / 14784 | 24 / 22 |
+
+Allocation-disabled results also improve: current code is **48 / 43 / 48
+bytes**, respectively, versus **80 / 80 / 80**. Current kernel totals are
+**20636 / 19173 / 20636 T-states**, versus **101743 / 102679 / 102679**;
+frame footprint decreases from 26 to 24 bytes. All callers remain exactly
+**126 bytes / 729 T-states per call**. These measurements cover 12
+parent/current builds, 924 guarded calls and 12 independent timing checks.
+
+The two added persistent tests reuse the existing branch-condition test class,
+five-mode generator and guarded executor. Each release/traced/ASan run checks
+**110190 unsigned arithmetic executions** over byte/word/widened/truncated
+contexts, all 16 divisor powers, reconstruction and sequenced side effects.
+Another **660 executions** check signed, negative, non-power and fractional
+fallbacks, with six explicit compiler/linker rejection controls. Seven
+supported fallback routines retain parent-identical complete ROMs and assembly
+in all five allocator modes.
+
+All three configurations pass **33 condition tests** and **21 optimized-policy
+tests**. The isolated fixture suite passes **175/175** without snapshot
+updates; normal/traced strict C89 checks pass. All **392 condition images**
+agree across builds, with the original 372 parent-identical. Traced/ASan agree
+on **90 allocator images**, including the existing immutable-verifier cohorts
+and real-routine controls. The known escaped-before-initialization counter
+defect remains unchanged and is not counted as passing.
+
+The original 13-kernel corpus does not exercise these new constant forms:
+all **104 ordinary comparison rows / 1856 calls**, including the 78 external
+compiler controls, remain exactly unchanged. Traced and ASan each reproduce
+the prior **52 paired sharing rows / 928 calls**. There are **148 independent
+timing checks** across the final comparison and focused measurement runs.
+All 62 frozen source hashes match; no benchmark baseline was refreshed.
+
+Complete default/shared project ROMs remain parent-identical in all three
+configurations: **20607 / 20587** used bytes for calculations-1 and
+**31439 / 31171** for calculations-2. Do not claim these focused arithmetic
+gains as an improvement in those unchanged whole-project figures.
+
+Sources, parent binaries, rejected early placement, constant/literal controls,
+full images, numerical results and consolidated qualification are retained in
+`C:\cygwin64\tmp\unsigned-powers-20261021`.
+Commit this qualified batch locally without pushing. The next finite-roadmap
+implementation target remains the initial SM83 backend; further Z80
+architecture investigations are separate user-requested work.
+
 ### 3. Maintain Induction Addresses And Select Z80 Loops
 
 Reuse existing array/pointer TAC and Z80 address emitters. Introduce a narrowly

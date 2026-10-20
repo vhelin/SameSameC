@@ -57,7 +57,7 @@ int propagate_operand_types(void);
 int collect_and_preprocess_local_variables_inside_functions(void);
 int reorder_global_variables(void);
 int delete_function_prototype_tacs(void);
-int turn_some_muls_and_divs_into_shifts(void);
+int turn_some_muls_and_divs_into_shifts(int unsigned_only);
 int get_register_allocator_argument_transport(int source_var_type, int target_var_type);
 int get_register_allocator_argument_byte_offset(int transport, int access_kind, int byte_index);
 int get_register_allocator_return_value_byte_offset(int return_value_size, int byte_index);
