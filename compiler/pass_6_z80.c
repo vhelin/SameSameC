@@ -6042,6 +6042,52 @@ static int _aaa_generate_asm_jump_eq_lt_gt_neq_lte_gte_z80_16bit(struct tac *t, 
   if (_resolve_tac_location(t, TAC_USE_ARG2, function_node, &arg2_location) == FAILED)
     return FAILED;
 
+  if (g_allocator_enabled == YES && g_allocator_force_all_spill == NO &&
+      get_max_variable_type_2(t->arg1_var_type_promoted, t->arg2_var_type_promoted) == VARIABLE_TYPE_UINT16 &&
+      (arg1_location.kind == LOC_CONST ? arg1_location.value >= -32768 && arg1_location.value <= 65535 :
+       t->arg1_var_type == VARIABLE_TYPE_UINT16) &&
+      (arg2_location.kind == LOC_CONST ? arg2_location.value >= -32768 && arg2_location.value <= 65535 :
+       t->arg2_var_type == VARIABLE_TYPE_UINT16) &&
+      op != TAC_OP_JUMP_EQ && op != TAC_OP_JUMP_NEQ) {
+    int first_register = arg1_location.kind == LOC_PHY_HL || arg1_location.kind == LOC_PHY_BC;
+    int second_register = arg2_location.kind == LOC_PHY_HL || arg2_location.kind == LOC_PHY_BC;
+    struct z80_location *other = first_register ? &arg2_location : &arg1_location;
+
+    if ((first_register != second_register &&
+         (other->kind == LOC_CONST || other->kind == LOC_STACK_LOCAL ||
+          other->kind == LOC_STACK_SPILL || other->kind == LOC_GLOBAL)) ||
+        (first_register && second_register && arg1_location.kind != arg2_location.kind &&
+         ((arg1_location.kind == LOC_PHY_BC && (op == TAC_OP_JUMP_LT || op == TAC_OP_JUMP_GTE)) ||
+          (arg1_location.kind == LOC_PHY_HL && (op == TAC_OP_JUMP_GT || op == TAC_OP_JUMP_LTE))))) {
+      struct z80_location *left = &arg1_location, *right = &arg2_location;
+      int i;
+
+      if (op == TAC_OP_JUMP_GT || op == TAC_OP_JUMP_LTE) {
+        left = &arg2_location;
+        right = &arg1_location;
+      }
+      if (other->kind != LOC_CONST && other->kind != LOC_PHY_HL && other->kind != LOC_PHY_BC &&
+          _load_location_address_to_ix(other, &ix_offset, file_out) == FAILED)
+        return FAILED;
+      fprintf(file_out, "      ; unsigned word comparison using byte borrow; carry only\n");
+      for (i = 0; i < 2; i++) {
+        if (left->kind == LOC_STACK_LOCAL || left->kind == LOC_STACK_SPILL || left->kind == LOC_GLOBAL)
+          _load_from_ix_to_a(ix_offset + i, file_out);
+        else if (_materialize_to_a(left, i, file_out) == FAILED)
+          return FAILED;
+        if (right->kind == LOC_PHY_HL || right->kind == LOC_PHY_BC)
+          fprintf(file_out, "      %s A,%s\n", i == 0 ? "SUB" : "SBC",
+                  right->kind == LOC_PHY_HL ? (i == 0 ? "L" : "H") : (i == 0 ? "C" : "B"));
+        else if (right->kind == LOC_CONST)
+          fprintf(file_out, "      %s A,%d\n", i == 0 ? "SUB" : "SBC", (right->value >> (i * 8)) & 255);
+        else
+          fprintf(file_out, "      %s A,(IX%+d)\n", i == 0 ? "SUB" : "SBC", ix_offset + i);
+      }
+      op = op == TAC_OP_JUMP_LT || op == TAC_OP_JUMP_GT ? TAC_OP_JUMP_LT : TAC_OP_JUMP_GTE;
+      goto unsigned_jumps;
+    }
+  }
+
   /* Reverse the comparison rather than overwriting an incoming BC value. */
   if (arg1_location.kind == LOC_PHY_BC && arg2_location.kind != LOC_PHY_BC) {
     swapped = *t;
@@ -6185,6 +6231,7 @@ static int _aaa_generate_asm_jump_eq_lt_gt_neq_lte_gte_z80_16bit(struct tac *t, 
     return SUCCEEDED;
   }
 
+unsigned_jumps:
   if (op == TAC_OP_JUMP_EQ)
     _jump_z_to(t->result_s, file_out);
   else if (op == TAC_OP_JUMP_NEQ)

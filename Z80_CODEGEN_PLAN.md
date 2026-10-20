@@ -136,7 +136,7 @@ extraction.
   loop/address retention beyond copy/fill to sums and complex calculation loops.
 - [x] **2q. Variable-count word shifts:** use size-neutral bounded shift loops
   for proven small counts, preserving the original full-width fallback.
-- [ ] **2r. Operand-aware word comparisons and branch selection:** avoid
+- [x] **2r. Operand-aware word comparisons and branch selection:** avoid
   unnecessary materialization and choose branches by legality and actual cost.
 - [ ] **2s. Shared arithmetic bodies with an explicit size/speed policy:**
   price bank-local helper sharing against inline code without hidden tradeoffs.
@@ -1876,14 +1876,14 @@ qualification are retained in
 
 #### 2r. Operand-Aware Word Comparisons And Branch Selection
 
-- [ ] Extend the existing comparison emitter for profitable operand layouts.
-  In byte sum, compare the retained counter against indexed frame bytes with
-  a subtract/borrow chain and one carry decision where legal, rather than
-  materializing a word subtraction followed by two conditional jumps.
-- [ ] Preserve complete-word equality and the signed/unsigned distinction,
+- [x] Extend the existing comparison emitter for profitable operand layouts.
+  Compare retained unsigned words against indexed frame bytes or constants
+  with a subtract/borrow chain and one carry decision where legal, rather
+  than materializing a word subtraction or issuing two conditional jumps.
+- [x] Preserve complete-word equality and the signed/unsigned distinction,
   live operands, flags and fallback paths. A high-byte zero flag alone does
   not prove word equality; keep signed overflow handling correct.
-- [ ] Select `JP` versus `JR` only with a proven displacement/target and an
+- [x] Select `JP` versus `JR` only with a proven displacement/target and an
   explicit cost decision. Do not blindly shorten all jumps: on ordinary Z80,
   an unconditional or taken `JR` can be slower than `JP`. Keep the existing
   default's speed behavior unless a tradeoff is explicitly selected.
@@ -1893,6 +1893,89 @@ cycles in byte sum and a complex loop. Check all relations, signed boundaries,
 equal high bytes with unequal low bytes, carry/borrow edges and retained/spilled
 operands. Test forward/backward and near/out-of-range branches, including the
 relative displacement limits; unknown ranges keep the safe absolute form.
+
+#### Step 2r Checkpoint: Operand-Aware Unsigned Word Comparisons
+
+Extend the existing word-comparison emitter, reusing its location resolution,
+byte materialization, IX address/load helpers and unsigned jump tail. With RA
+enabled and force-all-spill disabled, compare a retained HL/BC unsigned word
+against a frame/global word or representable constant using low-byte `SUB`,
+high-byte `SBC` and one carry decision. Reverse subtraction for `>` and `<=`
+instead of testing equality separately. Two retained word registers use this
+chain only when removing the extra branch makes the complete sequence smaller;
+otherwise retain the smaller original `SBC HL,BC`.
+
+An indexed operand's load/subtract setup falls from **9 bytes / 57 T-states**
+to **8 bytes / 46 T-states**, before the branch. Equality still uses full-word
+Z, and signed comparisons retain full-word overflow/sign handling. Signed or
+widened operands and unsupported locations keep their original paths. Constant
+eligibility is limited to **-32768 through 65535**: an initially overbroad
+prototype silently truncated invalid literals, so reject that prototype and
+preserve the parent's linker diagnostic for out-of-range operands. All valid
+qualification images and metrics are identical before and after this guard.
+The existing full clobber contract, DE/frame handling and public ABI remain
+unchanged. No production function, pass or cohort is added; production C grows
+by **47 net lines** within the existing comparison function.
+
+Keep the existing absolute `JP` helpers. No proven-range shortening pass or
+unselected size/speed tradeoff is introduced: `JP` takes 10 T-states, whereas
+unconditional/taken `JR` takes 12. Existing control tests now execute mapped
+NOP padding and verify forward/backward hypothetical relative displacements
+**-129, -128, 127 and 128**, retaining safe absolute branches at every boundary.
+
+Against qualified parent `0c8b224`, the official RA comparison improves:
+
+| Workload | Kernel bytes before/after | Kernel T-states before/after | Observed whole-call frame bytes before/after |
+| --- | ---: | ---: | ---: |
+| Stencil calculation | 1693 / 1691 | 4267798 / 4256974 | 120 / 120 |
+| Pathfinding calculation | 1385 / 1384 | 5661993 / 5647913 | 187 / 187 |
+| PackBits | 565 / 547 | 159912 / 159268 | 39 / 39 |
+| Packed CRC | 910 / 892 | 12026571 / 12023460 | 47 / 47 |
+
+Cycles aggregate the unchanged per-workload comparison cases. Caller costs
+remain **126 bytes / 14460 T-states** for each calculation, **151 / 13888** for
+PackBits and **82 / 7718** for packed CRC. All 26 SSC RA/no-RA rows are
+non-regressing in all eight size/cycle/stack/frame metrics; all no-RA rows
+remain unchanged. Whole used calculation ROMs fall **20625 to 20607** and
+**31455 to 31439** bytes; padded images remain 65536 bytes.
+
+The stock byte sum already uses step 2p's fused countdown and stays at
+**99 bytes / 76126 kernel T-states**, with a 24-byte observed frame footprint.
+Do not undo that fusion to manufacture a comparison win. A separate paired-byte
+sum, outside the legal straight-line fusion shape, improves **167 to 166 bytes**
+and **1845042 to 1811690 aggregate kernel T-states** over 32 independent cases.
+It sums complete pairs and ignores an unmatched last byte, so its totals are
+not directly comparable with the stock sum. All five modes pass full-buffer,
+guard and SP/DE checks; frame reads/writes stay **51249 / 15185**.
+
+Reuse the existing comparison families and condition-test methods rather than
+adding a generator or oracle. Cover all relations and operand orders, computed
+retained words, two-register comparisons, pressure, far frames, signed/equality
+fallbacks and carry/borrow edges. Each full condition run executes **57600
+relational/Boolean cases**. Three existing 44-function comparison matrices pass
+**11264 calls per reported mode/matrix** on the saved parent and final traced
+build, plus **704** on release/ASan. Every focused function is size/cycle/frame
+non-regressing; byte, signed and equality fallback assembly is unchanged.
+Default, all-spill and no-RA focused ROMs match the parent. A separate 12-function
+two-register probe passes **768 edge calls per mode/version**, with four
+profitable selections. Four invalid-literal cases require the standard
+`Out of 16-bit range.` linker rejection on both operand sides, not truncation.
+
+Final release/traced/ASan qualification passes all **175 fixtures without
+snapshot updates**, 16 immutable allocator cohorts, 28 real routines,
+90 traced/ASan allocator image identities, 300 condition image identities
+across all three builds and strict normal/traced C89 compilation. The full
+comparison passes **104 builds/1856 calls** with unchanged corpus fingerprints
+and all **78 external controls**. There are **40 independent timing checks**,
+including **16 mixed-version builds/292 guarded calls** in both caller/callee
+directions. All 52 frozen source hashes match the qualified sources.
+The separately documented escaped-before-initialization counter defect still
+returns 42740 rather than 50814 on both parent and current compiler; it is not
+counted as passing.
+
+Saved parent binaries, frozen sources, rejected prototypes and final guarded
+qualification are retained in `C:\cygwin64\tmp\word-comparisons-20261020`.
+Commit locally without pushing. Step 2s is next before the initial SM83 backend.
 
 #### 2s. Shared Arithmetic Bodies With An Explicit Size/Speed Policy
 
@@ -2106,8 +2189,8 @@ to this cross-compiler experiment.
    compiler source growth visible and remove superseded logic. Commit the batch
    locally with the validation summary; do not push.
 
-Steps 1, 2 and 2a-2q are complete. Current implementation target:
-**step 2r, operand-aware word comparisons and branch selection**.
-Complete the bounded follow-ups 2r-2s in order, then start step 3, the initial
+Steps 1, 2 and 2a-2r are complete. Current implementation target:
+**step 2s, shared arithmetic bodies with an explicit size/speed policy**.
+Complete bounded follow-up 2s, then start step 3, the initial
 SM83 backend. Keep the qualified Z80 behavior and shared core covered throughout;
 do not expand this finite sequence into every possible Z80 optimization.
