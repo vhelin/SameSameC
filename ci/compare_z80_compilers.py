@@ -290,11 +290,12 @@ def execute(memory_image, symbols, name, parameters, initial_buffer, seed, ticks
         memory[symbols["packedTiles"] + 103] ^= seed & 255
     frame, sentinel = 0xd000, 0x7fff
     memory[frame - 1:frame + 1] = sentinel.to_bytes(2, "little")
-    machine.de, machine.sp, machine.pc = frame, frame - 1, symbols["bench"]
+    entry_sp = frame - (3 if "mainmain" in symbols else 1)
+    machine.de, machine.sp, machine.pc = frame, entry_sp, symbols["bench"]
     if ticks is not None:
         snapshot = bytearray(memory)
         boot = bytes([
-            0x11, 0, 0xd0, 0x31, 0xff, 0xcf, 0x01, 0, 0, 0xc5, 0xf1,
+            0x11, 0, 0xd0, 0x31, entry_sp & 255, entry_sp >> 8, 0x01, 0, 0, 0xc5, 0xf1,
             0x21, 0, 0, 0xdd, 0x21, 0, 0, 0xfd, 0x21, 0, 0,
             0xc3, symbols["bench"] & 255, symbols["bench"] >> 8,
         ])

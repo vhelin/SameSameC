@@ -614,7 +614,15 @@ def generate_programs(comparison_forms):
                 "ra_staging_global_write(a); return ra_staging_pair(ra_staging_global,ra_staging_global_write(b));",
                 "return ra_staging_pair(a,ra_staging_recursive(c&3,b));",
                 "u8 workspace[136]; workspace[135] = c; s16 folded = 0x7521; ra_staging_id(folded); u16 v1 = 0x6543; u8 v2 = 0x95; u16 v3 = 10000; u16 v4 = 0x4321; folded = (((v1|v2)%0x1001)<<4)-v3; folded ^= v4; u16 extra = ra_staging_id(folded); ra_staging_id(v1+v2+v3+v4+a); s8 small = a; u16 saved = a+b; return ra_staging_mixed(small,ra_staging_byte(b),saved,ra_staging_id(c))+workspace[135]+extra-29985;",
-            ][variant] if variant < 8 else None, [2, 2, 2], 2),
+                "ra_leaf_0(); return a;",
+                "ra_leaf_1(a); return ra_buffer[0]+b;",
+                "ra_leaf_2(a); return ra_words[0]+b;",
+                "ra_leaf_3(a,b); return ra_words[0]+ra_buffer[0]+c;",
+                "ra_leaf_4(a,b); return ra_words[0]^ra_words[1]^c;",
+                "ra_leaf_5(a,b,c); return ra_words[0]^ra_words[1]^ra_buffer[0];",
+                "ra_leaf_signed(a,b); return ra_words[0]^ra_words[1];",
+                "return ra_leaf_constant()+a;",
+            ][variant] if variant < 16 else None, [2, 2, 2], 2),
             ("scalar_slots", "u8 a, u8 b, u8 c", "ra_buffer[0] = ra_buffer[a]^ra_buffer[b]^(a+b); return ra_buffer[c]^ra_buffer[b+1]^(b+c);", [1, 1, 1], 1),
             ("scalar_remat_byte", "u8 first, u8 second", "u8 *base = &ra_buffer[3]; u8 out = base[first]; out = out+base[second]; return out;", [1, 1], 1),
             ("scalar_remat_word", "u8 first, u8 second", "u16 *base = &ra_words[3]; u16 out = base[first]; out = out+base[second]; return out;", [1, 1], 2),
@@ -649,7 +657,7 @@ def generate_programs(comparison_forms):
             # Dedicated cohorts keep the all-spill images within one ROM bank.
             if family in ("scalar_frame_address", "scalar_word_counter", "scalar_word_step", "scalar_loop_memory", "scalar_byte_loop", "scalar_byte_multiply", "scalar_byte_shift", "scalar_call_staging", "matrix_byte_store", "matrix_divmod") and family not in os.environ.get("RA_FAMILIES", "").split(","):
                 continue
-            if variant >= (38 if family in ("scalar_word_counter", "scalar_byte_loop", "scalar_byte_multiply", "scalar_byte_shift") else 24 if family == "scalar_frame_address" else 15 if family == "scalar_word_step" else 17 if family == "scalar_loop_memory" else 8) and not family.startswith("matrix_"):
+            if variant >= (38 if family in ("scalar_word_counter", "scalar_byte_loop", "scalar_byte_multiply", "scalar_byte_shift") else 24 if family == "scalar_frame_address" else 16 if family == "scalar_call_staging" else 15 if family == "scalar_word_step" else 17 if family == "scalar_loop_memory" else 8) and not family.startswith("matrix_"):
                 continue
             if family.startswith("matrix_") and variant >= limits.get(family, 2):
                 continue
@@ -719,6 +727,14 @@ def generate_programs(comparison_forms):
             "u16 ra_staging_write(u16 *target, u16 value) { target[0] = value; return value; }\n"
             "u16 ra_staging_global_write(u16 value) { ra_staging_global = value; return value; }\n"
             "u16 ra_staging_recursive(u8 depth, u16 value) { if (depth) { return ra_staging_pair(value,ra_staging_recursive(depth-1,value+1)); } return value; }\n"
+            "void ra_leaf_0(void) {}\n"
+            "void ra_leaf_1(u8 first) { ra_buffer[0] = first; }\n"
+            "void ra_leaf_2(u16 first) { ra_words[0] = first; }\n"
+            "void ra_leaf_3(u16 first, u8 second) { ra_words[0] = first; ra_buffer[0] = second; }\n"
+            "void ra_leaf_4(u16 first, u16 second) { ra_words[0] = first; ra_words[1] = second; }\n"
+            "void ra_leaf_5(u16 first, u16 second, u8 third) { ra_words[0] = first; ra_words[1] = second; ra_buffer[0] = third; }\n"
+            "void ra_leaf_signed(u16 first, s8 second) { ra_words[0] = first; ra_words[1] = second; }\n"
+            "u16 ra_leaf_constant(void) { return 0x9234; }\n"
         )
     if any(program.family == "matrix_index_copy" and program.variant == 34 for program in programs):
         preamble += "s8 ra_signed[128];\n"
@@ -783,7 +799,9 @@ def read_image(directory):
             frame_pending = False
         if "allocate space for the stack frame" in source:
             frame_pending = True
-        frame = re.search(r"^LD\s+HL,-(\d+)$", source) if frame_pending else None
+        frame = re.search(r"^; allocate space for the stack frame bytes=(\d+)$", source)
+        if frame is None and frame_pending:
+            frame = re.search(r"^LD\s+HL,-(\d+)$", source)
         if frame:
             name, size = re.sub(static_suffix, r"\1<id>", section), int(frame[1])
             if section not in section_sizes or name in static_metrics["functions"]:
@@ -909,6 +927,18 @@ def check_analytical_assertions(output, programs):
     if "\n".join(quiet_lines) != "\n".join(re.findall(r"^register_allocator: rejection_summary .+$", allocator_log, re.M)):
         raise RuntimeError("Quiet allocator lifecycle output or rejection summary mismatch")
     assembly = read_text(output / "ra/main.asm")
+    if any(program.family == "scalar_call_staging" and program.variant >= 8 for program in programs):
+        for mode, _ in MODES:
+            for name, allocation in [(f"ra_leaf_{index}", index) for index in range(6)] + [
+                ("ra_leaf_signed", 3), ("ra_leaf_constant", 2),
+            ]:
+                body = read_text(output / mode / "main.asm").split(f'.SECTION "{name}" FREE')[1].split(".ENDS")[0]
+                prologue = re.search(
+                    r"; allocate space for the stack frame bytes=\d+\n([\s\S]*?)(?=\s*;)", body,
+                )
+                expected = ["DEC SP"] * allocation if allocation <= 4 else ["LD HL,-8", "ADD HL,DE", "LD SP,HL"]
+                if prologue is None or [" ".join(line.split()) for line in prologue[1].splitlines() if line.strip()] != expected:
+                    raise RuntimeError(f"Small-frame threshold or argument-preserving setup mismatch: {name} ({mode})")
     if any(program.family == "scalar_frame_address" for program in programs):
         adjustments = set()
         for match in re.finditer(
@@ -1197,11 +1227,11 @@ def check_analytical_assertions(output, programs):
 
 def calibrate_counters():
     reset = execute(bytes([0x3e, 0x1a, 0x27, 0x21, 0, 0xc1, 0x77, 0xc9]),
-                    0, [], [], bytearray(1), 0xc100, 0)
+                    0, [], [], bytearray(1), 0xc100, 0, entry_sp_offset=-1)
     if reset["buffer"] != bytearray([0x20]):
         raise RuntimeError("Native reset-flags calibration failed")
     probe = execute(bytes([0x21, 0, 0xc1, 0x06, 42, 0x48, 0x79, 0x77, 0x7e, 0xc9]),
-                    0, [], [], bytearray(1), 0xc100, 0)
+                    0, [], [], bytearray(1), 0xc100, 0, entry_sp_offset=-1)
     if probe["register_moves"] != 2 or probe["instructions"] != 7 or probe["cycles"] != 49 or probe["buffer"][0] != 42:
         raise RuntimeError("Executed register-move counter calibration failed")
     traffic = execute(bytes([
@@ -1213,7 +1243,7 @@ def calibrate_counters():
             (7, "allocator_preserve"), (10, "allocator_reload"), (13, "abi_argument"),
             (16, "abi_argument"), (19, "abi_result"), (22, "abi_result"),
         )
-    })
+    }, entry_sp_offset=-1)
     if (traffic["cycles"] != 149 or traffic["instructions"] != 10 or traffic["register_moves"] != 1
             or traffic["frame_reads"] != 3 or traffic["frame_writes"] != 3
             or any(traffic[metric] != 1 for metric in (
@@ -1223,30 +1253,34 @@ def calibrate_counters():
         raise RuntimeError("Frame transfer-cause counter calibration failed")
     stack = execute(bytes([0xc5, 0xc1, 0xc9]), 0, [], [], bytearray(), 0, 0, {
         address: {"cause": "abi_frame", "argumentsInFrame": []} for address in (0, 1)
-    })
+    }, entry_sp_offset=-1)
     if (stack["instructions"] != 3 or stack["cycles"] != 31 or stack["register_moves"] != 0
             or stack["abi_frame_reads"] != 2 or stack["abi_frame_writes"] != 2):
         raise RuntimeError("ABI stack counter calibration failed")
     branch = execute(bytes([0x06, 2, 0x10, 0xfe, 0xc9]), 0, [], [], bytearray(), 0, 0, {
         address: {"cause": "other_frame", "argumentsInFrame": [], "section": "probe", "branch": address == 2}
         for address in (0, 2, 4)
-    })
+    }, entry_sp_offset=-1)
     if (branch["instructions"] != 4 or branch["cycles"] != 38
             or branch["entry_backedges"] != 1 or branch["callee_backedges"] != 0):
         raise RuntimeError("Source-loop backedge counter calibration failed")
     port_code = bytes([0x3e, 42, 0xd3, 0xbe, 0xc9])
-    if execute(port_code, 0, [], [], bytearray(), 0, 0, {}, True)["port_writes"] != [[190, 42]]:
+    if execute(port_code, 0, [], [], bytearray(), 0, 0, {}, True, entry_sp_offset=-1)["port_writes"] != [[190, 42]]:
         raise RuntimeError("Software port-sink calibration failed")
     rejected_port = False
     try:
-        execute(port_code, 0, [], [], bytearray(), 0, 0)
+        execute(port_code, 0, [], [], bytearray(), 0, 0, entry_sp_offset=-1)
     except Exception as error:
         rejected_port = "Unexpected port write" in str(error)
     if not rejected_port:
         raise RuntimeError("Unexpected port write was not rejected")
-    clock = execute(bytes([0] * 25001 + [0xc9]), 0, [], [], bytearray(), 0, 0, {}, False, 26000)
+    clock = execute(bytes([0] * 25001 + [0xc9]), 0, [], [], bytearray(), 0, 0, {}, False, 26000, entry_sp_offset=-1)
     if clock["instructions"] != 25002 or clock["cycles"] != 100014:
         raise RuntimeError("Native clock-wrap counter calibration failed")
+    entry = execute(bytes([0xed, 0x73, 0, 0xc1, 0x21, 0xff, 0xff, 0x19, 0xf9, 0xc9]),
+                    0, [], [], bytearray(2), 0xc100, 0)
+    if entry["buffer"] != bytearray([0xfd, 0xcf]):
+        raise RuntimeError("Callee entry SP did not account for the saved frame pointer")
     print("PASS:counter_calibration=register_moves,indexed_transfers,abi_stack,backedges,port_sink frame_partition=exclusive")
 
 
@@ -1387,6 +1421,25 @@ def generated_oracle(program, seed, comparison_forms, decision_loop_paths):
                 expected = first + (depth + 1) * second + depth * (depth + 1) // 2
             elif variant == 7:
                 expected = signed + (second & 255) + ((first + second) & 65535) + last + (last & 255)
+            elif variant >= 8:
+                expected = first
+                if variant in (9, 11, 13):
+                    expected_buffer[0] = (last if variant == 13 else first if variant == 9 else second) & 255
+                if variant in (10, 11, 12, 13, 14):
+                    expected_buffer[130:132] = first.to_bytes(2, "little")
+                if variant in (12, 13, 14):
+                    word = second if variant != 14 else ((second & 255) - (256 if second & 128 else 0)) & 65535
+                    expected_buffer[132:134] = word.to_bytes(2, "little")
+                if variant == 9:
+                    expected = (first & 255) + second
+                elif variant == 10:
+                    expected = first + second
+                elif variant == 11:
+                    expected = first + (second & 255) + last
+                elif variant in (12, 13, 14):
+                    expected = first ^ word ^ (last if variant == 12 else (last & 255) if variant == 13 else 0)
+                elif variant == 15:
+                    expected = 0x9234 + first
             expected &= 65535
         case "scalar_call_transport":
             parameters = edge_parameters(seed, [0, 1, 127, 128, 255, 256, 32768, 65535]) if seed < 64 else word_parameters(seed)

@@ -128,7 +128,7 @@ extraction.
   whose ranges and observable uses permit it, without changing source semantics.
 - [x] **2m. Lowering-aware costs and local address reuse:** refine existing
   profitability estimates and address caching rather than adding a framework.
-- [ ] **2n. Leaf-frame and helper-contract audit:** remove only measured,
+- [x] **2n. Leaf-frame and helper-contract audit:** remove only measured,
   provably redundant frame work or preservation within the existing ABI.
 - [ ] **3. Initial SM83 backend:** establish correct Game Boy code generation,
   target-specific addressing/spills/calls and execution tests. Use actual
@@ -1445,12 +1445,12 @@ Step-2m checkpoint (2026-10-20):
 
 #### 2n. Leaf-Frame And Helper-Contract Audit
 
-- [ ] Measure leaf prologue/epilogue and call-heavy costs after the preceding
+- [x] Measure leaf prologue/epilogue and call-heavy costs after the preceding
   improvements; identify redundant work in existing frame/call lowering.
-- [ ] Audit existing helper input, result and preserved-register metadata.
+- [x] Audit existing helper input, result and preserved-register metadata.
   Tighten only demonstrably over-conservative clobbers; qualify actual helper
   effects before removing saves or retaining values across them.
-- [ ] Keep the existing DE/frame and caller/callee ABI contracts. Frame-pointer
+- [x] Keep the existing DE/frame and caller/callee ABI contracts. Frame-pointer
   omission or register arguments require a separate explicit, gated proposal,
   not a silent convention change to force an optimization.
 
@@ -1458,6 +1458,98 @@ Acceptance: record measured safe removals, or explicitly close the audit with
 no profitable supported case. For changes, verify mixed widths, nested,
 recursive, banked, cross-file and assembly-facing calls, exact SP/DE restoration
 and complete frame footprint. Report caller and kernel costs separately.
+
+##### Step 2n Checkpoint (2026-10-20)
+
+Complete within the existing ABI, against immediate parent `708bbaf`. Reuse
+the existing frame-prefix policy, final frame size and generic setup emitters;
+no new production functions, allocator rules, convention or helper entry points.
+Net production change: **10 additional C lines**, confined to the Z80 prologue.
+
+- Normal callers already enter with SP at the saved DE's low byte, `DE-3`.
+  When the final frame needs zero to four further bytes, use that many `DEC SP`
+  instructions instead of `LD HL,offset; ADD HL,DE; LD SP,HL`. The zero-byte
+  case needs no setup. Keep the generic path for five or more bytes.
+- The full setup costs 5 bytes/27 T-states; each `DEC SP` costs 1 byte/6
+  T-states. Entries save 1-5 bytes and 3-27 T-states. Do not substitute PUSH:
+  arguments already occupy the incoming frame and must not be overwritten.
+  DE, all argument/result offsets, the final SP and complete frame footprint
+  remain unchanged. Pure-assembly functions and special `mainmain` handling
+  keep their existing paths; no frame-pointer omission is introduced.
+- Keep the existing IX-proven return shortcut and generic epilogue. The audit
+  found no further measured, supported epilogue or helper-save removal.
+  The setup cost gate is Z80-local, not an assumed SM83 instruction policy.
+
+The helper audit distinguishes the inner arithmetic body from the complete
+TAC's operand setup, extension and result storage:
+
+| Existing helper | Inputs and results | Why frame preservation remains necessary |
+| --- | --- | --- |
+| Byte multiply | H * E -> HL | Loading E replaces part of the frame pointer; the helper also writes D and B. |
+| Word multiply/divide/modulo | BC and DE -> HL, or CA quotient/HL remainder | The inner helpers preserve their DE operand, not the original frame pointer that operand setup replaced. |
+| Byte divide/modulo | H / E -> A quotient/B remainder | The inner helper preserves DE, but loading its E operand already changed the frame pointer. |
+| Bank-local initializer copy | DE source, HL target, BC byte count | The copy advances DE/HL and consumes BC; IX/IY preservation already supports the existing address-cache restoration. |
+
+All these helper/emitter bodies and the TAC clobber descriptors remain
+unchanged. Helper-only preservation is not permission to weaken masks that
+also cover address materialization, signed extension and result moves. Keep
+DE saves and the full ordinary-call/raw-assembly barriers.
+
+Measured focused leaf code bytes, including existing epilogues:
+
+| Further frame bytes | Parent -> current bytes | Entry T-states saved |
+| ---: | ---: | ---: |
+| 0 | 11 -> 6 | 27 |
+| 1 | 26 -> 22 | 21 |
+| 2 | 32 -> 29 | 15 |
+| 3 | 42 -> 40 | 9 |
+| 4 | 55 -> 54 | 3 |
+| 5, generic fallback | 65 -> 65 | 0 |
+
+The full 104-row/1856-call comparison passes. All kernel bytes/cycles, all
+complete frame observations and all 78 external controls remain exact.
+The packed-CRC RA caller wrapper improves **85 -> 82 bytes**, **469 -> 454
+T-states/call** (7973 -> 7718 over 17 calls); its kernel remains 910 bytes/
+12026571 aggregate T-states. The no-RA wrapper improves 97 -> 96 bytes and
+545 -> 542 T-states/call. Other comparison rows, including the 161-byte/
+917-T-state multiply/add caller, remain unchanged. All 28 real-project
+routines retain exact cycles and frame reads/writes. Used ROM decreases
+**20650 -> 20637** bytes for calculations-1 and **31604 -> 31591** for
+calculations-2, with normal/traced image identity. These are bounded small-frame
+wins, not a claim that general call-heavy overhead or competitor parity is solved.
+
+Eight new cases extend the existing call-staging cohort rather than adding
+another generator/cohort. They cover zero through five bytes, byte/word and
+signed arguments, word returns, argument integrity and fallback. Existing
+cases retain nested calls, recursion, wide frames, escaping arguments and
+mixed-width staging; the complete projects cover cross-file/banked and
+assembly-facing calls.
+
+Qualification also exposed a synthetic-entry error: the native execution
+harnesses initialized SSC callees/wrappers at `DE-1`, not the existing saved-DE
+entry position `DE-3`. Absolute prologue setup had hidden it. Correct both
+harnesses and the independent timing bootstrap; raw RET instruction probes
+explicitly retain their `DE-1` entry. Add exact entry-SP regression checks and
+keep external compiler conventions unchanged. Saved-parent focused execution
+and mixed-version tests use the same corrected entry, not a relaxed oracle.
+Explicit frame-size comments preserve static frame accounting for both old
+absolute and new zero/relative prologues.
+
+Release/traced/ASan qualification passes: 175-fixture coverage, including 26
+final affected-fixture rechecks; 16 immutable allocator cohorts and 28 real
+routines; 90 allocator and 300 condition ROM identities; 26 combined condition/
+comparison unit tests plus 19 optimized comparison units per build; strict C89
+normal/traced compilation. The 24-function focused cohort executes 1536 calls
+per mode/build with complete buffer and SP/DE checks. There are **192 independent
+timing checks**, including every setup threshold, and **40 mixed-version
+builds/340 guarded calls** covering both old/new directions. All 55 updated
+opcode regions in 26 fixtures retain their lengths and all non-opcode source;
+only relocated addresses change. The previously documented escaped-counter
+alias defect still returns 42740 rather than 50814; it is not counted as passing.
+
+Saved-parent binaries/source, raw reports and commit-bound qualification are
+retained in `C:\cygwin64\tmp\leaf-helper-20261020\final`. No push. The finite
+pre-SM83 sequence is complete; step 3 is next.
 
 ### 3. Maintain Induction Addresses And Select Z80 Loops
 
@@ -1643,7 +1735,6 @@ to this cross-compiler experiment.
    compiler source growth visible and remove superseded logic. Commit the batch
    locally with the validation summary; do not push.
 
-Steps 1, 2 and 2a-2m are complete. Current implementation target:
-**step 2n, leaf-frame and helper-contract audit**, followed by
+Steps 1, 2 and 2a-2n are complete. Current implementation target:
 **step 3, initial SM83 backend**. Keep the qualified Z80 behavior and shared core
 covered throughout; do not expand this finite sequence into every possible Z80 optimization.

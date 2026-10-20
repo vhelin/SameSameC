@@ -32,7 +32,8 @@ def step(machine, pc_limit=0xc000):
 
 
 def execute(code, entry, parameters, widths, buffer, buffer_address, return_width,
-            transfers=None, ports_allowed=False, instruction_limit=20000, frame_bytes=256):
+            transfers=None, ports_allowed=False, instruction_limit=20000, frame_bytes=256,
+            entry_sp_offset=-3):
     if transfers is None:
         transfers = {}
     machine = Z80Machine()
@@ -99,7 +100,8 @@ def execute(code, entry, parameters, widths, buffer, buffer_address, return_widt
     machine.mark_addrs(0, 65536, machine.WRITE_MARK)
     machine.pc = entry
     machine.de = frame
-    machine.sp = frame - 1
+    # Normal callees enter below saved DE; raw RET probes use offset -1.
+    machine.sp = frame + entry_sp_offset
     instructions = cycles = register_moves = unmapped_instructions = 0
     entry_backedges = callee_backedges = 0
     entry_section = (transfers.get(entry) or {}).get("section")

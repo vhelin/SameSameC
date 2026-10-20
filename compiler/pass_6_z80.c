@@ -7811,11 +7811,21 @@ int generate_asm_z80(FILE *file_out) {
         }
 
         if (strcmp(function_node->children[1]->label, "mainmain") != 0) {
-          /* allocate stack space for the stack frame */
-          fprintf(file_out, "      ; allocate space for the stack frame\n");
-          _load_value_to_hl(function_node->local_variables->offset_to_fp_total + 1, file_out);
-          _add_de_to_hl(file_out);
-          _load_hl_to_sp(file_out);
+          int frame_offset = function_node->local_variables->offset_to_fp_total + 1;
+          int bytes = get_register_allocator_call_frame_prefix_value(RA_CALL_FRAME_SAVED_FP_LOW_OFFSET) - frame_offset;
+          int k;
+
+          fprintf(file_out, "      ; allocate space for the stack frame bytes=%d\n", -frame_offset);
+          /* DEC SP costs 1 byte/6 T-states versus 5/27 for full setup. */
+          if (bytes >= 0 && bytes <= 4) {
+            for (k = 0; k < bytes; k++)
+              fprintf(file_out, "      DEC SP\n");
+          }
+          else {
+            _load_value_to_hl(frame_offset, file_out);
+            _add_de_to_hl(file_out);
+            _load_hl_to_sp(file_out);
+          }
         }
       }
 

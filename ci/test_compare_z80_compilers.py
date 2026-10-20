@@ -135,8 +135,11 @@ class ComparisonTests(unittest.TestCase):
 
     def test_native_clock_wrap_and_pc_guard(self):
         result = execute(bytes([0] * 25001 + [0xc9]), 0, [], [], bytearray(), 0, 0,
-                         instruction_limit=26000)
+                         instruction_limit=26000, entry_sp_offset=-1)
         self.assertEqual((result["instructions"], result["cycles"]), (25002, 100014))
+        entry = execute(bytes([0xed, 0x73, 0, 0xc1, 0x21, 0xff, 0xff, 0x19, 0xf9, 0xc9]),
+                        0, [], [], bytearray(2), 0xc100, 0)
+        self.assertEqual(entry["buffer"], bytearray([0xfd, 0xcf]))
         machine = Z80Machine()
         machine.pc = 0xc000
         with self.assertRaisesRegex(RuntimeError, "PC escape"):
@@ -147,6 +150,20 @@ class ComparisonTests(unittest.TestCase):
         before = copy.deepcopy(reference)
         benchmark.compare_result(dict(reference), reference)
         self.assertEqual(reference, before)
+
+    def test_ssc_wrapper_entry_includes_saved_frame_pointer(self):
+        memory = bytearray(65536)
+        code = bytes([0xed, 0x73, 0, 0xc0, 0x21, 42, 0, 0x22, 0, 0xc3, 0x31, 0xff, 0xcf, 0xc9])
+        memory[0x100:0x100 + len(code)] = code
+        for ssc in (False, True):
+            with self.subTest(ssc=ssc):
+                symbols = {"bench": 0x100, "probe": 0x100, "bench_buffer": 0xc000,
+                           "bench_params": 0xc240, "bench_result": 0xc300}
+                if ssc:
+                    symbols["mainmain"] = 0x200
+                value, buffer, _ = benchmark.execute(memory, symbols, "probe", [], b"", 0)
+                self.assertEqual(value, 42)
+                self.assertEqual(buffer[:2], bytes([0xfd if ssc else 0xff, 0xcf]))
 
     def test_footprint_includes_storage_below_sp(self):
         for destination, reserve, sp, access, below, footprint in (
