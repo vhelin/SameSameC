@@ -448,6 +448,46 @@ def generate_programs(comparison_forms):
             ("scalar_call_region", "u8 a, u8 b, u8 c", f"u8 saved = a^b; u8 first = c+saved; u8 loaded = ra_buffer[1]; u8 out = ((((first+loaded)^saved)+saved)^saved)+saved; u8 called = ra_pointer_helper(ra_buffer,ra_signed_helper({'ra_recursive_helper(2,a)' if variant == 1 else 'a'},b,c)); return ((((out^saved)+saved)^saved)+saved)^called;", [1, 1, 1], 1),
             ("scalar_loop_pressure", "u8 a, u8 b, u8 c", "u8 left = a; u8 right = b; while (left < right) { left = left+1; right = right-1; } return left^right;", [1, 1, 1], 1),
             ("scalar_loop_call", "u8 a, u8 b, u8 c", "u8 saved = a^b; u8 value = b; while (c) { value = ra_pointer_helper(ra_buffer,value)+saved; c = c-1; } return value;", [1, 1, 1], 1),
+            ("scalar_byte_loop", f"{'s8' if variant == 7 else 'u16' if variant == 20 else 'u8'} *target, {'u8' if variant == 32 else 'u16'} b, u16 c", [
+                "u16 i; for (i = 0; i < b; i++) { target[i] = c; } return b;",
+                "u16 i; for (i = 0; i < b; i++) { target[256+i] = target[i]; } return b;",
+                "u16 i; for (i = 0; i < b; i++) { target[i+1] = target[i]; } return b;",
+                "u16 i; for (i = 0; i < b; i++) { target[i] = target[i+1]; } return b;",
+                "u16 i; for (i = 0; i < b; i++) { ra_buffer[i] = c; } return b;",
+                "u16 i; for (i = 0; i < b; i++) { ra_buffer[i+256] = ra_buffer[i]; } return b;",
+                "u16 i; for (i = 0; i < b; i++) { target[i+65535] = c; } return b;",
+                "u16 i; for (i = 0; i < b; i++) { target[i] = target[i+256]; } return b;",
+                "u16 i; for (i = 0; i < 1; i++) { target[i] = c; } return b;",
+                "u16 i; for (i = 0; i < 3; i++) { target[i] = c; } return b;",
+                "u16 i; for (i = 0; i < 4; i++) { target[i] = c; } return b;",
+                "u16 i; for (i = 0; i < 256; i++) { target[i] = c; } return b;",
+                "u16 i; for (i = 0; i < 257; i++) { target[i] = c; } return b;",
+                "u16 i; for (i = 0; i < 1; i++) { target[i+256] = target[i]; } return b;",
+                "u16 i; for (i = 0; i < 2; i++) { target[i+256] = target[i]; } return b;",
+                "u16 i; for (i = 0; i < 3; i++) { target[i+256] = target[i]; } return b;",
+                "u16 i; for (i = 0; i < b; i++) { target[i] = c; } return i+c;",
+                "u16 i; for (i = 0; i < b; i++) { target[i+1] = target[i]; } return i+c;",
+                "u8 workspace[136]; workspace[135] = c; u16 i; for (i = 0; i < b; i++) { target[i] = c; } return b+workspace[135];",
+                "u8 workspace[136]; workspace[135] = c; u16 i; for (i = 0; i < b; i++) { workspace[i] = c; } return b+workspace[135];",
+                "u16 i; for (i = 0; i < b; i++) { target[i] = c; } return b;",
+                "u16 i; for (i = 0; i < b; i++) { target[i] = ra_pointer_helper(target,c); } return b;",
+                "u16 i; for (i = 0; i < b; i++) { if (i == 3) { break; } target[i] = c; } return i;",
+                "u16 i; u16 *escaped = &i; for (i = 0; i < b; i++) { target[i] = c; } return escaped[0];",
+                "u16 *alias = &b; u16 i; for (i = 0; i < b; i++) { alias[0] = 0; } return i+alias[0];",
+                "u16 *alias = &c; u16 i; for (i = 0; i < b; i++) { target[i] = c; alias[0] = alias[0]+1; } return c;",
+                "ra_byte_loop_limit = b; u16 i; for (i = 0; i < ra_byte_loop_limit; i++) { target[i] = c; } return ra_byte_loop_limit;",
+                "ra_byte_loop_limit = c; u16 i; for (i = 0; i < b; i++) { target[i] = ra_byte_loop_limit; } return b;",
+                "u16 i = 0; while (i < b) { target[i] = c; i = i+2; } return i;",
+                "u16 i = 65535; u16 end = b-1; while (i != end) { target[(i+1)&511] = c; i++; } return i;",
+                "u16 i; for (i = 0; i < b; i++) { if (c&1) { target[i] = c; } else { target[i] = b; } } return b;",
+                "u16 held = b^c; u16 i; for (i = 0; i < b; i++) { target[i] = c; } return held+b;",
+                "u16 i; for (i = 0; i < b; i++) { target[i] = c; } return b;",
+                "u16 i; for (i = 0; i < b; i++) { target[i] = c; target++; } return b;",
+                "u16 i; for (i = 0; i < b; i++) { target[i+256] = target[i+65535]; } return b;",
+                "u16 i; for (i = 0; i < b; i++) { target[i] = c; } target[512] = i; return i;",
+                "s16 i; for (i = 0; i < b; i++) { target[i] = c; } return i;",
+                "ra_pointer_helper(target,c); u16 i; for (i = 0; i < b; i++) { target[i+1] = target[i]; } return b;",
+            ][variant], [2, 1 if variant == 32 else 2, 2], 2),
             ("scalar_loop_memory", "u16 a, u16 b, u16 c", [
                 "u16 total = a; u16 i; for (i = 0; i < b; i++) { total += ra_buffer[i]; } return total;",
                 "s16 total = a; u16 i; for (i = 0; i < b; i++) { total += ra_buffer[i]; } return total;",
@@ -558,9 +598,9 @@ def generate_programs(comparison_forms):
                 "matrix_constant_multiply", "matrix_constant_shift", "matrix_variable_multiply",
             )
             # Dedicated cohorts keep the all-spill images within one ROM bank.
-            if family in ("scalar_word_step", "scalar_loop_memory", "scalar_call_staging", "matrix_byte_store", "matrix_divmod") and family not in os.environ.get("RA_FAMILIES", "").split(","):
+            if family in ("scalar_word_step", "scalar_loop_memory", "scalar_byte_loop", "scalar_call_staging", "matrix_byte_store", "matrix_divmod") and family not in os.environ.get("RA_FAMILIES", "").split(","):
                 continue
-            if variant >= (15 if family == "scalar_word_step" else 17 if family == "scalar_loop_memory" else 8) and not family.startswith("matrix_"):
+            if variant >= (38 if family == "scalar_byte_loop" else 15 if family == "scalar_word_step" else 17 if family == "scalar_loop_memory" else 8) and not family.startswith("matrix_"):
                 continue
             if family.startswith("matrix_") and variant >= limits.get(family, 2):
                 continue
@@ -587,7 +627,7 @@ def generate_programs(comparison_forms):
                     excluded = family.startswith("matrix_") or scalar_family != (os.environ.get("RA_SCALAR_CASES") == "1")
                 if excluded:
                     continue
-            if scalar_family and family not in ("word_bc", "scalar_word_counter", "scalar_word_step", "scalar_loop_memory", "scalar_call_staging", "scalar_call_transport") and variant > 1:
+            if scalar_family and family not in ("word_bc", "scalar_word_counter", "scalar_word_step", "scalar_loop_memory", "scalar_byte_loop", "scalar_call_staging", "scalar_call_transport") and variant > 1:
                 continue
             name = f"ra_{family}_{variant}"
             if family == "matrix_source_loop":
@@ -596,7 +636,7 @@ def generate_programs(comparison_forms):
                 pointer_parameters = [0]
             elif family in ("matrix_structural", "matrix_byte_store") or (family == "matrix_index_copy" and pointer_index):
                 pointer_parameters = [0, 1]
-            elif family in ("pointer", "walk", "nested", "join_call", "scalar_remat_pointer"):
+            elif family in ("pointer", "walk", "nested", "join_call", "scalar_remat_pointer", "scalar_byte_loop"):
                 pointer_parameters = [0]
             else:
                 pointer_parameters = []
@@ -608,8 +648,10 @@ def generate_programs(comparison_forms):
                 name, family, variant, constant, widths, return_width, pointer_parameters,
                 f"{return_type} {name}({parameters}) {{ {body} }}",
             ))
+    byte_loops = any(program.family == "scalar_byte_loop" for program in programs)
     preamble = (
-        "u8 ra_buffer[128];\nu8 *ra_index_pointer;\nu16 ra_words[64];\n"
+        ("u8 ra_buffer[1024];\nu16 ra_byte_loop_limit;\n" if byte_loops else "u8 ra_buffer[128];\n")
+        + "u8 *ra_index_pointer;\nu16 ra_words[64];\n"
         "s8 ra_signed_helper(u8 a, u8 b, u8 c) { return a+b+c; }\n"
         "u8 ra_pointer_helper(u8 *target, u8 value) { target[0] = value; return target[1]; }\n"
         "u8 ra_recursive_helper(u8 depth, u8 value) { if (depth) { u8 saved = value^depth; u8 nested = ra_recursive_helper(depth-1,value+1); return nested^saved; } return value; }\n"
@@ -1003,6 +1045,14 @@ def check_analytical_assertions(output, programs):
                 "reuse preceding byte array read in L" in section_assembly()
             ) != (variant in (10, 11, 12, 16)):
                 raise RuntimeError(f"Adjacent array-read comparison forwarding or barrier fallback mismatch: {name}")
+        if family == "scalar_byte_loop":
+            selected = "advancing byte " in section_assembly()
+            if selected != (variant <= 19 or variant in (34, 37)):
+                raise RuntimeError(f"Bounded byte-loop selection or conservative fallback mismatch: {name}")
+            if variant in (1, 2, 3, 5, 7, 15, 17, 34, 37) and not re.search(r"\bLDIR\b", section_assembly()):
+                raise RuntimeError(f"Forward byte copy did not select LDIR: {name}")
+            if variant in (0, 4, 6, 12, 16, 18, 19) and not re.search(r"\bDEC C\b", section_assembly()):
+                raise RuntimeError(f"Word-count store-only byte fill was not selected: {name}")
         if family == "scalar_word_counter":
             if variant == 0 and not has(r"loop_retention_apply_preflight .*selected=BC .*application=applied"):
                 raise RuntimeError(f"Bounded unsigned word counter was not retained: {name}")
@@ -1105,7 +1155,7 @@ def generated_oracle(program, seed, comparison_forms, decision_loop_paths):
     third = (seed * 47 + 3) & 255
     global_pointer = (family == "matrix_index_copy" and variant in (21, 29)) or (family == "matrix_byte_store" and variant == 5)
     buffer = byte_buffer((index * 47 + seed * 11 + variant) for index in range(
-        261 if family == "scalar_call_transport" else 260 if family == "scalar_call_staging" else 130 if global_pointer else 128
+        1026 if family == "scalar_byte_loop" else 261 if family == "scalar_call_transport" else 260 if family == "scalar_call_staging" else 130 if global_pointer else 128
     ))
     expected_buffer = buffer.copy()
     parameters = [byte, other, third]
@@ -1607,6 +1657,70 @@ def generated_oracle(program, seed, comparison_forms, decision_loop_paths):
                 expected = expected_buffer[count if variant == 10 else 0]
             elif variant == 12:
                 expected = (first + 1 + (last & 255)) & 65535
+        case "scalar_byte_loop":
+            count = (0, 1, 2, 3, 4, 127, 128, 255, 256, 257, 511, 512)[seed % 12]
+            if variant in (19, 21):
+                count &= 31
+            elif variant in (20, 32, 33):
+                count = min(count, 255 if variant == 32 else 256)
+            value = (0, 1, 127, 128, 255, 256, 32768, 65535)[seed % 8]
+            start = 1 if variant in (6, 32, 34) else 0
+            parameters = [start, count, value]
+            iterations = {8: 1, 9: 3, 10: 4, 11: 256, 12: 257, 13: 1, 14: 2, 15: 3}.get(variant, count)
+            expected = count
+            if variant in (26, 27):
+                global_value = count if variant == 26 else value
+                expected_buffer[1024:1026] = [global_value & 255, global_value >> 8]
+            if variant == 37:
+                expected_buffer[start] = value & 255
+            if variant == 22:
+                iterations = min(count, 3)
+                expected = iterations
+            elif variant == 24:
+                iterations = 1 if count else 0
+                expected = iterations
+            elif variant == 28:
+                expected = (count + 1) & ~1
+            elif variant == 29:
+                expected = (65535 + count) & 65535
+            elif variant in (16, 17):
+                expected = (count + value) & 65535
+            elif variant in (18, 19):
+                expected = count + (value & 255)
+            elif variant == 25:
+                expected = (value + count) & 65535
+            elif variant == 31:
+                expected = ((count ^ value) + count) & 65535
+            for index in range(iterations):
+                destination = start + index
+                if variant in (1, 5, 13, 14, 15):
+                    expected_buffer[destination + 256] = expected_buffer[destination]
+                elif variant in (2, 17, 37):
+                    expected_buffer[destination + 1] = expected_buffer[destination]
+                elif variant in (3, 7):
+                    expected_buffer[destination] = expected_buffer[destination + (256 if variant == 7 else 1)]
+                elif variant == 6:
+                    expected_buffer[destination - 1] = value
+                elif variant == 34:
+                    expected_buffer[destination + 256] = expected_buffer[destination - 1]
+                elif variant == 20:
+                    expected_buffer[2 * index:2 * index + 2] = [value & 255, value >> 8]
+                elif variant == 21:
+                    expected_buffer[start] = value
+                    expected_buffer[destination] = expected_buffer[start + 1]
+                elif variant == 25:
+                    expected_buffer[destination] = value + index
+                elif variant == 28:
+                    if not index & 1:
+                        expected_buffer[destination] = value
+                elif variant == 30:
+                    expected_buffer[destination] = value if value & 1 else count
+                elif variant == 33:
+                    expected_buffer[2 * index] = value
+                elif variant not in (19, 24):
+                    expected_buffer[destination] = value
+            if variant == 35:
+                expected_buffer[512] = count
         case "scalar_loop_memory":
             first = (0, 1, 255, 256, 32767, 32768, 65535)[seed % 7]
             count = (0, 1, 2, 31, 127, 128)[seed % 6]
@@ -1969,6 +2083,7 @@ def execute_generated(output, compiler, linker, programs, preamble, compiled, ca
                     result = execute(
                         image.rom, image.symbols[program.name], args, program.widths,
                         buffer, buffer_address, program.returnWidth, image.transfers, program.family == "matrix_source_loop",
+                        instruction_limit=60000 if program.family == "scalar_byte_loop" else 20000,
                     )
                     if result["unmapped_instructions"]:
                         raise RuntimeError(f"{program.name}: unmapped executed instructions")
@@ -2670,17 +2785,18 @@ def main():
         if not family_filter:
             cohorts.append("word_steps")
             cohorts.append("loop_memory")
+            cohorts.append("byte_loops")
             cohorts.append("call_staging")
             if os.environ.get("RA_MATRIX_CASES") != "0":
                 cohorts.append("byte_stores")
                 cohorts.append("divmod")
         for cohort in cohorts:
-            scalar_cohort = cohort in ("scalar", "word_steps", "loop_memory", "call_staging")
+            scalar_cohort = cohort in ("scalar", "word_steps", "loop_memory", "byte_loops", "call_staging")
             os.environ.update({
                 "RA_SCALAR_CASES": "1" if scalar_cohort else "0",
                 "RA_MATRIX_CASES": "0" if scalar_cohort else "1", "RA_REAL_PROJECTS": "0",
                 "RA_VALUE_CASES": "1" if cohort in ("matrix_values", "byte_stores") else "0",
-                "RA_FAMILIES": "scalar_word_step" if cohort == "word_steps" else "scalar_loop_memory" if cohort == "loop_memory" else "scalar_call_staging" if cohort == "call_staging" else "matrix_byte_store" if cohort == "byte_stores" else "matrix_divmod" if cohort == "divmod" else family_filter,
+                "RA_FAMILIES": "scalar_word_step" if cohort == "word_steps" else "scalar_loop_memory" if cohort == "loop_memory" else "scalar_byte_loop" if cohort == "byte_loops" else "scalar_call_staging" if cohort == "call_staging" else "matrix_byte_store" if cohort == "byte_stores" else "matrix_divmod" if cohort == "divmod" else family_filter,
                 "RA_COMPARISON_FORMS": "1" if cohort == "matrix_literals" else "2" if cohort == "matrix_memory" else "0",
                 "RA_EXECUTION_DIR": str(output / cohort), "RA_VERIFIER": harness,
             })

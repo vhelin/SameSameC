@@ -7303,6 +7303,321 @@ static int _copy_non_const_array_constants(struct tac *t, struct tree_node *node
 }
 
 
+static int _generate_asm_byte_loop_z80(int *tac_index, FILE *file_out, struct tree_node *function_node) {
+
+  struct tac *sequence[16], *access[2] = {NULL, NULL}, *base[2], *bound, *initial, *exit;
+  struct z80_location locations[3], counter_location, final_location;
+  struct temp_register *counter = NULL;
+  struct tree_node *nodes[3];
+  int indices[16], operands[2], displacements[2] = {0, 0};
+  int i, j, k, count = 0, end, scratch = 0, offset, constant_count, reload_count = NO;
+  int loop_id, copied = NO;
+  char loop_label[48];
+
+  initial = &g_tacs[*tac_index];
+  if (g_allocator_enabled == NO || g_allocator_force_all_spill == YES ||
+      (function_node->flags & TREE_NODE_FLAG_PUREASM) != 0 ||
+      initial->op != TAC_OP_ASSIGNMENT || initial->arg1_type != TAC_ARG_TYPE_CONSTANT ||
+      initial->arg1_d != 0.0 || initial->result_type != TAC_ARG_TYPE_TEMP ||
+      initial->result_var_type != VARIABLE_TYPE_UINT16 ||
+      initial->result_var_type_promoted != VARIABLE_TYPE_UINT16 ||
+      strcmp(function_node->children[1]->label, "mainmain") == 0)
+    return SUCCEEDED;
+  for (i = *tac_index; i < g_tacs_count && count < 16; i++) {
+    if (g_tacs[i].function_node != function_node || g_tacs[i].is_function == YES)
+      return SUCCEEDED;
+    if (g_tacs[i].op == TAC_OP_DEAD)
+      continue;
+    if (g_tacs[i].store_retained_to_spill_operand != -1 ||
+        g_tacs[i].reload_spill_to_physical_operand != -1)
+      return SUCCEEDED;
+    indices[count] = i;
+    sequence[count++] = &g_tacs[i];
+    if (g_tacs[i].op == TAC_OP_JUMP)
+      break;
+  }
+  if (count < 7 || sequence[1]->op != TAC_OP_LABEL ||
+      sequence[2]->op != TAC_OP_JUMP_GTE || sequence[count - 3]->op != TAC_OP_LABEL ||
+      sequence[count - 2]->op != TAC_OP_ADD || sequence[count - 1]->op != TAC_OP_JUMP ||
+      strcmp(sequence[count - 1]->result_s, sequence[1]->result_s) != 0)
+    return SUCCEEDED;
+  bound = sequence[2];
+  if (bound->arg1_type != TAC_ARG_TYPE_TEMP || bound->arg1_d != initial->result_d ||
+      bound->arg1_var_type_promoted != VARIABLE_TYPE_UINT16 ||
+      bound->arg2_var_type_promoted != VARIABLE_TYPE_UINT16 ||
+      (bound->arg2_type != TAC_ARG_TYPE_LABEL && bound->arg2_type != TAC_ARG_TYPE_CONSTANT) ||
+      (bound->arg2_type == TAC_ARG_TYPE_LABEL && bound->arg2_var_type != VARIABLE_TYPE_UINT16) ||
+      (bound->arg2_type == TAC_ARG_TYPE_CONSTANT &&
+       (bound->arg2_d <= 0.0 || bound->arg2_d > 65535.0 || bound->arg2_d != (int)bound->arg2_d)) ||
+      sequence[count - 2]->arg1_type != TAC_ARG_TYPE_TEMP ||
+      sequence[count - 2]->arg1_d != initial->result_d ||
+      sequence[count - 2]->arg2_type != TAC_ARG_TYPE_CONSTANT ||
+      sequence[count - 2]->arg2_d != 1.0 || sequence[count - 2]->result_type != TAC_ARG_TYPE_TEMP ||
+      sequence[count - 2]->result_d != initial->result_d ||
+      sequence[count - 2]->arg1_var_type != VARIABLE_TYPE_UINT16 ||
+      sequence[count - 2]->result_var_type != VARIABLE_TYPE_UINT16)
+    return SUCCEEDED;
+  for (end = indices[count - 1] + 1; end < g_tacs_count && g_tacs[end].op == TAC_OP_DEAD; end++)
+    ;
+  if (end >= g_tacs_count || g_tacs[end].op != TAC_OP_LABEL ||
+      g_tacs[end].is_function == YES || g_tacs[end].function_node != function_node ||
+      strcmp(bound->result_s, g_tacs[end].result_s) != 0)
+    return SUCCEEDED;
+  exit = &g_tacs[end];
+  for (i = 3; i < count - 3; i++) {
+    struct tac *t = sequence[i];
+    if (t->op == TAC_OP_ASSIGNMENT) {
+      if (t->result_type != TAC_ARG_TYPE_TEMP || t->arg1_type != TAC_ARG_TYPE_LABEL ||
+          t->arg1_node == NULL || t->result_var_type != VARIABLE_TYPE_UINT16)
+        return SUCCEEDED;
+    }
+    else if (t->op == TAC_OP_ADD) {
+      if (t->result_type != TAC_ARG_TYPE_TEMP || t->arg1_type != TAC_ARG_TYPE_TEMP ||
+          t->arg1_d != initial->result_d || t->arg2_type != TAC_ARG_TYPE_CONSTANT ||
+          t->arg2_d < -32768.0 || t->arg2_d > 65535.0 || t->arg2_d != (int)t->arg2_d ||
+          t->result_var_type != VARIABLE_TYPE_UINT16)
+        return SUCCEEDED;
+    }
+    else if (t->op == TAC_OP_ARRAY_READ && access[1] == NULL && access[0] == NULL &&
+             t->result_type == TAC_ARG_TYPE_TEMP &&
+             (t->result_var_type == VARIABLE_TYPE_UINT8 || t->result_var_type == VARIABLE_TYPE_INT8))
+      access[1] = t;
+    else if (t->op == TAC_OP_ARRAY_WRITE && access[0] == NULL &&
+             (t->result_var_type == VARIABLE_TYPE_UINT8 || t->result_var_type == VARIABLE_TYPE_INT8))
+      access[0] = t;
+    else
+      return SUCCEEDED;
+    if (t->op != TAC_OP_ARRAY_WRITE && t->result_d == initial->result_d)
+      return SUCCEEDED;
+  }
+  if (access[0] == NULL || (access[1] != NULL &&
+      (access[0]->arg1_type != TAC_ARG_TYPE_TEMP || access[0]->arg1_d != access[1]->result_d)))
+    return SUCCEEDED;
+  copied = access[1] != NULL;
+  for (i = 0; i <= copied; i++) {
+    struct tac *t = access[i];
+    int type = i == 0 ? t->result_type : t->arg1_type;
+    double value = i == 0 ? t->result_d : t->arg1_d;
+
+    base[i] = t;
+    operands[i] = i == 0 ? TAC_USE_RESULT : TAC_USE_ARG1;
+    if (type == TAC_ARG_TYPE_TEMP) {
+      for (j = 3; j < count - 3; j++) {
+        if (sequence[j] >= t)
+          break;
+        if (sequence[j]->op == TAC_OP_ASSIGNMENT && sequence[j]->result_d == value) {
+          base[i] = sequence[j];
+          operands[i] = TAC_USE_ARG1;
+          break;
+        }
+      }
+      if (base[i] == t)
+        return SUCCEEDED;
+    }
+    else if (type != TAC_ARG_TYPE_LABEL)
+      return SUCCEEDED;
+    if (t->arg2_type != TAC_ARG_TYPE_TEMP || t->arg2_var_type != VARIABLE_TYPE_UINT16 ||
+        t->arg2_var_type_promoted != VARIABLE_TYPE_UINT16)
+      return SUCCEEDED;
+    if (t->arg2_d != initial->result_d) {
+      for (j = 3; j < count - 3; j++) {
+        if (sequence[j] >= t)
+          break;
+        if (sequence[j]->op == TAC_OP_ADD && sequence[j]->result_d == t->arg2_d)
+          break;
+      }
+      if (j == count - 3 || sequence[j] >= t)
+        return SUCCEEDED;
+      displacements[i] = (int)sequence[j]->arg2_d;
+    }
+  }
+  nodes[0] = bound->arg2_node;
+  nodes[1] = operands[0] == TAC_USE_RESULT ? base[0]->result_node : base[0]->arg1_node;
+  nodes[2] = copied == YES ? base[1]->arg1_node : access[0]->arg1_node;
+  if (nodes[1] == NULL || (copied == YES && nodes[2] == NULL) ||
+      (copied == NO && access[0]->arg1_type == TAC_ARG_TYPE_LABEL && nodes[2] == NULL) ||
+      (copied == NO && access[0]->arg1_type != TAC_ARG_TYPE_LABEL &&
+       access[0]->arg1_type != TAC_ARG_TYPE_CONSTANT))
+    return SUCCEEDED;
+  for (i = 0; i < 3; i++) {
+    struct tree_node *node = nodes[i];
+    if (node == NULL)
+      continue;
+    if ((node->type != TREE_NODE_TYPE_CREATE_VARIABLE &&
+         node->type != TREE_NODE_TYPE_CREATE_VARIABLE_FUNCTION_ARGUMENT) ||
+        ((node->flags & (TREE_NODE_FLAG_GLOBAL | TREE_NODE_FLAG_STATIC)) != 0 && node->value == 0))
+      return SUCCEEDED;
+    if (i == 1 || (i == 2 && copied == YES)) {
+      if (strcmp(node->children[1]->label, "__z80_in") == 0 ||
+          strcmp(node->children[1]->label, "__z80_out") == 0 ||
+          (node->value == 0 && node->children[0]->value_double != 1.0) ||
+          (node->children[0]->value != VARIABLE_TYPE_UINT8 && node->children[0]->value != VARIABLE_TYPE_INT8))
+        return SUCCEEDED;
+    }
+    else if (node->value != 0 || node->children[0]->value_double != 0.0)
+      return SUCCEEDED;
+  }
+  for (i = 0; i < function_node->local_variables->temp_registers_count; i++) {
+    struct temp_register *temp = &function_node->local_variables->temp_registers[i];
+    if (temp->register_index == (int)initial->result_d)
+      counter = temp;
+    else if (temp->live_start < *tac_index && temp->live_end >= *tac_index)
+      return SUCCEEDED;
+    for (j = 3; j < count - 3; j++) {
+      if (sequence[j]->op == TAC_OP_ARRAY_WRITE ||
+          sequence[j]->result_d != temp->register_index)
+        continue;
+      if (temp->live_start < *tac_index || temp->live_end >= end || temp->write_count != 1)
+        return SUCCEEDED;
+      if (temp->size == 16 && temp->spill_required == YES &&
+          temp->offset_to_fp >= -128 && temp->offset_to_fp <= 126)
+        scratch = temp->offset_to_fp;
+    }
+  }
+  if (counter == NULL || counter->live_start != *tac_index || counter->write_count != 2)
+    return SUCCEEDED;
+  if (counter->spill_required == YES && counter->offset_to_fp >= -128 && counter->offset_to_fp <= 126)
+    scratch = counter->offset_to_fp;
+  if (copied == YES && scratch == 0)
+    return SUCCEEDED;
+  for (i = 0; i < g_tacs_count; i++) {
+    struct tac *t = &g_tacs[i];
+    if (t->function_node != function_node || t->op == TAC_OP_DEAD)
+      continue;
+    if (t->op == TAC_OP_ASM)
+      return SUCCEEDED;
+    if (t->op >= TAC_OP_JUMP && t->op <= TAC_OP_JUMP_GTE &&
+        i != indices[2] && i != indices[count - 1] &&
+        (strcmp(t->result_s, sequence[1]->result_s) == 0 ||
+         strcmp(t->result_s, sequence[count - 3]->result_s) == 0 ||
+         strcmp(t->result_s, exit->result_s) == 0))
+      return SUCCEEDED;
+    for (j = 0; j < 3; j++) {
+      if (nodes[j] != NULL && nodes[j]->value == 0 &&
+          (t->op == TAC_OP_GET_ADDRESS || t->op == TAC_OP_GET_ADDRESS_ARRAY) &&
+          t->arg1_node == nodes[j])
+        return SUCCEEDED;
+    }
+  }
+  if (_resolve_tac_location(bound, TAC_USE_ARG2, function_node, &locations[0]) == FAILED ||
+      _resolve_tac_location(base[0], operands[0], function_node, &locations[1]) == FAILED ||
+      _resolve_tac_location(copied == YES ? base[1] : access[0],
+        copied == YES ? operands[1] : TAC_USE_ARG1, function_node, &locations[2]) == FAILED ||
+      _resolve_tac_location(initial, TAC_USE_RESULT, function_node, &counter_location) == FAILED ||
+      _resolve_tac_location(sequence[count - 2], TAC_USE_RESULT, function_node, &final_location) == FAILED)
+    return FAILED;
+  if (counter_location.kind != final_location.kind || counter_location.phy != final_location.phy ||
+      counter_location.offset != final_location.offset)
+    return SUCCEEDED;
+  for (i = 0; i < 3; i++) {
+    if (locations[i].kind != LOC_CONST && locations[i].kind != LOC_STACK_LOCAL &&
+        !(i > 0 && nodes[i]->value > 0 && locations[i].kind == LOC_GLOBAL))
+      return SUCCEEDED;
+    if (locations[i].kind == LOC_STACK_LOCAL && nodes[i]->value == 0 &&
+        (locations[i].offset < -128 || locations[i].offset + locations[i].size > 128))
+      return SUCCEEDED;
+  }
+
+  constant_count = locations[0].kind == LOC_CONST ? locations[0].value : 0;
+  loop_id = g_return_id++;
+  snprintf(loop_label, sizeof(loop_label), "_byte_loop_%d", loop_id);
+  fprintf(file_out, "      ; advancing byte %s loop\n", copied == YES ? "copy" : "fill");
+  _load_de_with_offset_to_ix(0, file_out);
+  if (constant_count == 0) {
+    if (_materialize_array_index_to_bc(&locations[0], VARIABLE_TYPE_UINT16, locations[0].offset, NO, file_out) == FAILED)
+      return FAILED;
+    fprintf(file_out, "      LD  A,B\n      OR  C\n");
+    fprintf(file_out, "      JP  Z,%s\n", exit->result_s);
+  }
+  if (copied == YES)
+    fprintf(file_out, "      LD  (IX%+d),E\n      LD  (IX%+d),D\n", scratch, scratch + 1);
+  for (i = 0; i <= copied; i++) {
+    struct z80_location *location = &locations[i + 1];
+    offset = displacements[i];
+    if (nodes[i + 1]->value == 0) {
+      _load_from_ix_to_l(location->offset, file_out);
+      _load_from_ix_to_h(location->offset + 1, file_out);
+    }
+    else if (i == 1 && location->kind == LOC_STACK_LOCAL)
+      offset += location->offset; /* EX DE,HL left the frame base in HL. */
+    else if (_load_location_address_to_hl(location, file_out) == FAILED)
+      return FAILED;
+    if (offset != 0) {
+      _load_value_to_bc(offset, file_out);
+      _add_bc_to_hl(file_out);
+      reload_count = YES;
+    }
+    if (copied == YES && i == 0) {
+      fprintf(file_out, "      EX  DE,HL\n");
+      g_is_ix_de = NO;
+    }
+  }
+  if (copied == YES || constant_count > 256 || constant_count == 0) {
+    if (constant_count != 0 || reload_count == YES) {
+      if (_materialize_array_index_to_bc(&locations[0], VARIABLE_TYPE_UINT16, locations[0].offset, NO, file_out) == FAILED)
+        return FAILED;
+    }
+  }
+  if (copied == YES) {
+    if (constant_count == 1 || constant_count == 2) {
+      if (constant_count == 2)
+        fprintf(file_out, "      LDI\n");
+      fprintf(file_out, "      LD  A,(HL)\n      LD  (DE),A\n");
+    }
+    else
+      fprintf(file_out, "      LDIR\n");
+    _load_from_ix_to_e(scratch, file_out);
+    _load_from_ix_to_d(scratch + 1, file_out);
+  }
+  else {
+    if (constant_count > 3 && constant_count <= 256)
+      _load_value_to_b(constant_count & 255, file_out);
+    else if (constant_count == 0 || constant_count > 256) {
+      fprintf(file_out, "      LD  A,C\n      OR  A\n      JR  Z,+\n      INC B\n");
+      _add_label("+", file_out, YES);
+    }
+    if (locations[2].kind == LOC_CONST)
+      _load_value_to_a(locations[2].value & 255, file_out);
+    else
+      _load_from_ix_to_a(locations[2].offset, file_out);
+    if (constant_count > 0 && constant_count <= 3) {
+      for (k = 0; k < constant_count; k++) {
+        fprintf(file_out, "      LD  (HL),A\n");
+        if (k + 1 < constant_count)
+          fprintf(file_out, "      INC HL\n");
+      }
+    }
+    else {
+      _add_label(loop_label, file_out, NO);
+      fprintf(file_out, "      LD  (HL),A\n      INC HL\n");
+      if (constant_count == 0 || constant_count > 256)
+        fprintf(file_out, "      DEC C\n      JR  NZ,%s\n", loop_label);
+      fprintf(file_out, "      DJNZ %s\n", loop_label);
+    }
+  }
+  _add_label(exit->result_s, file_out, NO);
+  /* Both the zero-count edge and the loop preserve IX = the restored DE. */
+  g_is_ix_de = YES;
+  if (counter->live_end > indices[count - 1]) {
+    struct tac update = *initial;
+    update.arg1_type = bound->arg2_type;
+    update.arg1_d = bound->arg2_d;
+    update.arg1_s = bound->arg2_s;
+    update.arg1_node = bound->arg2_node;
+    update.arg1_var_type = bound->arg2_var_type;
+    update.arg1_var_type_promoted = bound->arg2_var_type_promoted;
+    update.arg1_physical_register = bound->arg2_physical_register;
+    if (_generate_asm_assignment_z80(&update, file_out, function_node) == FAILED)
+      return FAILED;
+  }
+  RA_TRACE((stderr, "register_allocator: byte_loop function=%s kind=%s count=%s frame_save=%d instructions=%d target=z80 status=complete\n",
+    function_node->children[1]->label, copied == YES ? "copy" : "fill",
+    constant_count == 0 ? "word" : "constant", copied == YES ? scratch : 0, count));
+  *tac_index = end;
+  return SUCCEEDED;
+}
+
+
 int generate_asm_z80(FILE *file_out) {
 
   int i, file_id = -1, line_number = -1, const_variables_count;
@@ -7437,6 +7752,13 @@ int generate_asm_z80(FILE *file_out) {
         print_tac(t, YES, file_out);
         fprintf(file_out, "      ; -----------------------------------------------------------------\n");
 
+        if (op == TAC_OP_ASSIGNMENT) {
+          int previous_index = i;
+          if (_generate_asm_byte_loop_z80(&i, file_out, function_node) == FAILED)
+            return FAILED;
+          if (i != previous_index)
+            continue;
+        }
         if (op == TAC_OP_ADD || op == TAC_OP_SUB || op == TAC_OP_AND || op == TAC_OP_OR || op == TAC_OP_XOR) {
           int is_reload;
           for (is_reload = NO; is_reload <= YES; is_reload++) {

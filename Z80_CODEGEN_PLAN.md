@@ -120,7 +120,7 @@ extraction.
   eligible accumulators/counters and advance addresses without weaker safety checks.
 - [x] **2i. Argument staging within the existing ABI (new step 5):** eliminate
   proven redundant caller-temporary copies before considering a new convention.
-- [ ] **2j. Advancing-pointer copy/fill loops:** replace repeated address
+- [x] **2j. Advancing-pointer copy/fill loops:** replace repeated address
   reconstruction, then select profitable target-local loop/block instructions.
 - [ ] **2k. Constant byte arithmetic and multiplication setup:** specialize
   byte shifts/multiplies and remove unused setup from existing constant word chains.
@@ -1104,13 +1104,13 @@ implementation claims. Existing checkpoint gates apply to every code change.
 
 #### 2j. Advancing-Pointer Copy/Fill Loops
 
-- [ ] Recognize bounded simple loops using existing analysis; maintain advancing
+- [x] Recognize bounded simple loops using existing analysis; maintain advancing
   addresses instead of reconstructing `base + index` on every iteration.
-- [ ] Compare scalar pointer loops, tiny straight-line sequences, `DJNZ`,
+- [x] Compare scalar pointer loops, tiny straight-line sequences, `DJNZ`,
   unrolled `LDI` and `LDIR` using full setup/preservation costs. Keep a generic
   word-count fallback; competitor builtin lowering does not prove arbitrary
   source loops are recognized or eligible.
-- [ ] Preserve DE's frame-pointer contract, source-order overlap behavior,
+- [x] Preserve DE's frame-pointer contract, source-order overlap behavior,
   zero/256 counts, address wrap, clobbers and observable memory effects.
   Seed-plus-`LDIR` fills introduce reads and must not replace store-only loops
   where those reads are observable. Keep instruction selection target-local.
@@ -1119,6 +1119,84 @@ Acceptance: reduce byte-copy/fill bytes and cycles without regression, and
 measure a real decoder/array workload. Check complete buffers and guards,
 zero/one/255/256 counts, word wraps, overlapping source/destination in both
 directions, calls, aliases, register pressure and complete frame footprint.
+
+Step 2j checkpoint (2026-10-20):
+
+- Added one bounded Z80-emission helper using existing verified TAC, allocator
+  intervals, location/address resolution and assignment emitters. It recognizes
+  canonical zero-based, unit-stride unsigned word-counter loops with a stable
+  word bound or positive constant, one byte store and at most one byte read.
+  Eligible affine offsets wrap at 16 bits. Verified TAC, allocator assignments,
+  frame layout and calling conventions remain unchanged; there is no new IR,
+  analysis framework or cross-block register/address cache.
+- Copies advance HL/DE directly: one byte uses a load/store, two bytes use `LDI`
+  and a final load/store, and larger/dynamic counts use `LDIR`. The original
+  forward load-then-store order is preserved, including overlapping copies;
+  this is not a `memmove` transformation. DE is saved only in an already
+  allocated private word slot that is dead during the fused loop. If none is
+  available, retain the original emission rather than adding stack usage.
+- Fills remain store-only: 1-3 constant bytes use straight-line stores,
+  4-256 use `DJNZ`, and dynamic/larger word counts use a guarded two-level
+  byte-count loop. Do not seed an `LDIR` fill and introduce extra memory reads.
+  Zero counts skip the body; observed exit-counter values are reconstructed
+  through the existing assignment emitter. Both incoming paths establish the
+  existing IX=DE fact before it is reused.
+- Unsupported forms keep existing emission: signed/nonzero/strided counters,
+  byte-width dynamic bounds, word arrays, internal branches, calls or changing
+  pointers in the body, escaped or mutable scalar inputs, live extra
+  temporaries, external control-flow entries, inline assembly and pure-assembly
+  functions. Fixed global/local byte arrays and stable pointer arguments are
+  supported; mutable global pointer/bound/fill scalars are not.
+
+Against immediate parent `66ab52f` (the compiler from the step 2h/2i checkpoint):
+
+| Workload | Kernel bytes, before -> after | Kernel T-states / 17 calls | Kernel T-states / 256-byte call |
+|---|---:|---:|---:|
+| `copyBytes` | 130 -> 76 | 490,891 -> 26,659 | 131,965 -> 5,804 |
+| `fillBytes` | 67 -> 60 | 190,327 -> 32,239 | 50,700 -> 7,722 |
+
+- Copy is 41.5% smaller with 94.6% fewer aggregate kernel T-states; fill is
+  10.4% smaller with 83.1% fewer. On the 256-byte call, benchmark kernel stack
+  reads/writes fall from 4,105/1,029 to 14/4 for copy and from 1,286/2 to 9/2
+  for fill. These counters are not the allocator harness's frame-traffic metric.
+- Wrapper bytes/cycles are unchanged. Copy's SP high-water remains 25 bytes,
+  stack-access extent improves 25 -> 24 and complete frame footprint stays 27.
+  Fill remains 20/20/22 respectively; maximum below-SP access stays 8 for both.
+- Measured real decoder/array controls are unchanged: `unpackPackBits` is
+  565 bytes / 159,912 T-states, `calculationArrayWorkload` is 1,656 / 6,372,748,
+  and `calculationPackedCrc` is 913 / 12,801,227. The other benchmark workloads
+  and all 28 separately executed real routines' cycles/frame traffic are also
+  unchanged. This batch does not claim a decoder/array/CRC improvement.
+- The full eight-configuration comparison passes 104 builds / 1,856 calls:
+  all eight tracked metrics are non-regressing in every row, all 78 external
+  controls and all 13 no-RA rows are exact, and all 26 normal/traced SSC
+  assemblies, ROMs and measurements match. The existing 24 independent timing
+  checks pass, plus eight separate 256-byte copy checks against z88dk-ticks
+  with exact whole-call cycle, value and complete-buffer agreement.
+- Added 38 generated loop variants (22 selected, 16 conservative fallbacks)
+  plus eight arithmetic controls: 2,944 independent value/full-buffer executions
+  per mode at 64 seeds. Covers zero through 512, 255/256/257 transitions,
+  16-bit affine-offset wrap, overlap in both directions, wide/local-array
+  frames, post-loop counter reads, calls, escapes, byte bounds and pressure.
+  All 456 individual variant/boundary cases are non-regressing in cycles and
+  frame reads/writes against the saved parent; fallback cases remain exact.
+  Parent/current default and all-spill ROMs match, normal/traced ROMs match,
+  and the saved parent fails the new selection assertion as intended.
+- Qualification passes all 175 fixtures without snapshot changes; 12 allocator
+  cohorts with 32 immutable verifier-rejection controls each; 28 real routines;
+  traced/ASan identity for 70 ROMs; and a separate 12-seed ASan byte-loop run
+  through 512. All 25 condition/comparison unit tests pass in release, traced
+  and ASan builds, with 300 identical ROM/counter images; 18 comparison tests
+  also pass under Python `-O`. MSVC builds, Python syntax/diagnostics and strict
+  ANSI C normal/traced compilation pass; the latter excludes only existing
+  unused-parameter warnings.
+- Both complete calculation ROMs rebuild identically in normal/traced mode:
+  used bytes remain 20,677 and 33,134, not their 65,536-byte padded sizes.
+  Production growth is **322 net C lines and one helper**, confined to the
+  Z80 emitter; the allocator core and pass 5 are unchanged. The helper reuses
+  existing lowering/address machinery instead of adding a parallel optimizer.
+- Retained qualification, saved-parent controls and independent timing evidence:
+  `C:\cygwin64\tmp\advancing-loops-20261020\final`.
 
 #### 2k. Constant Byte Arithmetic And Multiplication Setup
 
@@ -1369,7 +1447,7 @@ to this cross-compiler experiment.
    compiler source growth visible and remove superseded logic. Commit the batch
    locally with the validation summary; do not push.
 
-Steps 1, 2 and 2a-2i are complete. Current implementation target:
-**step 2j, advancing-pointer copy/fill loops**, followed by 2k-2n and then
+Steps 1, 2 and 2a-2j are complete. Current implementation target:
+**step 2k, constant byte arithmetic and multiplication setup**, followed by 2l-2n and then
 **step 3, initial SM83 backend**. Keep the qualified Z80 behavior and shared core
 covered throughout; do not expand this finite sequence into every possible Z80 optimization.
