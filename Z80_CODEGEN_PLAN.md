@@ -126,7 +126,7 @@ extraction.
   byte shifts/multiplies and remove unused setup from existing constant word chains.
 - [x] **2l. Proven bounded-counter narrowing:** use byte execution for counters
   whose ranges and observable uses permit it, without changing source semantics.
-- [ ] **2m. Lowering-aware costs and local address reuse:** refine existing
+- [x] **2m. Lowering-aware costs and local address reuse:** refine existing
   profitability estimates and address caching rather than adding a framework.
 - [ ] **2n. Leaf-frame and helper-contract audit:** remove only measured,
   provably redundant frame work or preservation within the existing ABI.
@@ -1365,12 +1365,12 @@ Step-2l checkpoint (2026-10-20):
 
 #### 2m. Lowering-Aware Costs And Local Address Reuse
 
-- [ ] Extend current profitability hooks to account for actual address setup,
+- [x] Extend current profitability hooks to account for actual address setup,
   transfers, width extension and saves/restores where estimates currently omit
   them. Keep frequency and size/cycle policy explicit.
-- [ ] Reuse existing address helpers/cache for proven nearby addresses within
+- [x] Reuse existing address helpers/cache for proven nearby addresses within
   basic blocks rather than introducing parallel state or a new optimizer.
-- [ ] Invalidate facts on relevant register writes, calls, assembly and control
+- [x] Invalidate facts on relevant register writes, calls, assembly and control
   boundaries. Do not retain cached addresses across joins without proving every
   incoming path establishes the same value.
 
@@ -1378,6 +1378,70 @@ Acceptance: correlate changed decisions with emitted sequences and measured
 bytes/cycles/frame traffic. Exercise cache hits and invalidation, wide offsets,
 pressure and unknown-cost fallbacks. Preserve immutable verification and
 normal/traced equivalence; do not add a dry-run framework without measured need.
+
+Step-2m checkpoint (2026-10-20):
+
+- Replaced the existing IX=DE Boolean with one known IX=DE+offset fact, not a
+  second cache. The shared address helper reuses signed displacements in
+  `[-128,126]`, reserving displacement 127 for a word's high byte. Nearby rebases
+  use one or two INC/DEC IX instructions only: 2/4 bytes and 10/20 T-states beat
+  the full 6-byte/29-T-state setup. Three adjustments cost 30 T-states and are
+  rejected. The same fact supports existing pointer-base reads and arithmetic
+  save/restore paths; removed the duplicate uncached address emitter and its
+  now-unused ADD IX helper, retaining the byte helper's existing forced-cold
+  operand contract through the shared emitter.
+- Corrected the existing profitability callback's byte array-index transfer
+  charge: A/B require a 4-T-state/1-byte move into C; C requires none. The focused
+  A candidate's estimated saving changes from 38 T-states/6 bytes to 34/5.
+  Audited the existing signed-index extension delta against its actual
+  preserving/non-preserving sequences: worst-case 27 versus 16 T-states, seven
+  versus four bytes, and no extra saves/restores. Keep the existing explicit
+  frequency estimate, 256-instruction bound, cycles-without-byte-growth policy
+  and unknown-cost fallback. Early allocation cannot assume an emitter cache
+  fact or a not-yet-assigned temporary spill offset; late address choices use
+  the actual proven fact instead of adding a dry-run framework.
+- IX/DE writes, calls, unknown raw assembly and ordinary labels invalidate the
+  fact. Compiler-generated assembly variable accesses retain it only while
+  their actual register writes permit it. No new facts cross joins. Existing
+  arithmetic frame saves restore the matching fact; the linker copy helper
+  demonstrably preserves IX and POP DE restores its original frame relation.
+  TAC, allocation metadata, frame layout and ABI contracts are unchanged.
+- Added 24 address/pressure/boundary/barrier probes through the existing
+  generator and independent oracle, plus its eight arithmetic controls:
+  32 functions and 2048 executions per mode. Cover 2..384-byte arrays, both
+  profitable adjustment thresholds, the three-step fallback, bounded high-byte
+  displacements, globals, calls, raw IX-clobbering assembly, joins, multiply/
+  divide, unknown shift costs and signed/unsigned byte indexes. Parent/current
+  sources are identical; the saved parent fails the new selection assertions.
+  A representative wide-frame probe drops from 264 to 200 bytes and from
+  94784 to 75008 T-states over 64 calls. Frame reads/writes remain unchanged;
+  these are address-setup savings, not a claimed frame-traffic reduction.
+- The full 104-row/1856-call comparison passes, with all 78 external and 13
+  no-RA C controls exact. Pathfinding drops from 1643 to 1439 kernel bytes and
+  from 7099333 to 6235713 aggregate kernel T-states; caller costs and complete
+  frame-footprint observations are unchanged. In the separate real-project
+  corpus, actor and path workloads improve from 33003283 to 26504847 and from
+  25373751 to 22229194 T-states, respectively.
+- Explicit safety tradeoff: three hand-written assembly helpers previously
+  carried an unproved IX fact through raw assembly. Invalidating it adds two
+  cold setups, 12 bytes/58 T-states per call, in RA and no-RA modes.
+  Their three-call bank wrapper adds 174 T-states. These are recorded
+  exceptions, not hidden non-regression claims; all results, buffers and frame
+  accesses remain correct. The unrelated alias-written counter failure recorded
+  in 2l still returns 42740 rather than 50814 and remains open.
+- Used whole-ROM bytes change from 20674 to 20650 and from 32798 to 31604.
+  Padded sizes remain 65536 and normal/traced images match. All 175 fixtures,
+  16 immutable-verifier cohorts, 28 real routines, 90 traced/ASan allocator ROM
+  identities, 300 three-build condition ROM identities, strict normal/traced
+  C89 builds, three MSVC builds and 105 independent timing checks pass.
+  Strict pass-5 compilation excludes its existing transposed-calloc warning,
+  independently reproduced in the saved parent, as well as unused parameters.
+- Updated 40 exact opcode regions in 16 fixtures from passing-parent/current
+  ROMs, preserving all non-opcode SSC source. Growing regions explicitly
+  include the required raw-assembly barriers. Net production change:
+  **16 fewer C lines and two fewer functions**. Evidence, saved 392790f sources/
+  binaries and the commit-bound qualification summary are retained in
+  `C:\cygwin64\tmp\lowering-costs-20261020\final`. No push.
 
 #### 2n. Leaf-Frame And Helper-Contract Audit
 
@@ -1579,7 +1643,7 @@ to this cross-compiler experiment.
    compiler source growth visible and remove superseded logic. Commit the batch
    locally with the validation summary; do not push.
 
-Steps 1, 2 and 2a-2l are complete. Current implementation target:
-**step 2m, lowering-aware costs and local address reuse**, followed by 2n and then
+Steps 1, 2 and 2a-2m are complete. Current implementation target:
+**step 2n, leaf-frame and helper-contract audit**, followed by
 **step 3, initial SM83 backend**. Keep the qualified Z80 behavior and shared core
 covered throughout; do not expand this finite sequence into every possible Z80 optimization.

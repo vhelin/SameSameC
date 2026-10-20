@@ -6321,7 +6321,8 @@ static void _observe_register_allocator_transition_preparation(void *context,
         costs[choice][0] += byte_count * indexed_cycles;
         costs[choice][1] += byte_count * indexed_bytes;
         if (byte_count == 1)
-          transfer_bytes = operand == TAC_USE_ARG1 && physical_register != Z80_PHY_A ? 1 : 0;
+          transfer_bytes = (operand == TAC_USE_ARG1 && physical_register != Z80_PHY_A) ||
+            (effect.op == TAC_OP_ARRAY_READ && operand == TAC_USE_ARG2 && physical_register != Z80_PHY_C) ? 1 : 0;
         else if (physical_register == Z80_PHY_BC && operand == TAC_USE_ARG1 &&
           effect.arg2_physical_register != Z80_PHY_HL &&
           _get_register_allocator_target_policy()->is_tac_transparent_for_physical_register(&effect, Z80_PHY_HL) == NO)
@@ -6330,6 +6331,11 @@ static void _observe_register_allocator_transition_preparation(void *context,
           transfer_bytes = 2;
         costs[choice][0] -= transfer_bytes * move_cycles;
         costs[choice][1] -= transfer_bytes;
+        if (effect.op == TAC_OP_ARRAY_READ && operand == TAC_USE_ARG2 && byte_count == 1)
+          RA_TRACE((stderr, "register_allocator: profitability_index_transfer function=%s phy=%s value_bytes=%d transfer_bytes=%d extension_extra_cycles=%d extension_extra_bytes=%d saves_restores=0\n",
+            transition_context->function_node->children[1]->label, _get_first_allocator_physical_register_name(physical_register),
+            byte_count, transfer_bytes, effect.arg2_var_type == VARIABLE_TYPE_INT8 ? 11 : 0,
+            effect.arg2_var_type == VARIABLE_TYPE_INT8 ? 3 : 0));
         if (effect.op == TAC_OP_ARRAY_READ && operand == TAC_USE_ARG2 &&
             byte_count == 1 && effect.arg2_var_type == VARIABLE_TYPE_INT8) {
           costs[choice][0] -= 11;

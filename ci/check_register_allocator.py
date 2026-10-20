@@ -235,6 +235,17 @@ def generate_programs(comparison_forms):
         f"u16 total = a; u16 i = 8; while (i > 0) {{ {counter_step} i--; }} return total+i;",
     ]
     for variant in range(38):
+        frame_size = (2, 3, 4, 5, 116, 117, 118, 119, 120, 121, 126, 127, 128, 136, 256, 384)[variant % 16] if variant < 16 else 136
+        frame_action = [
+            "ra_buffer[0] = first; first = first+ra_buffer[0];",
+            "first = first+ra_signed_helper(a,b,c);",
+            'u16 *saved = &first; __asm("LD IX,1234"); first = saved[0];',
+            "if (b&1) { first = first+workspace[0]; } else { first = first^workspace[135]; }",
+            "first = first*(c|1); first = first/(b|1);",
+            "first = first<<(c&15);",
+            "u8 index = a&127; first = first+ra_buffer[index];",
+            "u8 *target = &ra_buffer[64]; s8 index = (a&63)-31; first = first+target[index];",
+        ][variant - 16] if 16 <= variant < 24 else ""
         constant = 1 + variant * 7
         operator = ["+", "-", "&", "|", "^"][variant % 5]
         comparison = ["==", "!=", "<", ">", "<=", ">="][variant % 6]
@@ -450,6 +461,8 @@ def generate_programs(comparison_forms):
                 "target[a] = b; alias[a] = target[a]+1; u16 first = target[a]; return first+alias[a];",
             ][variant] if variant < 16 else None, [2, 2, 2, 2], 2),
             ("scalar_byte", "u8 a, u8 b, u8 c", "u8 saved = a^b; return (c+c)+saved;", [1, 1, 1], 1),
+            ("scalar_frame_address", "u8 a, u8 b, u8 c" if variant in (22, 23) else "u16 a, u16 b, u16 c",
+             f"u8 workspace[{frame_size}]; workspace[0] = a; workspace[{frame_size - 1}] = b; u16 first = a+b; {frame_action} u16 second = a^c; u16 third = b+c; return ((first+second)^third)+workspace[0]+workspace[{frame_size - 1}];", [1 if variant in (22, 23) else 2] * 3, 2),
             ("scalar_byte_multiply", f"{'s8' if variant & 2 else 'u8'} a, {'s8' if variant & 2 else 'u8'} b, {'u16' if variant == 37 else 'u8'} c",
              "u16 wide = (a^b)*255; u16 small = (a^b)*7; return wide+small+c;" if variant == 37 else
              f"{'s8' if variant & 2 else 'u8'} value = a^b; value = {byte_product if variant < 36 else 'value*c'}; return value+c;",
@@ -634,9 +647,9 @@ def generate_programs(comparison_forms):
                 "matrix_constant_multiply", "matrix_constant_shift", "matrix_variable_multiply",
             )
             # Dedicated cohorts keep the all-spill images within one ROM bank.
-            if family in ("scalar_word_counter", "scalar_word_step", "scalar_loop_memory", "scalar_byte_loop", "scalar_byte_multiply", "scalar_byte_shift", "scalar_call_staging", "matrix_byte_store", "matrix_divmod") and family not in os.environ.get("RA_FAMILIES", "").split(","):
+            if family in ("scalar_frame_address", "scalar_word_counter", "scalar_word_step", "scalar_loop_memory", "scalar_byte_loop", "scalar_byte_multiply", "scalar_byte_shift", "scalar_call_staging", "matrix_byte_store", "matrix_divmod") and family not in os.environ.get("RA_FAMILIES", "").split(","):
                 continue
-            if variant >= (38 if family in ("scalar_word_counter", "scalar_byte_loop", "scalar_byte_multiply", "scalar_byte_shift") else 15 if family == "scalar_word_step" else 17 if family == "scalar_loop_memory" else 8) and not family.startswith("matrix_"):
+            if variant >= (38 if family in ("scalar_word_counter", "scalar_byte_loop", "scalar_byte_multiply", "scalar_byte_shift") else 24 if family == "scalar_frame_address" else 15 if family == "scalar_word_step" else 17 if family == "scalar_loop_memory" else 8) and not family.startswith("matrix_"):
                 continue
             if family.startswith("matrix_") and variant >= limits.get(family, 2):
                 continue
@@ -663,7 +676,7 @@ def generate_programs(comparison_forms):
                     excluded = family.startswith("matrix_") or scalar_family != (os.environ.get("RA_SCALAR_CASES") == "1")
                 if excluded:
                     continue
-            if scalar_family and family not in ("word_bc", "scalar_word_counter", "scalar_word_step", "scalar_loop_memory", "scalar_byte_loop", "scalar_byte_multiply", "scalar_byte_shift", "scalar_call_staging", "scalar_call_transport") and variant > 1:
+            if scalar_family and family not in ("word_bc", "scalar_frame_address", "scalar_word_counter", "scalar_word_step", "scalar_loop_memory", "scalar_byte_loop", "scalar_byte_multiply", "scalar_byte_shift", "scalar_call_staging", "scalar_call_transport") and variant > 1:
                 continue
             name = f"ra_{family}_{variant}"
             if family == "matrix_source_loop":
@@ -896,6 +909,23 @@ def check_analytical_assertions(output, programs):
     if "\n".join(quiet_lines) != "\n".join(re.findall(r"^register_allocator: rejection_summary .+$", allocator_log, re.M)):
         raise RuntimeError("Quiet allocator lifecycle output or rejection summary mismatch")
     assembly = read_text(output / "ra/main.asm")
+    if any(program.family == "scalar_frame_address" for program in programs):
+        adjustments = set()
+        for match in re.finditer(
+            r"ix_frame_address previous=(-?\d+) requested=(-?\d+) action=(\w+) setup_cycles=(\d+) setup_bytes=(\d+) objective=cycles_no_byte_growth frequency=local",
+            allocator_log,
+        ):
+            previous, requested, action, cycles, size = match.groups()
+            steps = abs(int(requested) - int(previous))
+            expected = (0, 0) if action == "reuse" else (steps * 10, steps * 2) if action == "adjust" else (29, 6)
+            if (int(cycles), int(size)) != expected or (
+                action == "adjust" and (steps not in (1, 2) or expected[0] >= 29 or expected[1] > 6)
+            ):
+                raise RuntimeError(f"IX address cost or adjustment budget mismatch: {match[0]}")
+            if action == "adjust":
+                adjustments.add(steps)
+        if adjustments != {1, 2}:
+            raise RuntimeError("Both profitable IX adjustment thresholds were not exercised")
     for program in programs:
         family, variant, name = program.family, program.variant, program.name
         lines = [line for line in allocator_log.splitlines() if f"function={name} " in line]
@@ -906,6 +936,20 @@ def check_analytical_assertions(output, programs):
         def section_assembly():
             return assembly.split(f'.SECTION "{name}" FREE')[1].split(".ENDS")[0]
 
+        if family == "scalar_frame_address":
+            body = section_assembly()
+            if variant in (5, 6, 7) and len(re.findall(r"\bINC IX\b", body)) != {5: 1, 6: 2, 7: 0}[variant]:
+                raise RuntimeError(f"One/two-step IX adjustment or three-step fallback mismatch: {name}")
+            if variant in (5, 6) and not all(f"(IX+{offset})" in body for offset in (126, 127)):
+                raise RuntimeError(f"Cached word high-byte displacement was not bounded: {name}")
+            if variant == 18 and not re.search(r"LD\s+IX,1234(?:(?!\(IX).)*LD\s+IX,-?\d+\s+ADD IX,DE", body, re.S):
+                raise RuntimeError(f"Inline assembly did not invalidate the frame-address cache: {name}")
+            if variant == 21 and not has(r"profitability .*known=no .*unknown=consumer "):
+                raise RuntimeError(f"Unknown lowering cost did not preserve the conservative fallback: {name}")
+            if variant == 22 and not all(has(
+                rf"profitability_index_transfer .*phy={physical} value_bytes=1 transfer_bytes={moves} extension_extra_cycles=0 extension_extra_bytes=0 saves_restores=0"
+            ) for physical, moves in (("A", 1), ("B", 1), ("C", 0))):
+                raise RuntimeError(f"Actual byte index transfer costs were not exercised: {name}")
         if family == "matrix_divmod":
             body = section_assembly()
             if variant < 24:
@@ -974,10 +1018,10 @@ def check_analytical_assertions(output, programs):
         ):
             raise RuntimeError(f"Cost-ranked word-index affinity missing: {name}")
         if family == "matrix_index_copy" and 22 <= variant <= 24:
-            offset, use_ix = -105 - variant, variant < 24
+            offset, displaced = -105 - variant, variant < 24
             address = (
-                f"offset={offset} mode={'frame_displacement' if use_ix else 'frame_address'} "
-                f"folded_offset={offset if use_ix else 0} address_target={'IX' if use_ix else 'IY'} target=z80"
+                f"offset={offset} mode={'frame_displacement' if displaced else 'frame_address'} "
+                f"folded_offset={offset if displaced else 0} address_target=IX target=z80"
             )
             if not any(
                 "emitter=array_read_base_address operand=arg1 kind=STACK_LOCAL " in line and line.endswith(address)
@@ -1231,6 +1275,27 @@ def generated_oracle(program, seed, comparison_forms, decision_loop_paths):
     parameters = [byte, other, third]
     expected_ports = []
     match family:
+        case "scalar_frame_address":
+            parameters = edge_parameters(seed, [0, 1, 127, 128, 255, 256, 32768, 65535]) if seed < 64 else word_parameters(seed)
+            parameters = [value & ((1 << (width * 8)) - 1) for value, width in zip(parameters, program.widths)]
+            a, b, c = parameters
+            mask = 255 if variant in (22, 23) else 65535
+            first = (a + b) & mask
+            if variant == 16:
+                expected_buffer[0] = first & 255
+                first += first & 255
+            elif variant == 17:
+                called = (a + b + c) & 255
+                first += called - (256 if called >= 128 else 0)
+            elif variant == 19:
+                first = first + (a & 255) if b & 1 else first ^ (b & 255)
+            elif variant == 20:
+                first = ((first * (c | 1)) & 65535) // (b | 1)
+            elif variant == 21:
+                first <<= c & 15
+            elif variant in (22, 23):
+                first += buffer[a & 127 if variant == 22 else 64 + (a & 63) - 31]
+            expected = (((first + (a ^ c)) ^ ((b + c) & mask)) + (a & 255) + (b & 255)) & 65535
         case "matrix_divmod":
             edges = [0, 1, 127, 128, 255, 256, 32768, 65535]
             parameters = edge_parameters(seed, edges) if seed < 64 else word_parameters(seed)
@@ -2137,6 +2202,7 @@ def reduce_failure(output, compiler, linker, programs, preamble, program, mode, 
             result = execute(
                 replay.rom, replay.symbols[program.name], replay_args, program.widths, buffer,
                 address, program.returnWidth, replay.transfers, program.family == "matrix_source_loop",
+                frame_bytes=512 if program.family == "scalar_frame_address" else 256,
             )
             reduction["results"][replay_mode] = {
                 "value": result["value"],
@@ -2202,6 +2268,7 @@ def execute_generated(output, compiler, linker, programs, preamble, compiled, ca
                         image.rom, image.symbols[program.name], args, program.widths,
                         buffer, buffer_address, program.returnWidth, image.transfers, program.family == "matrix_source_loop",
                         instruction_limit=60000 if program.family in ("scalar_byte_loop", "scalar_word_counter") else 20000,
+                        frame_bytes=512 if program.family == "scalar_frame_address" else 256,
                     )
                     if result["unmapped_instructions"]:
                         raise RuntimeError(f"{program.name}: unmapped executed instructions")
@@ -2901,6 +2968,7 @@ def main():
             "scalar", "matrix", "matrix_literals", "matrix_memory", "matrix_values",
         ]
         if not family_filter:
+            cohorts.append("frame_addresses")
             cohorts.append("word_counters")
             cohorts.append("word_steps")
             cohorts.append("loop_memory")
@@ -2912,12 +2980,12 @@ def main():
                 cohorts.append("byte_stores")
                 cohorts.append("divmod")
         for cohort in cohorts:
-            scalar_cohort = cohort in ("scalar", "word_counters", "word_steps", "loop_memory", "byte_loops", "byte_multiply", "byte_shifts", "call_staging")
+            scalar_cohort = cohort in ("scalar", "frame_addresses", "word_counters", "word_steps", "loop_memory", "byte_loops", "byte_multiply", "byte_shifts", "call_staging")
             os.environ.update({
                 "RA_SCALAR_CASES": "1" if scalar_cohort else "0",
                 "RA_MATRIX_CASES": "0" if scalar_cohort else "1", "RA_REAL_PROJECTS": "0",
                 "RA_VALUE_CASES": "1" if cohort in ("matrix_values", "byte_stores") else "0",
-                "RA_FAMILIES": "scalar_word_counter" if cohort == "word_counters" else "scalar_word_step" if cohort == "word_steps" else "scalar_loop_memory" if cohort == "loop_memory" else "scalar_byte_loop" if cohort == "byte_loops" else "scalar_byte_multiply" if cohort == "byte_multiply" else "scalar_byte_shift" if cohort == "byte_shifts" else "scalar_call_staging" if cohort == "call_staging" else "matrix_byte_store" if cohort == "byte_stores" else "matrix_divmod" if cohort == "divmod" else family_filter,
+                "RA_FAMILIES": "scalar_frame_address" if cohort == "frame_addresses" else "scalar_word_counter" if cohort == "word_counters" else "scalar_word_step" if cohort == "word_steps" else "scalar_loop_memory" if cohort == "loop_memory" else "scalar_byte_loop" if cohort == "byte_loops" else "scalar_byte_multiply" if cohort == "byte_multiply" else "scalar_byte_shift" if cohort == "byte_shifts" else "scalar_call_staging" if cohort == "call_staging" else "matrix_byte_store" if cohort == "byte_stores" else "matrix_divmod" if cohort == "divmod" else family_filter,
                 "RA_COMPARISON_FORMS": "1" if cohort == "matrix_literals" else "2" if cohort == "matrix_memory" else "0",
                 "RA_EXECUTION_DIR": str(output / cohort), "RA_VERIFIER": harness,
             })

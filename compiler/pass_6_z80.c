@@ -32,11 +32,11 @@ extern int g_tacs_count, g_tacs_max, g_bank, g_slot, g_ram_bank, g_ram_slot;
 extern int g_allocator_enabled, g_allocator_force_all_spill;
 extern char g_tmp[4096], g_error_message[sizeof(g_tmp) + MAX_NAME_LENGTH + 1 + 1024];
 
-static int g_return_id = 1, g_is_ix_de = NO;
-
 #define DEBUG_PASS_6_REGISTER_ALLOCATOR 1
 
 #define Z80_GLOBAL_OFFSET 999999
+
+static int g_return_id = 1, g_ix_frame_offset = Z80_GLOBAL_OFFSET;
 
 #define LOC_CONST       RA_LOCATION_CONST
 #define LOC_GLOBAL      RA_LOCATION_GLOBAL
@@ -327,18 +327,31 @@ int find_stack_offset(int type, char *name, int value, struct tree_node *node, i
 
 static void _load_de_with_offset_to_ix(int offset, FILE *file_out) {
 
-  if (g_is_ix_de == YES && offset == 0) {
-    /* IX is already DE! */
+  int delta = offset - g_ix_frame_offset;
+  int steps = delta < 0 ? -delta : delta;
+  int reuse = g_ix_frame_offset != Z80_GLOBAL_OFFSET &&
+    (offset == 0 || (g_allocator_enabled == YES && g_allocator_force_all_spill == NO));
+  int adjust = reuse == YES && g_allocator_enabled == YES && g_allocator_force_all_spill == NO &&
+    steps * 10 < 29 && steps * 2 <= 6;
+  int i;
+
+  if (reuse == YES && delta == 0) {
+  }
+  else if (adjust == YES) {
+    for (i = 0; i < steps; i++)
+      fprintf(file_out, "      %s IX\n", delta < 0 ? "DEC" : "INC");
   }
   else {
     fprintf(file_out, "      LD  IX,%d\n", offset);
     fprintf(file_out, "      ADD IX,DE\n");
-
-    if (offset == 0)
-      g_is_ix_de = YES;
-    else
-      g_is_ix_de = NO;
   }
+  if (g_allocator_enabled == YES)
+    RA_TRACE((stderr, "register_allocator: ix_frame_address previous=%d requested=%d action=%s setup_cycles=%d setup_bytes=%d objective=cycles_no_byte_growth frequency=local\n",
+      g_ix_frame_offset, offset, reuse == YES && delta == 0 ? "reuse" : adjust == YES ? "adjust" : "materialize",
+      reuse == YES && delta == 0 ? 0 : adjust == YES ? steps * 10 : 29,
+      reuse == YES && delta == 0 ? 0 : adjust == YES ? steps * 2 : 6));
+  g_ix_frame_offset = offset == 0 || (g_allocator_enabled == YES && g_allocator_force_all_spill == NO) ?
+    offset : Z80_GLOBAL_OFFSET;
 }
 
 
@@ -346,9 +359,7 @@ static void _load_value_to_ix(int value, FILE *file_out) {
 
   fprintf(file_out, "      LD  IX,%d\n", value);
 
-  /* NOTE! for _load_de_with_offset_to_ix() optimization every time we touch IX (or create a label)
-     we need to set the variable to say that IX is no longer DE */
-  g_is_ix_de = NO;
+  g_ix_frame_offset = Z80_GLOBAL_OFFSET;
 }
 
 
@@ -374,6 +385,7 @@ static void _load_label_to_bc(char *label, FILE *file_out) {
 static void _load_label_to_de(char *label, FILE *file_out) {
 
   fprintf(file_out, "      LD  DE,%s\n", label);
+  g_ix_frame_offset = Z80_GLOBAL_OFFSET;
 }
 
 
@@ -387,9 +399,7 @@ static void _load_label_to_ix(char *label, FILE *file_out) {
 
   fprintf(file_out, "      LD  IX,%s\n", label);
 
-  /* NOTE! for _load_de_with_offset_to_ix() optimization every time we touch IX (or create a label)
-     we need to set the variable to say that IX is no longer DE */
-  g_is_ix_de = NO;
+  g_ix_frame_offset = Z80_GLOBAL_OFFSET;
 }
 
 
@@ -547,7 +557,7 @@ static void _load_from_ix_to_d(int offset, FILE *file_out) {
   else
     fprintf(file_out, "      LD  D,(IX%d)\n", offset);
 
-  g_is_ix_de = NO;
+  g_ix_frame_offset = Z80_GLOBAL_OFFSET;
 }
 
 
@@ -563,7 +573,7 @@ static void _load_from_ix_to_e(int offset, FILE *file_out) {
   else
     fprintf(file_out, "      LD  E,(IX%d)\n", offset);
 
-  g_is_ix_de = NO;
+  g_ix_frame_offset = Z80_GLOBAL_OFFSET;
 }
 
 
@@ -776,16 +786,6 @@ static void _load_l_into_iy(int offset, FILE *file_out) {
 static void _add_de_to_hl(FILE *file_out) {
 
   fprintf(file_out, "      ADD HL,DE\n");
-}
-
-
-static void _add_de_to_ix(FILE *file_out) {
-
-  fprintf(file_out, "      ADD IX,DE\n");
-
-  /* NOTE! for _load_de_with_offset_to_ix() optimization every time we touch IX (or create a label)
-     we need to set the variable to say that IX is no longer DE */
-  g_is_ix_de = NO;
 }
 
 
@@ -1007,6 +1007,7 @@ static void _load_value_to_bc_array(int *sizes, int items, FILE *file_out) {
 static void _load_value_to_de(int value, FILE *file_out) {
 
   fprintf(file_out, "      LD  DE,%d\n", value);
+  g_ix_frame_offset = Z80_GLOBAL_OFFSET;
 }
 
 
@@ -1038,7 +1039,7 @@ static void _load_value_to_d(int value, FILE *file_out) {
 
   fprintf(file_out, "      LD  D,%d\n", value);
 
-  g_is_ix_de = NO;
+  g_ix_frame_offset = Z80_GLOBAL_OFFSET;
 }
 
 
@@ -1046,7 +1047,7 @@ static void _load_value_to_e(int value, FILE *file_out) {
 
   fprintf(file_out, "      LD  E,%d\n", value);
 
-  g_is_ix_de = NO;
+  g_ix_frame_offset = Z80_GLOBAL_OFFSET;
 }
 
 
@@ -1119,6 +1120,7 @@ static void _jump_nz_to(char *label, FILE *file_out) {
 static void _call_to(char *label, FILE *file_out) {
 
   fprintf(file_out, "      CALL %s\n", label);
+  g_ix_frame_offset = Z80_GLOBAL_OFFSET;
 }
 
 
@@ -1149,6 +1151,7 @@ static void _pop_bc(FILE *file_out) {
 static void _pop_de(FILE *file_out) {
 
   fprintf(file_out, "      POP DE\n");
+  g_ix_frame_offset = Z80_GLOBAL_OFFSET;
 }
 
 
@@ -1281,11 +1284,8 @@ static void _add_label(char *label, FILE *file_out, char is_local) {
   else
     fprintf(file_out, "    %s:\n", label);
 
-  if (is_local == NO) {
-    /* NOTE! for _load_de_with_offset_to_ix() optimization every time we touch IX (or create a label)
-       we need to set the variable to say that IX is no longer DE */
-    g_is_ix_de = NO;
-  }
+  if (is_local == NO)
+    g_ix_frame_offset = Z80_GLOBAL_OFFSET;
 }
 
 
@@ -1744,12 +1744,29 @@ static int _load_location_address_to_ix(struct z80_location *location, int *ix_o
 
   *ix_offset = 0;
   address_mode = get_register_allocator_address_materialization_mode(location->kind, RA_ADDRESS_TARGET_IX, location->offset);
+  offset = location->offset;
+  if (address_mode == RA_ADDRESS_MODE_FRAME_ADDRESS || address_mode == RA_ADDRESS_MODE_FRAME_DISPLACEMENT) {
+    int displacement = offset - g_ix_frame_offset;
+    int adjustment = displacement < -128 ? displacement + 128 : displacement > 126 ? displacement - 126 : 0;
+    int steps = adjustment < 0 ? -adjustment : adjustment;
+    if (g_allocator_enabled == YES && g_allocator_force_all_spill == NO &&
+        g_ix_frame_offset != Z80_GLOBAL_OFFSET && steps * 10 < 29 && steps * 2 <= 6) {
+      /* Reserve the high-byte displacement even when the source is a byte. */
+      *ix_offset = displacement - adjustment;
+      offset = g_ix_frame_offset + adjustment;
+      address_mode = RA_ADDRESS_MODE_FRAME_DISPLACEMENT;
+    }
+    else if (address_mode == RA_ADDRESS_MODE_FRAME_DISPLACEMENT) {
+      *ix_offset = offset;
+      offset = 0;
+    }
+  }
 
 #if defined(DEBUG_PASS_6_REGISTER_ALLOCATOR)
   if (g_allocator_enabled == YES)
     RA_TRACE((stderr, "register_allocator: target_address_materialization target=%s kind=%s offset=%d mode=%s folded_offset=%d target_policy=z80\n",
             _get_z80_address_target_name(RA_ADDRESS_TARGET_IX), _get_z80_location_kind_name(location->kind), location->offset,
-            _get_z80_address_mode_name(address_mode), address_mode == RA_ADDRESS_MODE_FRAME_DISPLACEMENT ? location->offset : 0));
+            _get_z80_address_mode_name(address_mode), *ix_offset));
 #endif
 
   if (address_mode == RA_ADDRESS_MODE_NONE) {
@@ -1758,59 +1775,11 @@ static int _load_location_address_to_ix(struct z80_location *location, int *ix_o
     _load_label_to_ix(location->label, file_out);
   }
   else if (address_mode == RA_ADDRESS_MODE_FRAME_ADDRESS || address_mode == RA_ADDRESS_MODE_FRAME_DISPLACEMENT) {
-    offset = location->offset;
-    fprintf(file_out, "      ; offset %d\n", offset);
-
-    if (address_mode == RA_ADDRESS_MODE_FRAME_DISPLACEMENT) {
-      *ix_offset = offset;
-      offset = 0;
-    }
-
+    fprintf(file_out, "      ; offset %d\n", location->offset);
     _load_de_with_offset_to_ix(offset, file_out);
   }
   else {
     fprintf(stderr, "_load_location_address_to_ix(): Location kind %d has no IX address materialization! Please submit a bug report!\n", location->kind);
-    return FAILED;
-  }
-
-  return SUCCEEDED;
-}
-
-
-static int _load_location_address_to_ix_uncached(struct z80_location *location, int *ix_offset, FILE *file_out) {
-
-  int address_mode;
-  int offset;
-
-  *ix_offset = 0;
-  address_mode = get_register_allocator_address_materialization_mode(location->kind, RA_ADDRESS_TARGET_IX_UNCACHED, location->offset);
-
-#if defined(DEBUG_PASS_6_REGISTER_ALLOCATOR)
-  if (g_allocator_enabled == YES)
-    RA_TRACE((stderr, "register_allocator: target_address_materialization target=%s kind=%s offset=%d mode=%s folded_offset=%d target_policy=z80\n",
-            _get_z80_address_target_name(RA_ADDRESS_TARGET_IX_UNCACHED), _get_z80_location_kind_name(location->kind), location->offset,
-            _get_z80_address_mode_name(address_mode), address_mode == RA_ADDRESS_MODE_FRAME_DISPLACEMENT ? location->offset : 0));
-#endif
-
-  if (address_mode == RA_ADDRESS_MODE_NONE) {
-  }
-  else if (address_mode == RA_ADDRESS_MODE_GLOBAL_LABEL) {
-    _load_label_to_ix(location->label, file_out);
-  }
-  else if (address_mode == RA_ADDRESS_MODE_FRAME_ADDRESS || address_mode == RA_ADDRESS_MODE_FRAME_DISPLACEMENT) {
-    offset = location->offset;
-    fprintf(file_out, "      ; offset %d\n", offset);
-
-    if (address_mode == RA_ADDRESS_MODE_FRAME_DISPLACEMENT) {
-      *ix_offset = offset;
-      offset = 0;
-    }
-
-    _load_value_to_ix(offset, file_out);
-    _add_de_to_ix(file_out);
-  }
-  else {
-    fprintf(stderr, "_load_location_address_to_ix_uncached(): Location kind %d has no IX address materialization! Please submit a bug report!\n", location->kind);
     return FAILED;
   }
 
@@ -3989,7 +3958,7 @@ static int _generate_asm_z80_in_read_z80(struct tac *t, FILE *file_out, struct t
 static int _materialize_array_base(struct tac *tac, struct z80_location *base_location, int base_memory_pointer_load,
                                    int arg2_is_zero, int keep_hl, struct tree_node *function_node, FILE *file_out) {
 
-  int is_write, materialized_hl = NO;
+  int is_write, materialized_hl = NO, ix_offset = base_location->offset - g_ix_frame_offset;
   char *operand_name;
 
   is_write = tac->op == TAC_OP_ARRAY_WRITE;
@@ -4035,14 +4004,14 @@ static int _materialize_array_base(struct tac *tac, struct z80_location *base_lo
   }
   else if (base_memory_pointer_load == YES && (is_write == NO || keep_hl == YES) &&
            (arg2_is_zero == NO || keep_hl == YES) &&
-           g_allocator_enabled == YES && g_allocator_force_all_spill == NO && g_is_ix_de == YES &&
+           g_allocator_enabled == YES && g_allocator_force_all_spill == NO && g_ix_frame_offset != Z80_GLOBAL_OFFSET &&
            get_register_allocator_address_materialization_mode(base_location->kind, RA_ADDRESS_TARGET_IX,
-             base_location->offset) == RA_ADDRESS_MODE_FRAME_DISPLACEMENT) {
+             ix_offset) == RA_ADDRESS_MODE_FRAME_DISPLACEMENT) {
     _trace_z80_specialized_address_materialization(function_node,
         is_write == YES ? "array_write_base_address" : "array_read_base_address",
-        operand_name, base_location, RA_ADDRESS_TARGET_IX, base_location->offset);
-    _load_from_ix_to_l(base_location->offset, file_out);
-    _load_from_ix_to_h(base_location->offset + 1, file_out);
+        operand_name, base_location, RA_ADDRESS_TARGET_IX, ix_offset);
+    _load_from_ix_to_l(ix_offset, file_out);
+    _load_from_ix_to_h(ix_offset + 1, file_out);
     materialized_hl = YES;
   }
   else {
@@ -5356,7 +5325,7 @@ static int _generate_asm_mul_div_mod_z80_16bit(struct tac *t, FILE *file_out, st
   struct z80_location result_location;
   struct z80_location arg1_location;
   struct z80_location arg2_location;
-  int ix_offset = 0, was_ix_de, selected;
+  int ix_offset = 0, saved_ix_frame_offset, selected;
 
   /* result */
 
@@ -5443,7 +5412,8 @@ static int _generate_asm_mul_div_mod_z80_16bit(struct tac *t, FILE *file_out, st
   /* NOTE!!! */
   _push_de(file_out);
 
-  was_ix_de = g_is_ix_de;
+  saved_ix_frame_offset = g_ix_frame_offset;
+  g_ix_frame_offset = Z80_GLOBAL_OFFSET;
 
 #if defined(DEBUG_PASS_6_REGISTER_ALLOCATOR)
   if (g_allocator_enabled == YES) {
@@ -5538,7 +5508,7 @@ static int _generate_asm_mul_div_mod_z80_16bit(struct tac *t, FILE *file_out, st
   /* NOTE!!! */
   _pop_de(file_out);
 
-  g_is_ix_de = was_ix_de;
+  g_ix_frame_offset = saved_ix_frame_offset;
 
 store_result:
 
@@ -5636,7 +5606,7 @@ static int _generate_asm_mul_div_mod_z80_8bit(struct tac *t, FILE *file_out, str
   struct z80_location result_location;
   struct z80_location arg1_location;
   struct z80_location arg2_location;
-  int ix_offset = 0, was_ix_de, selected;
+  int ix_offset = 0, saved_ix_frame_offset, selected;
 
   /* result */
 
@@ -5722,11 +5692,14 @@ static int _generate_asm_mul_div_mod_z80_8bit(struct tac *t, FILE *file_out, str
   if (arg2_location.kind == LOC_CONST || arg2_location.kind == LOC_PHY_A || arg2_location.kind == LOC_PHY_HL || arg2_location.kind == LOC_PHY_BC) {
   }
   else {
-    if (_load_location_address_to_ix_uncached(&arg2_location, &ix_offset, file_out) == FAILED)
+    /* Preserve the byte helper's existing uncached operand contract. */
+    g_ix_frame_offset = Z80_GLOBAL_OFFSET;
+    if (_load_location_address_to_ix(&arg2_location, &ix_offset, file_out) == FAILED)
       return FAILED;
+    g_ix_frame_offset = Z80_GLOBAL_OFFSET;
 #if defined(DEBUG_PASS_6_REGISTER_ALLOCATOR)
     _trace_z80_specialized_address_materialization(function_node, "mul_div_mod_8_arg2", "arg2",
-                            &arg2_location, RA_ADDRESS_TARGET_IX_UNCACHED, ix_offset);
+                            &arg2_location, RA_ADDRESS_TARGET_IX, ix_offset);
 #endif
   }
 
@@ -5737,7 +5710,8 @@ static int _generate_asm_mul_div_mod_z80_8bit(struct tac *t, FILE *file_out, str
   /* NOTE!!! */
   _push_de(file_out);
 
-  was_ix_de = g_is_ix_de;
+  saved_ix_frame_offset = g_ix_frame_offset;
+  g_ix_frame_offset = Z80_GLOBAL_OFFSET;
 
 #if defined(DEBUG_PASS_6_REGISTER_ALLOCATOR)
   if (g_allocator_enabled == YES) {
@@ -5791,7 +5765,7 @@ static int _generate_asm_mul_div_mod_z80_8bit(struct tac *t, FILE *file_out, str
   /* NOTE!!! */
   _pop_de(file_out);
 
-  g_is_ix_de = was_ix_de;
+  g_ix_frame_offset = saved_ix_frame_offset;
 
 store_result:
 
@@ -6445,10 +6419,10 @@ static int _generate_asm_return_z80(struct tac *t, FILE *file_out, struct tree_n
   /* bytes -1 and 0 of stack frame contain the return address */
   fprintf(file_out, "      ; bytes -1 and 0 of stack frame contain the return address\n");
 
-  if (g_is_ix_de == YES && return_sp_offset == -1) {
+  if (g_ix_frame_offset == 0 && return_sp_offset == -1) {
     fprintf(file_out, "      DEC IX\n");
     fprintf(file_out, "      LD  SP,IX\n");
-    g_is_ix_de = NO;
+    g_ix_frame_offset = Z80_GLOBAL_OFFSET;
   }
   else {
     _load_value_to_hl(return_sp_offset, file_out);
@@ -6895,7 +6869,7 @@ static int _generate_asm_function_call_z80(struct tac *t, FILE *file_out, struct
 
   /* HL is dead at the callee entry; DE becomes the new frame pointer. */
   fprintf(file_out, "      EX  DE,HL\n");
-  g_is_ix_de = NO;
+  g_ix_frame_offset = Z80_GLOBAL_OFFSET;
 
   /* jump! */
   _jump_to(t->arg1_node->children[1]->label, file_out);
@@ -7243,11 +7217,14 @@ static int _generate_asm_inline_asm_z80(struct tac *t, FILE *file_out, struct tr
         fprintf(file_out, " ");
 
       fprintf(file_out, "%s\n", &al->line[i]);
+      g_ix_frame_offset = Z80_GLOBAL_OFFSET;
     }
     else if ((al->flags & ASM_LINE_FLAG_READ) == ASM_LINE_FLAG_READ) {
       /* read! */
       if (_generate_asm_inline_asm_read_z80(t, file_out, function_node, al, ia->file_id) == FAILED)
         return FAILED;
+      if (strchr(al->cpu_register, 'D') != NULL || strchr(al->cpu_register, 'E') != NULL)
+        g_ix_frame_offset = Z80_GLOBAL_OFFSET;
     }
     else if ((al->flags & ASM_LINE_FLAG_WRITE) == ASM_LINE_FLAG_WRITE) {
       /* write! */
@@ -7404,7 +7381,7 @@ static int _copy_non_const_array_constants(struct tac *t, struct tree_node *node
 
   char copy_function_name[MAX_NAME_LENGTH+1];
   struct z80_location target_location;
-  int size, var_type;
+  int size, var_type, saved_ix_frame_offset = g_ix_frame_offset;
 
   var_type = tree_node_get_max_var_type(node->children[0]);
 
@@ -7446,6 +7423,8 @@ static int _copy_non_const_array_constants(struct tac *t, struct tree_node *node
   _call_to(copy_function_name, file_out);
 
   _pop_de(file_out);
+  /* The linker copy helper preserves IX; POP restores its frame base. */
+  g_ix_frame_offset = saved_ix_frame_offset;
 
   return SUCCEEDED;
 }
@@ -7679,7 +7658,7 @@ static int _generate_asm_byte_loop_z80(int *tac_index, FILE *file_out, struct tr
     }
     if (copied == YES && i == 0) {
       fprintf(file_out, "      EX  DE,HL\n");
-      g_is_ix_de = NO;
+      g_ix_frame_offset = Z80_GLOBAL_OFFSET;
     }
   }
   if (copied == YES || constant_count > 256 || constant_count == 0) {
@@ -7727,7 +7706,7 @@ static int _generate_asm_byte_loop_z80(int *tac_index, FILE *file_out, struct tr
   }
   _add_label(exit->result_s, file_out, NO);
   /* Both the zero-count edge and the loop preserve IX = the restored DE. */
-  g_is_ix_de = YES;
+  g_ix_frame_offset = 0;
   if (counter->live_end > indices[count - 1]) {
     struct tac update = *initial;
     update.arg1_type = bound->arg2_type;
@@ -7852,9 +7831,7 @@ int generate_asm_z80(FILE *file_out) {
         /* IL -> ASM */
 
         if (op == TAC_OP_LABEL) {
-          /* NOTE! for _load_de_with_offset_to_ix() optimization every time we touch IX (or create a label)
-             we need to set the variable to say that IX is no longer DE */
-          g_is_ix_de = NO;
+          g_ix_frame_offset = Z80_GLOBAL_OFFSET;
         }
 
         if (op == TAC_OP_LABEL && t->is_function == YES) {
@@ -8006,7 +7983,8 @@ int generate_asm_z80(FILE *file_out) {
         else if (op == TAC_OP_REGISTER_SPILL) {
           if (z80_emit_register_spill(t, function_node, file_out) == FAILED)
             return FAILED;
-          g_is_ix_de = t->result_d == 0 ? YES : NO;
+          g_ix_frame_offset = (g_allocator_enabled == YES && g_allocator_force_all_spill == NO) || t->result_d == 0 ?
+            (int)t->result_d : Z80_GLOBAL_OFFSET;
         }
         else if (op == TAC_OP_ASM) {
           if (_generate_asm_inline_asm_z80(t, file_out, function_node, 6) == FAILED)
