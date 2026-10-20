@@ -85,7 +85,7 @@ Specific evidence worth retaining:
 
 ### Progress Toward Game Boy Support
 
-Complete the shared improvements and the bounded follow-ups 2a-2n below before
+Complete the shared improvements and the bounded follow-ups 2a-2s below before
 the initial SM83 backend (step 3). This does not require every Z80-specific
 optimization. The initial SM83 backend should still guide further shared-core
 extraction.
@@ -130,6 +130,16 @@ extraction.
   profitability estimates and address caching rather than adding a framework.
 - [x] **2n. Leaf-frame and helper-contract audit:** remove only measured,
   provably redundant frame work or preservation within the existing ABI.
+- [ ] **2o. Arithmetic-produced locals and existing pure-expression folds:**
+  extend safe local promotion and make existing simplifications effective.
+- [ ] **2p. Advancing-pointer reductions and scaled induction:** extend proven
+  loop/address retention beyond copy/fill to sums and complex calculation loops.
+- [ ] **2q. Variable-count word shifts:** use guarded bounded shift loops
+  without truncating counts or changing the existing wide-count semantics.
+- [ ] **2r. Operand-aware word comparisons and branch selection:** avoid
+  unnecessary materialization and choose branches by legality and actual cost.
+- [ ] **2s. Shared arithmetic bodies with an explicit size/speed policy:**
+  price bank-local helper sharing against inline code without hidden tradeoffs.
 - [ ] **3. Initial SM83 backend:** establish correct Game Boy code generation,
   target-specific addressing/spills/calls and execution tests. Use actual
   requirements to identify reusable code; do not assume IX/IY, `DJNZ` or `LDIR`.
@@ -144,7 +154,7 @@ extraction.
 
 The numbered detail sections below describe optimization priorities, not a
 requirement to finish every Z80 optimization before implementing SM83. The
-explicit pre-SM83 scope is steps 1, 2 and 2a-2n; priorities 3-5 below supply
+explicit pre-SM83 scope is steps 1, 2 and 2a-2s; priorities 3-5 below supply
 additional implementation guidance for the loop, call and arithmetic follow-ups.
 
 Do one bounded, measured change at a time. The numeric observations below are
@@ -1511,8 +1521,8 @@ complete frame observations and all 78 external controls remain exact.
 The packed-CRC RA caller wrapper improves **85 -> 82 bytes**, **469 -> 454
 T-states/call** (7973 -> 7718 over 17 calls); its kernel remains 910 bytes/
 12026571 aggregate T-states. The no-RA wrapper improves 97 -> 96 bytes and
-545 -> 542 T-states/call. Other comparison rows, including the 161-byte/
-917-T-state multiply/add caller, remain unchanged. All 28 real-project
+545 -> 542 T-states/call. Other comparison rows, including the 126-byte/
+729-T-state multiply/add caller, remain unchanged. All 28 real-project
 routines retain exact cycles and frame reads/writes. Used ROM decreases
 **20650 -> 20637** bytes for calculations-1 and **31604 -> 31591** for
 calculations-2, with normal/traced image identity. These are bounded small-frame
@@ -1548,8 +1558,144 @@ only relocated addresses change. The previously documented escaped-counter
 alias defect still returns 42740 rather than 50814; it is not counted as passing.
 
 Saved-parent binaries/source, raw reports and commit-bound qualification are
-retained in `C:\cygwin64\tmp\leaf-helper-20261020\final`. No push. The finite
-pre-SM83 sequence is complete; step 3 is next.
+retained in `C:\cygwin64\tmp\leaf-helper-20261020\final`. No push. At this
+checkpoint, steps 2a-2n were complete; the newly planned follow-ups 2o-2s below
+now precede initial SM83 work.
+
+### Profile-Guided Follow-ups After Step 2n (2026-10-20)
+
+Complete these five bounded steps in order before the initial SM83 backend.
+The fresh comparison at `141338d` passes 104 builds/1856 calls and 24 independent
+timing checks. Workload fingerprints and all 78 external control rows match the
+earlier profiles; results exactly reproduce the step 2n qualification.
+Reports and historical analysis are retained in
+`C:\cygwin64\tmp\z80-profile-141338d-20261020`.
+
+Against the profile after 2d, RA kernels are geometrically 14.6% smaller and
+use 40.4% fewer cycles. Remaining gaps include multiply/add at 70 bytes versus
+stock SDCC's 40, shift/restore at 83 versus 51, and byte sum at 102 versus 47.
+These competitor sizes use its size profile. Kernel-cycle parity across the
+whole corpus is not general parity: excluding copy/fill, RA still uses 1.38
+times stock SDCC's speed-profile cycles; the five large array/stencil/tile/
+pathfinding/CRC workloads use 1.55 times. Keep caller work separate: the
+multiply/add wrapper is 126 bytes/729 T-states versus stock SDCC's 20/114.
+The older 161/917 caller figures belong to the checkpoint before step 2e.
+
+Source guidance comes from SDCC r17016's operand-aware
+[Z80 generator](https://svn.code.sf.net/p/sdcc/code/!svn/bc/17016/trunk/sdcc/src/z80/gen.c),
+[loop induction](https://svn.code.sf.net/p/sdcc/code/!svn/bc/17016/trunk/sdcc/src/SDCCloop.c)
+and [branch rules](https://svn.code.sf.net/p/sdcc/code/!svn/bc/17016/trunk/sdcc/src/z80/peeph.def),
+plus runtime selection in sccz80 shipped with z88dk 2.4. Reuse the existing
+[TAC optimizers and local promotion](compiler/pass_5.c) and
+[Z80 emitters](compiler/pass_6_z80.c), not another optimizer or rule engine.
+Do not repeat completed 2j-2n work or treat these candidates as measured gains.
+The existing checkpoint gates apply to each implementation batch.
+
+#### 2o. Arithmetic-Produced Locals And Existing Pure-Expression Folds
+
+- [ ] Extend the existing local-promotion eligibility where proven safe for
+  multiply/divide/modulo-produced named scalars. The multiply/add kernel still
+  stores its product to the frame and immediately reloads it; prefer existing
+  temporary retention and location resolution over another forwarding helper.
+- [ ] Diagnose why the existing XOR-cancellation rule does not remove the two
+  XORs in shift/restore. Correct eligibility or pass ordering where justified;
+  do not add a duplicate rule or assume SDCC already cancels this example.
+- [ ] Preserve matching types, promotions, operand stability, observable reads,
+  escapes, aliases and call/assembly barriers. Keep the full arithmetic TAC
+  clobber contracts and necessary DE saves audited in 2n.
+
+Acceptance: show the source/TAC/assembly cause and remove proven product frame
+traffic or redundant pure work with measured byte/cycle gains. Check mixed
+widths, signed boundaries, narrowing, multiple definitions/uses, escaping
+locals and intervening calls/writes. Measure caller, kernel and complete frame
+footprint separately; retain conservative fallbacks.
+
+#### 2p. Advancing-Pointer Reductions And Scaled Induction
+
+- [ ] Extend the existing bounded loop proofs and byte-loop emission beyond
+  copy/fill, starting with byte sums. Retain a profitable accumulator and
+  advance a proven pointer instead of rebuilding `base + index` each iteration.
+- [ ] Then consider row pointers and constant-stride/scaled induction in
+  array, tile and stencil loops. Reuse existing address scheduling and target
+  costs rather than introducing general loop promotion or a new IR.
+- [ ] Prove invariant bases, bounds, stride, alias behavior and address/value
+  wrap. Preserve source-order memory effects, observable final counters,
+  zero/256 and full word counts, DE restoration and call/assembly barriers.
+
+Acceptance: reduce repeated address/frame work in byte sum and demonstrate a
+measured win in at least one complex calculation workload. Check complete
+buffers/guards, zero/one/255/256/65535 counts, pointer and arithmetic wraps,
+aliases, calls, exits and register-pressure fallbacks. Keep memory accesses
+valid; use bounded-exit or lowering probes for wide-count fallbacks rather
+than invalid buffer ranges. Price full setup, preservation and frame footprint,
+not only the inner loop.
+
+#### 2q. Variable-Count Word Shifts
+
+- [ ] Extend the existing word-shift helper's variable path; do not duplicate
+  the constant-count lowering completed in 2k. The current path repeatedly
+  tests and decrements a 16-bit BC count.
+- [ ] For eligible unsigned word shifts, handle zero and counts at or beyond
+  the word width before using a bounded byte-count loop such as `DJNZ`.
+  Preserve the existing result for every 16-bit count; never merely truncate
+  the count, mask it to 15 or borrow a competitor's undefined-count behavior.
+- [ ] Select using complete setup and clobber costs, preserving live operand
+  locations and flags. Keep instruction selection Z80-local; do not assume
+  `DJNZ` exists on SM83.
+
+Acceptance: measure shift/restore and a shift-heavy CRC/calculation workload,
+including setup, bytes and cycles. Use independent numerical oracles for both
+directions, word edge values and counts 0, 1, 7, 8, 15, 16, 17, 255, 256 and
+65535 plus seeded full-width cases. Cover byte/word count operands, retained
+registers, spills and unchanged constant/signed paths.
+
+#### 2r. Operand-Aware Word Comparisons And Branch Selection
+
+- [ ] Extend the existing comparison emitter for profitable operand layouts.
+  In byte sum, compare the retained counter against indexed frame bytes with
+  a subtract/borrow chain and one carry decision where legal, rather than
+  materializing a word subtraction followed by two conditional jumps.
+- [ ] Preserve complete-word equality and the signed/unsigned distinction,
+  live operands, flags and fallback paths. A high-byte zero flag alone does
+  not prove word equality; keep signed overflow handling correct.
+- [ ] Select `JP` versus `JR` only with a proven displacement/target and an
+  explicit cost decision. Do not blindly shorten all jumps: on ordinary Z80,
+  an unconditional or taken `JR` can be slower than `JP`. Keep the existing
+  default's speed behavior unless a tradeoff is explicitly selected.
+
+Acceptance: show the eliminated materialization/branches and measured bytes/
+cycles in byte sum and a complex loop. Check all relations, signed boundaries,
+equal high bytes with unequal low bytes, carry/borrow edges and retained/spilled
+operands. Test forward/backward and near/out-of-range branches, including the
+relative displacement limits; unknown ranges keep the safe absolute form.
+
+#### 2s. Shared Arithmetic Bodies With An Explicit Size/Speed Policy
+
+- [ ] Measure repeated inline multiply/divide/modulo bodies in standalone and
+  combined programs; the array workload currently contains five such bodies.
+  Reuse the existing arithmetic-body emitters and linker helper-generation
+  patterns before adding runtime entry points or another abstraction.
+- [ ] Emit shared bank-local helpers only where their complete cost is
+  justified. Include setup, `CALL`/`RET`, result moves, DE preservation,
+  clobbers, stack footprint and bank placement; count shared code once.
+- [ ] Define and document the size/speed choice before changing behavior.
+  Keep inlining where faster or sharing does not pay. Do not silently slow the
+  existing default, replace the immutable comparison modes, or change the
+  public C ABI. Add distinct benchmark modes if a new profile is introduced.
+
+Acceptance: report per-workload and combined-ROM bytes/cycles, helper counts,
+call frequency, break-even points and any explicitly accepted slowdown. Check
+single/repeated uses, byte/word and signed boundaries, quotient/remainder reuse,
+defined zero-divisor behavior, nested/banked calls and full SP/DE restoration.
+Retain the existing good constant arithmetic paths and full TAC contracts.
+
+Register arguments/results remain a separate explicit, versioned or opt-in ABI
+investigation under priority 4 below, not a sixth mandatory pre-SM83 step.
+The measured 126/729 versus 20/114 wrapper gap justifies further study, not
+silent caller/callee changes or removing necessary frame saves. Address the
+existing-ABI opportunities in 2o-2r first; any later ABI proposal needs dedicated
+mixed-version, cross-file, banked, recursive and assembly-facing compatibility
+tests and documentation.
 
 ### 3. Maintain Induction Addresses And Select Z80 Loops
 
@@ -1736,5 +1882,7 @@ to this cross-compiler experiment.
    locally with the validation summary; do not push.
 
 Steps 1, 2 and 2a-2n are complete. Current implementation target:
-**step 3, initial SM83 backend**. Keep the qualified Z80 behavior and shared core
-covered throughout; do not expand this finite sequence into every possible Z80 optimization.
+**step 2o, arithmetic-produced locals and existing pure-expression folds**.
+Complete the bounded follow-ups 2o-2s in order, then start step 3, the initial
+SM83 backend. Keep the qualified Z80 behavior and shared core covered throughout;
+do not expand this finite sequence into every possible Z80 optimization.
