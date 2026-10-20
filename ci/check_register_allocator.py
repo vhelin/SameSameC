@@ -27,6 +27,8 @@ MODES = [
 MULTIPLY_CONSTANTS = [
     3, 5, 6, 7, 11, 13, 73, 97, 131, 257, 511, 1023, 32769, 65535, -32767, -32768,
 ]
+BYTE_MULTIPLY_CONSTANTS = [3, 5, 7, 15, 31, 127, 129, 254, 255]
+BYTE_SHIFT_COUNTS = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 15, 16, 17, 31, 255, 256, -1, -256]
 
 
 @dataclass
@@ -228,6 +230,9 @@ def generate_programs(comparison_forms):
         multiply_operand = "c" if variant == 32 else (
             f"({MULTIPLY_CONSTANTS[variant >> 1]})" if variant >> 1 < len(MULTIPLY_CONSTANTS) else "(undefined)"
         )
+        byte_multiplier = BYTE_MULTIPLY_CONSTANTS[variant // 4] if variant < 36 else 255
+        byte_product = f"{byte_multiplier}*value" if variant & 1 else f"value*{byte_multiplier}"
+        byte_shift_count = f"({BYTE_SHIFT_COUNTS[variant // 2]})" if variant < 36 else "c"
         index_bodies = [
             "u16 index = a; return ra_buffer[index];",
             "s16 index = a; u8 *target = &ra_buffer[32]; return target[index];",
@@ -421,6 +426,13 @@ def generate_programs(comparison_forms):
                 "target[a] = b; alias[a] = target[a]+1; u16 first = target[a]; return first+alias[a];",
             ][variant] if variant < 16 else None, [2, 2, 2, 2], 2),
             ("scalar_byte", "u8 a, u8 b, u8 c", "u8 saved = a^b; return (c+c)+saved;", [1, 1, 1], 1),
+            ("scalar_byte_multiply", f"{'s8' if variant & 2 else 'u8'} a, {'s8' if variant & 2 else 'u8'} b, {'u16' if variant == 37 else 'u8'} c",
+             "u16 wide = (a^b)*255; u16 small = (a^b)*7; return wide+small+c;" if variant == 37 else
+             f"{'s8' if variant & 2 else 'u8'} value = a^b; value = {byte_product if variant < 36 else 'value*c'}; return value+c;",
+             [1, 1, 2 if variant == 37 else 1], 2 if variant == 37 else 1),
+            ("scalar_byte_shift", f"{'s8' if variant & 2 else 'u8'} a, {'s8' if variant & 2 else 'u8'} b, u8 c",
+             f"{'s8' if variant & 2 else 'u8'} value = a^b; u8 count = {byte_shift_count}; value = value {'>>' if variant & 1 else '<<'} count; return value+c;",
+             [1, 1, 1], 1),
             ("scalar_signed_byte", "s8 a, s8 b, s8 c", "s8 saved = a^b; return (c|7)^saved;", [1, 1, 1], 1),
             ("scalar_signed_word", "s16 a, s16 b, s16 c", "s16 saved = a^b; return (c|7)^saved;", [2, 2, 2], 2),
             ("scalar_widen", "u8 a, u8 b, u8 c", "u16 saved = a+b; return (c+c)+saved;", [1, 1, 1], 2),
@@ -598,9 +610,9 @@ def generate_programs(comparison_forms):
                 "matrix_constant_multiply", "matrix_constant_shift", "matrix_variable_multiply",
             )
             # Dedicated cohorts keep the all-spill images within one ROM bank.
-            if family in ("scalar_word_step", "scalar_loop_memory", "scalar_byte_loop", "scalar_call_staging", "matrix_byte_store", "matrix_divmod") and family not in os.environ.get("RA_FAMILIES", "").split(","):
+            if family in ("scalar_word_step", "scalar_loop_memory", "scalar_byte_loop", "scalar_byte_multiply", "scalar_byte_shift", "scalar_call_staging", "matrix_byte_store", "matrix_divmod") and family not in os.environ.get("RA_FAMILIES", "").split(","):
                 continue
-            if variant >= (38 if family == "scalar_byte_loop" else 15 if family == "scalar_word_step" else 17 if family == "scalar_loop_memory" else 8) and not family.startswith("matrix_"):
+            if variant >= (38 if family in ("scalar_byte_loop", "scalar_byte_multiply", "scalar_byte_shift") else 15 if family == "scalar_word_step" else 17 if family == "scalar_loop_memory" else 8) and not family.startswith("matrix_"):
                 continue
             if family.startswith("matrix_") and variant >= limits.get(family, 2):
                 continue
@@ -627,7 +639,7 @@ def generate_programs(comparison_forms):
                     excluded = family.startswith("matrix_") or scalar_family != (os.environ.get("RA_SCALAR_CASES") == "1")
                 if excluded:
                     continue
-            if scalar_family and family not in ("word_bc", "scalar_word_counter", "scalar_word_step", "scalar_loop_memory", "scalar_byte_loop", "scalar_call_staging", "scalar_call_transport") and variant > 1:
+            if scalar_family and family not in ("word_bc", "scalar_word_counter", "scalar_word_step", "scalar_loop_memory", "scalar_byte_loop", "scalar_byte_multiply", "scalar_byte_shift", "scalar_call_staging", "scalar_call_transport") and variant > 1:
                 continue
             name = f"ra_{family}_{variant}"
             if family == "matrix_source_loop":
@@ -882,6 +894,14 @@ def check_analytical_assertions(output, programs):
                 cancelled = variant in (24, 25, 26, 27, 33)
                 if bool(re.search(r"^\s+XOR ", instructions, re.M)) == cancelled:
                     raise RuntimeError(f"Pure XOR cancellation/fallback mismatch: {name}")
+        if family == "matrix_constant_multiply":
+            body = section_assembly()
+            multiplier = MULTIPLY_CONSTANTS[variant >> 1] & 65535 if variant < 32 else None
+            selected = multiplier is not None and multiplier.bit_length() + multiplier.bit_count() <= 18
+            if ("constant word multiply" in body) != selected:
+                raise RuntimeError(f"Word multiply budget or runtime fallback mismatch: {name}")
+            if selected and re.search(r"\bPUSH DE\b|\bNEG\b", body):
+                raise RuntimeError(f"Word constant chain kept DE setup or used a byte-only negation: {name}")
         if family == "matrix_source_loop" and variant == 0 and not re.search(
             r"LD\s+L,\(IX-7\)\s+LD\s+H,\(IX-6\)\s+ADD HL,BC\s+LD\s+L,\(HL\)", section_assembly(),
         ):
@@ -1053,6 +1073,25 @@ def check_analytical_assertions(output, programs):
                 raise RuntimeError(f"Forward byte copy did not select LDIR: {name}")
             if variant in (0, 4, 6, 12, 16, 18, 19) and not re.search(r"\bDEC C\b", section_assembly()):
                 raise RuntimeError(f"Word-count store-only byte fill was not selected: {name}")
+        if family == "scalar_byte_multiply":
+            body = section_assembly()
+            if variant < 36 and "constant byte multiply" not in body:
+                raise RuntimeError(f"Constant byte multiplication was not selected: {name}")
+            if variant == 37 and (
+                "constant word multiply" not in body or "multiply H * E -> HL" not in body
+                or re.search(r"\bNEG\b|\bSUB H\b", body)
+            ):
+                raise RuntimeError(f"Widened byte product used a modulo-byte chain: {name}")
+            if variant < 36 and re.search(r"\bPUSH DE\b|\bLD  [DE],", body):
+                raise RuntimeError(f"Constant multiplication retained generic DE setup: {name}")
+        if family == "scalar_byte_shift":
+            body = section_assembly()
+            if 2 <= variant <= 15 and (not variant & 1 or not variant & 2) and "constant byte shift" not in body:
+                raise RuntimeError(f"Constant byte shift was not selected: {name}")
+            if 10 <= variant <= 15 and (not variant & 1 or not variant & 2) and not re.search(r"\b(?:RLCA|RRCA)\b", body):
+                raise RuntimeError(f"Large byte shift did not select masked accumulator rotates: {name}")
+            if variant >= 36 and "constant byte shift" in body:
+                raise RuntimeError(f"Variable byte shift used a constant path: {name}")
         if family == "scalar_word_counter":
             if variant == 0 and not has(r"loop_retention_apply_preflight .*selected=BC .*application=applied"):
                 raise RuntimeError(f"Bounded unsigned word counter was not retained: {name}")
@@ -1657,6 +1696,22 @@ def generated_oracle(program, seed, comparison_forms, decision_loop_paths):
                 expected = expected_buffer[count if variant == 10 else 0]
             elif variant == 12:
                 expected = (first + 1 + (last & 255)) & 65535
+        case "scalar_byte_multiply" | "scalar_byte_shift":
+            first, second = seed & 255, 0 if seed < 256 else (seed * 73 + 17) & 255
+            last = (seed * 19 + 127) & 255
+            if family == "scalar_byte_multiply" and variant == 37:
+                last = (seed * 7919 + 32767) & 65535
+            parameters = [first, second, last]
+            value = first ^ second
+            if family == "scalar_byte_multiply":
+                multiplier = BYTE_MULTIPLY_CONSTANTS[variant // 4] if variant < 36 else last if variant == 36 else 262
+                expected = (value * multiplier + last) & (65535 if variant == 37 else 255)
+            else:
+                count = (BYTE_SHIFT_COUNTS[variant // 2] & 65535) if variant < 36 else last
+                if variant < 36 and variant & 1 and variant & 2 and value >= 128:
+                    value |= 65280
+                shifted = 0 if count >= 16 else value >> count if variant & 1 else value << count
+                expected = (shifted + last) & 255
         case "scalar_byte_loop":
             count = (0, 1, 2, 3, 4, 127, 128, 255, 256, 257, 511, 512)[seed % 12]
             if variant in (19, 21):
@@ -2786,17 +2841,19 @@ def main():
             cohorts.append("word_steps")
             cohorts.append("loop_memory")
             cohorts.append("byte_loops")
+            cohorts.append("byte_multiply")
+            cohorts.append("byte_shifts")
             cohorts.append("call_staging")
             if os.environ.get("RA_MATRIX_CASES") != "0":
                 cohorts.append("byte_stores")
                 cohorts.append("divmod")
         for cohort in cohorts:
-            scalar_cohort = cohort in ("scalar", "word_steps", "loop_memory", "byte_loops", "call_staging")
+            scalar_cohort = cohort in ("scalar", "word_steps", "loop_memory", "byte_loops", "byte_multiply", "byte_shifts", "call_staging")
             os.environ.update({
                 "RA_SCALAR_CASES": "1" if scalar_cohort else "0",
                 "RA_MATRIX_CASES": "0" if scalar_cohort else "1", "RA_REAL_PROJECTS": "0",
                 "RA_VALUE_CASES": "1" if cohort in ("matrix_values", "byte_stores") else "0",
-                "RA_FAMILIES": "scalar_word_step" if cohort == "word_steps" else "scalar_loop_memory" if cohort == "loop_memory" else "scalar_byte_loop" if cohort == "byte_loops" else "scalar_call_staging" if cohort == "call_staging" else "matrix_byte_store" if cohort == "byte_stores" else "matrix_divmod" if cohort == "divmod" else family_filter,
+                "RA_FAMILIES": "scalar_word_step" if cohort == "word_steps" else "scalar_loop_memory" if cohort == "loop_memory" else "scalar_byte_loop" if cohort == "byte_loops" else "scalar_byte_multiply" if cohort == "byte_multiply" else "scalar_byte_shift" if cohort == "byte_shifts" else "scalar_call_staging" if cohort == "call_staging" else "matrix_byte_store" if cohort == "byte_stores" else "matrix_divmod" if cohort == "divmod" else family_filter,
                 "RA_COMPARISON_FORMS": "1" if cohort == "matrix_literals" else "2" if cohort == "matrix_memory" else "0",
                 "RA_EXECUTION_DIR": str(output / cohort), "RA_VERIFIER": harness,
             })

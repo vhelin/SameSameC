@@ -1361,31 +1361,44 @@ static void _shift_hl_by_bc(const struct z80_location *location, int op, FILE *f
 }
 
 
-static void _shift_left_b_by_a(FILE *file_out) {
+static void _shift_b_by_a(struct z80_location *count_location, int op, int word_count, FILE *file_out) {
 
-  fprintf(file_out, "      ; shift left B by A\n");
+  int count, i;
+
+  if (count_location->kind == LOC_CONST) {
+    count = count_location->value & (word_count == YES ? 65535 : 255);
+    fprintf(file_out, "      ; constant byte shift %s by %d\n", op == TAC_OP_SHIFT_LEFT ? "left" : "right", count);
+    if (count >= 8) {
+      _load_value_to_b(0, file_out);
+      return;
+    }
+    if (count >= (op == TAC_OP_SHIFT_LEFT ? 5 : 4)) {
+      fprintf(file_out, "      LD  A,B\n");
+      for (i = 0; i < 8 - count; i++)
+        fprintf(file_out, "      %s\n", op == TAC_OP_SHIFT_LEFT || count == 4 ? "RRCA" : "RLCA");
+      fprintf(file_out, "      AND %d\n", op == TAC_OP_SHIFT_LEFT ? (255 << count) & 255 : 255 >> count);
+      fprintf(file_out, "      LD  B,A\n");
+    }
+    else if (op == TAC_OP_SHIFT_LEFT && count >= 3) {
+      fprintf(file_out, "      LD  A,B\n");
+      for (i = 0; i < count; i++)
+        fprintf(file_out, "      ADD A,A\n");
+      fprintf(file_out, "      LD  B,A\n");
+    }
+    else {
+      for (i = 0; i < count; i++)
+        fprintf(file_out, "      %s B\n", op == TAC_OP_SHIFT_LEFT ? "SLA" : "SRL");
+    }
+    return;
+  }
+
+  fprintf(file_out, "      ; shift %s B by A\n", op == TAC_OP_SHIFT_LEFT ? "left" : "right");
 
   _add_label("-", file_out, YES);
 
   fprintf(file_out, "      OR  A,A\n");
   fprintf(file_out, "      JR  Z,+\n");
-  fprintf(file_out, "      SLA B\n");
-  fprintf(file_out, "      DEC A\n");
-  fprintf(file_out, "      JR  -\n");
-
-  _add_label("+", file_out, YES);
-}
-
-
-static void _shift_right_b_by_a(FILE *file_out) {
-
-  fprintf(file_out, "      ; shift right B by A\n");
-
-  _add_label("-", file_out, YES);
-
-  fprintf(file_out, "      OR  A,A\n");
-  fprintf(file_out, "      JR  Z,+\n");
-  fprintf(file_out, "      SRL B\n");
+  fprintf(file_out, "      %s B\n", op == TAC_OP_SHIFT_LEFT ? "SLA" : "SRL");
   fprintf(file_out, "      DEC A\n");
   fprintf(file_out, "      JR  -\n");
 
@@ -1413,36 +1426,9 @@ static void _multiply_h_and_e_to_hl(FILE *file_out) {
 }
 
 
-static void _multiply_bc_and_de_to_hl(struct tac *t, FILE *file_out) {
-
-  int multiplier = 0, mask, bit = 1, bytes = 2;
-  const char *multiplicand = NULL;
-
-  if (t->arg2_type == TAC_ARG_TYPE_CONSTANT) {
-    multiplier = ((int)t->arg2_d) & 0xffff;
-    multiplicand = "BC";
-  }
-  else if (t->arg1_type == TAC_ARG_TYPE_CONSTANT) {
-    multiplier = ((int)t->arg1_d) & 0xffff;
-    multiplicand = "DE";
-  }
+static void _multiply_bc_and_de_to_hl(FILE *file_out) {
 
   fprintf(file_out, "      ; multiply BC * DE -> HL\n");
-  for (mask = multiplier; mask > 1; mask >>= 1) {
-    bytes += 1 + (mask & 1);
-    bit <<= 1;
-  }
-  /* Keep the original 18-byte budget for constant chains. */
-  if (multiplier > 0 && bytes <= 18) {
-    fprintf(file_out, "      LD  H,%c\n", multiplicand[0]);
-    fprintf(file_out, "      LD  L,%c\n", multiplicand[1]);
-    for (bit >>= 1; bit > 0; bit >>= 1) {
-      fprintf(file_out, "      ADD HL,HL\n");
-      if ((multiplier & bit) != 0)
-        fprintf(file_out, "      ADD HL,%s\n", multiplicand);
-    }
-    return;
-  }
 
   /* Shift the multiplier through A:C, leaving B available for DJNZ. */
   fprintf(file_out, "      LD  A,B\n");
@@ -2109,6 +2095,120 @@ static int _materialize_array_index_to_bc(struct z80_location *location, int var
   else {
     fprintf(stderr, "_materialize_array_index_to_bc(): Unknown location kind %d! Please submit a bug report!\n", location->kind);
     return FAILED;
+  }
+
+  return SUCCEEDED;
+}
+
+
+static int _multiply_constant_to_hl(struct tac *t, struct z80_location *arg1, struct z80_location *arg2,
+                                    int byte_operands, int *selected, FILE *file_out) {
+
+  struct z80_location *source;
+  int multiplier, var_type, mask, bit = 1, bytes = 2, ix_offset = 0;
+  int negative, magnitude, shifts, subtract, best_bytes = 16;
+  int best_magnitude = 0, best_bit = 0, best_negative = NO, best_subtract = NO;
+
+  *selected = NO;
+  if (arg2->kind == LOC_CONST) {
+    multiplier = arg2->value;
+    source = arg1;
+    var_type = t->arg1_var_type;
+  }
+  else if (arg1->kind == LOC_CONST) {
+    multiplier = arg1->value;
+    source = arg2;
+    var_type = t->arg2_var_type;
+  }
+  else
+    return SUCCEEDED;
+
+  multiplier &= byte_operands == YES ? 255 : 65535;
+  if (t->result_var_type == VARIABLE_TYPE_INT8 || t->result_var_type == VARIABLE_TYPE_UINT8) {
+    multiplier &= 255;
+    for (negative = NO; negative <= YES && multiplier != 0; negative++) {
+      magnitude = negative == YES ? 256 - multiplier : multiplier;
+      bytes = 1 + 2 * negative;
+      bit = 1;
+      shifts = 0;
+      for (mask = magnitude; mask > 1; mask >>= 1) {
+        bytes += 1 + (mask & 1);
+        bit <<= 1;
+        shifts++;
+      }
+      if ((magnitude & (magnitude - 1)) != 0)
+        bytes++;
+      subtract = NO;
+      if (magnitude > 3 && (magnitude & (magnitude + 1)) == 0 && shifts + 4 + 2 * negative < bytes) {
+        bytes = shifts + 4 + 2 * negative;
+        bit <<= 1;
+        subtract = YES;
+      }
+      /* Include the saved byte, final transfer and two-byte NEG in the 15-byte budget. */
+      if (bytes < best_bytes) {
+        best_bytes = bytes;
+        best_magnitude = magnitude;
+        best_bit = bit;
+        best_negative = negative;
+        best_subtract = subtract;
+      }
+    }
+    if (multiplier != 0 && best_magnitude == 0)
+      return SUCCEEDED;
+  }
+  else {
+    for (mask = multiplier; mask > 1; mask >>= 1) {
+      bytes += 1 + (mask & 1);
+      bit <<= 1;
+    }
+    /* Byte operands need zero extension; their original multiply has a smaller setup budget. */
+    if (multiplier != 0 && bytes > (byte_operands == YES ? 13 : 18))
+      return SUCCEEDED;
+  }
+
+  *selected = YES;
+  fprintf(file_out, "      ; constant %s multiply by %d without DE setup\n",
+          t->result_var_type == VARIABLE_TYPE_INT8 || t->result_var_type == VARIABLE_TYPE_UINT8 ? "byte" : "word", multiplier);
+  if (multiplier == 0) {
+    _load_value_to_hl(0, file_out);
+    return SUCCEEDED;
+  }
+  if (_load_location_address_to_ix(source, &ix_offset, file_out) == FAILED)
+    return FAILED;
+
+  if (t->result_var_type == VARIABLE_TYPE_INT8 || t->result_var_type == VARIABLE_TYPE_UINT8) {
+    if (source->kind == LOC_GLOBAL || source->kind == LOC_STACK_LOCAL || source->kind == LOC_STACK_SPILL)
+      _load_from_ix_to_a(ix_offset, file_out);
+    else if (_materialize_to_a(source, 0, file_out) == FAILED)
+      return FAILED;
+    if ((best_magnitude & (best_magnitude - 1)) != 0)
+      fprintf(file_out, "      LD  H,A\n");
+    for (bit = best_bit >> 1; bit > 0; bit >>= 1) {
+      fprintf(file_out, "      ADD A,A\n");
+      if (best_subtract == NO && (best_magnitude & bit) != 0)
+        fprintf(file_out, "      ADD A,H\n");
+    }
+    if (best_subtract == YES)
+      fprintf(file_out, "      SUB H\n");
+    if (best_negative == YES)
+      fprintf(file_out, "      NEG\n");
+    fprintf(file_out, "      LD  L,A\n");
+  }
+  else {
+    if (source->kind == LOC_CONST)
+      _load_value_to_bc(source->value & (byte_operands == YES ? 255 : 65535), file_out);
+    else if (_materialize_array_index_to_bc(source, byte_operands == YES ? VARIABLE_TYPE_UINT8 : var_type,
+                                            ix_offset, NO, file_out) == FAILED)
+      return FAILED;
+    if (byte_operands == YES && source->kind == LOC_PHY_BC)
+      _load_value_to_b(0, file_out);
+    fprintf(file_out, "      LD  H,B\n");
+    fprintf(file_out, "      LD  L,C\n");
+    for (bit >>= 1; bit > 0; bit >>= 1) {
+      fprintf(file_out, "      ADD HL,HL\n");
+      if ((multiplier & bit) != 0)
+        fprintf(file_out, "      ADD HL,BC\n");
+    }
   }
 
   return SUCCEEDED;
@@ -4903,7 +5003,7 @@ static int _aaa_generate_asm_shift_left_right_z80_16bit(struct tac *t, FILE *fil
 }
 
 
-static int _bbb_generate_asm_shift_left_right_z80_8bit(struct tac *t, FILE *file_out, struct tree_node *function_node, int op) {
+static int _bbb_generate_asm_shift_left_right_z80_8bit(struct tac *t, FILE *file_out, struct tree_node *function_node, int op, int word_count) {
 
   struct z80_location result_location;
   struct z80_location arg1_location;
@@ -4970,6 +5070,14 @@ static int _bbb_generate_asm_shift_left_right_z80_8bit(struct tac *t, FILE *file
   else if (arg1_in_c == YES) {
     fprintf(file_out, "      LD  B,C\n");
   }
+  else if (arg1_location.kind == LOC_PHY_HL) {
+    fprintf(file_out, "      LD  B,L\n");
+  }
+  else if (arg1_location.kind == LOC_PHY_BC) {
+    fprintf(file_out, "      LD  B,C\n");
+  }
+  else if (arg1_location.kind == LOC_PHY_B) {
+  }
   else if (arg1_location.kind == LOC_CONST) {
     /* 8-bit */
     _load_value_to_b(arg1_location.value & 0xff, file_out);
@@ -5001,7 +5109,9 @@ static int _bbb_generate_asm_shift_left_right_z80_8bit(struct tac *t, FILE *file
   /* copy data (arg2) -> a */
   /******************************************************************************************************/
 
-  if (arg2_in_a == YES || arg2_location.kind == LOC_CONST) {
+  if (arg2_location.kind == LOC_CONST) {
+  }
+  else if (arg2_in_a == YES) {
     if (_materialize_to_a(&arg2_location, 0, file_out) == FAILED)
       return FAILED;
   }
@@ -5014,34 +5124,7 @@ static int _bbb_generate_asm_shift_left_right_z80_8bit(struct tac *t, FILE *file
   /* b <</>> a */
   /******************************************************************************************************/
 
-  if (op == TAC_OP_SHIFT_LEFT) {
-    /*
-      -
-      or a, a
-      jr z, +
-
-      sla b
-      dec a
-      jr -
-      +
-    */
-
-    _shift_left_b_by_a(file_out);
-  }
-  else if (op == TAC_OP_SHIFT_RIGHT) {
-    /*
-      -
-      or a, a
-      jr z, +
-
-      srl b
-      dec a
-      jr -
-      +
-    */
-
-    _shift_right_b_by_a(file_out);
-  }
+  _shift_b_by_a(&arg2_location, op, word_count, file_out);
 
   /******************************************************************************************************/
   /* target address -> ix */
@@ -5131,10 +5214,16 @@ static int _generate_asm_shift_left_right_z80(struct tac *t, FILE *file_out, str
   /* 8-bit or 16-bit? */
   if ((t->arg1_var_type_promoted == VARIABLE_TYPE_INT8 || t->arg1_var_type_promoted == VARIABLE_TYPE_UINT8) &&
       (t->arg2_var_type_promoted == VARIABLE_TYPE_INT8 || t->arg2_var_type_promoted == VARIABLE_TYPE_UINT8))
-    return _bbb_generate_asm_shift_left_right_z80_8bit(t, file_out, function_node, op);
+    return _bbb_generate_asm_shift_left_right_z80_8bit(t, file_out, function_node, op, NO);
   else if ((t->arg1_var_type_promoted == VARIABLE_TYPE_INT16 || t->arg1_var_type_promoted == VARIABLE_TYPE_UINT16) &&
-           (t->arg2_var_type_promoted == VARIABLE_TYPE_INT16 || t->arg2_var_type_promoted == VARIABLE_TYPE_UINT16))
+           (t->arg2_var_type_promoted == VARIABLE_TYPE_INT16 || t->arg2_var_type_promoted == VARIABLE_TYPE_UINT16)) {
+    if (t->arg2_type == TAC_ARG_TYPE_CONSTANT &&
+        (t->result_var_type == VARIABLE_TYPE_INT8 || t->result_var_type == VARIABLE_TYPE_UINT8) &&
+        (t->arg1_var_type == VARIABLE_TYPE_INT8 || t->arg1_var_type == VARIABLE_TYPE_UINT8) &&
+        (op == TAC_OP_SHIFT_LEFT || t->arg1_var_type == VARIABLE_TYPE_UINT8))
+      return _bbb_generate_asm_shift_left_right_z80_8bit(t, file_out, function_node, op, YES);
     return _aaa_generate_asm_shift_left_right_z80_16bit(t, file_out, function_node, op);
+  }
 
   fprintf(stderr, "_generate_asm_shift_left_right_z80(): 8-bit + 16-bit, this shouldn't happen. Please submit a bug report!\n");
 
@@ -5160,7 +5249,7 @@ static int _generate_asm_mul_div_mod_z80_16bit(struct tac *t, FILE *file_out, st
   struct z80_location result_location;
   struct z80_location arg1_location;
   struct z80_location arg2_location;
-  int ix_offset = 0, was_ix_de;
+  int ix_offset = 0, was_ix_de, selected;
 
   /* result */
 
@@ -5179,6 +5268,13 @@ static int _generate_asm_mul_div_mod_z80_16bit(struct tac *t, FILE *file_out, st
 
   if (reuse_remainder == YES)
     goto store_result;
+
+  if (op == TAC_OP_MUL) {
+    if (_multiply_constant_to_hl(t, &arg1_location, &arg2_location, NO, &selected, file_out) == FAILED)
+      return FAILED;
+    if (selected == YES)
+      goto store_result;
+  }
 
   /* generate asm */
 
@@ -5213,61 +5309,8 @@ static int _generate_asm_mul_div_mod_z80_16bit(struct tac *t, FILE *file_out, st
     /* 16-bit */
     _load_value_to_bc(arg1_location.value, file_out);
   }
-  else if (arg1_location.kind == LOC_PHY_HL) {
-    fprintf(file_out, "      LD  C,L\n");
-    fprintf(file_out, "      LD  B,H\n");
-    fprintf(file_out, "      ; retained arg1 in HL\n");
-  }
-  else if (arg1_location.kind == LOC_PHY_BC) {
-    fprintf(file_out, "      ; retained arg1 in BC\n");
-  }
-  else if (arg1_location.kind == LOC_PHY_A) {
-    fprintf(file_out, "      LD  C,A\n");
-
-    if (t->arg1_var_type == VARIABLE_TYPE_INT8 && (t->arg1_var_type_promoted == VARIABLE_TYPE_INT16 ||
-                                                   t->arg1_var_type_promoted == VARIABLE_TYPE_UINT16)) {
-      _sign_extend_c_to_bc_preserving_a(file_out);
-    }
-    else if (t->arg1_var_type == VARIABLE_TYPE_UINT8 && (t->arg1_var_type_promoted == VARIABLE_TYPE_INT16 ||
-                                                         t->arg1_var_type_promoted == VARIABLE_TYPE_UINT16)) {
-      _load_value_to_b(0, file_out);
-    }
-    else {
-      fprintf(stderr, "_generate_asm_mul_div_mod_z80_16bit(): Cannot use retained A as 16-bit ARG1! Please submit a bug report!\n");
-      print_tac(t, NO, stderr);
-      return FAILED;
-    }
-
-    fprintf(file_out, "      ; retained arg1 in A\n");
-  }
-  else {
-    if (t->arg1_var_type == VARIABLE_TYPE_INT16 || t->arg1_var_type == VARIABLE_TYPE_UINT16) {
-      /* 16-bit */
-      _load_from_ix_to_c(ix_offset, file_out);
-      _load_from_ix_to_b(ix_offset + 1, file_out);
-    }
-    else {
-      /* 8-bit */
-      _load_from_ix_to_c(ix_offset, file_out);
-
-      /* sign extend 8-bit -> 16-bit? */
-      if (t->arg1_var_type == VARIABLE_TYPE_INT8 && (t->arg1_var_type_promoted == VARIABLE_TYPE_INT16 ||
-                                                     t->arg1_var_type_promoted == VARIABLE_TYPE_UINT16)) {
-        /* yes */
-        _sign_extend_c_to_bc(file_out);
-      }
-      else if (t->arg1_var_type == VARIABLE_TYPE_UINT8 && (t->arg1_var_type_promoted == VARIABLE_TYPE_INT16 ||
-                                                           t->arg1_var_type_promoted == VARIABLE_TYPE_UINT16)) {
-        /* upper byte -> 0 */
-        _load_value_to_b(0, file_out);
-      }
-      else {
-        fprintf(stderr, "_generate_asm_mul_div_mod_z80_16bit(): Unhandled 8-bit ARG1! Please submit a bug report!\n");
-        print_tac(t, NO, stderr);
-        return FAILED;
-      }
-    }
-  }
+  else if (_materialize_array_index_to_bc(&arg1_location, t->arg1_var_type, ix_offset, NO, file_out) == FAILED)
+    return FAILED;
 
   /******************************************************************************************************/
   /* source address (arg2) -> ix */
@@ -5376,7 +5419,7 @@ static int _generate_asm_mul_div_mod_z80_16bit(struct tac *t, FILE *file_out, st
   /******************************************************************************************************/
 
   if (op == TAC_OP_MUL)
-    _multiply_bc_and_de_to_hl(t, file_out);
+    _multiply_bc_and_de_to_hl(file_out);
 
   /******************************************************************************************************/
   /* bc / de -> ca (result), hl (remainder) */
@@ -5486,7 +5529,7 @@ static int _generate_asm_mul_div_mod_z80_8bit(struct tac *t, FILE *file_out, str
   struct z80_location result_location;
   struct z80_location arg1_location;
   struct z80_location arg2_location;
-  int ix_offset = 0, was_ix_de;
+  int ix_offset = 0, was_ix_de, selected;
 
   /* result */
 
@@ -5505,6 +5548,13 @@ static int _generate_asm_mul_div_mod_z80_8bit(struct tac *t, FILE *file_out, str
 
   if (reuse_remainder == YES)
     goto store_result;
+
+  if (op == TAC_OP_MUL) {
+    if (_multiply_constant_to_hl(t, &arg1_location, &arg2_location, YES, &selected, file_out) == FAILED)
+      return FAILED;
+    if (selected == YES)
+      goto store_result;
+  }
 
   /* generate asm */
 
@@ -5621,27 +5671,8 @@ static int _generate_asm_mul_div_mod_z80_8bit(struct tac *t, FILE *file_out, str
   /* h * e -> hl */
   /******************************************************************************************************/
 
-  if (op == TAC_OP_MUL) {
-    /*
-      ;
-      ; Multiply 8-bit values
-      ; In:  Multiply H with E
-      ; Out: HL = result
-      ;
-    Mult8:
-      ld d,0
-      ld l,d
-      ld b,8
-    Mult8_Loop:
-      add hl,hl
-      jr nc,Mult8_NoAdd
-      add hl,de
-    Mult8_NoAdd:
-      djnz Mult8_Loop
-    */
-
+  if (op == TAC_OP_MUL)
     _multiply_h_and_e_to_hl(file_out);
-  }
 
   /******************************************************************************************************/
   /* h / e -> a (result) and b (reminder) */

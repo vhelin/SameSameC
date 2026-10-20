@@ -122,7 +122,7 @@ extraction.
   proven redundant caller-temporary copies before considering a new convention.
 - [x] **2j. Advancing-pointer copy/fill loops:** replace repeated address
   reconstruction, then select profitable target-local loop/block instructions.
-- [ ] **2k. Constant byte arithmetic and multiplication setup:** specialize
+- [x] **2k. Constant byte arithmetic and multiplication setup:** specialize
   byte shifts/multiplies and remove unused setup from existing constant word chains.
 - [ ] **2l. Proven bounded-counter narrowing:** use byte execution for counters
   whose ranges and observable uses permit it, without changing source semantics.
@@ -1200,13 +1200,13 @@ Against immediate parent `66ab52f` (the compiler from the step 2h/2i checkpoint)
 
 #### 2k. Constant Byte Arithmetic And Multiplication Setup
 
-- [ ] Specialize constant byte shifts in the existing emitter; compare unrolled
+- [x] Specialize constant byte shifts in the existing emitter; compare unrolled
   shifts with accumulator rotate-and-mask sequences for unsigned values,
   including transfers, result width and flag/register clobbers.
-- [ ] Add only profitable constant byte multiplication sequences within the
+- [x] Add only profitable constant byte multiplication sequences within the
   existing arithmetic path. Cost additions and subtractions for the actual
   operand width; do not assume byte signed-digit choices also suit word results.
-- [ ] Select existing constant word multiply chains before unnecessary generic
+- [x] Select existing constant word multiply chains before unnecessary generic
   operand setup, DE saves/loads and restoration. Preserve the established word
   shift/multiply paths, budgets and conservative fallbacks.
 
@@ -1214,6 +1214,72 @@ Acceptance: exhaustively check byte operands for selected constants and shift
 counts, plus signed/promoted results, word boundaries, aliases and pressure.
 Show exact instruction-selection changes and measured bytes/cycles; preserve
 the compiler's existing shift semantics and default size/speed contract.
+
+Step-2k checkpoint (2026-10-20):
+
+- Merged the two byte-shift helpers. Constant counts select unrolled byte
+  shifts, accumulator doubling, or shorter rotate-and-mask sequences, including
+  transfers and masks in the cost. Zero and oversized counts avoid runtime
+  loops; dynamic counts retain the existing implementation.
+- Promoted operations enter the byte path only for an actual byte source and
+  byte result: left shifts, or unsigned right shifts. Signed promoted right
+  shifts and genuine word operations keep their existing word behavior.
+  Constant counts retain their original byte/word width, including propagated
+  256 and negative counts; they are not blindly truncated to eight bits.
+- Shared constant-multiply selection runs before generic operand setup and
+  reuses existing result stores and BC materialization. Byte results compare
+  addition, subtraction and modulo-byte negation sequences within a 15-byte
+  budget, including source preservation and result transfer. Word chains retain
+  their 18-byte budget; byte operands widened to a word use a stricter 13-byte
+  budget against the smaller byte runtime multiply. Full-word products never
+  use byte-only modulo shortcuts, and unprofitable constants retain the
+  generic implementation. Selected chains omit unused DE saves/loads/restores.
+- Representative RA function measurements against the saved immediate parent
+  (`60c1006`); cycles below cover 256 exhaustive byte-input calls, not a single
+  operation:
+
+  | Case | Function bytes before -> after | T-states before -> after |
+  |---|---:|---:|
+  | Byte result `*3` | 56 -> 45 | 152,320 -> 66,048 |
+  | Byte result `*15` | 56 -> 48 | 152,320 -> 69,120 |
+  | Byte result `*255` | 56 -> 44 | 152,320 -> 65,024 |
+  | Widened `*255` plus `*7` | 98 -> 91 | 288,256 -> 212,992 |
+  | Byte result `<<4` | 47 -> 47 | 75,008 -> 68,096 |
+  | Byte result `<<7` | 52 -> 46 | 85,760 -> 66,816 |
+
+- All 104 comparison builds / 1,856 calls are non-regressing in size, cycles
+  and stack measurements; all 78 external-compiler rows remain exact. RA array,
+  stencil, tile and path kernels shrink respectively 1,656 -> 1,641,
+  1,740 -> 1,735, 1,232 -> 1,212 and 1,648 -> 1,643 bytes. Their aggregate
+  kernel T-states fall 6,372,748 -> 6,351,978; 4,405,850 -> 4,400,146;
+  2,165,246 -> 2,150,676; and 7,139,013 -> 7,099,333. No-RA improves too;
+  caller overhead stays exact. All 26 normal/traced comparison images match.
+- Added 76 arithmetic variants to the existing generator, plus eight controls:
+  84 functions / 21,504 executions per mode with all 256 byte inputs. Cover
+  signed/unsigned values, both constant operand orders, assignment aliases,
+  count boundaries, widened products and dynamic fallbacks. Saved-parent,
+  release, traced and ASan runs pass the independent oracles; every function's
+  size, cycles and frame traffic are non-regressing. Current images match in
+  all five build modes across release/traced/ASan, default/no-RA stay identical,
+  and the saved parent fails the new instruction-selection assertion.
+- All 175 fixtures pass: refreshed 37 exact opcode regions in 16 fixtures
+  against saved-parent bytes (34 smaller, three same-size), plus the byte
+  shift-result register assertions, retaining lifecycle/alias/spill checks.
+  All 14 allocator cohorts pass 32 immutable verifier-rejection controls each;
+  28 real routines have non-regressing cycles/frame traffic; 80 traced/ASan
+  ROMs match. The 24 standard independent timing checks pass, plus 80 additional
+  selected-arithmetic checks using `z88dk-ticks`, exact values and full buffers.
+- All 25 condition/comparison tests pass in release, traced and ASan builds,
+  with 300 identical ROM/counter images; 18 comparison tests also pass under
+  Python `-O`. MSVC, Python syntax/diagnostics and strict ANSI C normal/traced
+  builds pass; the latter excludes only pre-existing unused-parameter warnings.
+  Complete calculation ROM used sizes are 20,677 -> 20,677 and
+  33,134 -> 32,819 bytes, with identical normal/traced 65,536-byte padded images.
+- Production growth is **31 net C lines and zero net functions**. Reused the
+  existing address/result machinery, removed duplicated word materialization
+  and obsolete assembly comments, and left pass 5 and allocator contracts
+  unchanged. Retained qualification and saved-parent evidence:
+  `C:\cygwin64\tmp\byte-arithmetic-20261020\final`.
 
 #### 2l. Proven Bounded-Counter Narrowing
 
@@ -1447,7 +1513,7 @@ to this cross-compiler experiment.
    compiler source growth visible and remove superseded logic. Commit the batch
    locally with the validation summary; do not push.
 
-Steps 1, 2 and 2a-2j are complete. Current implementation target:
-**step 2k, constant byte arithmetic and multiplication setup**, followed by 2l-2n and then
+Steps 1, 2 and 2a-2k are complete. Current implementation target:
+**step 2l, proven bounded-counter narrowing**, followed by 2m-2n and then
 **step 3, initial SM83 backend**. Keep the qualified Z80 behavior and shared core
 covered throughout; do not expand this finite sequence into every possible Z80 optimization.
