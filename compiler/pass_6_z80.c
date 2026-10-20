@@ -1301,7 +1301,7 @@ static void _sign_extend_c_to_bc_preserving_a(FILE *file_out) {
 }
 
 
-static void _shift_hl_by_bc(const struct z80_location *location, int op, FILE *file_out) {
+static void _shift_hl_by_bc(const struct z80_location *location, int op, int bounded, FILE *file_out) {
 
   int count, bytes, loop, byte_shift = NO;
 
@@ -1323,41 +1323,36 @@ static void _shift_hl_by_bc(const struct z80_location *location, int op, FILE *f
     /* Unroll only while the whole kernel fits the original 8/11-byte loop. */
     bytes = count * (op == TAC_OP_SHIFT_LEFT ? 1 : byte_shift == YES ? 2 : 4) + (byte_shift == YES ? 3 : 0);
     loop = bytes > (op == TAC_OP_SHIFT_LEFT ? 8 : 11);
-    if (loop) {
-      _load_value_to_b(count, file_out);
-      _add_label("-", file_out, YES);
-      count = 1;
-    }
-    for (; count > 0; count--) {
-      if (op == TAC_OP_SHIFT_LEFT)
-        fprintf(file_out, "      ADD HL,HL\n");
-      else if (byte_shift == YES)
-        fprintf(file_out, "      SRL L\n");
-      else {
-        fprintf(file_out, "      SRL H\n");
-        fprintf(file_out, "      RR  L\n");
-      }
-    }
     if (loop)
-      fprintf(file_out, "      DJNZ -\n");
-    return;
+      _load_value_to_b(count, file_out);
   }
-
-  _add_label("-", file_out, YES);
-
-  fprintf(file_out, "      LD  A,B\n");
-  fprintf(file_out, "      OR  A,C\n");
-  fprintf(file_out, "      JR  Z,+\n");
-  if (op == TAC_OP_SHIFT_LEFT)
-    fprintf(file_out, "      ADD HL,HL\n");
   else {
-    fprintf(file_out, "      SRL H\n");
-    fprintf(file_out, "      RR  L\n");
+    count = 1;
+    loop = YES;
+    if (bounded == YES) {
+      fprintf(file_out, "      ; bounded variable word shift; count proven below 16\n");
+      fprintf(file_out, "      LD  A,B\n      OR  C\n      JR  Z,+\n");
+      fprintf(file_out, "      LD  B,C\n");
+    }
   }
-  fprintf(file_out, "      DEC BC\n");
-  fprintf(file_out, "      JR  -\n");
-
-  _add_label("+", file_out, YES);
+  if (loop) {
+    _add_label("-", file_out, YES);
+    count = 1;
+    if (location->kind != LOC_CONST && bounded == NO)
+      fprintf(file_out, "      LD  A,B\n      OR  A,C\n      JR  Z,+\n");
+  }
+  for (; count > 0; count--) {
+    if (op == TAC_OP_SHIFT_LEFT)
+      fprintf(file_out, "      ADD HL,HL\n");
+    else if (byte_shift == YES)
+      fprintf(file_out, "      SRL L\n");
+    else
+      fprintf(file_out, "      SRL H\n      RR  L\n");
+  }
+  if (loop)
+    fprintf(file_out, location->kind != LOC_CONST && bounded == NO ? "      DEC BC\n      JR  -\n" : "      DJNZ -\n");
+  if (location->kind != LOC_CONST)
+    _add_label("+", file_out, YES);
 }
 
 
@@ -4865,7 +4860,8 @@ static int _aaa_generate_asm_shift_left_right_z80_16bit(struct tac *t, FILE *fil
   struct z80_location result_location;
   struct z80_location arg1_location;
   struct z80_location arg2_location;
-  int ix_offset = 0;
+  struct temp_register *counter;
+  int ix_offset = 0, bounded = NO;
   int arg1_in_hl = NO, arg1_in_bc = NO, arg1_in_a = NO, arg1_in_b = NO, arg1_in_c = NO;
   int arg2_in_bc = NO, arg2_in_a = NO, result_in_b = NO, result_in_c = NO;
 
@@ -5040,7 +5036,24 @@ static int _aaa_generate_asm_shift_left_right_z80_16bit(struct tac *t, FILE *fil
   /* hl <</>> bc */
   /******************************************************************************************************/
 
-  _shift_hl_by_bc(&arg2_location, op, file_out);
+  if (g_allocator_enabled == YES && g_allocator_force_all_spill == NO &&
+      t->arg1_var_type == VARIABLE_TYPE_UINT16 && t->arg2_type == TAC_ARG_TYPE_TEMP &&
+      (t->arg2_var_type == VARIABLE_TYPE_UINT8 || t->arg2_var_type == VARIABLE_TYPE_UINT16)) {
+    counter = _find_z80_temp_register(function_node, (int)t->arg2_d);
+    if (counter != NULL && counter->live_start >= 0 && counter->live_start < (int)(t - g_tacs)) {
+      struct tac *initial = &g_tacs[counter->live_start];
+      if (counter->write_count == 1 && initial->function_node == function_node && initial->op == TAC_OP_AND &&
+          initial->result_type == TAC_ARG_TYPE_TEMP && initial->result_d == t->arg2_d &&
+          (initial->result_var_type_promoted == VARIABLE_TYPE_UINT8 ||
+           initial->result_var_type_promoted == VARIABLE_TYPE_UINT16) &&
+          ((initial->arg1_type == TAC_ARG_TYPE_CONSTANT && initial->arg1_d >= 0.0 && initial->arg1_d < 16.0) ||
+           (initial->arg2_type == TAC_ARG_TYPE_CONSTANT && initial->arg2_d >= 0.0 && initial->arg2_d < 16.0)))
+        bounded = YES;
+      else if (_is_z80_bounded_counter(initial, function_node, 15) == YES)
+        bounded = YES;
+    }
+  }
+  _shift_hl_by_bc(&arg2_location, op, bounded, file_out);
 
   /******************************************************************************************************/
   /* target address -> ix */

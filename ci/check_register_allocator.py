@@ -438,7 +438,19 @@ def generate_programs(comparison_forms):
             ("matrix_extend", "s8 a, s8 b, u16 c", f"s8 saved = a^b; s16 extended = saved; return {'c+extended' if variant & 1 else 'extended+c'};", [1, 1, 2], 2),
             ("matrix_low_byte", f"{'s16' if signed_word else 'u16'} a, u16 b, u16 c",
              f"{'s16' if signed_word else 'u16'} saved = ~a; {'s8' if variant >= 6 else 'u8'} narrowed = {('b+saved' if variant & 1 else 'saved+b') if variant < 2 else 'saved'}; {'s16 extended = narrowed;' if variant >= 6 else ''} return {'c+narrowed' if variant < 2 else (('extended' if variant >= 6 else 'narrowed') + '+(b+c)') if variant & 1 else '(b+c)+' + ('extended' if variant >= 6 else 'narrowed')};", [2, 2, 2], 2),
-            ("matrix_shift", "u16 a, u16 b, u8 c", f"u16 saved = ~a; return saved {'>>' if variant & 1 else '<<'} (c&15);", [2, 2, 1], 2),
+            ("matrix_shift",
+             f"{'s16' if variant in (12, 13) else 'u8' if variant in (16, 17) else 'u16'} a, u16 b, {'s16' if variant in (14, 15) else 'u8' if variant in (0, 1, 4, 5, 16, 17) else 'u16'} c",
+             f"u16 saved = ~a; return saved {'>>' if variant & 1 else '<<'} (c&15);" if variant < 2 else
+             f"u16 saved = a^b; return (saved {'>>' if variant & 1 else '<<'} (c&15))^saved;" if variant in (6, 7) else
+             f"u16 count = b^c; return a {'>>' if variant & 1 else '<<'} count;" if variant in (8, 9) else
+             f"u8 result = a {'>>' if variant & 1 else '<<'} (c&15); return result+b;" if variant in (10, 11) else
+             f"u16 value = a; u16 *alias = &value; u16 result = value {'>>' if variant & 1 else '<<'} c; alias[0] = b; return result+alias[0];" if variant in (18, 19) else
+             f"u8 workspace[136]; workspace[135] = b; return (a {'>>' if variant & 1 else '<<'} c)+workspace[135];" if variant in (20, 21) else
+             f"return a {'>>' if variant & 1 else '<<'} (c&15);" if variant in (22, 23) else
+             f"return a {'>>' if variant & 1 else '<<'} (c&{31 if variant < 26 else 255 if variant < 28 else 65535});" if 24 <= variant < 30 else
+             f"u16 count = c&15; count ^= b; return a {'>>' if variant & 1 else '<<'} count;" if variant in (30, 31) else
+             f"return (a {'>>' if variant & 1 else '<<'} c)+b;",
+             [1 if variant in (16, 17) else 2, 2, 1 if variant in (0, 1, 4, 5, 16, 17) else 2], 2),
             ("matrix_sentinel", "s8 a, u8 b, u8 c" if variant >= 8 else "s8 a, s8 b, u16 c" if variant in (2, 3) else "u16 a, u16 b, u16 c",
              sentinel_bodies[variant] if variant < len(sentinel_bodies) else None, [1, 1, 1] if variant >= 8 else [1, 1, 2] if variant in (2, 3) else [2, 2, 2], 2),
             ("matrix_structural", "u8 *target, u8 *alias, u8 start, u8 count, u8 selector, u8 value",
@@ -705,7 +717,7 @@ def generate_programs(comparison_forms):
             "matrix_structural": 12, "matrix_sentinel": 10, "matrix_affinity": 8,
             "matrix_rank": 4, "matrix_index_copy": 38, "matrix_bc_alu": 12,
             "matrix_scalar_uses": 30, "matrix_real_index": 1, "matrix_constant_multiply": 33,
-            "matrix_constant_shift": 38, "matrix_variable_multiply": 8,
+            "matrix_constant_shift": 38, "matrix_variable_multiply": 8, "matrix_shift": 32,
             "matrix_byte_store": 16, "matrix_divmod": 38,
         }
         for family, parameters, body, widths, return_width in functions:
@@ -718,7 +730,7 @@ def generate_programs(comparison_forms):
                 "matrix_constant_multiply", "matrix_constant_shift", "matrix_variable_multiply",
             )
             # Dedicated cohorts keep the all-spill images within one ROM bank.
-            if (family in ("scalar_frame_address", "scalar_word_counter", "scalar_word_step", "scalar_loop_memory", "scalar_byte_loop", "scalar_byte_multiply", "scalar_byte_shift", "scalar_call_staging", "matrix_byte_store", "matrix_divmod") or arithmetic_local) and not selected_family:
+            if (family in ("scalar_frame_address", "scalar_word_counter", "scalar_word_step", "scalar_loop_memory", "scalar_byte_loop", "scalar_byte_multiply", "scalar_byte_shift", "scalar_call_staging", "matrix_byte_store", "matrix_divmod", "matrix_shift") or arithmetic_local) and not selected_family:
                 continue
             if variant >= (38 if family in ("scalar_word_counter", "scalar_loop_memory", "scalar_byte_loop", "scalar_byte_multiply", "scalar_byte_shift") else 33 if family == "scalar_word" else 24 if family == "scalar_frame_address" else 16 if family == "scalar_call_staging" else 15 if family == "scalar_word_step" else 8) and not family.startswith("matrix_"):
                 continue
@@ -1261,6 +1273,15 @@ def check_analytical_assertions(output, programs):
                 raise RuntimeError(f"Forward byte copy did not select LDIR: {name}")
             if variant in (0, 4, 6, 12, 16, 18, 19, 35) and not re.search(r"\bDEC C\b", section_assembly()):
                 raise RuntimeError(f"Word-count store-only byte fill was not selected: {name}")
+        if family == "matrix_shift":
+            body = section_assembly()
+            if ("bounded variable word shift" in body) != (variant in (0, 1, 6, 7, 10, 11, 22, 23)):
+                raise RuntimeError(f"Variable word shift or signed/widening fallback mismatch: {name}")
+            if "bounded variable word shift" in body and (
+                "AND 240" in body or "DEC BC" in body
+                or not re.search(r"\bDJNZ\b", body) or "OR  C" not in body
+            ):
+                raise RuntimeError(f"Word shift truncated its count or retained a word-count backedge: {name}")
         if family == "scalar_byte_multiply":
             body = section_assembly()
             if variant < 36 and "constant byte multiply" not in body:
@@ -1864,10 +1885,37 @@ def generated_oracle(program, seed, comparison_forms, decision_loop_paths):
                 expected_buffer[32 + (index - 256 if index >= 128 else index)] = other ^ third
                 expected = (other ^ third) * 2
         case "matrix_shift":
-            parameters[0] = (seed * 7919 + variant * 1009) & 65535
-            parameters[1] = (seed * 5113 + 65535) & 65535
-            saved = parameters[0] ^ 65535
-            expected = (js_unsigned_shift(saved, third & 15) if variant & 1 else js_left_shift(saved, third & 15)) & 65535
+            if variant < 2:
+                parameters[0] = (seed * 7919 + variant * 1009) & 65535
+                parameters[1] = (seed * 5113 + 65535) & 65535
+                saved = parameters[0] ^ 65535
+                expected = (js_unsigned_shift(saved, third & 15) if variant & 1 else js_left_shift(saved, third & 15)) & 65535
+            else:
+                parameters = edge_parameters(seed, [0, 1, 127, 128, 255, 256, 32767, 32768, 65534, 65535]) if seed < 64 else word_parameters(seed)
+                count = [0, 1, 7, 8, 15, 16, 17, 255, 256, 65535, 257, 511][seed % 16] if seed < 64 and seed % 16 < 12 else word_parameters(seed)[2]
+                if variant in (12, 13, 14, 15):
+                    count = [0, 1, 7, 8, 15, 16, 17, 255, 256][seed % 9]
+                if variant in (4, 5, 16, 17):
+                    count &= 255
+                if variant in (16, 17):
+                    parameters[0] &= 255
+                parameters[2] = parameters[1] ^ count if variant in (8, 9) else count
+                if variant in (6, 7, 10, 11, 22, 23):
+                    count &= 15
+                elif 24 <= variant < 30:
+                    count &= 31 if variant < 26 else 255 if variant < 28 else 65535
+                elif variant in (30, 31):
+                    count = (count & 15) ^ parameters[1]
+                value = parameters[0] ^ parameters[1] if variant in (6, 7) else parameters[0]
+                shifted = 0 if count >= 16 else value // 2 ** count if variant & 1 else value * 2 ** count
+                shifted &= 65535
+                if variant in (8, 9, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31):
+                    expected = shifted
+                elif variant in (6, 7):
+                    expected = shifted ^ value
+                else:
+                    expected = (shifted & 255 if variant in (10, 11) else shifted) + (parameters[1] & 255 if variant in (20, 21) else parameters[1])
+                expected &= 65535
         case "matrix_structural":
             parameters = [0, 0 if variant & 2 else 8, seed & 15, seed % 8 if variant >= 8 else 1 + seed % 4, other, byte]
             expected = byte
@@ -2496,7 +2544,7 @@ def execute_generated(output, compiler, linker, programs, preamble, compiled, ca
                     result = execute(
                         image.rom, image.symbols[program.name], args, program.widths,
                         buffer, buffer_address, program.returnWidth, image.transfers, program.family == "matrix_source_loop",
-                        instruction_limit=60000 if program.family in ("scalar_byte_loop", "scalar_word_counter", "scalar_loop_memory") else 20000,
+                        instruction_limit=1000000 if program.family == "matrix_shift" else 60000 if program.family in ("scalar_byte_loop", "scalar_word_counter", "scalar_loop_memory") else 20000,
                         frame_bytes=512 if program.family == "scalar_frame_address" else 256,
                     )
                     if result["unmapped_instructions"]:
@@ -3214,7 +3262,7 @@ def main():
                 "RA_SCALAR_CASES": "1" if scalar_cohort else "0",
                 "RA_MATRIX_CASES": "0" if scalar_cohort else "1", "RA_REAL_PROJECTS": "0",
                 "RA_VALUE_CASES": "1" if cohort in ("matrix_values", "byte_stores") else "0",
-                "RA_FAMILIES": "scalar_frame_address" if cohort == "frame_addresses" else "scalar_word_counter" if cohort == "word_counters" else "scalar_word_step" if cohort == "word_steps" else "scalar_loop_memory" if cohort == "loop_memory" else "scalar_byte_loop" if cohort == "byte_loops" else "scalar_byte_multiply" if cohort == "byte_multiply" else "scalar_byte_shift" if cohort == "byte_shifts" else "scalar_call_staging" if cohort == "call_staging" else "matrix_byte_store" if cohort == "byte_stores" else "matrix_divmod" if cohort == "divmod" else family_filter,
+                "RA_FAMILIES": "scalar_frame_address" if cohort == "frame_addresses" else "scalar_word_counter" if cohort == "word_counters" else "scalar_word_step" if cohort == "word_steps" else "scalar_loop_memory" if cohort == "loop_memory" else "scalar_byte_loop" if cohort == "byte_loops" else "scalar_byte_multiply" if cohort == "byte_multiply" else "scalar_byte_shift" if cohort == "byte_shifts" else "scalar_call_staging" if cohort == "call_staging" else "matrix_byte_store" if cohort == "byte_stores" else "matrix_divmod,matrix_shift" if cohort == "divmod" else family_filter,
                 "RA_COMPARISON_FORMS": "1" if cohort == "matrix_literals" else "2" if cohort == "matrix_memory" else "0",
                 "RA_EXECUTION_DIR": str(output / cohort), "RA_VERIFIER": harness,
             })

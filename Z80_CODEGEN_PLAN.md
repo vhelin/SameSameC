@@ -134,8 +134,8 @@ extraction.
   extend safe local promotion and make existing simplifications effective.
 - [x] **2p. Advancing-pointer reductions and scaled induction:** extend proven
   loop/address retention beyond copy/fill to sums and complex calculation loops.
-- [ ] **2q. Variable-count word shifts:** use guarded bounded shift loops
-  without truncating counts or changing the existing wide-count semantics.
+- [x] **2q. Variable-count word shifts:** use size-neutral bounded shift loops
+  for proven small counts, preserving the original full-width fallback.
 - [ ] **2r. Operand-aware word comparisons and branch selection:** avoid
   unnecessary materialization and choose branches by legality and actual cost.
 - [ ] **2s. Shared arithmetic bodies with an explicit size/speed policy:**
@@ -1788,14 +1788,15 @@ control and final qualification are retained in
 
 #### 2q. Variable-Count Word Shifts
 
-- [ ] Extend the existing word-shift helper's variable path; do not duplicate
+- [x] Extend the existing word-shift helper's variable path; do not duplicate
   the constant-count lowering completed in 2k. The current path repeatedly
   tests and decrements a 16-bit BC count.
-- [ ] For eligible unsigned word shifts, handle zero and counts at or beyond
-  the word width before using a bounded byte-count loop such as `DJNZ`.
-  Preserve the existing result for every 16-bit count; never merely truncate
-  the count, mask it to 15 or borrow a competitor's undefined-count behavior.
-- [ ] Select using complete setup and clobber costs, preserving live operand
+- [x] Under the selected no-code-growth policy, prove the complete count is
+  below 16 and handle zero before using a bounded byte-count loop such as
+  `DJNZ`. Unknown full-width counts retain the original loop. Preserve the
+  existing result for every 16-bit count; never merely truncate the count,
+  mask it to 15 or borrow a competitor's undefined-count behavior.
+- [x] Select using complete setup and clobber costs, preserving live operand
   locations and flags. Keep instruction selection Z80-local; do not assume
   `DJNZ` exists on SM83.
 
@@ -1804,6 +1805,74 @@ including setup, bytes and cycles. Use independent numerical oracles for both
 directions, word edge values and counts 0, 1, 7, 8, 15, 16, 17, 255, 256 and
 65535 plus seeded full-width cases. Cover byte/word count operands, retained
 registers, spills and unchanged constant/signed paths.
+
+#### 2q checkpoint (2026-10-20)
+
+Complete the **user-selected size-neutral-only policy**, not a generic
+full-width guard. The guarded prototype reduced shift/restore cycles but grew
+its kernel from 59 to 79 bytes; reject it and retain its measurements as a
+negative control. Unknown counts, including 16 through 65535, keep the original
+full BC test/decrement loop with no truncation or implicit mask.
+
+Reuse the existing word-shift helper's instruction body for constant, bounded
+variable and fallback paths. Select the bounded path only with RA enabled,
+without force-all-spill, for an unsigned word value and unsigned byte/word
+temporary count. Reuse existing temporary metadata to recognize a single-write
+AND with a nonnegative constant below 16, or the existing bounded-counter proof
+with maximum 15. Reject changed count definitions and unsupported producers;
+signed and widened-byte value paths remain unchanged.
+
+For proven counts, retain the full BC zero test, copy C to B and use `DJNZ`.
+The complete helper remains **8 bytes left / 11 bytes right**, matching the old
+variable loops. Zero costs the same; counts 1-15 save **20*n+6 T-states** inside
+the helper. Setup, the full AF/BC/HL clobber contract, DE/frame preservation,
+the public ABI and byte-shift lowering are unchanged. No production function,
+pass or cohort is added. Production C grows by **13 net lines**, replacing 34
+old lines rather than duplicating the shift body.
+
+Against qualified parent `4a8b776`, RA measurements are:
+
+| Workload | Kernel bytes before/after | Kernel T-states before/after | Observed whole-call frame bytes before/after |
+| --- | ---: | ---: | ---: |
+| Shift/restore | 59 / 59 | 9934 / 9934 | 22 / 22 |
+| Tile/CRC calculation | 1209 / 1209 | 2073424 / 2049176 | 128 / 128 |
+
+Cycles aggregate 17 shift/restore and 20 tile calls. Tile uses **1.17% fewer
+kernel T-states**. Caller costs remain 126 bytes and 12393/14460 aggregate
+T-states respectively. All 26 SSC RA/no-RA rows keep exactly the same kernel
+bytes and are non-regressing in all eight size/cycle/stack/frame metrics;
+all no-RA rows are unchanged. Whole used calculation ROMs remain **20625**
+and **31455** bytes; padded files remain 65536 bytes. In the real-routine
+corpus, heap cycles improve 28405701 to 28372061 and tile cycles 6072556 to
+6005276, without additional frame traffic.
+
+Expand the existing `matrix_shift` family from 2 to 32 variants and place it
+in the existing divmod cohort. Reuse the generator/oracle: cover byte/word
+counts, full-width edge/seeded counts, both directions, live-value pressure,
+narrowing, aliases, far frames, signed/widened controls, masks 31/255/65535
+and a count changed after masking. The focused 40 functions pass **2560 calls
+per reported mode** on the saved parent and final traced compiler, plus 640
+per release/ASan mode. Eight proven-shift functions additionally pass **2048
+calls per mode/version** over 256 cases each, with no cycle/frame regressions.
+Every focused function keeps its size. Unsupported shift-function bytes and
+the entire constant/signed-literal cohort match the parent; default, all-spill
+and no-RA focused ROMs are also byte-identical. The parent passes the numerical
+oracles but fails the new bounded-loop selection assertion.
+
+Final release/traced/ASan qualification passes all **175 fixtures without
+snapshot updates**, 16 immutable allocator cohorts and 28 real routines,
+90 matching traced/ASan allocator images and 300 condition images across the
+three builds, plus strict normal/traced C89 compilation. The full comparison
+passes **104 builds/1856 calls**, unchanged corpus fingerprints and all
+**78 external controls**, with **76 independent timing checks** and
+**12 mixed-version builds/268 guarded calls**. The separately documented
+escaped-before-initialization counter defect remains 42740 rather than 50814
+and is not counted as passing.
+
+Saved parent binaries, frozen source hashes, rejected prototypes and final
+qualification are retained in
+`C:\cygwin64\tmp\variable-word-shifts-20261020`. No push. Step 2r is next;
+2s remains pending before the initial SM83 backend.
 
 #### 2r. Operand-Aware Word Comparisons And Branch Selection
 
@@ -2037,8 +2106,8 @@ to this cross-compiler experiment.
    compiler source growth visible and remove superseded logic. Commit the batch
    locally with the validation summary; do not push.
 
-Steps 1, 2 and 2a-2p are complete. Current implementation target:
-**step 2q, variable-count word shifts**.
-Complete the bounded follow-ups 2q-2s in order, then start step 3, the initial
+Steps 1, 2 and 2a-2q are complete. Current implementation target:
+**step 2r, operand-aware word comparisons and branch selection**.
+Complete the bounded follow-ups 2r-2s in order, then start step 3, the initial
 SM83 backend. Keep the qualified Z80 behavior and shared core covered throughout;
 do not expand this finite sequence into every possible Z80 optimization.
