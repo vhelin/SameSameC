@@ -132,7 +132,7 @@ extraction.
   provably redundant frame work or preservation within the existing ABI.
 - [x] **2o. Arithmetic-produced locals and existing pure-expression folds:**
   extend safe local promotion and make existing simplifications effective.
-- [ ] **2p. Advancing-pointer reductions and scaled induction:** extend proven
+- [x] **2p. Advancing-pointer reductions and scaled induction:** extend proven
   loop/address retention beyond copy/fill to sums and complex calculation loops.
 - [ ] **2q. Variable-count word shifts:** use guarded bounded shift loops
   without truncating counts or changing the existing wide-count semantics.
@@ -1682,13 +1682,13 @@ No push. Step 2p is next; 2q-2s remain pending before the initial SM83 backend.
 
 #### 2p. Advancing-Pointer Reductions And Scaled Induction
 
-- [ ] Extend the existing bounded loop proofs and byte-loop emission beyond
+- [x] Extend the existing bounded loop proofs and byte-loop emission beyond
   copy/fill, starting with byte sums. Retain a profitable accumulator and
   advance a proven pointer instead of rebuilding `base + index` each iteration.
-- [ ] Then consider row pointers and constant-stride/scaled induction in
+- [x] Then consider row pointers and constant-stride/scaled induction in
   array, tile and stencil loops. Reuse existing address scheduling and target
   costs rather than introducing general loop promotion or a new IR.
-- [ ] Prove invariant bases, bounds, stride, alias behavior and address/value
+- [x] Prove invariant bases, bounds, stride, alias behavior and address/value
   wrap. Preserve source-order memory effects, observable final counters,
   zero/256 and full word counts, DE restoration and call/assembly barriers.
 
@@ -1699,6 +1699,92 @@ aliases, calls, exits and register-pressure fallbacks. Keep memory accesses
 valid; use bounded-exit or lowering probes for wide-count fallbacks rather
 than invalid buffer ranges. Price full setup, preservation and frame footprint,
 not only the inner loop.
+
+#### Step 2p Checkpoint (2026-10-20)
+
+Extend the existing `_generate_asm_byte_loop_z80` copy/fill emitter for two
+bounded unsigned-byte reductions. For a signed or unsigned word-local sum,
+retain the accumulator in HL and advance the source pointer in IY. For a
+fixed-address byte-memory sum, retain the source pointer in HL and the target
+address in IY, but **read and write the target every iteration**, in original
+TAC order. This preserves aliases where a target write changes a later source
+read; do not hoist an aliased target value out of the loop.
+
+Reuse `_is_z80_bounded_counter` for an isolated named-counter loop as well as
+its existing temporary-counter case. Prove the initialization, one `+1` update,
+matching bound/backedge/exit and absence of escaped counter addresses or
+unsupported incoming branches. This enables pathfinding's reused named `i`
+without changing whole-function local promotion. Named support is restricted
+to the whole-loop assignment entry; standalone counter narrowing retains its
+temporary-only guards. Publish the final named counter after the loop.
+
+Reuse existing location/address helpers, displacement/count reloads and escape/
+liveness checks. Dynamic zero counts skip setup; full-width counts use BC;
+constant counts 1-256 use B/`DJNZ`, including B=0 for 256. The new reductions
+need no pushes, scratch slots or additional SP displacement, and leave DE as
+the frame pointer. Reject escaped/changing invariants, calls/assembly, early
+exits, extra live temporaries and unsupported operations. Signed-byte widening,
+word-array and stride-two cases remain on their original paths.
+
+Considered row/scaled induction in array, tile and stencil routines. Their
+multiple dependent accesses, changing cursors and calls do not fit this bounded
+straight-line emitter. Keep those cases conservative rather than adding another
+loop optimizer; the fixed-target pathfinding reduction supplies the required
+complex-workload win. No production function is added and no new pass or cohort
+is introduced. Production C grows by **103 net lines**, replacing 49 old lines.
+Allocator/clobber policy, arithmetic helper bodies and the public ABI are
+unchanged.
+
+Against qualified parent `bb003e3`, RA measurements are:
+
+| Workload | Kernel bytes before/after | Kernel T-states before/after | Observed whole-call frame bytes before/after |
+| --- | ---: | ---: | ---: |
+| Byte sum | 102 / 99 | 240653 / 76126 | 24 / 24 |
+| Pathfinding | 1439 / 1385 | 6235713 / 5661993 | 187 / 187 |
+
+Cycles aggregate 17 byte-sum and 20 pathfinding calls. Byte sum uses 68.4% fewer
+kernel T-states and pathfinding 9.2% fewer. Caller costs are unchanged: 126
+bytes, with 12291/14460 aggregate caller T-states respectively. All 26 SSC
+RA/no-RA rows are non-regressing in all eight size/cycle/stack/frame metrics;
+all no-RA rows are unchanged. Reject the first DE-accumulator prototype's
+103-byte byte sum despite its speed win; the final IY-source form satisfies
+both size and speed gates. Whole used calculation ROMs are **20625 / 20625**
+and **31555 / 31455** bytes; padded files remain 65536 bytes. The separate
+67-case real sorting check also improves from 6333013 to 6190437 T-states
+with less frame traffic.
+
+Add 21 variants to the existing `scalar_loop_memory` generator/oracle, not a
+new generator or cohort. The focused 46 functions pass **11776 calls per
+reported mode/build**, including complete buffers/guards and SP/DE restoration.
+Cover zero/one/255/256/257/512 counts, valid pointer/arithmetic wraps, signed
+word accumulators, mutable target aliases, reused/final counters, escaped
+counter/accumulator/bound, calls, exits and pressure fallbacks. Check 65534/
+65535 through bounded early-exit fallbacks rather than invalid huge buffers.
+The saved parent passes the same numerical oracles but fails the new
+advancing-sum selection.
+
+The existing copy/fill case with a final counter stored after the loop now
+qualifies too: 114 to 92 bytes. Update its selection expectation, not its
+numerical oracle. All 46 copy/fill-cohort functions are non-regressing against
+the parent over 2944 calls per reported mode; 384 additional parent/current
+calls confirm that this fill's observed whole-frame footprint stays 14 bytes
+with RA, with no SP/access-extent regression.
+
+Final release/traced/ASan qualification passes all **175 fixtures without
+snapshot updates**, 16 immutable allocator cohorts and 28 real routines,
+90 allocator and 300 condition ROM identities, 26 combined condition/comparison
+units plus 19 optimized comparison units per build, and strict normal/traced
+C89 compilation. The full comparison passes **104 builds/1856 calls** with
+unchanged corpus fingerprints and all **78 external controls**. There are
+**88 independent timing checks** and **12 mixed-version builds/240 guarded
+calls**, covering both old/new directions and additional 257/511/512-byte sums.
+The separately documented escaped-before-initialization counter defect remains
+42740 rather than 50814 and is not counted as passing.
+
+Saved parent binaries, frozen source hashes, the rejected size-regression
+control and final qualification are retained in
+`C:\cygwin64\tmp\pointer-reductions-20261020`. No push. Step 2q is next;
+2r-2s remain pending before the initial SM83 backend.
 
 #### 2q. Variable-Count Word Shifts
 
@@ -1951,8 +2037,8 @@ to this cross-compiler experiment.
    compiler source growth visible and remove superseded logic. Commit the batch
    locally with the validation summary; do not push.
 
-Steps 1, 2 and 2a-2o are complete. Current implementation target:
-**step 2p, advancing-pointer reductions and scaled induction**.
-Complete the bounded follow-ups 2p-2s in order, then start step 3, the initial
+Steps 1, 2 and 2a-2p are complete. Current implementation target:
+**step 2q, variable-count word shifts**.
+Complete the bounded follow-ups 2q-2s in order, then start step 3, the initial
 SM83 backend. Keep the qualified Z80 behavior and shared core covered throughout;
 do not expand this finite sequence into every possible Z80 optimization.
