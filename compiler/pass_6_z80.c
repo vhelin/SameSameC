@@ -1403,6 +1403,7 @@ static void _shift_b_by_a(struct z80_location *count_location, int op, int word_
 
 static void _multiply_h_and_e_to_hl(FILE *file_out) {
 
+  fprintf(file_out, "      ; ssc_arithmetic_begin 0 %d %d\n", g_bank, g_slot);
   /* from http://map.grauw.nl/articles/mult_div_shifts.php */
   fprintf(file_out, "      ; multiply H * E -> HL\n");
   fprintf(file_out, "      LD  D,0\n");
@@ -1418,11 +1419,13 @@ static void _multiply_h_and_e_to_hl(FILE *file_out) {
   _add_label("+", file_out, YES);
 
   fprintf(file_out, "      DJNZ -\n");
+  fprintf(file_out, "      ; ssc_arithmetic_end\n");
 }
 
 
 static void _multiply_bc_and_de_to_hl(FILE *file_out) {
 
+  fprintf(file_out, "      ; ssc_arithmetic_begin 1 %d %d\n", g_bank, g_slot);
   fprintf(file_out, "      ; multiply BC * DE -> HL\n");
 
   /* Shift the multiplier through A:C, leaving B available for DJNZ. */
@@ -1441,11 +1444,13 @@ static void _multiply_bc_and_de_to_hl(FILE *file_out) {
   _add_label("+", file_out, YES);
 
   fprintf(file_out, "      DJNZ -\n");
+  fprintf(file_out, "      ; ssc_arithmetic_end\n");
 }
 
 
 static void _divide_bc_by_de_to_ca_hl(FILE *file_out) {
 
+  fprintf(file_out, "      ; ssc_arithmetic_begin 2 %d %d\n", g_bank, g_slot);
   /* from http://map.grauw.nl/articles/mult_div_shifts.php */
   fprintf(file_out, "      ; divide BC / DE -> CA (result) & HL (remainder)\n");
   fprintf(file_out, "      LD  HL,0\n");
@@ -1483,11 +1488,13 @@ static void _divide_bc_by_de_to_ca_hl(FILE *file_out) {
   fprintf(file_out, "      DJNZ -\n");
   fprintf(file_out, "      RLA\n");
   fprintf(file_out, "      CPL\n");
+  fprintf(file_out, "      ; ssc_arithmetic_end\n");
 }
 
 
 static void _divide_h_by_e_to_a_b(FILE *file_out) {
 
+  fprintf(file_out, "      ; ssc_arithmetic_begin 3 %d %d\n", g_bank, g_slot);
   /* from http://map.grauw.nl/articles/mult_div_shifts.php */
   fprintf(file_out, "      ; divide H / E -> A (result) & B (remainder)\n");
   fprintf(file_out, "      XOR A\n");
@@ -1508,6 +1515,7 @@ static void _divide_h_by_e_to_a_b(FILE *file_out) {
   fprintf(file_out, "      LD  A,H\n");
   fprintf(file_out, "      RLA\n");
   fprintf(file_out, "      CPL\n");
+  fprintf(file_out, "      ; ssc_arithmetic_end\n");
 }
 
 

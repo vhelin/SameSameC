@@ -942,7 +942,7 @@ def read_image(directory):
     return Image(rom, symbols, banks, transfers, static_metrics)
 
 
-def compile_generated(output, compiler, linker, programs, source):
+def compile_generated(output, compiler, linker, programs, source, linker_flags=()):
     compiled = {}
     for mode, flags in MODES:
         directory = output / mode
@@ -951,7 +951,7 @@ def compile_generated(output, compiler, linker, programs, source):
         start = time.perf_counter()
         run(compiler, ["-mz80", "-rs", "3", *flags, "-o", "main.asm", "main.ssc"], directory, "compiler.log")
         compile_seconds = time.perf_counter() - start
-        run(linker, ["-lsms", "-v", "-o", "linked.sms", "main.asm"], directory, "linker.log")
+        run(linker, ["-lsms", "-v", *linker_flags, "-o", "linked.sms", "main.asm"], directory, "linker.log")
         image = read_image(directory)
         for name in ["ra_buffer", *(program.name for program in programs)]:
             if name not in image.symbols:

@@ -40,6 +40,29 @@ class ComparisonTests(unittest.TestCase):
                 self.assertEqual(len(issues), 1)
                 self.assertTrue(issues[0]["fatal"])
 
+    def test_shared_arithmetic_policy_is_separate_and_bounded(self):
+        self.assertEqual(set(self.reference["modes"]), set(benchmark.DEFAULT_MODES))
+        reference = dict(routine="probe", mode="ssc-ra", code_bytes=100, wrapper_bytes=126, total_kernel_cycles=270,
+                         total_wrapper_cycles=729, max_stack_bytes=20, max_stack_access_bytes=20,
+                         max_below_sp_bytes=8, max_frame_footprint_bytes=22)
+        result = dict(reference, mode="ssc-ra-shared", code_bytes=90, total_kernel_cycles=297,
+                      max_stack_bytes=22, max_stack_access_bytes=22, max_frame_footprint_bytes=24)
+        self.assertEqual(benchmark.compare_result(result, reference), [])
+        for metric, invalid in (("code_bytes", 101), ("total_kernel_cycles", 298),
+                                ("total_kernel_cycles", 269), ("wrapper_bytes", 125),
+                                ("total_wrapper_cycles", 730), ("max_stack_bytes", 23),
+                                ("max_stack_access_bytes", 23), ("max_frame_footprint_bytes", 25)):
+            with self.subTest(metric=metric, invalid=invalid):
+                issues = benchmark.compare_result(dict(result, **{metric: invalid}), reference, True)
+                self.assertEqual(len(issues), 1)
+                self.assertTrue(issues[0]["fatal"])
+
+    def test_shared_arithmetic_requires_ordinary_paired_mode(self):
+        with patch("sys.argv", ["compare", "--modes", "ssc-ra-shared"]), patch("sys.stderr", new=io.StringIO()):
+            with self.assertRaises(SystemExit) as error:
+                benchmark.main()
+            self.assertEqual(error.exception.code, 2)
+
     def test_competitor_changes_are_not_silent(self):
         reference = next(row for row in self.reference["results"] if row["mode"] == "sdcc-size")
         result = dict(reference, code_bytes=reference["code_bytes"] - 1)

@@ -6,12 +6,161 @@ import re
 import subprocess
 import tempfile
 import unittest
+from unittest.mock import patch
 
-from check_register_allocator import Program, compile_generated
+from check_register_allocator import (
+    Program, buffer_symbol, compile_generated, generate_programs, generated_oracle, mapped_routine_image, read_image,
+)
 from ra_cpu import execute
 
 
 class BranchConditionsTests(unittest.TestCase):
+    def test_opt_in_arithmetic_sharing(self):
+        compiler = os.environ.get("SAMESAMECC") or "samesamecc"
+        linker = os.environ.get("SAMESAMECL") or "samesamecl"
+        calls = 0
+        for family, matrix in (("matrix_divmod,matrix_variable_multiply", True), ("scalar_byte_multiply", False)):
+            with patch.dict(os.environ, RA_FAMILIES=family, RA_SCALAR_CASES="0" if matrix else "1",
+                            RA_MATRIX_CASES="1" if matrix else "0", RA_VALUE_CASES="0"):
+                programs, _, source = generate_programs(0)
+            directory = self.output / f"arithmetic-{matrix}"
+            inline = compile_generated(directory / "inline", compiler, linker, programs, source)
+            shared = compile_generated(directory / "shared", compiler, linker, programs, source,
+                                       linker_flags=("-share-arithmetic",))
+            self.assertTrue(programs)
+            for mode, image in shared.items():
+                self.assertTrue(any(name.startswith("ssc.arithmetic_") for name in image.symbols))
+                self.assertLess(image.staticMetrics["rom_used_bytes"], inline[mode].staticMetrics["rom_used_bytes"])
+            for program in programs:
+                for seed in range(64):
+                    arguments, buffer, expected_buffer, expected, ports, pointer = generated_oracle(program, seed, 0, {})
+                    self.assertFalse(pointer)
+                    self.assertFalse(program.pointerParameters)
+                    for mode in shared:
+                        results = []
+                        for image in (inline[mode], shared[mode]):
+                            result = execute(image.rom, image.symbols[program.name], arguments, program.widths,
+                                             buffer, image.symbols[buffer_symbol(program)], program.returnWidth,
+                                             image.transfers)
+                            self.assertEqual((result["value"], result["buffer"], result["port_writes"]),
+                                             (expected, expected_buffer, ports), (program.name, seed, mode))
+                            self.assertEqual(result["unmapped_instructions"], 0)
+                            calls += 1
+                            results.append(result)
+                        extra = results[1]["cycles"] - results[0]["cycles"]
+                        self.assertGreaterEqual(extra, 0)
+                        self.assertEqual(extra % 27, 0)
+                        for traffic in ("frame_reads", "frame_writes"):
+                            self.assertEqual(results[1][traffic] - results[0][traffic], 2 * (extra // 27))
+        print(f"Shared arithmetic oracle executions: {calls}", flush=True)
+
+    def test_shared_arithmetic_banks_and_recursive_calls(self):
+        compiler = os.environ.get("SAMESAMECC") or "samesamecc"
+        linker = os.environ.get("SAMESAMECL") or "samesamecl"
+        sources = [
+            (0, 0, "u8 ra_buffer[128];\n"
+             "u16 arithmetic_other(u16 a, u16 b);\n"
+             "u16 arithmetic_root(u16 a, u16 b) { return a*b+arithmetic_other(a,b); }\n"
+             "u16 arithmetic_recursive(u8 depth, u16 a, u16 b) { "
+             "if (depth) { return arithmetic_recursive(depth-1,a,b)+a*b; } return a*b; }\n"
+             "void main(void) {}\n"),
+            (0, 0, "u16 arithmetic_other(u16 a, u16 b) { return a*b; }\n"),
+            (1, 1, "u16 arithmetic_one(u16 a, u16 b) { return a*b; }\n"
+             "u16 arithmetic_nested(u16 a, u16 b) { return a*b+arithmetic_one(a,b); }\n"),
+            (3, 2, "u16 arithmetic_nested(u16 a, u16 b);\n"
+             "u16 arithmetic_root(u16 a, u16 b);\n"
+             "u16 arithmetic_three(u16 a, u16 b) { return a*b; }\n"
+             "u16 arithmetic_banked(u16 a, u16 b) { "
+             "return a*b+arithmetic_three(a,b)+arithmetic_nested(a,b)+arithmetic_root(a,b); }\n"),
+        ]
+        for flags in (("-no-ra",), ("-ra-all-spill",), ("-ra",)):
+            directory = self.output / f"arithmetic-banks-{flags[0][1:]}"
+            directory.mkdir()
+            for index, (bank, slot, source) in enumerate(sources):
+                (directory / f"unit{index}.ssc").write_text(source)
+                command = [compiler, "-mz80", "-rs", "3", "-b", str(bank), "-s", str(slot), *flags,
+                           "-o", f"unit{index}.asm", f"unit{index}.ssc"]
+                completed = subprocess.run(command, cwd=directory, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+                (directory / f"unit{index}.compiler.log").write_bytes(completed.stdout)
+                self.assertEqual(completed.returncode, 0, completed.stdout.decode(errors="replace"))
+            images = []
+            for profile in ("inline", "shared"):
+                output = directory / profile
+                output.mkdir()
+                completed = subprocess.run(
+                    [linker, "-lsms", "-ro", "4", "-v", *(["-share-arithmetic"] if profile == "shared" else []),
+                     "-o", "linked.sms", *(str(directory / f"unit{index}.asm") for index in range(len(sources)))],
+                    cwd=output, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                )
+                (output / "linker.log").write_bytes(completed.stdout)
+                self.assertEqual(completed.returncode, 0, completed.stdout.decode(errors="replace"))
+                image = read_image(output)
+                helpers = {name: bank for name, bank in image.banks.items() if name.startswith("ssc.arithmetic_")}
+                if profile == "shared":
+                    self.assertEqual(sorted(helpers.values()), [0, 1, 3])
+                    self.assertIn("bank_003_slot_2", " ".join(helpers))
+                else:
+                    self.assertFalse(helpers)
+                mapped = mapped_routine_image("arithmetic", "arithmetic_banked", flags[0], image)
+                mapped.transfers.update({key & 65535: value for key, value in image.transfers.items() if key >> 16 == 1})
+                images.append(mapped)
+            self.assertLess(images[1].staticMetrics["rom_used_bytes"], images[0].staticMetrics["rom_used_bytes"])
+            for a in (0, 1, 127, 128, 255, 256, 32768, 65535):
+                for b in (0, 1, 255, 256, 32767, 32768, 65535):
+                    for name, arguments, widths, expected in (
+                        ("arithmetic_banked", [a, b], [2, 2], 6 * a * b),
+                        ("arithmetic_recursive", [3, a, b], [1, 2, 2], 4 * a * b),
+                    ):
+                        results = [
+                            execute(image.rom, image.symbols[name], arguments, widths, bytearray(128),
+                                    image.symbols["ra_buffer"], 2, image.transfers)
+                            for image in images
+                        ]
+                        for result in results:
+                            self.assertEqual(result["value"], expected & 65535, (name, arguments, flags))
+                            self.assertEqual(result["buffer"], bytearray(128))
+                            self.assertEqual(result["unmapped_instructions"], 0)
+                        extra = results[1]["cycles"] - results[0]["cycles"]
+                        self.assertGreater(extra, 0)
+                        self.assertEqual(extra % 27, 0)
+
+    def test_shared_arithmetic_single_uses_and_invalid_markers(self):
+        compiler = os.environ.get("SAMESAMECC") or "samesamecc"
+        linker = os.environ.get("SAMESAMECL") or "samesamecl"
+        programs = [
+            Program(f"arithmetic_single_{index}", "arithmetic", index, 0, [width, width], 2, [],
+                    f"u16 arithmetic_single_{index}({kind} a, {kind} b) {{ return a{op}b; }}")
+            for index, (kind, width, op) in enumerate((("u8", 1, "*"), ("u16", 2, "*"),
+                                                      ("u16", 2, "/"), ("u8", 1, "/")))
+        ]
+        source = "u8 ra_buffer[128];\n" + "\n".join(program.source for program in programs) + "\nvoid main(void) {}\n"
+        directory = self.output / "arithmetic-single"
+        inline = compile_generated(directory / "inline", compiler, linker, programs, source)
+        shared = compile_generated(directory / "shared", compiler, linker, programs, source,
+                                   linker_flags=("-share-arithmetic",))
+        for mode, image in shared.items():
+            self.assertEqual(image.rom, inline[mode].rom)
+            self.assertFalse(any(name.startswith("ssc.arithmetic_") for name in image.symbols))
+        assembly = (directory / "shared" / "ra" / "main.asm").read_text()
+        self.assertEqual(len(re.findall("ssc_arithmetic_begin", assembly)), 4)
+        for index, malformed in enumerate((
+            assembly.replace("ssc_arithmetic_begin 0 0 0", "ssc_arithmetic_begin x 0 0", 1),
+            assembly.replace("ssc_arithmetic_begin 0 0 0", "ssc_arithmetic_begin 4 0 0", 1),
+            assembly.replace("ssc_arithmetic_begin 0 0 0", "ssc_arithmetic_begin 0 256 0", 1),
+            assembly.replace("ssc_arithmetic_begin 0 0 0", "ssc_arithmetic_begin 0 0 4", 1),
+            assembly.replace("ssc_arithmetic_end", "ssc_arithmetic_end trailing", 1),
+            assembly.replace("      ; ssc_arithmetic_end\n", "", 1),
+        )):
+            output = directory / f"invalid-{index}"
+            output.mkdir()
+            self.assertNotEqual(malformed, assembly)
+            (output / "main.asm").write_text(malformed)
+            completed = subprocess.run([linker, "-lsms", "-share-arithmetic", "-o", "linked.sms", "main.asm"],
+                                       cwd=output, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+            (output / "linker.log").write_bytes(completed.stdout)
+            self.assertNotEqual(completed.returncode, 0)
+            self.assertIn(b"Invalid arithmetic body", completed.stdout)
+
     @classmethod
     def setUpClass(cls):
         cls.output = Path(os.environ.get("SSC_CONDITIONS_DIR") or tempfile.mkdtemp(prefix="ssc-conditions-"))

@@ -29,6 +29,7 @@ char g_samesamec_version[] = "0.8";
 
 int g_verbose = NO, g_quiet = NO, g_target = TARGET_NONE, g_final_name_index = -1;
 int g_rom_banks = 1;
+int g_share_arithmetic = NO;
 char g_asm_file_name[MAX_NAME_LENGTH+1], g_object_file_name[MAX_NAME_LENGTH+1], g_link_file_name[MAX_NAME_LENGTH+1];
 
 
@@ -78,7 +79,8 @@ int main(int argc, char *argv[]) {
     printf("Options:\n");
     printf("-q          Quiet\n");
     printf("-v          Verbose messages\n");
-    printf("-ro <BANKS> ROM banks\n\n");
+    printf("-ro <BANKS> ROM banks\n");
+    printf("-share-arithmetic Share repeated bank-local arithmetic (smaller, slower)\n\n");
     printf("Achitectures:\n");
     printf("-lsms    Link a SMS ROM\n\n");
     printf("EXAMPLE: %s -lsms -v -o game.rom main.asm menu.asm music.asm\n\n", argv[0]);
@@ -216,6 +218,10 @@ int parse_flags(char **flags, int flagc) {
     }
     else if (!strcmp(flags[count], "-q")) {
       g_quiet = YES;
+      continue;
+    }
+    else if (!strcmp(flags[count], "-share-arithmetic")) {
+      g_share_arithmetic = YES;
       continue;
     }
     else if (!strcmp(flags[count], "-lsms")) {

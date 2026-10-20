@@ -138,7 +138,7 @@ extraction.
   for proven small counts, preserving the original full-width fallback.
 - [x] **2r. Operand-aware word comparisons and branch selection:** avoid
   unnecessary materialization and choose branches by legality and actual cost.
-- [ ] **2s. Shared arithmetic bodies with an explicit size/speed policy:**
+- [x] **2s. Shared arithmetic bodies with an explicit size/speed policy:**
   price bank-local helper sharing against inline code without hidden tradeoffs.
 - [ ] **3. Initial SM83 backend:** establish correct Game Boy code generation,
   target-specific addressing/spills/calls and execution tests. Use actual
@@ -1979,14 +1979,14 @@ Commit locally without pushing. Step 2s is next before the initial SM83 backend.
 
 #### 2s. Shared Arithmetic Bodies With An Explicit Size/Speed Policy
 
-- [ ] Measure repeated inline multiply/divide/modulo bodies in standalone and
+- [x] Measure repeated inline multiply/divide/modulo bodies in standalone and
   combined programs; the array workload currently contains five such bodies.
   Reuse the existing arithmetic-body emitters and linker helper-generation
   patterns before adding runtime entry points or another abstraction.
-- [ ] Emit shared bank-local helpers only where their complete cost is
+- [x] Emit shared bank-local helpers only where their complete cost is
   justified. Include setup, `CALL`/`RET`, result moves, DE preservation,
   clobbers, stack footprint and bank placement; count shared code once.
-- [ ] Define and document the size/speed choice before changing behavior.
+- [x] Define and document the size/speed choice before changing behavior.
   Keep inlining where faster or sharing does not pay. Do not silently slow the
   existing default, replace the immutable comparison modes, or change the
   public C ABI. Add distinct benchmark modes if a new profile is introduced.
@@ -1996,6 +1996,123 @@ call frequency, break-even points and any explicitly accepted slowdown. Check
 single/repeated uses, byte/word and signed boundaries, quotient/remainder reuse,
 defined zero-divisor behavior, nested/banked calls and full SP/DE restoration.
 Retain the existing good constant arithmetic paths and full TAC contracts.
+
+**Step 2s checkpoint: approved opt-in arithmetic sharing**
+
+The measured prototype saved 68 bytes in the array kernel but added 74,520
+T-states and two stack bytes. The user explicitly selected a separate opt-in
+size profile rather than slowing the existing default. The linker now accepts
+`-share-arithmetic`, which must precede `-o`:
+
+```text
+samesamecl -lsms -share-arithmetic -o game.sms main.asm
+```
+
+Ordinary linking remains inline. The compiler only adds begin/end comments to
+the four existing generic arithmetic emitters; removing those comments restores
+the parent emitter source exactly. The existing combined-assembly writer groups
+byte-identical marked bodies by kind, ROM bank and slot, leaving single uses,
+RAM bodies and unmarked/unsupported code inline. It emits one leaf helper per
+repeated group and replaces each body with `CALL`, retaining all operand setup,
+result moves and outer DE preservation. No new production function or second
+arithmetic implementation was added: production C grows by **121 net lines**.
+
+For a body of B bytes used N times, complete body/helper storage changes from
+`N*B` to `3*N+B+1`, including every CALL and the helper RET. The four bodies are
+11/15/35/16 bytes (byte multiply, word multiply, word divide/modulo, byte
+divide/modulo); their helpers are 12/16/36/17 bytes. **Two uses break even
+profitably for all four**, so single uses remain inline. Every actual helper
+invocation costs exactly **27 additional T-states** and **two stack bytes**;
+there is no hidden setup saving or new register-argument ABI.
+
+Helpers are emitted in the caller's existing bank/slot, without bank switching.
+Their dotted private names cannot collide with C identifiers. Leading
+underscores were rejected during qualification because WLA makes such labels
+section-local. Existing constant-specialized paths, adjacent DIV/MOD remainder
+reuse, TAC clobbers, aliases and DE/IX/IY/frame contracts remain unchanged.
+Signed boundary controls preserve the parent's existing divider bit-pattern
+semantics, including its defined zero-divisor behavior; this is not a new
+signed-division implementation.
+
+The benchmark retains its original eight default modes and immutable gates.
+Opt-in comparisons require their ordinary partner in the same invocation:
+
+```text
+--modes ssc-ra ssc-no-ra ssc-ra-shared ssc-no-ra-shared
+```
+
+Shared-mode gates require non-growing kernel/dependency bytes, identical caller
+bytes/cycles, nonnegative cycle deltas divisible by 27, and at most two extra
+stack/frame bytes. The report includes helper bytes, static call sites and
+dynamic calls. No ordinary regression allowance was relaxed.
+
+Qualified standalone RA results over the unchanged guarded corpus:
+
+| Kernel | Inline/shared bytes | Inline/shared kernel T-states | Inline/shared frame bytes | Helpers / static sites / actual calls |
+| --- | ---: | ---: | ---: | ---: |
+| Array | 1605 / 1537 | 6241578 / 6316098 | 88 / 90 | 2 / 5 / 2760 |
+| Stencil | 1691 / 1655 | 4256974 / 4286782 | 120 / 122 | 2 / 4 / 1104 |
+| Pathfinding | 1384 / 1376 | 5647913 / 5685713 | 187 / 189 | 1 / 2 / 1400 |
+
+Other RA rows and all caller costs are unchanged. All **104 ordinary comparison
+builds/1856 calls**, their eight cost metrics and the **78 external controls**
+remain identical to parent `4211174`.
+
+The combined finite 13-kernel program reuses the existing functions, wrappers
+and 232-case corpus in one bank. Complete used ROM counts helpers, callers,
+data and system overhead once:
+
+| Mode | Inline/shared used ROM | Inline/shared kernel T-states | Inline/shared peak frame |
+| --- | ---: | ---: | ---: |
+| RA | 8579 / 8443 | 30622577 / 30767540 | 187 / 189 |
+| No RA | 11099 / 10963 | 52004913 / 52149876 | 193 / 195 |
+
+Each mode saves **136 bytes**, with two helpers and nine static sites.
+Instrumented execution observes **5369 actual calls**, accounting exactly for
+the **144963 extra T-states** and two additional stack reads/writes per call.
+Caller totals remain 165891 T-states (RA) and 168603 (no RA). This is a bounded
+calculation corpus, not a cycle measurement of the projects' infinite UI loops.
+
+Complete real-project ROM builds also improve:
+
+| Project | Inline/shared used ROM | Saving | Helpers / static sites |
+| --- | ---: | ---: | ---: |
+| calculations-1 | 20607 / 20587 | 20 bytes | 1 / 3 |
+| calculations-2 | 31439 / 31171 | 268 bytes | 6 / 22 |
+
+The latter helpers are bank-local across banks 0, 1, 2 and 3; both default and
+shared full-project images agree between release and traced builds.
+
+Release, traced and ASan condition/policy and paired-profile suites pass.
+New persistent arithmetic tests reuse existing generators/oracles for **64000
+numerical executions per build**; banked cross-file, nested and recursive
+controls add **672 guarded calls**. Five allocator modes retain single-use ROM
+identity, and six malformed-marker cases must fail explicitly. The isolated
+fixture suite passes **175/175**, normal/traced strict C89 checks pass, and
+**372 condition images** agree across builds, with the original 300 still
+parent-identical. Traced/ASan agree on **90 allocator images**, including the
+16 immutable-verifier cohorts and 28 real-routine controls.
+
+Additional qualification covers **32 mixed-version builds/592 guarded calls**
+in both caller/callee directions, **15 signed-word builds/15210 calls**, and
+the combined program's **4 builds/928 calls**. There are **276 final independent
+timing checks**, not just emulator cycle estimates. All **62 frozen source
+hashes** match the qualified files. The known escaped-before-initialization
+counter defect remains 42740 rather than 50814 on parent and current compiler;
+it is not counted as passing.
+
+Qualification crossed midnight. Ten allocator project images and two whole-ROM
+controls differed from the preserved parent only at SDSC build-day byte
+`0x7fe6` and derived SMS checksum byte `0x7ffa`. Reassembling the parent's
+unchanged combined assembly with the pinned tools on the same day reproduced
+each complete default ROM exactly. Original parent artifacts remain untouched;
+no bytes were masked and no parent baseline was refreshed.
+
+Sources, parent binaries, rejected prototypes, same-day controls, guarded
+results and the consolidated qualification are retained in
+`C:\cygwin64\tmp\arithmetic-sharing-20261020`.
+Commit locally without pushing. The finite Z80 sequence through 2s is complete;
+the next implementation target is the initial SM83 backend.
 
 Register arguments/results remain a separate explicit, versioned or opt-in ABI
 investigation under priority 4 below, not a sixth mandatory pre-SM83 step.
@@ -2189,8 +2306,7 @@ to this cross-compiler experiment.
    compiler source growth visible and remove superseded logic. Commit the batch
    locally with the validation summary; do not push.
 
-Steps 1, 2 and 2a-2r are complete. Current implementation target:
-**step 2s, shared arithmetic bodies with an explicit size/speed policy**.
-Complete bounded follow-up 2s, then start step 3, the initial
-SM83 backend. Keep the qualified Z80 behavior and shared core covered throughout;
+Steps 1, 2 and 2a-2s are complete. Current implementation target:
+**step 3, the initial SM83 backend**.
+Keep the qualified Z80 behavior and shared core covered throughout;
 do not expand this finite sequence into every possible Z80 optimization.
