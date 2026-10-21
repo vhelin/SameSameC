@@ -53,6 +53,8 @@ MODES = {
 }
 DEFAULT_MODES = tuple(MODES)
 MODES.update({"ssc-ra-shared": MODES["ssc-ra"], "ssc-no-ra-shared": MODES["ssc-no-ra"]})
+MODES["ssc-ra-regcalls"] = ("ssc", ["-ra", "-z80-regcalls"])
+MODES["ssc-ra-regcalls-shared"] = MODES["ssc-ra-regcalls"]
 FLAGS = {
     "ssc": ["-q", "-mz80", "-rs", "3"],
     "sdcc": ["--max-allocs-per-node", "200000", "--no-std-crt0", "--code-loc", "0x100", "--data-loc", "0xc000"],
@@ -345,9 +347,10 @@ def execute(memory_image, symbols, name, parameters, initial_buffer, seed, ticks
     while machine.pc != sentinel:
         if counters["instructions"] >= 2000000:
             raise RuntimeError("Instruction limit exceeded")
-        if machine.pc == symbols[name] and not kernel_done and not kernel_active:
+        register_entry = machine.pc == symbols.get(f"ssc.regcall.{name}")
+        if (machine.pc == symbols[name] or register_entry) and not kernel_done and not kernel_active:
             kernel_active = True
-            kernel_sp = machine.de - 1 if "mainmain" in symbols else machine.sp
+            kernel_sp = machine.de - 1 if "mainmain" in symbols and not register_entry else machine.sp
             resume = memory[kernel_sp] + 256 * memory[(kernel_sp + 1) & 65535]
         counters["instructions"] += 1
         if kernel_active:
@@ -390,8 +393,16 @@ def compare_result(result, reference, allow_competitor_drift=False):
     candidate = result["mode"].startswith("ssc-")
     shared = result["mode"].endswith("-shared")
     metrics = (*METRICS, "max_stack_access_bytes", "max_below_sp_bytes", "max_frame_footprint_bytes") if shared else METRICS
+    if result["mode"] == "ssc-ra-regcalls":
+        metrics = ("complete_code_bytes", "complete_cycles", "max_stack_bytes", "max_stack_access_bytes",
+                   "max_below_sp_bytes", "max_frame_footprint_bytes")
     for metric in metrics:
-        current, previous = result[metric], reference[metric]
+        if metric == "complete_code_bytes":
+            current, previous = (row["code_bytes"] + row["wrapper_bytes"] for row in (result, reference))
+        elif metric == "complete_cycles":
+            current, previous = (row["total_kernel_cycles"] + row["total_wrapper_cycles"] for row in (result, reference))
+        else:
+            current, previous = result[metric], reference[metric]
         if shared:
             invalid = (
                 current < previous or (current - previous) % 27 != 0 if metric == "total_kernel_cycles" else
@@ -412,7 +423,7 @@ def main():
     parser.add_argument("--output-dir", type=Path, help="New or empty artifact directory; default: system temporary directory")
     parser.add_argument("--names", choices=ROUTINES, nargs="+", default=list(ROUTINES))
     parser.add_argument("--modes", choices=MODES, nargs="+", default=list(DEFAULT_MODES),
-                        help="Original eight modes by default; shared modes require their ordinary paired mode")
+                        help="Original eight modes by default; shared and register-call modes require their ordinary paired modes")
     parser.add_argument("--allow-competitor-drift", action="store_true",
                         help="Record, but do not fail on, changed external tool versions/results; never relax SameSameC gates")
     args = parser.parse_args()
@@ -421,6 +432,8 @@ def main():
     shared_requested = any(mode.endswith("-shared") for mode in args.modes)
     if any(mode.endswith("-shared") and mode.removesuffix("-shared") not in args.modes for mode in args.modes):
         parser.error("Each shared arithmetic mode requires its ordinary paired mode")
+    if "ssc-ra-regcalls" in args.modes and "ssc-ra" not in args.modes:
+        parser.error("Register calls require the ordinary ssc-ra paired mode")
     output = args.output_dir.resolve() if args.output_dir else Path(tempfile.mkdtemp(prefix="ssc-z80-compare-"))
     output.mkdir(parents=True, exist_ok=True)
     if any(output.iterdir()):
@@ -505,7 +518,9 @@ def main():
                           "max_frame_footprint_bytes": max(item["frame_footprint"] for item in samples),
                           "mean_kernel_cycles": statistics.mean(item["kernel_cycles"] for item in samples)}
                 result["baseline_delta"] = {
-                    metric: result[metric] - baseline_rows[name, mode.removesuffix("-shared")][metric] for metric in METRICS
+                    metric: result[metric] - baseline_rows[
+                        name, mode.removesuffix("-shared").removesuffix("-regcalls")
+                    ][metric] for metric in METRICS
                 }
                 if mode.endswith("-shared"):
                     result["arithmetic_helpers"] = {
@@ -519,7 +534,7 @@ def main():
                     ))
                 write_json(directory / "metrics.json", {"summary": result, "samples": samples})
                 report["results"].append(result)
-                issues = [] if mode.endswith("-shared") else compare_result(
+                issues = [] if mode.endswith("-shared") or mode == "ssc-ra-regcalls" else compare_result(
                     result, baseline_rows[name, mode], args.allow_competitor_drift,
                 )
                 report["issues"].extend(issues)
@@ -532,6 +547,12 @@ def main():
                     *METRICS, "max_stack_access_bytes", "max_below_sp_bytes", "max_frame_footprint_bytes",
                 )}
                 row["dynamic_helper_calls"] = row["paired_delta"]["total_kernel_cycles"] // 27
+                report["issues"].extend(compare_result(row, paired))
+            elif row["mode"] == "ssc-ra-regcalls":
+                paired = lookup[row["routine"], "ssc-ra"]
+                row["paired_delta"] = {metric: row[metric] - paired[metric] for metric in (
+                    *METRICS, "max_stack_access_bytes", "max_below_sp_bytes", "max_frame_footprint_bytes",
+                )}
                 report["issues"].extend(compare_result(row, paired))
         if "ssc-ra" in args.modes:
             report["same_samec_ratios"] = {

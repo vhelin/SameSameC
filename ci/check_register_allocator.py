@@ -942,14 +942,14 @@ def read_image(directory):
     return Image(rom, symbols, banks, transfers, static_metrics)
 
 
-def compile_generated(output, compiler, linker, programs, source, linker_flags=()):
+def compile_generated(output, compiler, linker, programs, source, linker_flags=(), compiler_flags=()):
     compiled = {}
     for mode, flags in MODES:
         directory = output / mode
         directory.mkdir(parents=True, exist_ok=True)
         write_text(directory / "main.ssc", source)
         start = time.perf_counter()
-        run(compiler, ["-mz80", "-rs", "3", *flags, "-o", "main.asm", "main.ssc"], directory, "compiler.log")
+        run(compiler, ["-mz80", "-rs", "3", *compiler_flags, *flags, "-o", "main.asm", "main.ssc"], directory, "compiler.log")
         compile_seconds = time.perf_counter() - start
         run(linker, ["-lsms", "-v", *linker_flags, "-o", "linked.sms", "main.asm"], directory, "linker.log")
         image = read_image(directory)

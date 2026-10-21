@@ -30,6 +30,7 @@ extern int g_verbose_mode, g_input_float_mode, g_current_filename_id, g_current_
 extern struct tac *g_tacs;
 extern int g_tacs_count, g_tacs_max, g_bank, g_slot, g_ram_bank, g_ram_slot;
 extern int g_allocator_enabled, g_allocator_force_all_spill;
+extern int g_z80_register_calls;
 extern char g_tmp[4096], g_error_message[sizeof(g_tmp) + MAX_NAME_LENGTH + 1 + 1024];
 
 #define DEBUG_PASS_6_REGISTER_ALLOCATOR 1
@@ -37,6 +38,7 @@ extern char g_tmp[4096], g_error_message[sizeof(g_tmp) + MAX_NAME_LENGTH + 1 + 1
 #define Z80_GLOBAL_OFFSET 999999
 
 static int g_return_id = 1, g_ix_frame_offset = Z80_GLOBAL_OFFSET;
+static int g_register_call_body = NO;
 
 #define LOC_CONST       RA_LOCATION_CONST
 #define LOC_GLOBAL      RA_LOCATION_GLOBAL
@@ -6537,6 +6539,45 @@ static int _generate_asm_jump_eq_lt_gt_neq_lte_gte_z80(struct tac *t, FILE *file
 }
 
 
+static int _is_z80_register_call(struct tree_node *function_node) {
+
+  int i, found = NO, returns = NO, calls = 0;
+
+  if (g_z80_register_calls != YES || g_allocator_enabled != YES || g_allocator_force_all_spill == YES ||
+      function_node == NULL || function_node->type != TREE_NODE_TYPE_FUNCTION_DEFINITION ||
+      function_node->local_variables == NULL ||
+      (function_node->flags & (TREE_NODE_FLAG_PUREASM | TREE_NODE_FLAG_ORG_DEFINED | TREE_NODE_FLAG_ORGA_DEFINED)) != 0 ||
+      strcmp(function_node->children[1]->label, "mainmain") == 0 ||
+      get_variable_type_size(tree_node_get_max_var_type(function_node->children[0])) != 16 ||
+      function_node->local_variables->arguments_count > 3 ||
+      get_register_allocator_call_frame_prefix_value(RA_CALL_FRAME_SAVED_FP_LOW_OFFSET) != -3 ||
+      get_register_allocator_return_value_byte_offset(2, 0) != -5)
+    return NO;
+  for (i = 0; i < function_node->local_variables->arguments_count; i++) {
+    struct local_variable *argument = &function_node->local_variables->local_variables[i];
+    if (get_variable_type_size(tree_node_get_max_var_type(argument->node->children[0])) != 16 ||
+        argument->offset_to_fp != -7 - i * 2)
+      return NO;
+  }
+  for (i = 0; i < g_tacs_count; i++) {
+    struct tac *instruction = &g_tacs[i];
+    if (instruction->op == TAC_OP_FUNCTION_CALL_USE_RETURN_VALUE && instruction->arg1_node == function_node)
+      calls++;
+    if (instruction->function_node != function_node || instruction->op == TAC_OP_DEAD)
+      continue;
+    if (instruction->op == TAC_OP_ASM || instruction->op == TAC_OP_FUNCTION_CALL ||
+        instruction->op == TAC_OP_FUNCTION_CALL_USE_RETURN_VALUE || instruction->op == TAC_OP_RETURN)
+      return NO;
+    if (instruction->op == TAC_OP_LABEL && instruction->is_function == YES)
+      found = YES;
+    if (instruction->op == TAC_OP_RETURN_VALUE)
+      returns = YES;
+  }
+  /* Two used-result sites amortize the retained public-entry adapter. */
+  return found == YES && returns == YES && calls >= 2;
+}
+
+
 static int _generate_asm_return_z80(struct tac *t, FILE *file_out, struct tree_node *function_node) {
 
   int frame_end, return_sp_offset, saved_fp_low_offset, saved_fp_high_offset;
@@ -6544,6 +6585,14 @@ static int _generate_asm_return_z80(struct tac *t, FILE *file_out, struct tree_n
   if (_get_z80_call_frame_prefix(&frame_end, &return_sp_offset, &saved_fp_low_offset, &saved_fp_high_offset) == FAILED) {
     fprintf(stderr, "_generate_asm_return_z80(): Target policy has an invalid call-frame prefix! Please submit a bug report!\n");
     return FAILED;
+  }
+
+  if (g_register_call_body == YES) {
+    /* CALL's return PC occupies the legacy word-result slot, not an argument. */
+    _load_de_with_offset_to_ix(get_register_allocator_return_value_byte_offset(2, 0), file_out);
+    fprintf(file_out, "      LD  SP,IX\n");
+    _ret(file_out);
+    return SUCCEEDED;
   }
 
 #if defined(DEBUG_PASS_6_REGISTER_ALLOCATOR)
@@ -6581,7 +6630,14 @@ static int _generate_asm_return_value_z80(struct tac *t, FILE *file_out, struct 
 
   /* arg1 */
 
-  if (_resolve_tac_location(t, TAC_USE_ARG1, function_node, &arg1_location) == FAILED)
+  /* The compatible public entry already has the body result in HL. */
+  if (t == NULL) {
+    memset(&arg1_location, 0, sizeof(arg1_location));
+    arg1_location.kind = LOC_PHY_HL;
+    arg1_location.phy = Z80_PHY_HL;
+    arg1_location.size = 2;
+  }
+  else if (_resolve_tac_location(t, TAC_USE_ARG1, function_node, &arg1_location) == FAILED)
     return FAILED;
 
   /* return */
@@ -6603,7 +6659,7 @@ static int _generate_asm_return_value_z80(struct tac *t, FILE *file_out, struct 
             function_node->children[1]->label, return_value_size, return_low_offset, return_high_offset));
     RA_TRACE((stderr, "register_allocator: return_value_source function=%s kind=%s size=%d phy=%s arg_type=%d return_type=%d\n",
             function_node->children[1]->label, _get_z80_location_kind_name(arg1_location.kind), arg1_location.size,
-            _get_z80_physical_register_name(arg1_location.phy), t->arg1_var_type, return_var_type));
+            _get_z80_physical_register_name(arg1_location.phy), t == NULL ? return_var_type : t->arg1_var_type, return_var_type));
   }
 #endif
 
@@ -6731,6 +6787,9 @@ static int _generate_asm_return_value_z80(struct tac *t, FILE *file_out, struct 
   /* copy return data hl/l -> stack frame */
   /******************************************************************************************************/
 
+  if (g_register_call_body == YES)
+    return _generate_asm_return_z80(t, file_out, function_node);
+
   _load_de_with_offset_to_ix(0, file_out);
 
   if (return_var_type == VARIABLE_TYPE_INT16 || return_var_type == VARIABLE_TYPE_UINT16) {
@@ -6759,7 +6818,9 @@ static int _generate_asm_function_call_z80(struct tac *t, FILE *file_out, struct
   int j, argument, reset_iy = YES, init_ix = NO;
   int frame_end, return_sp_offset, saved_fp_low_offset, saved_fp_high_offset;
   int push_arguments, return_bytes, argument_offset;
+  int register_call = _is_z80_register_call(t->arg1_node);
   char return_label[32];
+  char register_label[MAX_NAME_LENGTH + 32];
 
   /* __pureasm function calls are very simple */
   if ((t->arg1_node->flags & TREE_NODE_FLAG_PUREASM) == TREE_NODE_FLAG_PUREASM) {
@@ -6800,23 +6861,24 @@ static int _generate_asm_function_call_z80(struct tac *t, FILE *file_out, struct
   }
 #endif
 
-  /* sp -> hl (the new stack frame address) */
-  _load_value_to_hl(-1, file_out);
-  fprintf(file_out, "      ADD HL,SP\n");
+  if (register_call == YES) {
+    fprintf(file_out, "      ; internal register call; public entry keeps the stack ABI\n");
+    _push_de(file_out);
+  }
+  else {
+    /* sp -> hl (the new stack frame address) */
+    _load_value_to_hl(-1, file_out);
+    fprintf(file_out, "      ADD HL,SP\n");
 
-  /* address of return address in stack frame -> bc */
-  snprintf(return_label, sizeof(return_label), "_return_%d", g_return_id++);
-  _load_label_to_bc(return_label, file_out);
+    snprintf(return_label, sizeof(return_label), "_return_%d", g_return_id++);
+    _load_label_to_bc(return_label, file_out);
+    _push_bc(file_out);
+    _push_de(file_out);
 
-  /* address of return address in stack frame -> (stack) */
-  _push_bc(file_out);
-
-  /* old stack frame address -> (stack) */
-  _push_de(file_out);
-
-  if (push_arguments) {
-    for (j = 0; j < return_bytes; j++)
-      fprintf(file_out, "      DEC SP\n");
+    if (push_arguments) {
+      for (j = 0; j < return_bytes; j++)
+        fprintf(file_out, "      DEC SP\n");
+    }
   }
 
   /* copy arguments to stack frame */
@@ -6899,6 +6961,28 @@ static int _generate_asm_function_call_z80(struct tac *t, FILE *file_out, struct
           source_high_offset, target_low_offset, target_high_offset));
       }
 #endif
+
+      if (register_call == YES) {
+        int remaining = t->arg1_node->local_variables->arguments_count - argument;
+        int ix_offset = 0;
+        if (source_location.kind == LOC_GLOBAL || source_location.kind == LOC_STACK_LOCAL ||
+            source_location.kind == LOC_STACK_SPILL) {
+          if (_load_location_address_to_ix(&source_location, &ix_offset, file_out) == FAILED)
+            return FAILED;
+        }
+        if (source_location.kind == LOC_CONST && source_location.value == 0)
+          _load_value_to_bc(0, file_out);
+        else if (_materialize_array_index_to_bc(&source_location, source_var_type, ix_offset, NO, file_out) == FAILED)
+          return FAILED;
+        if (remaining == 3)
+          _load_bc_to_iy(file_out);
+        else if (remaining == 2) {
+          fprintf(file_out, "      LD  L,C\n");
+          fprintf(file_out, "      LD  H,B\n");
+        }
+        argument++;
+        continue;
+      }
 
       if (init_ix == NO && push_arguments == NO) {
         /* load the new stack frame address -> ix */
@@ -7027,6 +7111,14 @@ static int _generate_asm_function_call_z80(struct tac *t, FILE *file_out, struct
   fprintf(stderr, "FUNCTION CALL %s TOTAL OFFSET %d\n", t->arg1_node->children[1]->label, t->arg1_node->local_variables->offset_to_fp_total);
   */
 
+  if (register_call == YES) {
+    snprintf(register_label, sizeof(register_label), "ssc.regcall.%s", t->arg1_node->children[1]->label);
+    _call_to(register_label, file_out);
+    _pop_de(file_out);
+    g_ix_frame_offset = Z80_GLOBAL_OFFSET;
+    goto copy_return_value;
+  }
+
   if (push_arguments) {
     /* Small-frame prologues rely on the unchanged post-prefix SP. */
     _load_hl_to_sp(file_out);
@@ -7140,6 +7232,7 @@ static int _generate_asm_function_call_z80(struct tac *t, FILE *file_out, struct
   _load_from_ix_to_e(saved_fp_low_offset, file_out);
   _load_from_ix_to_d(saved_fp_high_offset, file_out);
 
+copy_return_value:
   if (op == TAC_OP_FUNCTION_CALL_USE_RETURN_VALUE) {
     struct z80_location result_location;
 
@@ -8109,6 +8202,32 @@ int generate_asm_z80(FILE *file_out) {
 
       _add_label(function_node->children[1]->label, file_out, NO);
 
+      g_register_call_body = NO;
+      if (_is_z80_register_call(function_node) == YES) {
+        char register_label[MAX_NAME_LENGTH + 32];
+        int count = function_node->local_variables->arguments_count;
+        snprintf(register_label, sizeof(register_label), "ssc.regbody.%s", function_node->children[1]->label);
+        _call_to(register_label, file_out);
+        if (_generate_asm_return_value_z80(NULL, file_out, function_node) == FAILED)
+          return FAILED;
+        snprintf(register_label, sizeof(register_label), "ssc.regcall.%s", function_node->children[1]->label);
+        _add_label(register_label, file_out, NO);
+        fprintf(file_out, "      ; internal word registers; legacy argument/frame offsets unchanged\n");
+        if (count == 3)
+          fprintf(file_out, "      PUSH IY\n");
+        if (count >= 2)
+          fprintf(file_out, "      PUSH HL\n");
+        if (count >= 1)
+          _push_bc(file_out);
+        _load_value_to_hl(5 + count * 2, file_out);
+        fprintf(file_out, "      ADD HL,SP\n");
+        fprintf(file_out, "      EX  DE,HL\n");
+        snprintf(register_label, sizeof(register_label), "ssc.regbody.%s", function_node->children[1]->label);
+        _add_label(register_label, file_out, NO);
+        g_register_call_body = YES;
+        g_ix_frame_offset = Z80_GLOBAL_OFFSET;
+      }
+
       if ((function_node->flags & TREE_NODE_FLAG_PUREASM) == TREE_NODE_FLAG_PUREASM) {
       }
       else {
@@ -8154,7 +8273,7 @@ int generate_asm_z80(FILE *file_out) {
 
           fprintf(file_out, "      ; allocate space for the stack frame bytes=%d\n", -frame_offset);
           /* DEC SP costs 1 byte/6 T-states versus 5/27 for full setup. */
-          if (bytes >= 0 && bytes <= 4) {
+          if (g_register_call_body == NO && bytes >= 0 && bytes <= 4) {
             for (k = 0; k < bytes; k++)
               fprintf(file_out, "      DEC SP\n");
           }

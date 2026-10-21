@@ -9,6 +9,13 @@ The checked phases below record implementation on top of the virtual-temp
 pipeline. Unchecked optimization and future-target items are optional extensions,
 not prerequisites for completing this Z80 scope.
 
+The separate `-ra -z80-regcalls` option enables bounded same-object leaf
+register calls with compatible public old-ABI entries. It is off by default and
+inactive under `-no-ra` or `-ra-all-spill`. Scope, measured costs and compatibility
+tradeoffs are recorded in
+[Z80 code generation step 2y](Z80_CODEGEN_PLAN.md#2y-explicit-compatible-internal-register-calls-completed).
+It does not change the allocator's general call-clobber or verifier contracts.
+
 ---
 
 ## 0. Original Baseline: Before Allocator Implementation

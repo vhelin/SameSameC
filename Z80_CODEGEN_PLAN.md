@@ -3104,7 +3104,7 @@ independent complete links, source hashes and qualification/commit bindings.
 Broader lowering-cost or copy-chain extensions remain optional and require
 their own measured opportunity; they are not new SM83 prerequisites.
 
-#### 2y. Explicit Compatible Internal Register Calls [PLANNED]
+#### 2y. Explicit Compatible Internal Register Calls [COMPLETED]
 
 After 2v, the three-word example caller is still 111 bytes / 655 T-states
 versus stock SDCC's 20 / 114. Inspect r17016 `gen.c::genSend`/`genRet`, including
@@ -3121,6 +3121,98 @@ not independently revision-matched to the benchmark binary.
 - Accept only measured complete caller/callee/helper and independently linked
   ROM wins. Do not substitute blanket inlining or count a removed standalone
   callee while it remains live elsewhere.
+
+**Completed outcome:** the user-selected compiler flag `-z80-regcalls`, together
+with normal `-ra`, enables a bounded same-object leaf convention. Default,
+`-no-ra` and forced-all-spill paths remain unchanged. Eligibility requires a
+current-unit definition, zero to three word-width arguments, a word result,
+the existing contiguous argument offsets, and at least two used-result call
+sites to amortize the retained public adapter. Byte/mixed-width callees,
+recursive/non-leaf functions, source ASM/pureasm, fixed-address definitions,
+entry points and prototype/external calls retain their original ABI.
+
+- One argument travels in BC, two in HL/BC, and three in IY/HL/BC; HL carries the
+  result. The existing typed BC materializer loads arguments in source order,
+  including byte-source sign/zero extension and explicit constant zero.
+  Existing TAC snapshots remain responsible for nested-call evaluation order.
+- Fast callers save/restore DE around hardware CALL. The callee pushes its
+  incoming argument registers and establishes the original DE-relative frame
+  layout. CALL's PC occupies the legacy word-result slot. The shared body keeps
+  all original argument/local/temp offsets and returns HL through that slot's
+  PC. A public old-ABI entry calls the same body, stores HL into the now-dead
+  PC slot and uses the original return emitter. No serialized ABI metadata,
+  duplicate body, linker convention, allocator-core policy or broad clobber
+  relaxation was added.
+- Reused argument validation, source resolution, typed materialization, frame
+  addressing, return-value emission and the existing call-result store tail.
+  Production C grows by **125 net lines and one eligibility helper**, not a
+  claimed net source reduction; there is no parallel argument/result framework.
+
+**Measured against qualified 2x (`58142a1`):**
+
+| Complete independently linked application | Original ABI | Register calls | Saved |
+|---|---:|---:|---:|
+| calculations-1, default arithmetic | 19007 | 18471 | 536 bytes |
+| calculations-1, shared arithmetic | 18987 | 18451 | 536 bytes |
+| calculations-2, default arithmetic | 28956 | 27487 | 1469 bytes |
+| calculations-2, shared arithmetic | 28688 | 27219 | 1469 bytes |
+
+All retained adapters, bodies, callers and live arithmetic helpers count.
+The 24-root focused complete image shrinks **4138 -> 3447 bytes**. Across 32
+inputs, ordinary-RA caller timings fall from **16416 -> 11872** T-states for
+the zero-argument case, **20736 -> 15584** for one, **22400 -> 17408** for two
+and **28384 -> 24320** for three. A separate live shared-helper fixture shrinks
+**655 -> 577 bytes** with inline arithmetic and **619 -> 541** with shared
+arithmetic; its register bodies execute actual pooled multiply/divide CALLs.
+These are focused transport measurements, not whole-application speed claims.
+
+Compatibility is intentionally not free. Direct old-ABI public-entry timings
+for the measured zero/one/two/three-word leaves change from **119/189/241/407**
+to **200/287/336/502** T-states because the public adapter remains live.
+Three-word calls that discard the result perform **two extra frame reads** for
+the IY transfer; their measured aggregate time nevertheless falls
+**30368 -> 27520**, without growing frame writes or stack high-water.
+Do not describe this as universal traffic reduction or faster old callers.
+The feature remains explicitly opt-in.
+
+**Qualification:**
+
+- Release, traced and ASan builds pass the 44 condition/policy tests and 23
+  optimized policy tests, plus the final strengthened 24-test focused/policy
+  run in each build. The final focused case executes 3840 guarded root calls,
+  20 public-entry calls and 12 two-object compatibility calls per build.
+  Signed word comparisons/results, variable arithmetic, ignored results,
+  nested calls, snapshots across mutations, live results, pointers, far/escaped
+  frames, loops, global destinations and rejected boundaries are covered.
+- Instrumented actual-parent/current comparisons cover **7680 root samples**
+  across ordinary/shared linker settings. No input grows cycles, frame writes
+  or stack high-water; **7552** also do not grow frame reads, with precisely the
+  **128** discarded-result RA/quiet samples above accounting for the exception.
+  Six default/no-RA/all-spill parent/current ROM identities hold. An additional
+  **240** guarded calls exercise actual live shared arithmetic bodies; all
+  **120** paired samples are non-growing in cycles and frame reads/writes.
+- All four caller/callee object combinations also execute using the preserved
+  actual parent compiler for old units, not merely the new compiler without
+  the flag: **24** calls across the two linker-setting replays.
+- All **175** isolated fixtures pass without byte-snapshot updates. Original
+  **104** pinned rows / **1856** calls / **24** independent timings pass.
+  Three-build register-mode comparisons add **195** rows / **3480** calls /
+  **210** independent timings with no issues. Their optional mode selection is
+  correctly reported as partial benchmark coverage; the 13 isolated kernels
+  remain unchanged under the two-site eligibility threshold.
+- Complete linked payloads and sizes agree across all three builds; generated
+  SDSC calendar dates and their validated SMS checksums are accounted for
+  separately. Existing traced/ASan allocator
+  cohorts and immutable native controls pass, as do normal/traced strict C89
+  checks. Original baseline settings, corpus, numerical oracles, and verifier
+  controls remain unchanged.
+
+Evidence: `C:\cygwin64\tmp\register-calls-2y-20261021`, including preserved parent
+binaries, per-input native metrics, complete static budgets, old-object links,
+the live shared-helper probe, pinned comparisons and qualification bindings.
+Wider arities, mixed widths, non-leaves, cross-object register ABI descriptors
+and cheaper compatibility adapters remain separate measured opportunities,
+not additional requirements for closing this bounded step.
 
 #### 2z. Constant Byte Lanes And Bounded Pure-Expression Reuse [PLANNED]
 

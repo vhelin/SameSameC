@@ -10,11 +10,126 @@ from unittest.mock import patch
 
 from check_register_allocator import (
     Program, buffer_symbol, compile_generated, generate_programs, generated_oracle, mapped_routine_image, read_image,
+    run,
 )
 from ra_cpu import execute
 
 
 class BranchConditionsTests(unittest.TestCase):
+    def test_compatible_internal_register_calls(self):
+        cases = {
+            "zero": ("return rc_zero()+a+b;", lambda a, b: 0x9234+a+b),
+            "zero_twice": ("return rc_zero()+rc_zero();", lambda a, b: 2*0x9234),
+            "one": ("return rc_one(a)+b;", lambda a, b: (a^0x1234)+b),
+            "one_nested": ("return rc_one(rc_one(a))+b;", lambda a, b: a+b),
+            "two": ("return rc_two(a,b);", lambda a, b: a+3*b),
+            "two_nested": ("return rc_two(rc_one(a),rc_two(b,7));", lambda a, b: (a^0x1234)+3*(b+21)),
+            "three": ("return rc_three(a,b,7);", lambda a, b: a+3*b+35),
+            "constant": ("return rc_three(0,65535,32768);", lambda a, b: 3*65535+5*32768),
+            "extend": ("s8 left=a; u8 right=b; return rc_three(left,right,7);",
+                       lambda a, b: (a&255)-(256 if a&128 else 0)+3*(b&255)+35),
+            "alias": ("rc_global=a; return rc_three(rc_global,rc_change(b),rc_global);", lambda a, b: a+8*b),
+            "live": ("return rc_one(a)+rc_three(a,b,7);", lambda a, b: (a^0x1234)+a+3*b+35),
+            "far": ("u8 work[260]; work[259]=b; u16 local=a; rc_seed(&local,a); "
+                    "return rc_three(local,b,7)+work[259];", lambda a, b: a+3*b+35+(b&255)),
+            "loop": ("u16 total=a; u16 i; for(i=0;i<3;i++) { total=rc_three(total,b,7); } return total;",
+                     lambda a, b: a+3*(3*b+35)),
+            "global": ("rc_word=rc_three(a,b,7); return rc_word^a;", lambda a, b: ((a+3*b+35)&65535)^a),
+            "pointer": ("u16 data[2]; data[0]=a; data[1]=b; return rc_pointer(data);", lambda a, b: a^b),
+            "pointer_twice": ("u16 data[2]; data[0]=a; data[1]=b; return rc_pointer(data)+rc_pointer(data);",
+                              lambda a, b: 2*(a^b)),
+            "signed": ("return rc_signed(a,b)+rc_signed(b,a);",
+                       lambda a, b: 2*min((a^0x8000)-0x8000, (b^0x8000)-0x8000)),
+            "arithmetic": ("return rc_math(a,b)^rc_math(b,a);",
+                           lambda a, b: ((a*b+a//(b|1))&65535)^((a*b+b//(a|1))&65535)),
+            "byte": ("u16 value=rc_byte(a); value=value+rc_byte(b); return value;",
+                     lambda a, b: ((a^0x45)&255)+((b^0x45)&255)),
+            "mixed": ("return rc_mixed(a,b)+rc_mixed(b,a);", lambda a, b: (a&255)+b+(b&255)+a),
+            "recursive": ("return rc_recursive(a&3)+b;", lambda a, b: 7+(a&3)*((a&3)+1)//2+b),
+            "asm": ('return rc_asm(a)+rc_asm(b);', lambda a, b: a+b+2),
+            "four": ("return rc_four(a,b,7,9)+rc_four(b,a,9,7);", lambda a, b: 2*(a+b+16)),
+            "ignored": ("rc_three(a,b,7); return a^b;", lambda a, b: a^b),
+        }
+        helpers = """u8 ra_buffer[128]; u16 rc_global; u16 rc_word;
+u16 rc_zero(void) { return 0x9234; }
+u16 rc_one(u16 a) { return a^0x1234; }
+u16 rc_two(u16 a,u16 b) { return a+3*b; }
+u16 rc_three(u16 a,u16 b,u16 c) { return a+3*b+5*c; }
+u16 rc_pointer(u16 *data) { return data[0]^data[1]; }
+s16 rc_signed(s16 a,s16 b) { if(a<b) { return a; } return b; }
+u16 rc_math(u16 a,u16 b) { return a*b+a/(b|1); }
+u16 rc_change(u16 value) { rc_global=value; return value; }
+void rc_seed(u16 *target,u16 value) { target[0]=value; }
+u8 rc_byte(u16 a) { return a^0x45; }
+u16 rc_mixed(u8 a,u16 b) { return a+b; }
+u16 rc_recursive(u16 a) { if(a==0) { return 7; } return rc_recursive(a-1)+a; }
+u16 rc_asm(u16 a) { __asm("NOP"); return a+1; }
+u16 rc_four(u16 a,u16 b,u16 c,u16 d) { return a+b+c+d; }
+"""
+        programs = [Program(f"register_call_{name}", name, 0, 0, [2, 2], 2, [],
+                            f"u16 register_call_{name}(u16 a,u16 b) {{ {body} }}")
+                    for name, (body, _) in cases.items()]
+        compiler, linker = os.environ.get("SAMESAMECC") or "samesamecc", os.environ.get("SAMESAMECL") or "samesamecl"
+        directory = self.output / "compatible-register-calls"
+        images = compile_generated(directory, compiler, linker, programs,
+                                   helpers + "\n".join(p.source for p in programs) + "\nvoid main(void) {}\n",
+                                   compiler_flags=("-z80-regcalls",))
+        calls = 0
+        for program in programs:
+            for a in (0, 1, 127, 128, 255, 0x7fff, 0x8000, 65535):
+                for b in (0, 7, 255, 0x9234):
+                    initial = bytes((index*37+a+b)&255 for index in range(132))
+                    expected = bytearray(initial)
+                    if program.family == "alias":
+                        expected[128:130] = b.to_bytes(2, "little")
+                    if program.family == "global":
+                        expected[130:132] = ((a+3*b+35)&65535).to_bytes(2, "little")
+                    for mode, image in images.items():
+                        self.assertEqual((image.symbols["rc_global"], image.symbols["rc_word"]),
+                                         (image.symbols["ra_buffer"]+128, image.symbols["ra_buffer"]+130))
+                        result = execute(image.rom, image.symbols[program.name], [a, b], [2, 2], initial,
+                                         image.symbols["ra_buffer"], 2, image.transfers, frame_bytes=2048)
+                        self.assertEqual((result["value"], result["buffer"], result["port_writes"]),
+                                         (cases[program.family][1](a, b)&65535, expected, []),
+                                         (program.name, mode, a, b))
+                        self.assertEqual(result["unmapped_instructions"], 0)
+                        calls += 1
+        for mode, image in images.items():
+            assembly = (directory / mode / "main.asm").read_text()
+            for name in ("rc_zero", "rc_one", "rc_two", "rc_three", "rc_pointer", "rc_signed", "rc_math"):
+                self.assertEqual(f"ssc.regcall.{name}:" in assembly, mode in ("ra", "ra_quiet"), (name, mode))
+            for name in ("rc_change", "rc_byte", "rc_mixed", "rc_recursive", "rc_asm", "rc_four"):
+                self.assertNotIn(f"ssc.regcall.{name}:", assembly, (name, mode))
+            for name, args, oracle in (("rc_zero", [], lambda: 0x9234),
+                                      ("rc_one", [0x8001], lambda a: a^0x1234),
+                                      ("rc_two", [0xffff, 0x9234], lambda a, b: a+3*b),
+                                      ("rc_three", [0xffff, 0x9234, 0x8000], lambda a, b, c: a+3*b+5*c)):
+                result = execute(image.rom, image.symbols[name], args, [2]*len(args), bytes(132),
+                                 image.symbols["ra_buffer"], 2, image.transfers, frame_bytes=2048)
+                self.assertEqual(result["value"], oracle(*args)&65535, (name, mode))
+        self.assertEqual(calls, len(programs)*32*len(images))
+        for caller_new in (False, True):
+            for callee_new in (False, True):
+                work = self.output / f"register-call-objects-{int(caller_new)}-{int(callee_new)}"
+                work.mkdir()
+                (work / "callee.ssc").write_text(
+                    "u16 object_leaf(u16 a,u16 b,u16 c) { return a+3*b+5*c; }\n"
+                    "u16 object_peer(u16 a,u16 b) { return object_leaf(a,b,7)+object_leaf(b,a,9); }\n")
+                (work / "caller.ssc").write_text(
+                    "u8 ra_buffer[128]; u16 object_leaf(u16 a,u16 b,u16 c); u16 object_peer(u16 a,u16 b);\n"
+                    "u16 object_caller(u16 a,u16 b) { return object_leaf(a,b,7)^object_peer(a,b); }\nvoid main(void) {}\n")
+                for unit, enabled in (("caller", caller_new), ("callee", callee_new)):
+                    run(compiler, ["-mz80", "-rs", "3", "-ra", *(["-z80-regcalls"] if enabled else []),
+                                   "-o", f"{unit}.asm", f"{unit}.ssc"], work, f"{unit}.compiler.log")
+                run(linker, ["-lsms", "-v", "-o", "linked.sms", "caller.asm", "callee.asm"], work, "linker.log")
+                image = read_image(work)
+                for a, b in ((0, 7), (0x8000, 65535), (65535, 0x9234)):
+                    result = execute(image.rom, image.symbols["object_caller"], [a, b], [2, 2], bytes(128),
+                                     image.symbols["ra_buffer"], 2, image.transfers, frame_bytes=2048)
+                    self.assertEqual(result["value"], ((a+3*b+35)&65535)^((4*a+4*b+80)&65535),
+                                     (caller_new, callee_new, a, b))
+                self.assertNotIn("CALL ssc.regcall.", (work / "caller.asm").read_text())
+
     def test_constant_array_address_rematerialization(self):
         cases = {}
         programs = []
