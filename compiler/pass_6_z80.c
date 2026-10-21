@@ -7914,6 +7914,15 @@ int generate_asm_z80(FILE *file_out) {
     if (op == TAC_OP_LABEL && t->is_function == YES) {
       /* function start! */
       struct tree_node *function_node = t->function_node;
+      int function_start = i, frame_joins = g_allocator_enabled == YES && g_allocator_force_all_spill == NO;
+      int conditional_jump = -1, unconditional_jump = -1;
+      int conditional_ix = Z80_GLOBAL_OFFSET, unconditional_ix = Z80_GLOBAL_OFFSET;
+      int j;
+
+      for (j = i + 1; j < g_tacs_count && g_tacs[j].function_node == function_node; j++) {
+        if (g_tacs[j].op == TAC_OP_ASM)
+          frame_joins = NO;
+      }
 
       if ((function_node->flags & TREE_NODE_FLAG_ORG_DEFINED) == TREE_NODE_FLAG_ORG_DEFINED) {
         fprintf(file_out, "  .ORG $%x\n", (unsigned int)function_node->value_double);
@@ -8012,7 +8021,21 @@ int generate_asm_z80(FILE *file_out) {
         /* IL -> ASM */
 
         if (op == TAC_OP_LABEL) {
-          g_ix_frame_offset = Z80_GLOBAL_OFFSET;
+          if (frame_joins == NO || t->is_function == YES)
+            g_ix_frame_offset = Z80_GLOBAL_OFFSET;
+          else {
+            /* Only previously emitted, uniquely recorded forward edges can prove the same base. */
+            for (j = function_start + 1; j < g_tacs_count && g_tacs[j].function_node == function_node; j++) {
+              struct tac *branch = &g_tacs[j];
+              if (branch->op < TAC_OP_JUMP || branch->op > TAC_OP_JUMP_GTE ||
+                  strcmp(branch->result_s, t->result_s) != 0)
+                continue;
+              if (j >= i || (branch->op == TAC_OP_JUMP ?
+                  (j != unconditional_jump || unconditional_ix != g_ix_frame_offset) :
+                  (j != conditional_jump || conditional_ix != g_ix_frame_offset)))
+                g_ix_frame_offset = Z80_GLOBAL_OFFSET;
+            }
+          }
         }
 
         if (op == TAC_OP_LABEL && t->is_function == YES) {
@@ -8205,6 +8228,14 @@ int generate_asm_z80(FILE *file_out) {
         }
         else
           fprintf(stderr, "generate_asm_z80(): Unimplemented IL -> Z80 ASM op %d! Please submit a bug report!\n", op);
+        if (g_tacs[i].op == TAC_OP_JUMP) {
+          unconditional_jump = i;
+          unconditional_ix = g_ix_frame_offset;
+        }
+        else if (g_tacs[i].op >= TAC_OP_JUMP_EQ && g_tacs[i].op <= TAC_OP_JUMP_GTE) {
+          conditional_jump = i;
+          conditional_ix = g_ix_frame_offset;
+        }
       }
 
       /* add the const variables to the end of the function */

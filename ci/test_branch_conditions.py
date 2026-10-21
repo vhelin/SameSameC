@@ -15,6 +15,82 @@ from ra_cpu import execute
 
 
 class BranchConditionsTests(unittest.TestCase):
+    def test_forward_join_frame_addresses(self):
+        bodies = {
+            "diamond": "if(b&1) {{ workspace[{last}]=a+3; }} else {{ workspace[{last}]=a+7; }}",
+            "nested": "if(b&1) {{ if(a&128) {{ workspace[{last}]=a+3; }} else {{ workspace[{last}]=a+7; }} }} "
+                      "else {{ workspace[{last}]=a+11; }}",
+            "multiple": "if(b&1) {{ goto done; }} workspace[{last}]=a+3; if(b&2) {{ goto done; }} "
+                        "workspace[{last}]=a+7; done:",
+            "loop": "u16 i; for(i=0;i<(b&3);i++) {{ if(i&1) {{ workspace[{last}]+=3; }} "
+                    "else {{ workspace[{last}]+=7; }} }}",
+            "call": "if(b&1) {{ workspace[{last}]=frame_sink(a); }} else {{ workspace[{last}]=a+7; }}",
+            "asm": 'if(b&1) {{ __asm("LD IX,4660"); workspace[{last}]=a+3; }} '
+                   "else {{ workspace[{last}]=a+7; }}",
+            "global": "if(b&1) {{ ra_buffer[1]=a; workspace[{last}]=ra_buffer[1]+3; }} "
+                      "else {{ workspace[{last}]=a+7; }}",
+            "alias": "frame_alias(workspace,{last},a,b);",
+            "return": "if(b&1) {{ return workspace[{last}]+b; }} workspace[{last}]+=7;",
+            "continue": "u16 i; for(i=0;i<(b&3);i++) {{ if(i==1) {{ continue; }} "
+                        "if(a&128) {{ break; }} workspace[{last}]+=7; }}",
+        }
+        programs = [
+            Program(f"frame_{size}_{family}", family, size, 0, [2, 2], 2, [],
+                    f"u16 frame_{size}_{family}(u16 a, u16 b) {{ u8 workspace[{size}]; "
+                    f"workspace[{size-1}]=a; " + body.format(last=size-1).replace("done", f"done_{size}")
+                    + f" return workspace[{size-1}]+b; }}")
+            for size in (8, 136, 260) for family, body in bodies.items()
+        ]
+        source = ("u8 ra_buffer[128];\nu16 frame_sink(u16 a) { ra_buffer[127]+=1; return a+3; }\n"
+                  "void frame_alias(u8 *p, u16 index, u16 a, u16 b) { "
+                  "if(b&1) { p[index]=a+3; } else { p[index]=a+7; } }\n"
+                  + "\n".join(program.source for program in programs) + "\nvoid main(void) {}\n")
+        directory = self.output / "forward-frames"
+        images = compile_generated(directory, os.environ.get("SAMESAMECC") or "samesamecc",
+                                   os.environ.get("SAMESAMECL") or "samesamecl", programs, source)
+        calls = 0
+        for program in programs:
+            for a in (0, 1, 127, 128, 255, 256, 32767, 32768, 65535):
+                for b in (0, 1, 2, 3, 4, 127, 128, 65535):
+                    expected_buffer = bytearray(range(128))
+                    value = a + (3 if b & 1 else 7)
+                    if program.family == "nested":
+                        value = a + (3 if a & 128 else 7) if b & 1 else a + 11
+                    elif program.family == "multiple":
+                        value = a if b & 1 else a + (3 if b & 2 else 7)
+                    elif program.family == "loop":
+                        value = a + sum(3 if i & 1 else 7 for i in range(b & 3))
+                    elif program.family == "continue":
+                        value = a + (0 if a & 128 else 7 * sum(i != 1 for i in range(b & 3)))
+                    elif program.family == "return":
+                        value = a if b & 1 else a + 7
+                    if program.family == "call" and b & 1:
+                        expected_buffer[127] = 128
+                    elif program.family == "global" and b & 1:
+                        expected_buffer[1] = a & 255
+                    for mode, image in images.items():
+                        result = execute(image.rom, image.symbols[program.name], [a, b], [2, 2],
+                                         bytes(range(128)), image.symbols["ra_buffer"], 2, image.transfers,
+                                         frame_bytes=512)
+                        self.assertEqual((result["value"], result["buffer"], result["port_writes"]),
+                                         (((value & 255) + b) & 65535, expected_buffer, []),
+                                         (program.name, mode, a, b))
+                        self.assertEqual(result["unmapped_instructions"], 0)
+                        calls += 1
+        print(f"Forward-join frame-address oracle executions: {calls}", flush=True)
+        for mode in images:
+            assembly = (directory / mode / "main.asm").read_text()
+            for program in programs:
+                body = assembly.split(f'.SECTION "{program.name}" FREE')[1].split(".ENDS")[0]
+                if program.family == "diamond":
+                    if mode in ("ra", "ra_quiet"):
+                        self.assertEqual(body.count("LD  IX,"), 1, (program.name, mode))
+                    else:
+                        self.assertGreaterEqual(body.count("LD  IX,"), 3, (program.name, mode))
+                elif mode in ("ra", "ra_quiet") and program.family in ("call", "asm"):
+                    self.assertEqual(body.count("LD  IX,"), 5 if program.family == "call" else 4,
+                                     (program.name, mode))
+
     def test_scalar_load_promotion(self):
         bodies = {
             "linear": "return (saved*257)^value;",

@@ -2381,8 +2381,65 @@ against the complete specialized loop, not just the removed frame store.
 Keep these as 2t prerequisites rather than moving the unresolved traffic into
 an ungated ABI or frame-layout change.
 
+**Fourth implementation checkpoint: proven forward-join frame addresses.**
+Reuse the emitter's existing IX frame-offset state instead of extending scalar
+promotion or adding another CFG/address framework. Remember the latest emitted
+conditional and unconditional branch states. At a label, retain the known
+offset only when the current fallthrough state and every explicit incoming
+edge prove the same frame address. An unrecorded edge, backward edge or
+conflicting offset keeps the old invalidation. Disable this extension for
+functions containing inline assembly and for default/no-RA/all-spill modes;
+retain all existing call, frame and index-register clobber barriers.
+
+The narrower shift/bitwise-local and BC-endpoint prototype made no improvement
+in 26 SSC/no-RA rows / 464 calls and was removed completely. Tile's CRC is still
+rejected by existing loop discovery because its common latch block does not
+define the value. Do not weaken that ownership proof to force promotion.
+The accepted alternative adds **31 net production C lines and no functions**;
+there are no allocator-core, endpoint-policy, verifier or ABI changes.
+
+Against `010b0a6`, the complete isolated kernels improve as follows:
+
+| Kernel | Bytes before -> after | Kernel T-states before -> after |
+| --- | ---: | ---: |
+| Array | 1559 -> 1517 | 6147298 -> 6094692 (0.86% fewer) |
+| Stencil | 1655 -> 1577 | 4218334 -> 4108018 (2.62% fewer) |
+| Tile | 1181 -> 1145 | 1990358 -> 1914842 (3.79% fewer) |
+| Path | 1384 -> 1354 | 5647913 -> 5539685 (1.92% fewer) |
+| PackBits | 547 -> 535 | 159268 -> 151525 (4.86% fewer) |
+| Packed CRC | 892 -> 874 | 12023460 -> 11404716 (5.15% fewer) |
+
+Other kernels, callers and frame footprints do not grow. These are not summed
+whole-ROM savings: measured calculations-1 used ROM falls from 20607 to
+20437 bytes, and calculations-2 from 31091 to 30555. Shared-arithmetic ROMs
+fall from 20587 to 20417 and from 30823 to 30287 respectively.
+
+Add 30 independently modeled branch/frame functions and 10800 executions per
+build across all five allocator modes. Cover small and large frame offsets,
+nested/multiple incoming paths, backedges, break/continue, calls, aliases,
+globals, early returns and an IX-clobbering assembly block. The parent passes
+the numeric/memory oracles but fails the new exact selection assertion:
+eligible diamonds require one IX materialization rather than three.
+The existing immutable 32 rejection cases, seven acceptances, 10200 endpoint
+checks and 65 frame-increment controls remain unchanged.
+
+Qualification includes 36 condition/policy tests and 21 optimized-policy tests
+per release/traced/ASan build, the
+104-row / 1856-call pinned comparison, paired 52-row / 928-call shared profiles,
+136 independent timing checks and 2320 non-growing individual SSC samples.
+All 422 condition images, 90 allocator images and complete default/shared
+ROMs match across builds. All 175 fixtures pass after seven byte vectors in
+two fixtures receive only
+absolute branch-target relocation updates because other functions shrink;
+their source bodies and complete symbolic instruction streams are identical
+to the parent, with every old/new vector checked against its corresponding
+ROM. No instruction selection or immutable expectation is relaxed.
+Evidence and source/commit bindings are retained in
+`C:\cygwin64\tmp\shift-residency-2t-20261021`.
+
 **2t remains in progress.** The accepted checkpoints remove redundant copy/load
-traffic and some backing storage, not general loop/CFG scalar residency.
+traffic, proven forward-join frame setups and some backing storage, not general
+loop/CFG scalar residency.
 Continue with costed scalar/address residency across loops/joins and the
 existing alias/clobber proofs before 2u.
 
