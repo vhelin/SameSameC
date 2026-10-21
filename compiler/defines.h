@@ -412,6 +412,8 @@ struct tree_node {
 #define TREE_NODE_FLAG_ARRAY         (1 << 7)
 #define TREE_NODE_FLAG_ORG_DEFINED   (1 << 8)
 #define TREE_NODE_FLAG_ORGA_DEFINED  (1 << 9)
+#define TREE_NODE_FLAG_Z80_REGCALL   (1 << 10)
+#define TREE_NODE_FLAG_ADDRESS_TAKEN (1 << 11)
 
 #define TREE_NODE_TYPE_CREATE_VARIABLE      0
 #define TREE_NODE_TYPE_ASSIGNMENT           1

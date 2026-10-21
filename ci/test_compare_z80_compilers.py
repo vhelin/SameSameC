@@ -7,6 +7,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
+import check_register_allocator as allocator
 import compare_z80_compilers as benchmark
 from ra_cpu import Z80Machine, execute, step
 
@@ -15,6 +16,28 @@ class ComparisonTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.reference = json.loads(benchmark.BASELINE.read_text())
+
+    def test_random_static_names_do_not_relax_code_identity(self):
+        for mutation in (None, "assembly", "rom"):
+            with self.subTest(mutation=mutation), tempfile.TemporaryDirectory() as directory:
+                def fake_run(command, arguments, work, log):
+                    if command == "compiler":
+                        quiet = work.name == "ra_quiet"
+                        suffix = 2 if quiet else 1
+                        instruction = "RET" if quiet and mutation == "assembly" else "NOP"
+                        (work / "main.asm").write_text(f"leaf__static__main_ssc_{suffix}:\n {instruction}\n")
+
+                def fake_image(work):
+                    rom = b"\x01" if mutation == "rom" and work.name == "ra_quiet" else b"\x00"
+                    return allocator.Image(rom, {"ra_buffer": 0}, {}, {}, {})
+
+                with patch.object(allocator, "run", fake_run), patch.object(allocator, "read_image", fake_image):
+                    if mutation:
+                        with self.assertRaisesRegex(RuntimeError, f"Traced/quiet allocator {'assembly' if mutation == 'assembly' else 'ROM'} mismatch"):
+                            allocator.compile_generated(Path(directory), "compiler", "linker", [], "")
+                    else:
+                        images = allocator.compile_generated(Path(directory), "compiler", "linker", [], "")
+                        self.assertEqual(len(images), 5)
 
     def test_reference_is_complete_and_current(self):
         packed = (benchmark.ROOT / "tests" / "z80" / "sms" / "calculations-1" / "tiles.packbits").read_bytes()

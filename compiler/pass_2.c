@@ -3475,6 +3475,10 @@ int create_variable_or_function(int is_extern, int is_static) {
 
               g_open_function_definition->flags |= TREE_NODE_FLAG_PUREASM;
             }
+            else if (strcmp(g_token_current->label, "__z80_regcall") == 0) {
+              _next_token();
+              g_open_function_definition->flags |= TREE_NODE_FLAG_Z80_REGCALL;
+            }
             else if (strcmp(g_token_current->label, "__org") == 0) {
               /* this token is '__org' */
               _next_token();
@@ -3497,6 +3501,19 @@ int create_variable_or_function(int is_extern, int is_static) {
 
               /* skip the address */
               _next_token();
+            }
+          }
+
+          if ((g_open_function_definition->flags & TREE_NODE_FLAG_Z80_REGCALL) != 0) {
+            int i;
+            if (g_backend != BACKEND_Z80 ||
+                (g_open_function_definition->flags & (TREE_NODE_FLAG_PUREASM | TREE_NODE_FLAG_ORG_DEFINED | TREE_NODE_FLAG_ORGA_DEFINED)) != 0 ||
+                get_variable_type_size(tree_node_get_max_var_type(g_open_function_definition->children[0])) != 16 ||
+                g_open_function_definition->added_children > 8)
+              return print_error("__z80_regcall requires a Z80 word result and at most three word arguments, without __pureasm/__org/__orga.\n", ERROR_ERR);
+            for (i = 2; i < g_open_function_definition->added_children; i += 2) {
+              if (get_variable_type_size(tree_node_get_max_var_type(g_open_function_definition->children[i])) != 16)
+                return print_error("__z80_regcall requires word-width arguments.\n", ERROR_ERR);
             }
           }
 
@@ -3978,6 +3995,17 @@ static void _check_ast_check_definition(struct tree_node *node) {
     print_error(g_error_message, ERROR_ERR);
     g_check_ast_failed = YES;
     return;
+  }
+
+  if (node->type != TREE_NODE_TYPE_FUNCTION_CALL &&
+      (node->definition->type == TREE_NODE_TYPE_FUNCTION_DEFINITION ||
+       node->definition->type == TREE_NODE_TYPE_FUNCTION_PROTOTYPE)) {
+    node->definition->flags |= TREE_NODE_FLAG_ADDRESS_TAKEN;
+    if ((node->definition->flags & TREE_NODE_FLAG_Z80_REGCALL) != 0) {
+      print_error("Taking the address of a __z80_regcall function is not supported.\n", ERROR_ERR);
+      g_check_ast_failed = YES;
+      return;
+    }
   }
 
   if (node->type == TREE_NODE_TYPE_FUNCTION_CALL) {

@@ -10,8 +10,13 @@ pipeline. Unchecked optimization and future-target items are optional extensions
 not prerequisites for completing this Z80 scope.
 
 The separate `-ra -z80-regcalls` option enables bounded same-object leaf
-register calls with compatible public old-ABI entries. It is off by default and
-inactive under `-no-ra` or `-ra-all-spill`. Scope, measured costs and compatibility
+register calls. Public old-ABI entries remain available where needed; proven
+private static functions omit their adapters. This automatic optimization is
+off by default and inactive under `-no-ra` or `-ra-all-spill`.
+An explicit `__z80_regcall` function declaration instead defines a cross-object
+calling convention independently of allocator flags, with no old-ABI entry.
+Use matching declarations in callers and definitions; unsupported definitions
+are errors, not silent fallbacks. Scope, measured costs and compatibility
 tradeoffs are recorded in
 [Z80 code generation step 2y](Z80_CODEGEN_PLAN.md#2y-explicit-compatible-internal-register-calls-completed).
 It does not change the allocator's general call-clobber or verifier contracts.

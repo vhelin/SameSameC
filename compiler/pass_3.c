@@ -661,6 +661,8 @@ static void _print_function_definition(struct tree_node *node) {
 
   if ((node->flags & TREE_NODE_FLAG_PUREASM) == TREE_NODE_FLAG_PUREASM)
     fprintf(stderr, " __pureasm");
+  if ((node->flags & TREE_NODE_FLAG_Z80_REGCALL) != 0)
+    fprintf(stderr, " __z80_regcall");
   if ((node->flags & TREE_NODE_FLAG_ORG_DEFINED) == TREE_NODE_FLAG_ORG_DEFINED)
     fprintf(stderr, " __org 0x%x", (unsigned int)node->value_double);
   

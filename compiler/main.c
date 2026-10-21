@@ -214,7 +214,7 @@ int main(int argc, char *argv[]) {
   if (g_backend == BACKEND_Z80) {
     if (pass_6_z80(final_name_no_extension, file_out) == FAILED) {
       fclose(file_out);
-      return FAILED;
+      return 1;
     }
   }
 

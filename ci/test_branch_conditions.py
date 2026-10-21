@@ -16,6 +16,187 @@ from ra_cpu import execute
 
 
 class BranchConditionsTests(unittest.TestCase):
+    def test_explicit_register_call_declarations(self):
+        cases = {
+            "zero": ("return er_zero()+a+b;", lambda a, b: 0x9234+a+b),
+            "one": ("return er_one(a)+b;", lambda a, b: (a^0x1234)+b),
+            "two": ("return er_two(a,b);", lambda a, b: a+3*b),
+            "three": ("return er_three(a,b,7);", lambda a, b: a+3*b+35),
+            "extend": ("s8 left=a; u8 right=b; return er_three(left,right,0);",
+                       lambda a, b: (a&255)-(256 if a&128 else 0)+3*(b&255)),
+            "nested": ("return er_three(er_one(a),er_two(b,7),0);", lambda a, b: (a^0x1234)+3*(b+21)),
+            "signed": ("return er_signed(a,b);", lambda a, b: min((a^0x8000)-0x8000, (b^0x8000)-0x8000)),
+            "pointer": ("u16 data[2]; data[0]=a; data[1]=b; return er_pointer(data);", lambda a, b: a^b),
+            "math": ("return er_math(a,b)^er_math_plus(b,a);",
+                     lambda a, b: ((a*b+a//(b|1))&65535)^((a*b+b//(a|1)+1)&65535)),
+            "ignored": ("er_three(a,b,7); return a^b;", lambda a, b: a^b),
+        }
+        helpers = """u8 ra_buffer[128];
+u16 er_zero(void) __z80_regcall { return 0x9234; }
+u16 er_one(u16 a) __Z80_REGCALL { return a^0x1234; }
+u16 er_two(u16 a,u16 b) __z80_regcall { return a+3*b; }
+u16 er_three(u16 a,u16 b,u16 c) __z80_regcall { return a+3*b+5*c; }
+s16 er_signed(s16 a,s16 b) __z80_regcall { if(a<b) { return a; } return b; }
+u16 er_pointer(u16 *data) __z80_regcall { return data[0]^data[1]; }
+u16 er_math(u16 a,u16 b) __z80_regcall { return a*b+a/(b|1); }
+u16 er_math_plus(u16 a,u16 b) __z80_regcall { return a*b+a/(b|1)+1; }
+"""
+        programs = [Program(f"explicit_call_{name}", name, 0, 0, [2, 2], 2, [],
+                            f"u16 explicit_call_{name}(u16 a,u16 b) {{ {body} }}")
+                    for name, (body, _) in cases.items()]
+        compiler, linker = os.environ.get("SAMESAMECC") or "samesamecc", os.environ.get("SAMESAMECL") or "samesamecl"
+        directory = self.output / "explicit-register-calls"
+        images = compile_generated(directory, compiler, linker, programs,
+                                   helpers+"\n".join(p.source for p in programs)+"\nvoid main(void) {}\n",
+                                   linker_flags=("-share-arithmetic",))
+        for mode, image in images.items():
+            assembly = (directory / mode / "main.asm").read_text()
+            for name, count in (("zero", 0), ("one", 1), ("two", 2), ("three", 3),
+                                ("signed", 2), ("pointer", 1), ("math", 2), ("math_plus", 2)):
+                self.assertIn(f"ssc.regcall.v1.w{count}.er_{name}", image.symbols)
+                self.assertNotIn(f"er_{name}", image.symbols)
+                self.assertNotIn(f"ssc.regbody.er_{name}", image.symbols)
+            self.assertIn("CALL ssc.arithmetic_", (directory / mode / "linked.sms.combined.asm").read_text())
+            self.assertNotIn("CALL ssc.regbody.", assembly)
+            for program in programs:
+                for a in (0, 1, 127, 128, 255, 0x7fff, 0x8000, 65535):
+                    for b in (0, 7, 255, 0x9234):
+                        initial = bytes((index*37+a+b)&255 for index in range(128))
+                        result = execute(image.rom, image.symbols[program.name], [a, b], [2, 2], initial,
+                                         image.symbols["ra_buffer"], 2, image.transfers, frame_bytes=2048)
+                        self.assertEqual((result["value"], result["buffer"], result["port_writes"]),
+                                         (cases[program.family][1](a, b)&65535, initial, []),
+                                         (program.name, mode, a, b))
+                        self.assertEqual(result["unmapped_instructions"], 0)
+
+    def test_private_register_call_adapters(self):
+        helpers = """u8 ra_buffer[128];
+static u16 pr_zero(void) { return 0x9234; }
+static u16 pr_one(u16 a) { return a^0x1234; }
+static u16 pr_two(u16 a,u16 b) { return a+3*b; }
+static u16 pr_three(u16 a,u16 b,u16 c) { return a+3*b+5*c; }
+static u16 pr_discard(u16 a,u16 b,u16 c) { ra_buffer[0]=a; return a+3*b+5*c; }
+"""
+        cases = [
+            ("zero", "return pr_zero()+a+b;", lambda a, b: 0x9234+a+b),
+            ("one", "return pr_one(a)+b;", lambda a, b: (a^0x1234)+b),
+            ("two", "return pr_two(a,b);", lambda a, b: a+3*b),
+            ("three", "return pr_three(a,b,7);", lambda a, b: a+3*b+35),
+            ("ignored", "pr_discard(a,b,7); return a^b;", lambda a, b: a^b),
+        ]
+        programs = [Program(f"private_call_{name}", name, 0, 0, [2, 2], 2, [],
+                            f"u16 private_call_{name}(u16 a,u16 b) {{ {body} }}")
+                    for name, body, _ in cases]
+        compiler, linker = os.environ.get("SAMESAMECC") or "samesamecc", os.environ.get("SAMESAMECL") or "samesamecl"
+        directory = self.output / "private-register-calls"
+        images = compile_generated(directory, compiler, linker, programs,
+                                   helpers+"\n".join(p.source for p in programs)+"\nvoid main(void) {}\n",
+                                   compiler_flags=("-z80-regcalls",))
+        for mode, image in images.items():
+            assembly = (directory / mode / "main.asm").read_text()
+            for name in ("zero", "one", "two", "three", "discard"):
+                symbol = re.search(rf'\.SECTION "(pr_{name}__static__[^"]+)"', assembly)[1]
+                if mode in ("ra", "ra_quiet"):
+                    self.assertIn(f"ssc.regcall.{symbol}", image.symbols)
+                    self.assertNotIn(symbol, image.symbols)
+                    self.assertNotIn(f"ssc.regbody.{symbol}", image.symbols)
+                else:
+                    self.assertIn(symbol, image.symbols)
+                    self.assertNotIn(f"ssc.regcall.{symbol}", image.symbols)
+            for program, (_, _, oracle) in zip(programs, cases, strict=True):
+                for a in (0, 1, 0x8000, 65535):
+                    for b in (0, 255, 0x9234):
+                        result = execute(image.rom, image.symbols[program.name], [a, b], [2, 2], bytes(128),
+                                         image.symbols["ra_buffer"], 2, image.transfers, frame_bytes=2048)
+                        self.assertEqual(result["value"], oracle(a, b)&65535, (mode, program.name, a, b))
+                        self.assertEqual(result["buffer"], bytes([a&255])+bytes(127) if program.family == "ignored" else bytes(128))
+                        self.assertEqual(result["port_writes"], [])
+                        self.assertEqual(result["unmapped_instructions"], 0)
+        for boundary, prefix, body in (
+            ("asm", 'void pr_noise(void) { __asm("NOP"); }\n', "return pr_leaf(a)+pr_leaf(b);"),
+            ("address", "", "u16 address=&pr_leaf; return pr_leaf(a)+pr_leaf(b)+(address!=0);"),
+            ("argument", "u16 pr_keep(u16 value) { return value!=0; }\n",
+             "return pr_leaf(a)+pr_leaf(b)+pr_keep(&pr_leaf);"),
+        ):
+            source = ("u8 ra_buffer[128]; static u16 pr_leaf(u16 a) { return a^0x1234; }\n"+prefix+
+                      f"u16 private_boundary(u16 a,u16 b) {{ {body} }}\nvoid main(void) {{}}\n")
+            program = Program("private_boundary", boundary, 0, 0, [2, 2], 2, [], "")
+            work = self.output / f"private-boundary-{boundary}"
+            guarded = compile_generated(work, compiler, linker, [program], source, compiler_flags=("-z80-regcalls",))
+            for mode, image in guarded.items():
+                assembly = (work / mode / "main.asm").read_text()
+                symbol = re.search(r'\.SECTION "(pr_leaf__static__[^"]+)"', assembly)[1]
+                self.assertIn(symbol, image.symbols, (boundary, mode))
+                self.assertEqual(f"ssc.regbody.{symbol}" in image.symbols, mode in ("ra", "ra_quiet"))
+                result = execute(image.rom, image.symbols[program.name], [65535, 0x9234], [2, 2], bytes(128),
+                                 image.symbols["ra_buffer"], 2, image.transfers, frame_bytes=2048)
+                self.assertEqual(result["value"], ((65535^0x1234)+(0x9234^0x1234)+(boundary!="asm"))&65535)
+
+    def test_explicit_register_call_boundaries(self):
+        compiler, linker = os.environ.get("SAMESAMECC") or "samesamecc", os.environ.get("SAMESAMECL") or "samesamecl"
+        flags = ((), ("-no-ra",), ("-ra-all-spill",), ("-ra",), ("-ra", "-z80-regcalls"))
+        for caller_index, caller_flags in enumerate(flags):
+            for callee_index, callee_flags in enumerate(flags):
+                work = self.output / f"explicit-objects-{caller_index}-{callee_index}"
+                work.mkdir()
+                (work / "callee.ssc").write_text(
+                    "u16 cross_leaf(u16 a,u16 b,u16 c) __z80_regcall { return a+3*b+5*c; }\n")
+                (work / "caller.ssc").write_text(
+                    "u8 ra_buffer[128]; u16 cross_leaf(u16 a,u16 b,u16 c) __z80_regcall;\n"
+                    "u16 cross_caller(u16 a,u16 b) { return cross_leaf(a,b,7); }\nvoid main(void) {}\n")
+                for unit, options in (("caller", caller_flags), ("callee", callee_flags)):
+                    run(compiler, ["-mz80", "-rs", "3", *options, "-o", f"{unit}.asm", f"{unit}.ssc"],
+                        work, f"{unit}.compiler.log")
+                run(linker, ["-lsms", "-v", "-o", "linked.sms", "caller.asm", "callee.asm"], work, "linker.log")
+                image = read_image(work)
+                self.assertNotIn("cross_leaf", image.symbols)
+                for a, b in ((0, 7), (0x8000, 65535), (65535, 0x9234)):
+                    result = execute(image.rom, image.symbols["cross_caller"], [a, b], [2, 2], bytes(128),
+                                     image.symbols["ra_buffer"], 2, image.transfers, frame_bytes=2048)
+                    self.assertEqual(result["value"], (a+3*b+35)&65535, (caller_index, callee_index, a, b))
+                    self.assertEqual(result["unmapped_instructions"], 0)
+        invalid = [
+            "u8 invalid(u16 a) __z80_regcall { return a; }",
+            "u16 invalid(u8 a) __z80_regcall { return a; }",
+            "u16 invalid(u16 a,u16 b,u16 c,u16 d) __z80_regcall { return a; }",
+            'u16 invalid(u16 a) __z80_regcall { __asm("NOP"); return a; }',
+            "u16 invalid(u16 a) __z80_regcall { return invalid(a); }",
+            "u16 other(u16 a) { return a; } u16 invalid(u16 a) __z80_regcall { return other(a); }",
+            "u16 invalid(u16 a) __z80_regcall __org 4096 { return a; }",
+            "u16 invalid(u16 a) __z80_regcall __orga 4096 { return a; }",
+            "void invalid(void) __z80_regcall __pureasm {}",
+            "u16 invalid(u16 a) __z80_regcall { return a; } u16 escape(void) { return &invalid; }",
+            "u16 invalid(u16 a) __z80_regcall; u16 escape(void) { return &invalid; }",
+            "u16 invalid(u8 a) __z80_regcall;",
+        ]
+        for index, source in enumerate(invalid):
+            work = self.output / f"invalid-register-abi-{index}"
+            work.mkdir()
+            (work / "main.ssc").write_text(source+"\nvoid main(void) {}\n")
+            completed = subprocess.run([compiler, "-mz80", "-rs", "3", "-ra", "-o", "main.asm", "main.ssc"],
+                                       cwd=work, capture_output=True, timeout=30)
+            self.assertNotEqual(completed.returncode, 0, index)
+            self.assertIn(b"__z80_regcall", completed.stdout+completed.stderr, index)
+        for index, (declaration, definition) in enumerate((
+            ("u16 mismatch(u16 a);", "u16 mismatch(u16 a) __z80_regcall { return a; }"),
+            ("u16 mismatch(u16 a) __z80_regcall;", "u16 mismatch(u16 a) { return a; }"),
+            ("u16 mismatch(u16 a) __z80_regcall;", "u16 mismatch(u16 a,u16 b) __z80_regcall { return a+b; }"),
+            ("u16 mismatch(u16 a) __z80_regcall;", "u16 mismatch(u16 a) { return a; }\n"
+             "u16 peer(u16 a) { return mismatch(a)+mismatch(a+1); }"),
+        )):
+            work = self.output / f"mismatched-register-abi-{index}"
+            work.mkdir()
+            (work / "caller.ssc").write_text("u8 ra_buffer[128]; "+declaration+
+                                           "\nu16 use(u16 a) { return mismatch(a); }\nvoid main(void) {}\n")
+            (work / "callee.ssc").write_text(definition)
+            for unit in ("caller", "callee"):
+                run(compiler, ["-mz80", "-rs", "3", "-ra", "-z80-regcalls", "-o", f"{unit}.asm", f"{unit}.ssc"],
+                    work, f"{unit}.compiler.log")
+            completed = subprocess.run([linker, "-lsms", "-v", "-o", "linked.sms", "caller.asm", "callee.asm"],
+                                       cwd=work, capture_output=True, timeout=30)
+            self.assertNotEqual(completed.returncode, 0, index)
+            self.assertIn(b"mismatch", completed.stdout+completed.stderr, index)
+
     def test_compatible_internal_register_calls(self):
         cases = {
             "zero": ("return rc_zero()+a+b;", lambda a, b: 0x9234+a+b),

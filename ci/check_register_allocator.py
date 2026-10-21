@@ -17,6 +17,7 @@ from ra_cpu import execute, TRANSFER_CAUSES, EXECUTION_METRICS
 
 
 ROOT = Path(__file__).resolve().parent.parent
+STATIC_SUFFIX = r"(__static__\w+_ssc_)\d+"
 MODES = [
     ("default", []),
     ("no_ra", ["-no-ra"]),
@@ -827,7 +828,6 @@ def generate_programs(comparison_forms):
 
 def read_image(directory):
     symbols, banks, section_sizes = {}, {}, {}
-    static_suffix = r"(__static__\w+_ssc_)\d+"
     for line in read_text(directory / "linked.sym").splitlines():
         match = re.search(r"^([0-9a-f]+):([0-9a-f]+)\s+(\S+)$", line, re.I)
         if match:
@@ -856,7 +856,7 @@ def read_image(directory):
     for path in sorted(directory.iterdir(), key=lambda path: path.name):
         if re.search(r"^(?:compiler|.+\.compiler)\.log$", path.name):
             static_metrics["rejections"].extend(
-                re.sub(static_suffix, r"\1<id>", line)
+                re.sub(STATIC_SUFFIX, r"\1<id>", line)
                 for line in re.findall(r"^register_allocator: rejection_summary .+$", read_output(path), re.M)
             )
     frame_pending = False
@@ -881,7 +881,7 @@ def read_image(directory):
         if frame is None and frame_pending:
             frame = re.search(r"^LD\s+HL,-(\d+)$", source)
         if frame:
-            name, size = re.sub(static_suffix, r"\1<id>", section), int(frame[1])
+            name, size = re.sub(STATIC_SUFFIX, r"\1<id>", section), int(frame[1])
             if section not in section_sizes or name in static_metrics["functions"]:
                 raise RuntimeError(f"Invalid function-frame section {section} in {directory}")
             static_metrics["functions"][name] = {"rom_bytes": section_sizes[section], "frame_bytes": size}
@@ -962,7 +962,10 @@ def compile_generated(output, compiler, linker, programs, source, linker_flags=(
         raise RuntimeError("Default/-no-ra ROM mismatch")
     if compiled["ra"].rom != compiled["ra_quiet"].rom:
         raise RuntimeError("Traced/quiet allocator ROM mismatch")
-    if (output / "ra/main.asm").read_bytes() != (output / "ra_quiet/main.asm").read_bytes():
+    # Static labels contain random suffixes; the ROM comparison above stays exact.
+    assembly = [re.sub(STATIC_SUFFIX, r"\1<id>", read_text(output / mode / "main.asm"))
+                for mode in ("ra", "ra_quiet")]
+    if assembly[0] != assembly[1]:
         raise RuntimeError("Traced/quiet allocator assembly mismatch")
     write_json(output / "static-summary.json", {mode: image.staticMetrics for mode, image in compiled.items()})
     return compiled

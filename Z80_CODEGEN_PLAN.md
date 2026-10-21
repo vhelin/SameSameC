@@ -3122,7 +3122,7 @@ not independently revision-matched to the benchmark binary.
   ROM wins. Do not substitute blanket inlining or count a removed standalone
   callee while it remains live elsewhere.
 
-**Completed outcome:** the user-selected compiler flag `-z80-regcalls`, together
+**Initial completed outcome:** the user-selected compiler flag `-z80-regcalls`, together
 with normal `-ra`, enables a bounded same-object leaf convention. Default,
 `-no-ra` and forced-all-spill paths remain unchanged. Eligibility requires a
 current-unit definition, zero to three word-width arguments, a word result,
@@ -3213,6 +3213,110 @@ the live shared-helper probe, pinned comparisons and qualification bindings.
 Wider arities, mixed widths, non-leaves, cross-object register ABI descriptors
 and cheaper compatibility adapters remain separate measured opportunities,
 not additional requirements for closing this bounded step.
+
+##### ABI Boundary Follow-up: Private Entries And Explicit Cross-Object Calls [COMPLETED]
+
+The user requested removal of unnecessary compatibility entries and selected
+explicit declarations rather than a new whole-program linker inference pass.
+This follow-up supersedes the initial same-object-only restriction where the
+new declaration is present; unannotated public interfaces remain compatible.
+
+**Automatic private entries:** under `-ra -z80-regcalls`, a supported static leaf
+needs only one direct call, including an ignored-result call. Its public
+old-ABI adapter is omitted only when no function-address/decay reference exists
+and the compilation unit has no source ASM. Address references are marked during
+the existing AST walk, including arguments passed to other functions. Source
+ASM conservatively prevents automatic elision even if it is in another function.
+Unannotated exported functions and escaped/ASM-visible statics keep the initial
+two-used-result-site policy and compatible entry, or the ordinary original body
+when not selected. Do not infer privacy merely from a lack of local callers.
+
+**Explicit cross-object convention:** put `__z80_regcall` after the argument list
+in both the definition and every caller's prototype, for example:
+
+```c
+u16 mix_words(u16 a, u16 b, u16 c) __z80_regcall {
+  return a + 3*b + 5*c;
+}
+```
+
+The corresponding declaration in another compilation unit is:
+
+```c
+u16 mix_words(u16 a, u16 b, u16 c) __z80_regcall;
+```
+
+- The declaration itself is the explicit ABI gate. It works with default,
+  `-no-ra`, normal `-ra` and `-ra-all-spill` compilation, independently of
+  `-z80-regcalls`. Optimization flags must not silently change an explicitly
+  declared calling convention.
+- It retains the bounded zero-to-three-word argument / word-result / leaf-body
+  contract and the existing argument conversions, snapshotting, DE frame layout
+  and HL result. Actual pooled arithmetic helper CALLs remain supported.
+  Byte/mixed-width, four-argument, non-leaf/recursive, source ASM/pureasm and
+  fixed-address definitions are rejected. Taking an explicit-register function
+  address is rejected rather than pretending that indirect calls are supported.
+- Explicit entries are named `ssc.regcall.v1.w<arity>.<function>` and expose no
+  ordinary old-ABI function label or adapter. Version/arity-qualified labels are
+  distinct from the automatic internal entry. Missing declarations, old/new
+  calling-convention disagreements, arity mismatches and accidental linking against
+  an unannotated automatically optimized definition fail at link time instead
+  of silently invoking a function with the wrong stack layout. This is an
+  intentional interface change: leave genuine legacy/assembly interfaces
+  unannotated when their old public entry must remain available.
+- Reused the existing hint parser, AST reference walk, eligibility helper and
+  argument/frame/result emitters. No new production helper functions or linker
+  metadata framework were added: **70 net C/header lines**. Backend validation
+  failures now return a nonzero compiler process status. Existing random static
+  label suffix normalization is shared with the ASM metadata comparison;
+  executable ROM equality remains exact, and a new policy test rejects both
+  changed instructions and changed ROM bytes.
+
+**Measured complete costs against `2242551`:**
+
+- The private fixture, including a side-effecting leaf with only an ignored
+  result, shrinks **714 -> 593 bytes** under ordinary RA. Disabled automatic
+  modes remain **986 bytes**. The explicit-declaration fixture shrinks
+  **1517 -> 1313 bytes** under ordinary RA, and **2232 -> 1734** under default,
+  no-RA and all-spill modes. Shared arithmetic bodies count in these budgets.
+- Actual-parent/current execution covers **2400 paired inputs / 4800 calls**.
+  No input grows cycles, frame writes or stack high-water. The same bounded
+  discarded-three-word-result tradeoff remains: **160** samples perform two
+  extra frame reads; the other **2240** do not grow frame reads.
+- Annotated **outside-repository copies** of the existing complete applications
+  opt seven helper definitions and all their cross-bank prototypes into the
+  explicit convention. The committed application sources, pinned comparison
+  corpus and numerical oracles are not rewritten to obtain these results:
+
+| Complete application, with explicit declarations | Previous register-call build | Explicit ABI build | Additional saving |
+|---|---:|---:|---:|
+| calculations-1, default arithmetic | 18471 | 17259 | 1212 bytes |
+| calculations-1, shared arithmetic | 18451 | 17239 | 1212 bytes |
+| calculations-2, default arithmetic | 27487 | 26329 | 1158 bytes |
+| calculations-2, shared arithmetic | 27219 | 26061 | 1158 bytes |
+
+All **16** parent/current application links count retained bodies, callers and
+live helpers. The release/traced/ASan explicit images agree byte-for-byte.
+Actual complete banked images pass **54 paired real-workload/display samples**,
+with matching full buffers or captured VDP output, no unmapped instructions and
+non-growing cycles/frame reads/writes. Across six sampled inputs, Stencil falls
+**1408505 -> 1343245** T-states with default arithmetic and
+**1413770 -> 1348510** with shared arithmetic. Path improves modestly, and Array
+and Tile remain unchanged; these results are not a blanket speedup claim.
+
+**Qualification:** release/traced/ASan condition/ABI suites pass, followed by
+the strengthened **28-test** focused/policy suite and **24-test** optimized
+policy suite in each build. New ABI tests cover **25** independently compiled
+caller/callee optimization-mode combinations, **12** invalid declarations/
+definitions and **four** incompatible object links. Ignored-only private calls
+check their actual buffer side effect, not just an unused result.
+All **175** existing fixtures pass without snapshot updates; original **104**
+pinned rows / **1856** calls and three-build optional-mode **195** rows /
+**3480** calls pass without issues. Unannotated complete application sizes
+remain unchanged, as do native verifier controls and numerical oracles.
+Normal/traced strict C89 checks pass. Evidence, parent binaries, exact per-input
+costs, annotated application sources and qualification bindings are retained in
+`C:\cygwin64\tmp\register-call-boundaries-20261022`.
 
 #### 2z. Constant Byte Lanes And Bounded Pure-Expression Reuse [PLANNED]
 
