@@ -15,6 +15,124 @@ from ra_cpu import execute
 
 
 class BranchConditionsTests(unittest.TestCase):
+    def test_shared_window_memory_copies(self):
+        kinds = ("u8", "s8", "u16", "s16")
+        shapes = [(left, right, size, "copy") for left in kinds for right in kinds
+                  for size in (8, 136, 260) if size == 8 or left.endswith("8") == right.endswith("8")]
+        shapes += [("u16", "u16", size, family) for size in (114, 115, 116, 117, 123, 124, 125, 136, 260)
+                   for family in ("source_span", "target_span")]
+        shapes += [(kind, kind, 8, family) for kind in ("u8", "u16") for family in ("alias", "loop")]
+        shapes += [("u16", "u16", 8, family) for family in ("global_source", "global_target")]
+        programs = []
+        for left, right, size, family in shapes:
+            name = f"memory_{left}_{right}_{size}_{family}"
+            source = "copy_global_source" if family == "global_source" else "source"
+            target = "copy_global_target" if family == "global_target" else "target"
+            declarations = [f"u8 workspace[{size}];",
+                            f"{'' if family == 'global_source' else left + ' '}{source}=a;",
+                            f"{'' if family == 'global_target' else right + ' '}{target}=b;"]
+            if family == "source_span":
+                declarations = [declarations[2], declarations[0], declarations[1]]
+            elif family == "target_span":
+                declarations = [declarations[1], declarations[0], declarations[2]]
+            prefix = (f"copy_seed_{left}(&{source},a); copy_seed_{right}(&{target},b); workspace[{size-1}]=b; ")
+            if family == "alias":
+                prefix += (f"if(b&1) {{ copy_alias_{left}(&source,&source,b); }} "
+                           f"else {{ copy_alias_{left}(&source,&target,b); }} ")
+            copy = f'__asm("LD IX,4660"); {target}={source}; '
+            if family == "loop":
+                copy = f"u16 i; for(i=0;i<(b&3);i++) {{ " + copy + f"copy_seed_{left}(&source,b+i); }} "
+            programs.append(Program(name, family, size, 0, [2, 2], 2, [],
+                                    f"u16 {name}(u16 a,u16 b) {{ " + " ".join(declarations) + " " + prefix + copy
+                                    + f"ra_buffer[1]=workspace[{size-1}]; return copy_read_{right}(&{target}); }}"))
+        helpers = "u8 ra_buffer[128]; u16 copy_global_source; u16 copy_global_target;\n"
+        for kind in kinds:
+            helpers += (f"void copy_seed_{kind}({kind} *p,{kind} value) {{ p[0]=value; ra_buffer[127]+=1; }}\n"
+                        f"u16 copy_read_{kind}({kind} *p) {{ ra_buffer[127]+=1; return p[0]; }}\n")
+        for kind in ("u8", "u16"):
+            helpers += (f"void copy_alias_{kind}({kind} *p,{kind} *q,u16 b) {{ "
+                        "p[0]=q[0]+b; q[0]=0; ra_buffer[127]+=1; }\n")
+        images, directories = {}, {}
+        for group in (8, 136, 260, "boundaries"):
+            selected = [program for program in programs if (
+                "boundaries" if program.family.endswith("_span") else program.variant) == group]
+            directory = self.output / "memory-copies" / str(group)
+            directories[group] = directory
+            source = helpers + "\n".join(program.source for program in selected) + "\nvoid main(void) {}\n"
+            images[group] = compile_generated(directory, os.environ.get("SAMESAMECC") or "samesamecc",
+                                              os.environ.get("SAMESAMECL") or "samesamecl", selected, source)
+        calls = 0
+        for program in programs:
+            left, right = program.name.split("_")[1:3]
+            source_mask = 255 if left.endswith("8") else 65535
+            target_mask = 255 if right.endswith("8") else 65535
+            group = "boundaries" if program.family.endswith("_span") else program.variant
+            for a in (0, 1, 127, 128, 255, 256, 32767, 32768, 65535):
+                for b in (0, 1, 127, 128, 65535):
+                    copied, seeds = a & source_mask, 2
+                    if program.family == "alias":
+                        copied, seeds = (0 if b & 1 else 2 * b) & source_mask, 3
+                    elif program.family == "loop":
+                        count = b & 3
+                        copied = b if count == 0 else a if count == 1 else b + count - 2
+                        copied &= source_mask
+                        seeds += count
+                    # The existing assignment path sign-extends s8 only for an s16 destination.
+                    if left == "s8" and right == "s16" and copied & 128:
+                        copied |= 0xff00
+                    copied &= target_mask
+                    expected = copied | (0xff00 if right == "s8" and copied & 128 else 0)
+                    initial = bytes((offset * 37 + a + b) & 255 for offset in range(132))
+                    expected_buffer = bytearray(initial)
+                    expected_buffer[1] = b & 255
+                    expected_buffer[127] = (initial[127] + seeds + 1) & 255
+                    if program.family == "global_source":
+                        expected_buffer[128:130] = (a & 65535).to_bytes(2, "little")
+                    elif program.family == "global_target":
+                        expected_buffer[130:132] = copied.to_bytes(2, "little")
+                    for mode, image in images[group].items():
+                        self.assertEqual(image.symbols["copy_global_source"], image.symbols["ra_buffer"] + 128)
+                        self.assertEqual(image.symbols["copy_global_target"], image.symbols["ra_buffer"] + 130)
+                        result = execute(image.rom, image.symbols[program.name], [a, b], [2, 2],
+                                         initial, image.symbols["ra_buffer"], 2, image.transfers, frame_bytes=512)
+                        self.assertEqual((result["value"], result["buffer"], result["port_writes"]),
+                                         (expected, expected_buffer, []), (program.name, mode, a, b))
+                        self.assertEqual(result["unmapped_instructions"], 0)
+                        calls += 1
+        print(f"Shared-window memory-copy oracle executions: {calls}", flush=True)
+        for mode in images[8]:
+            assemblies = {group: (directory / mode / "main.asm").read_text()
+                          for group, directory in directories.items()}
+            boundaries = set()
+            for program in programs:
+                left, right = program.name.split("_")[1:3]
+                group = "boundaries" if program.family.endswith("_span") else program.variant
+                body = assemblies[group].split(f'.SECTION "{program.name}" FREE')[1].split(".ENDS")[0]
+                source = "copy_global_source" if program.family == "global_source" else r"_source_\d+"
+                target = "copy_global_target" if program.family == "global_target" else r"_target_\d+"
+                copy = re.search(r"; TAC: " + target + r"\.\w+ \(\w+\) := " + source
+                                 + r"\.\w+ \(\w+\)\n\s*; -+\n([\s\S]*?)(?=\s*; -+)", body)
+                self.assertIsNotNone(copy, (program.name, mode))
+                selected = False
+                if not program.family.startswith("global_") and left.endswith("8") == right.endswith("8"):
+                    source_offset = int(re.search(r'; TAC: variable "' + source + r'" size \d+ offset (-?\d+)', body)[1])
+                    target_offset = int(re.search(r'; TAC: variable "' + target + r'" size \d+ offset (-?\d+)', body)[1])
+                    base = 0 if -128 <= target_offset <= 126 else target_offset
+                    displacement = source_offset - base
+                    selected = mode in ("ra", "ra_quiet") and -128 <= displacement <= 126
+                    if program.family.endswith("_span"):
+                        boundaries.add(displacement)
+                if selected:
+                    self.assertNotIn("IY", copy[1], (program.name, mode))
+                    width = 1 if right.endswith("8") else 2
+                    transfers = [" ".join(line.split()) for line in copy[1].splitlines() if line.strip().startswith("LD ")]
+                    expected = [instruction for byte in range(width) for instruction in (
+                        f"LD A,(IX{displacement+byte:+d})", f"LD (IX{target_offset-base+byte:+d}),A")]
+                    self.assertEqual(transfers[-2*width:], expected, (program.name, mode))
+                else:
+                    self.assertIn("IY", copy[1], (program.name, mode))
+            self.assertTrue({-129, -128, 126, 127}.issubset(boundaries), (mode, boundaries))
+
     def test_retained_word_frame_copies(self):
         programs = []
         for kind in ("u16", "s16"):

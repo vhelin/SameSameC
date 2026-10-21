@@ -16,15 +16,15 @@ all: linked.sms
 	grep -q "function=allocatorRaPolicyAssignmentGlobalByte emitter=assignment_result_address operand=result kind=GLOBAL offset=999999 mode=global_label folded_offset=0 address_target=IX target=z80" compiler.log
 	grep -q "function=allocatorRaPolicyAssignmentGlobalByte emitter=assignment_arg1_address operand=arg1 kind=GLOBAL offset=999999 mode=global_label folded_offset=0 address_target=IY target=z80" compiler.log
 	grep -q "function=allocatorRaPolicyAssignmentNearByte emitter=assignment_result_address operand=result kind=STACK_LOCAL offset=-6 mode=frame_displacement folded_offset=-6 address_target=IX target=z80" compiler.log
-	grep -q "function=allocatorRaPolicyAssignmentNearByte emitter=assignment_arg1_address operand=arg1 kind=STACK_LOCAL offset=-4 mode=frame_address folded_offset=0 address_target=IY target=z80" compiler.log
+	grep -q "function=allocatorRaPolicyAssignmentNearByte emitter=assignment_arg1_address operand=arg1 kind=STACK_LOCAL offset=-4 mode=frame_displacement folded_offset=-4 address_target=IX target=z80" compiler.log
 	grep -q "function=allocatorRaPolicyAssignmentFarByte emitter=assignment_result_address operand=result kind=STACK_LOCAL offset=-147 mode=frame_address folded_offset=0 address_target=IX target=z80" compiler.log
-	grep -q "function=allocatorRaPolicyAssignmentFarByte emitter=assignment_arg1_address operand=arg1 kind=STACK_LOCAL offset=-146 mode=frame_address folded_offset=0 address_target=IY target=z80" compiler.log
+	grep -q "function=allocatorRaPolicyAssignmentFarByte emitter=assignment_arg1_address operand=arg1 kind=STACK_LOCAL offset=-146 mode=frame_address folded_offset=1 address_target=IX target=z80" compiler.log
 	grep -q "function=allocatorRaPolicyAssignmentGlobalWord emitter=assignment_result_address operand=result kind=GLOBAL offset=999999 mode=global_label folded_offset=0 address_target=IX target=z80" compiler.log
 	grep -q "function=allocatorRaPolicyAssignmentGlobalWord emitter=assignment_arg1_address operand=arg1 kind=GLOBAL offset=999999 mode=global_label folded_offset=0 address_target=IY target=z80" compiler.log
 	grep -q "function=allocatorRaPolicyAssignmentNearWord emitter=assignment_result_address operand=result kind=STACK_LOCAL offset=-9 mode=frame_displacement folded_offset=-9 address_target=IX target=z80" compiler.log
-	grep -q "function=allocatorRaPolicyAssignmentNearWord emitter=assignment_arg1_address operand=arg1 kind=STACK_LOCAL offset=-5 mode=frame_address folded_offset=0 address_target=IY target=z80" compiler.log
+	grep -q "function=allocatorRaPolicyAssignmentNearWord emitter=assignment_arg1_address operand=arg1 kind=STACK_LOCAL offset=-5 mode=frame_displacement folded_offset=-5 address_target=IX target=z80" compiler.log
 	grep -q "function=allocatorRaPolicyAssignmentFarWord emitter=assignment_result_address operand=result kind=STACK_LOCAL offset=-151 mode=frame_address folded_offset=0 address_target=IX target=z80" compiler.log
-	grep -q "function=allocatorRaPolicyAssignmentFarWord emitter=assignment_arg1_address operand=arg1 kind=STACK_LOCAL offset=-149 mode=frame_address folded_offset=0 address_target=IY target=z80" compiler.log
+	grep -q "function=allocatorRaPolicyAssignmentFarWord emitter=assignment_arg1_address operand=arg1 kind=STACK_LOCAL offset=-149 mode=frame_address folded_offset=2 address_target=IX target=z80" compiler.log
 	grep -q "assignment function=allocatorRaPolicyAssignmentSignExtend arg1_kind=STACK_LOCAL arg1_phy=NONE arg1_size=1 result_kind=GLOBAL result_phy=NONE result_size=2" compiler.log
 	grep -q "assignment function=allocatorRaPolicyAssignmentZeroExtend arg1_kind=STACK_LOCAL arg1_phy=NONE arg1_size=1 result_kind=GLOBAL result_phy=NONE result_size=2" compiler.log
 	: && ! grep -q "target_specialized_address_materialization.*emitter=assignment_.*kind=PHY" compiler.log

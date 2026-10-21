@@ -2624,6 +2624,55 @@ default/shared ROMs match across builds. Evidence, rejected-prototype controls
 and source/commit bindings are retained in
 `C:\cygwin64\tmp\far-frame-loads-2t-20261021`.
 
+**Ninth implementation checkpoint: shared-window frame memory copies.**
+The assignment emitter already addresses its frame destination through IX.
+For equal-width, one/two-byte stack-local/spill copies, reuse that proven window
+for source loads instead of rebuilding IY. Use the existing IX byte-load,
+byte-store and displacement-policy helpers; preserve low-load/store followed
+by high-load/store order. Do not move IX, bypass split store/reload transfers,
+or change physical-result, conversion, global, cache-miss, no-RA or all-spill
+fallbacks. No new functions, allocator policy, ownership proof or ABI changes;
+18 net production C lines.
+
+Against parent `547669d`, complete kernels and aggregate input timings:
+
+| Kernel | Bytes before -> after | Kernel T-states before -> after | Frame footprint |
+| --- | ---: | ---: | ---: |
+| Array | 1505 -> 1493 | 6092372 -> 6060356 (0.53% fewer) | 88 -> 88 |
+| Stencil | 1553 -> 1541 | 4055470 -> 4023454 (0.79% fewer) | 120 -> 120 |
+| Tile | 1109 -> 1079 | 1895180 -> 1879172 (0.84% fewer) | 126 -> 126 |
+| PackBits | 481 -> 475 | 142187 -> 138272 (2.75% fewer) | 39 -> 39 |
+| Packed CRC | 808 -> 802 | 11269634 -> 11222306 (0.42% fewer) | 47 -> 47 |
+| sumBytes | 99 -> 93 | 76126 -> 75633 (0.65% fewer) | 24 -> 24 |
+
+Other kernels and all callers/frame footprints are non-growing. Independently
+measured complete ROMs, not summed isolated-function savings:
+
+| Complete project | Default used ROM before -> after | Shared used ROM before -> after |
+| --- | ---: | ---: |
+| calculations-1 | 20083 -> 19957 | 20063 -> 19937 |
+| calculations-2 | 30255 -> 30183 | 29987 -> 29915 |
+
+Add a 56-function / 12600-execution memory-copy oracle across all five modes.
+Cover signed/unsigned byte/word copies, unchanged widening/narrowing paths,
+near/far locals, exact -128/-129 and +126/+127 displacement boundaries,
+escaped aliases, calls, loops, explicit IX clobbers and global fallbacks.
+Check complete observed memory/port results and actual byte-copy order.
+The parent passes all runtime controls but fails the new IX-selection check.
+
+Qualification passes 38 condition/policy and 21 optimized-policy tests per
+release/traced/ASan build, all 175 fixtures and unchanged immutable verifier
+controls. Seven fixtures need 15 exact vector updates: eight direct six-byte
+reductions and seven relocated-branch vectors. Prove unchanged source bodies
+and that their entire symbolic assembly changes contain only the qualified
+memory copies. Update only four matching IX-selection assertions; retain all
+global/conversion rejections and immutable native expectations. The full
+pinned comparison, paired shared profiles, 2320 non-growing individual SSC
+samples and 136 independent timing checks pass. All 512 condition images,
+90 allocator images and complete default/shared ROMs match across builds.
+Evidence and source/commit bindings are retained in
+`C:\cygwin64\tmp\frame-copies-2t-20261021`.
+
 **2t remains in progress.** The accepted checkpoints remove redundant copy/load
 traffic, proven forward-join frame setups and some backing storage, not general
 loop/CFG scalar residency.

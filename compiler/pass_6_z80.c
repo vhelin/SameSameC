@@ -2391,6 +2391,24 @@ static int _generate_asm_assignment_z80(struct tac *t, FILE *file_out, struct tr
   /******************************************************************************************************/
 
   if (g_allocator_enabled == YES && g_allocator_force_all_spill == NO &&
+      (result_location.kind == LOC_STACK_LOCAL || result_location.kind == LOC_STACK_SPILL) &&
+      (result_location.size == 1 || result_location.size == 2) && result_location.size == arg1_location.size &&
+      t->store_retained_to_spill_operand == -1 && t->reload_spill_to_physical_operand == -1 &&
+      g_ix_frame_offset != Z80_GLOBAL_OFFSET &&
+      get_register_allocator_address_materialization_mode(arg1_location.kind, RA_ADDRESS_TARGET_IX,
+        arg1_location.offset - g_ix_frame_offset) == RA_ADDRESS_MODE_FRAME_DISPLACEMENT) {
+    int byte, source_offset = arg1_location.offset - g_ix_frame_offset;
+    _trace_z80_specialized_address_materialization(function_node, "assignment_arg1_address", "arg1",
+        &arg1_location, RA_ADDRESS_TARGET_IX, source_offset);
+    for (byte = 0; byte < result_location.size; byte++) {
+      _load_from_ix_to_a(source_offset + byte, file_out);
+      if (_store_from_a(&result_location, byte, ix_offset, file_out) == FAILED)
+        return FAILED;
+    }
+    return SUCCEEDED;
+  }
+
+  if (g_allocator_enabled == YES && g_allocator_force_all_spill == NO &&
       (result_location.kind == LOC_PHY_HL || result_location.kind == LOC_PHY_BC) &&
       t->reload_spill_to_physical_operand == -1 &&
       (t->result_var_type == VARIABLE_TYPE_INT16 || t->result_var_type == VARIABLE_TYPE_UINT16) &&
