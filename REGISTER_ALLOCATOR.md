@@ -9,14 +9,18 @@ The checked phases below record implementation on top of the virtual-temp
 pipeline. Unchecked optimization and future-target items are optional extensions,
 not prerequisites for completing this Z80 scope.
 
-The separate `-ra -z80-regcalls` option enables bounded same-object leaf
-register calls. Public old-ABI entries remain available where needed; proven
-private static functions omit their adapters. This automatic optimization is
-off by default and inactive under `-no-ra` or `-ra-all-spill`.
-An explicit `__z80_regcall` function declaration instead defines a cross-object
-calling convention independently of allocator flags, with no old-ABI entry.
-Use matching declarations in callers and definitions; unsupported definitions
-are errors, not silent fallbacks. Scope, measured costs and compatibility
+Bounded Z80 word-register leaf calls are now selected automatically by the
+compiler/linker, including across compilation units. No source annotations,
+`-ra` or additional optimization flags are required. This ABI optimization is
+independent of physical register allocation, including `-no-ra` and all-spill
+builds. The old `-z80-regcalls` spelling is accepted but redundant.
+Old-ABI entries are omitted when all references are understood and converted;
+assembly, older inputs and escaping addresses conservatively retain compatible
+entries or ordinary calls. Optional `__z80_regcall` declarations remain useful
+only as a stronger ABI contract: they can save additional adapter bytes around
+opaque assembly, but forbid old-ABI references and require matching declarations.
+Unsupported explicit contracts are errors, not silent fallbacks.
+Scope, measured costs and compatibility
 tradeoffs are recorded in
 [Z80 code generation step 2y](Z80_CODEGEN_PLAN.md#2y-explicit-compatible-internal-register-calls-completed).
 It does not change the allocator's general call-clobber or verifier contracts.

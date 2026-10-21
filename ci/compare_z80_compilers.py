@@ -280,6 +280,12 @@ def compile_case(name, mode, output, tools, functions, packed):
 
 
 def execute(memory_image, symbols, name, parameters, initial_buffer, seed, ticks=None, directory=None):
+    ordinary_entry = symbols.get(name)
+    register_address = symbols.get(f"ssc.autocall.v1.w{len(parameters)}.{name}",
+                                   symbols.get(f"ssc.regcall.v1.w{len(parameters)}.{name}",
+                                               symbols.get(f"ssc.regcall.{name}")))
+    if ordinary_entry is None and register_address is None:
+        raise RuntimeError(f"Missing kernel entry: {name}")
     machine = Z80Machine()
     machine.af = 0
     memory = machine.memory
@@ -347,8 +353,8 @@ def execute(memory_image, symbols, name, parameters, initial_buffer, seed, ticks
     while machine.pc != sentinel:
         if counters["instructions"] >= 2000000:
             raise RuntimeError("Instruction limit exceeded")
-        register_entry = machine.pc == symbols.get(f"ssc.regcall.{name}")
-        if (machine.pc == symbols[name] or register_entry) and not kernel_done and not kernel_active:
+        register_entry = machine.pc == register_address
+        if (machine.pc == ordinary_entry or register_entry) and not kernel_done and not kernel_active:
             kernel_active = True
             kernel_sp = machine.de - 1 if "mainmain" in symbols and not register_entry else machine.sp
             resume = memory[kernel_sp] + 256 * memory[(kernel_sp + 1) & 65535]
@@ -393,9 +399,12 @@ def compare_result(result, reference, allow_competitor_drift=False):
     candidate = result["mode"].startswith("ssc-")
     shared = result["mode"].endswith("-shared")
     metrics = (*METRICS, "max_stack_access_bytes", "max_below_sp_bytes", "max_frame_footprint_bytes") if shared else METRICS
-    if result["mode"] == "ssc-ra-regcalls":
-        metrics = ("complete_code_bytes", "complete_cycles", "max_stack_bytes", "max_stack_access_bytes",
-                   "max_below_sp_bytes", "max_frame_footprint_bytes")
+    if candidate and not shared and (result.get("register_calls") or result["mode"] == "ssc-ra-regcalls"):
+        metrics = ("complete_code_bytes", "complete_cycles", "max_stack_bytes")
+        # Paired reports additionally measure frame-access extent; the pinned baseline predates it.
+        metrics += tuple(metric for metric in (
+            "max_stack_access_bytes", "max_below_sp_bytes", "max_frame_footprint_bytes",
+        ) if metric in reference)
     for metric in metrics:
         if metric == "complete_code_bytes":
             current, previous = (row["code_bytes"] + row["wrapper_bytes"] for row in (result, reference))
@@ -510,6 +519,7 @@ def main():
                     report["independent_timing_checks"] += independent is not None
                     samples.append({"seed": seed, **counters})
                 result = {"routine": name, "mode": mode, "code_bytes": code_bytes, "wrapper_bytes": wrapper_bytes,
+                          "register_calls": any(symbol.startswith(("ssc.regcall.", "ssc.autocall.")) for symbol in symbols),
                           "cases": len(samples), "total_kernel_cycles": sum(item["kernel_cycles"] for item in samples),
                           "total_wrapper_cycles": sum(item["cycles"] - item["kernel_cycles"] for item in samples),
                           "max_stack_bytes": max(item["stack_high_water"] for item in samples),

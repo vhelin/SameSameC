@@ -90,15 +90,16 @@ class ComparisonTests(unittest.TestCase):
         reference = dict(routine="probe", mode="ssc-ra", code_bytes=100, wrapper_bytes=100,
                          total_kernel_cycles=400, total_wrapper_cycles=400, max_stack_bytes=20,
                          max_stack_access_bytes=20, max_below_sp_bytes=8, max_frame_footprint_bytes=22)
-        result = dict(reference, mode="ssc-ra-regcalls", code_bytes=120, wrapper_bytes=70,
-                      total_kernel_cycles=410, total_wrapper_cycles=300)
-        self.assertEqual(benchmark.compare_result(result, reference), [])
-        for metric, value in (("code_bytes", 131), ("total_kernel_cycles", 501),
-                              ("max_stack_bytes", 21), ("max_stack_access_bytes", 21),
-                              ("max_below_sp_bytes", 9), ("max_frame_footprint_bytes", 23)):
-            issues = benchmark.compare_result(dict(result, **{metric: value}), reference, True)
-            self.assertEqual(len(issues), 1, metric)
-            self.assertTrue(issues[0]["fatal"])
+        for mode in ("ssc-ra-regcalls", "ssc-ra", "ssc-no-ra"):
+            result = dict(reference, mode=mode, register_calls=True, code_bytes=120, wrapper_bytes=70,
+                          total_kernel_cycles=410, total_wrapper_cycles=300)
+            self.assertEqual(benchmark.compare_result(result, reference), [])
+            for metric, value in (("code_bytes", 131), ("total_kernel_cycles", 501),
+                                  ("max_stack_bytes", 21), ("max_stack_access_bytes", 21),
+                                  ("max_below_sp_bytes", 9), ("max_frame_footprint_bytes", 23)):
+                issues = benchmark.compare_result(dict(result, **{metric: value}), reference, True)
+                self.assertEqual(len(issues), 1, (mode, metric))
+                self.assertTrue(issues[0]["fatal"])
         with patch("sys.argv", ["compare", "--modes", "ssc-ra-regcalls"]), patch("sys.stderr", new=io.StringIO()):
             with self.assertRaises(SystemExit) as error:
                 benchmark.main()
@@ -108,12 +109,19 @@ class ComparisonTests(unittest.TestCase):
         image = bytearray(65536)
         image[0x100:0x10e] = bytes.fromhex("d5 cd 00 02 d1 22 00 c2 21 ff ff 19 f9 c9")
         image[0x200:0x204] = bytes.fromhex("21 07 00 c9")
-        symbols = dict(bench=0x100, bench_buffer=0xc000, bench_params=0xc100, bench_result=0xc200,
-                       mainmain=0x100, root=0x300)
-        symbols["ssc.regcall.root"] = 0x200
-        value, _, counters = benchmark.execute(image, symbols, "root", [], b"", 0)
-        self.assertEqual(value, 7)
-        self.assertEqual((counters["kernel_cycles"], counters["kernel_instructions"]), (20, 2))
+        for label in ("ssc.regcall.root", "ssc.regcall.v1.w0.root", "ssc.autocall.v1.w0.root"):
+            for ordinary in (False, True):
+                symbols = dict(bench=0x100, bench_buffer=0xc000, bench_params=0xc100, bench_result=0xc200,
+                               mainmain=0x100)
+                if ordinary:
+                    symbols["root"] = 0x300
+                symbols[label] = 0x200
+                value, _, counters = benchmark.execute(image, symbols, "root", [], b"", 0)
+                self.assertEqual(value, 7)
+                self.assertEqual((counters["kernel_cycles"], counters["kernel_instructions"]), (20, 2))
+        del symbols[label]
+        with self.assertRaisesRegex(RuntimeError, "Missing kernel entry"):
+            benchmark.execute(image, symbols, "missing", [], b"", 0)
 
     def test_competitor_changes_are_not_silent(self):
         reference = next(row for row in self.reference["results"] if row["mode"] == "sdcc-size")

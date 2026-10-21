@@ -194,6 +194,11 @@ int file_find_copy_bytes_calls(void) {
 
 int file_write_all_asm_files_into_tmp_file(FILE *fp) {
 
+  struct register_call {
+    char name[MAX_NAME_LENGTH + 1];
+    int arguments, defined, calls, used_calls, escaped, explicit_call;
+    struct register_call *next;
+  } *register_calls = NULL, *regcall, *next_regcall;
   struct arithmetic_body {
     struct file *file;
     char *start, *body, *end;
@@ -202,9 +207,95 @@ int file_write_all_asm_files_into_tmp_file(FILE *fp) {
   } *bodies = NULL, *last = NULL, *body, *match, *next;
   const char *begin_marker = "      ; ssc_arithmetic_begin ";
   const char *end_marker = "      ; ssc_arithmetic_end";
+  const char *call_marker = "      ; ssc_regcalls ";
   char *cursor, *start, *end, *code;
-  int kind, bank, slot, consumed, id = 0, status = FAILED;
+  char name[MAX_NAME_LENGTH + 1];
+  int kind, bank, slot, consumed, version, arguments, value, header, opaque = NO, id = 0, status = FAILED;
   struct file *f;
+
+  for (f = g_files_first; f != NULL; f = f->next) {
+    header = NO;
+    cursor = f->data;
+    while ((start = strstr(cursor, call_marker)) != NULL) {
+      cursor = start + strlen(call_marker);
+      if (start != f->data && start[-1] != '\n')
+        continue;
+      end = strchr(cursor, '\n');
+      if (end == NULL || end - cursor < 9 || cursor[1] != ' ' || cursor[3] != ' ' ||
+          cursor[5] != ' ' || cursor[7] != ' ' || sscanf(cursor, "%1d %1d %1d %1d %256s%n",
+                               &version, &kind, &arguments, &value, name, &consumed) != 5)
+        goto invalid_regcall;
+      cursor += consumed;
+      if (cursor > end)
+        goto invalid_regcall;
+      while (cursor < end && strchr(" \t\r", *cursor) != NULL)
+        cursor++;
+      if (cursor != end || version != 1 || kind < 0 || kind > 4 ||
+          arguments < 0 || arguments > 3 || value < 0 || value > 1)
+        goto invalid_regcall;
+      cursor = end + 1;
+      if (kind == 0) {
+        if (header == YES || arguments != 0 || strcmp(name, "-") != 0)
+          goto invalid_regcall;
+        header = YES;
+        if (value == YES)
+          opaque = YES;
+        continue;
+      }
+      if (header == NO || ((kind == 1 || kind == 4) && value != 0) || (kind == 3 && (arguments != 0 || value != 0)) ||
+          (!isalpha((unsigned char)name[0]) && name[0] != '_'))
+        goto invalid_regcall;
+      for (code = name; *code != 0; code++) {
+        if (!isalnum((unsigned char)*code) && *code != '_')
+          goto invalid_regcall;
+      }
+      for (regcall = register_calls; regcall != NULL; regcall = regcall->next) {
+        if (strcmp(regcall->name, name) == 0)
+          break;
+      }
+      if (regcall == NULL) {
+        regcall = calloc(1, sizeof(*regcall));
+        if (regcall == NULL) {
+          fprintf(stderr, "FILE_WRITE_ALL_ASM_FILES_INTO_TMP_FILE: Out of memory error.\n");
+          goto cleanup;
+        }
+        strcpy(regcall->name, name);
+        regcall->arguments = -1;
+        regcall->next = register_calls;
+        register_calls = regcall;
+      }
+      if (kind == 3) {
+        regcall->escaped = YES;
+        continue;
+      }
+      if ((regcall->arguments >= 0 && regcall->arguments != arguments) || ((kind == 1 || kind == 4) && regcall->defined == YES)) {
+        fprintf(stderr, "FILE_WRITE_ALL_ASM_FILES_INTO_TMP_FILE: Incompatible register-call records for \"%s\" in \"%s\".\n",
+                name, f->name);
+        goto cleanup;
+      }
+      regcall->arguments = arguments;
+      if (kind == 1 || kind == 4) {
+        regcall->defined = YES;
+        regcall->explicit_call = kind == 4;
+      }
+      else {
+        regcall->calls++;
+        regcall->used_calls += value;
+      }
+    }
+    /* Older inputs and source ASM can reference any ordinary public entry. */
+    if (header == NO)
+      opaque = YES;
+  }
+  for (regcall = register_calls; regcall != NULL; regcall = regcall->next) {
+    int legacy = regcall->explicit_call == NO && (opaque == YES || regcall->escaped == YES);
+    if (regcall->defined != YES || (regcall->explicit_call == NO && regcall->calls == 0) ||
+        (legacy && regcall->used_calls < 2))
+      continue;
+    fprintf(fp, "  .DEFINE ssc.auto.v1.w%d.%s 1\n", regcall->arguments, regcall->name);
+    if (legacy)
+      fprintf(fp, "  .DEFINE ssc.legacy.v1.w%d.%s 1\n", regcall->arguments, regcall->name);
+  }
 
   if (g_share_arithmetic == YES) {
     for (f = g_files_first; f != NULL; f = f->next) {
@@ -312,7 +403,14 @@ int file_write_all_asm_files_into_tmp_file(FILE *fp) {
 
 invalid_body:
   fprintf(stderr, "FILE_WRITE_ALL_ASM_FILES_INTO_TMP_FILE: Invalid arithmetic body in \"%s\".\n", f->name);
+  goto cleanup;
+invalid_regcall:
+  fprintf(stderr, "FILE_WRITE_ALL_ASM_FILES_INTO_TMP_FILE: Invalid register-call metadata in \"%s\".\n", f->name);
 cleanup:
+  for (regcall = register_calls; regcall != NULL; regcall = next_regcall) {
+    next_regcall = regcall->next;
+    free(regcall);
+  }
   for (body = bodies; body != NULL; body = next) {
     next = body->next;
     free(body);
