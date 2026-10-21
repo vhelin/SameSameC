@@ -2395,8 +2395,11 @@ static int _generate_asm_assignment_z80(struct tac *t, FILE *file_out, struct tr
       t->reload_spill_to_physical_operand == -1 &&
       (t->result_var_type == VARIABLE_TYPE_INT16 || t->result_var_type == VARIABLE_TYPE_UINT16) &&
       (t->arg1_var_type == VARIABLE_TYPE_INT16 || t->arg1_var_type == VARIABLE_TYPE_UINT16) &&
-      get_register_allocator_address_materialization_mode(arg1_location.kind, RA_ADDRESS_TARGET_IX,
-        arg1_location.offset) == RA_ADDRESS_MODE_FRAME_DISPLACEMENT) {
+      (get_register_allocator_address_materialization_mode(arg1_location.kind, RA_ADDRESS_TARGET_IX,
+         arg1_location.offset) == RA_ADDRESS_MODE_FRAME_DISPLACEMENT ||
+       (g_ix_frame_offset != Z80_GLOBAL_OFFSET &&
+        get_register_allocator_address_materialization_mode(arg1_location.kind, RA_ADDRESS_TARGET_IX,
+          arg1_location.offset - g_ix_frame_offset) == RA_ADDRESS_MODE_FRAME_DISPLACEMENT))) {
     if (_load_location_address_to_ix(&arg1_location, &ix_offset, file_out) == FAILED)
       return FAILED;
     _trace_z80_specialized_address_materialization(function_node, "assignment_arg1_address", "arg1",

@@ -1168,10 +1168,10 @@ def check_analytical_assertions(output, programs):
         ):
             raise RuntimeError(f"Wide pointer-slot assignment not exercised: {name}")
         if family == "matrix_index_copy" and 30 <= variant <= 32:
-            offset, use_ix = -97 - variant, variant < 32
+            offset, canonical = -97 - variant, variant < 32
             address = (
-                f"offset={offset} mode={'frame_displacement' if use_ix else 'frame_address'} "
-                f"folded_offset={offset if use_ix else 0} address_target={'IX' if use_ix else 'IY'} target=z80"
+                f"offset={offset} mode={'frame_displacement' if canonical else 'frame_address'} "
+                f"folded_offset={max(offset, -128)} address_target=IX target=z80"
             )
             if not any(
                 "emitter=assignment_arg1_address operand=arg1 kind=STACK_LOCAL " in line and line.endswith(address)

@@ -19,57 +19,90 @@ class BranchConditionsTests(unittest.TestCase):
         programs = []
         for kind in ("u16", "s16"):
             for size in (0, 8, 112, 113, 114, 115, 116, 117, 136, 260):
-                name = f"word_copy_{kind}_{size}"
-                last = max(size, 8) - 1
-                local = f"{kind} index=a; word_copy_step_{kind}(&index); " if size else ""
-                programs.append(Program(name, kind, size, 0, [2, 2, 2], 2, [],
-                                        f"u16 {name}({kind} {'a' if size else 'index'}, u16 b, u8 *p) {{ "
-                                        f"u8 workspace[{last+1}]; {local}workspace[{last}]=b; "
-                                        f"u16 value=p[index++]; return value+index+workspace[{last}]; }}"))
-        source = ("u8 ra_buffer[128];\n"
-                  "void word_copy_step_u16(u16 *p) { p[0]+=1; }\n"
-                  "void word_copy_step_s16(s16 *p) { p[0]+=1; }\n"
-                  + "\n".join(program.source for program in programs) + "\nvoid main(void) {}\n")
-        directory = self.output / "word-frame-copies"
-        images = compile_generated(directory, os.environ.get("SAMESAMECC") or "samesamecc",
-                                   os.environ.get("SAMESAMECL") or "samesamecl", programs, source)
+                for primed in (False, True):
+                    name = f"word_copy_{kind}_{size}" + ("_primed" if primed else "")
+                    last = max(size, 8) - 1
+                    local = f"{kind} index=a; word_copy_step_{kind}(&index); " if size else ""
+                    programs.append(Program(name, "primed" if primed else "plain", size, 0, [2, 2, 2], 2, [],
+                                            f"u16 {name}({kind} {'a' if size else 'index'}, u16 b, u8 *p) {{ "
+                                            f"u8 workspace[{last+1}]; {local}workspace[{last}]=b; "
+                                            + ("if(index&1) { index^=2; } " if primed else "")
+                                            + f"u16 value=p[index++]; return value+index+workspace[{last}]; }}"))
+        programs.extend(
+            Program(f"word_copy_arguments_{count}", "arguments", count, 0, [2] * (count + 3), 2, [],
+                    f"u16 word_copy_arguments_{count}(u16 a,u16 b,"
+                    + ",".join(f"u16 padding{i}" for i in range(count))
+                    + ",u8 *p) { u16 value=p[a&31]; return value+b; }")
+            for count in (64, 128)
+        )
+        directories, images = {}, {}
+        for family in ("plain", "primed", "arguments"):
+            group = [program for program in programs if program.family == family]
+            source = ("u8 ra_buffer[128];\n"
+                      "void word_copy_step_u16(u16 *p) { p[0]+=1; }\n"
+                      "void word_copy_step_s16(s16 *p) { p[0]+=1; }\n"
+                      + "\n".join(program.source for program in group) + "\nvoid main(void) {}\n")
+            directories[family] = self.output / ("word-frame-copies" + (f"-{family}" if family != "plain" else ""))
+            images[family] = compile_generated(directories[family], os.environ.get("SAMESAMECC") or "samesamecc",
+                                               os.environ.get("SAMESAMECL") or "samesamecl", group, source)
         calls = 0
         for program in programs:
-            for index in (-3, -1, 0, 1, 7, 23, 63):
+            indices = ((0, 1, 127, 128, 255, 256, 32767, 32768, 65535) if program.family == "arguments"
+                       else (-3, -1, 0, 1, 7, 23, 63))
+            for index in indices:
                 a = (index - bool(program.variant)) & 65535
+                access_index = index ^ 2 if program.family == "primed" and index & 1 else index
                 for b in (0, 1, 127, 128, 255, 256, 32767, 32768, 65535):
                     initial = bytes((offset * 37 + b) & 255 for offset in range(128))
-                    expected = (initial[64 + index] + index + 1 + (b & 255)) & 65535
-                    for mode, image in images.items():
+                    if program.family == "arguments":
+                        expected = (initial[64 + (index & 31)] + b) & 65535
+                    else:
+                        expected = (initial[64 + access_index] + access_index + 1 + (b & 255)) & 65535
+                    for mode, image in images[program.family].items():
+                        parameters = [a, b, image.symbols["ra_buffer"] + 64]
+                        if program.family == "arguments":
+                            parameters = [index, b, *([0] * program.variant), image.symbols["ra_buffer"] + 64]
                         result = execute(image.rom, image.symbols[program.name],
-                                         [a, b, image.symbols["ra_buffer"] + 64], [2, 2, 2],
+                                         parameters, program.widths,
                                          initial, image.symbols["ra_buffer"], 2, image.transfers,
                                          frame_bytes=512)
                         self.assertEqual((result["value"], result["buffer"], result["port_writes"]),
                                          (expected, initial, []), (program.name, mode, index, b))
                         self.assertEqual(result["unmapped_instructions"], 0)
+                        if program.family == "arguments" and mode in ("ra", "ra_quiet"):
+                            self.assertEqual(result["cycles"], 333, (program.name, mode, index, b))
                         calls += 1
         print(f"Retained word frame-copy oracle executions: {calls}", flush=True)
-        for mode in images:
-            assembly = (directory / mode / "main.asm").read_text()
+        for mode in images["plain"]:
+            assemblies = {family: (directory / mode / "main.asm").read_text()
+                          for family, directory in directories.items()}
             offsets = set()
             for program in programs:
-                body = assembly.split(f'.SECTION "{program.name}" FREE')[1].split(".ENDS")[0]
-                variable = re.search(r'; TAC: variable "(index|_index_\d+)" size 2 offset (-?\d+)', body)
+                body = assemblies[program.family].split(f'.SECTION "{program.name}" FREE')[1].split(".ENDS")[0]
+                variable_name = "p" if program.family == "arguments" else r"index|_index_\d+"
+                variable = re.search(r'; TAC: variable "(' + variable_name + r')" size 2 offset (-?\d+)', body)
                 self.assertIsNotNone(variable, (program.name, mode))
+                offset = int(variable[2])
+                offsets.add(offset)
+                if program.family == "arguments" and mode not in ("ra", "ra_quiet"):
+                    self.assertIn(f"LD  IY,{offset}", body, (program.name, mode))
+                    continue
                 copy = re.search(r"; TAC: r(\d+)\.(?:u16|s16) \((?:u16|s16)\) := "
                                  + re.escape(variable[1]) + r"\.(?:u16|s16) \((?:u16|s16)\)\n"
                                  r"\s*; -+\n([\s\S]*?)(?=\s*; -+)", body)
                 self.assertIsNotNone(copy, (program.name, mode))
-                offset = int(variable[2])
-                offsets.add(offset)
                 if mode in ("ra", "ra_quiet"):
-                    self.assertIn(f"; register {copy[1]} size 2 spill no phy BC", body, (program.name, mode))
-                    if -128 <= offset <= 126:
+                    physical = "HL" if program.family == "arguments" else "BC"
+                    self.assertIn(f"; register {copy[1]} size 2 spill no phy {physical}", body, (program.name, mode))
+                    if -128 <= offset <= 126 or program.family == "primed":
                         self.assertNotIn("IY", copy[2], (program.name, mode))
                         self.assertRegex(copy[2], r"LD  C,\(IX[+-]\d+\)\n\s*LD  B,\(IX[+-]\d+\)")
+                        if program.family == "primed" and offset < -128:
+                            self.assertNotRegex(copy[2], r"\b(?:LD|INC|DEC)\s+IX\b", (program.name, mode))
                     else:
                         self.assertIn(f"LD  IY,{offset}", copy[2], (program.name, mode))
+                    if program.family == "arguments":
+                        self.assertEqual(images[program.family][mode].staticMetrics["functions"][program.name]["rom_bytes"], 59)
                 else:
                     self.assertIn(f"LD  IY,{offset}", copy[2], (program.name, mode))
             self.assertTrue(set(range(-130, -124)).issubset(offsets), (mode, offsets))

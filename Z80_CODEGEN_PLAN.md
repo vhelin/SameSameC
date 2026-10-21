@@ -2579,6 +2579,51 @@ samples are non-growing; all 452 condition images, 90 allocator images and
 complete default/shared ROMs match across builds. Evidence and source/commit
 bindings are retained in `C:\cygwin64\tmp\bc-frame-loads-2t-20261021`.
 
+**Eighth implementation checkpoint: cached far-frame word sources.**
+Extend the existing retained HL/BC word-copy path when a proven IX window
+already covers the source, even if its canonical frame offset is outside
+-128 through 126. This new case neither rebuilds nor adjusts IX. Preserve
+canonical-frame eligibility, width/reload/register guards, global fallback
+and conservative cache invalidation. Reuse the existing target displacement
+policy and address emitter: **three net production C lines, no new functions**,
+and no allocator-core, policy, verifier or ABI changes.
+
+Reject the simpler unconditional far-frame IX prototype. Two valid far-argument
+controls grow from 59 to 65 bytes and from 333 to 362 T-states per call because
+rebasing IX displaces a useful near-frame window. The bounded implementation
+retains both original costs, while keeping the prototype's real-workload win:
+
+| Kernel | Bytes before -> after | Kernel T-states before -> after | Frame footprint |
+| --- | ---: | ---: | ---: |
+| Path | 1318 -> 1306 | 5393409 -> 5355245 (0.71% fewer) | 186 -> 186 |
+
+Other kernels, callers and frame footprints do not grow. Independently measured
+complete ROMs, rather than summed isolated savings:
+
+| Complete project | Default used ROM before -> after | Shared used ROM before -> after |
+| --- | ---: | ---: |
+| calculations-1 | 20083 -> 20083 | 20063 -> 20063 |
+| calculations-2 | 30267 -> 30255 | 29999 -> 29987 |
+
+Expand the existing word-copy oracle to 42 functions / 13410 executions per
+build across all five modes. Cover cached and uncached signed/unsigned locals,
+forward joins, aliases/calls, sequenced increments, frame boundaries and large
+argument lists. Assert actual IX loads without IX mutation for cached far
+sources, retain uncached IY fallback, and pin complete 59-byte/333-cycle
+far-argument costs. The parent passes all runtime/cost controls but fails the
+new cached-load assertion. Update the existing scalar cohort's exact -129
+assignment expectation to IX displacement -128; retain its uncached/global
+rejections and all immutable verifier expectations.
+
+Qualification passes 37 condition/policy and 21 optimized-policy tests per
+release/traced/ASan build, all 175 fixtures without snapshot updates and the
+unchanged immutable controls. The full pinned comparison, paired shared
+profiles, 2320 non-growing individual SSC samples and 136 independent timing
+checks pass. All 472 condition images, 90 allocator images and complete
+default/shared ROMs match across builds. Evidence, rejected-prototype controls
+and source/commit bindings are retained in
+`C:\cygwin64\tmp\far-frame-loads-2t-20261021`.
+
 **2t remains in progress.** The accepted checkpoints remove redundant copy/load
 traffic, proven forward-join frame setups and some backing storage, not general
 loop/CFG scalar residency.
