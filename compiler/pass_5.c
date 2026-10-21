@@ -874,11 +874,11 @@ static int _optimize_il_3(int *optimizations_counter) {
 }
 
 
-static int _optimize_il_4(int *optimizations_counter) {
+static int _pack_result_assignments(int *optimizations_counter, int producer_op) {
 
   /*
-    rX = &? <--- REMOVE rX if rX doesn't appear elsewhere
-    ?  = rX <--- REMOVE rX if rX doesn't appear elsewhere
+    rX = producer <--- REMOVE rX if this assignment is its only read
+    ?  = rX
   */
 
   int i = 0;
@@ -893,7 +893,7 @@ static int _optimize_il_4(int *optimizations_counter) {
       return FAILED;
 
     while (i < end) {
-      int current, next;
+      int current, next, producer_matches;
 
       current = _find_next_living_tac(i);
       next = _find_next_living_tac(current + 1);
@@ -901,7 +901,16 @@ static int _optimize_il_4(int *optimizations_counter) {
       if (current < 0 || next < 0)
         break;
 
-      if (g_tacs[current].op == TAC_OP_GET_ADDRESS && g_tacs[next].op == TAC_OP_ASSIGNMENT &&
+      producer_matches = g_tacs[current].op == producer_op;
+      /* TAC_OP_DEAD selects the arithmetic group rather than a single opcode. */
+      if (producer_op == TAC_OP_DEAD)
+        producer_matches = g_tacs[current].op == TAC_OP_SHIFT_RIGHT ||
+          g_tacs[current].op == TAC_OP_SHIFT_LEFT || g_tacs[current].op == TAC_OP_OR ||
+          g_tacs[current].op == TAC_OP_XOR || g_tacs[current].op == TAC_OP_AND ||
+          g_tacs[current].op == TAC_OP_MOD || g_tacs[current].op == TAC_OP_MUL ||
+          g_tacs[current].op == TAC_OP_DIV || g_tacs[current].op == TAC_OP_SUB ||
+          g_tacs[current].op == TAC_OP_ADD;
+      if (producer_matches && g_tacs[next].op == TAC_OP_ASSIGNMENT &&
           g_tacs[current].result_type == TAC_ARG_TYPE_TEMP && g_tacs[next].arg1_type == TAC_ARG_TYPE_TEMP &&
           (int)g_tacs[current].result_d == (int)g_tacs[next].arg1_d &&
           g_register_reads[(int)g_tacs[current].result_d] == 1 && g_register_writes[(int)g_tacs[current].result_d] == 1) {
@@ -913,117 +922,7 @@ static int _optimize_il_4(int *optimizations_counter) {
         g_tacs[next].op = TAC_OP_DEAD;
         (*optimizations_counter)++;
   if (g_register_allocator_trace) {
-        fprintf(stderr, "_optimize_il_4(): SUCCESS!\n");
-  }
-
-      }
-
-      i = next;
-    }
-
-    if (is_last_function == YES)
-      break;
-  }
-
-  return SUCCEEDED;
-}
-
-
-static int _optimize_il_5(int *optimizations_counter) {
-
-  /*
-    rX = &?[] <--- REMOVE rX if rX doesn't appear elsewhere
-    ?  = rX   <--- REMOVE rX if rX doesn't appear elsewhere
-  */
-
-  int i = 0;
-
-  while (1) {
-    int is_last_function = NO;
-    int end = _find_end_of_il_function(i, &is_last_function);
-    if (end < 0)
-      return FAILED;
-
-    if (_count_and_allocate_register_usage(i, end) == FAILED)
-      return FAILED;
-
-    while (i < end) {
-      int current, next;
-
-      current = _find_next_living_tac(i);
-      next = _find_next_living_tac(current + 1);
-
-      if (current < 0 || next < 0)
-        break;
-
-      if (g_tacs[current].op == TAC_OP_GET_ADDRESS_ARRAY && g_tacs[next].op == TAC_OP_ASSIGNMENT &&
-          g_tacs[current].result_type == TAC_ARG_TYPE_TEMP && g_tacs[next].arg1_type == TAC_ARG_TYPE_TEMP &&
-          (int)g_tacs[current].result_d == (int)g_tacs[next].arg1_d &&
-          g_register_reads[(int)g_tacs[current].result_d] == 1 && g_register_writes[(int)g_tacs[current].result_d] == 1) {
-        /* found match! rX can be skipped! */
-        if (tac_set_result(&g_tacs[current], g_tacs[next].result_type, g_tacs[next].result_d, g_tacs[next].result_s) == FAILED)
-          return FAILED;
-        g_tacs[current].result_node = g_tacs[next].result_node;
-        g_tacs[current].result_var_type_promoted = g_tacs[next].result_var_type_promoted;
-        g_tacs[next].op = TAC_OP_DEAD;
-        (*optimizations_counter)++;
-  if (g_register_allocator_trace) {
-        fprintf(stderr, "_optimize_il_5(): SUCCESS!\n");
-  }
-
-      }
-
-      i = next;
-    }
-
-    if (is_last_function == YES)
-      break;
-  }
-
-  return SUCCEEDED;
-}
-
-
-static int _optimize_il_6(int *optimizations_counter) {
-
-  /*
-    rX = ?[]  <--- REMOVE rX if rX doesn't appear elsewhere
-    ?  = rX   <--- REMOVE rX if rX doesn't appear elsewhere
-  */
-
-  int i = 0;
-
-  while (1) {
-    int is_last_function = NO;
-    int end = _find_end_of_il_function(i, &is_last_function);
-    if (end < 0)
-      return FAILED;
-
-    if (_count_and_allocate_register_usage(i, end) == FAILED)
-      return FAILED;
-
-    while (i < end) {
-      int current, next;
-
-      current = _find_next_living_tac(i);
-      next = _find_next_living_tac(current + 1);
-
-      if (current < 0 || next < 0)
-        break;
-
-      if (g_tacs[current].op == TAC_OP_ARRAY_READ && g_tacs[next].op == TAC_OP_ASSIGNMENT &&
-          g_tacs[current].result_type == TAC_ARG_TYPE_TEMP && g_tacs[next].arg1_type == TAC_ARG_TYPE_TEMP &&
-          (int)g_tacs[current].result_d == (int)g_tacs[next].arg1_d &&
-          g_register_reads[(int)g_tacs[current].result_d] == 1 && g_register_writes[(int)g_tacs[current].result_d] == 1) {
-        /* found match! rX can be skipped! */
-        if (tac_set_result(&g_tacs[current], g_tacs[next].result_type, g_tacs[next].result_d, g_tacs[next].result_s) == FAILED)
-          return FAILED;
-        g_tacs[current].result_node = g_tacs[next].result_node;
-        g_tacs[current].result_var_type_promoted = g_tacs[next].result_var_type_promoted;
-        g_tacs[next].op = TAC_OP_DEAD;
-        (*optimizations_counter)++;
-  if (g_register_allocator_trace) {
-        fprintf(stderr, "_optimize_il_6(): SUCCESS!\n");
+        fprintf(stderr, "_pack_result_assignments(): SUCCESS!\n");
   }
 
       }
@@ -1299,126 +1198,6 @@ static int _optimize_il_12(int *optimizations_counter) {
         (*optimizations_counter)++;
   if (g_register_allocator_trace) {
         fprintf(stderr, "_optimize_il_12(): SUCCESS!\n");
-  }
-
-      }
-
-      i = next;
-    }
-
-    if (is_last_function == YES)
-      break;
-  }
-
-  return SUCCEEDED;
-}
-
-
-static int _optimize_il_13(int *optimizations_counter) {
-
-  /*
-    rX = rA * rB <--- REMOVE rX if rX doesn't appear elsewhere
-     ? = rX      <--- REMOVE rX if rX doesn't appear elsewhere
-  */
-
-  int i = 0;
-
-  while (1) {
-    int is_last_function = NO;
-    int end = _find_end_of_il_function(i, &is_last_function);
-    if (end < 0)
-      return FAILED;
-
-    if (_count_and_allocate_register_usage(i, end) == FAILED)
-      return FAILED;
-
-    while (i < end) {
-      int current, next;
-
-      current = _find_next_living_tac(i);
-      next = _find_next_living_tac(current + 1);
-
-      if (current < 0 || next < 0)
-        break;
-
-      if ((g_tacs[current].op == TAC_OP_SHIFT_RIGHT ||
-           g_tacs[current].op == TAC_OP_SHIFT_LEFT ||
-           g_tacs[current].op == TAC_OP_OR ||
-           g_tacs[current].op == TAC_OP_XOR ||
-           g_tacs[current].op == TAC_OP_AND ||
-           g_tacs[current].op == TAC_OP_MOD ||
-           g_tacs[current].op == TAC_OP_MUL ||
-           g_tacs[current].op == TAC_OP_DIV ||
-           g_tacs[current].op == TAC_OP_SUB ||
-           g_tacs[current].op == TAC_OP_ADD) &&
-          g_tacs[next].op == TAC_OP_ASSIGNMENT &&
-          g_tacs[current].result_type == TAC_ARG_TYPE_TEMP && g_tacs[next].arg1_type == TAC_ARG_TYPE_TEMP &&
-          (int)g_tacs[current].result_d == (int)g_tacs[next].arg1_d &&
-          g_register_reads[(int)g_tacs[current].result_d] == 1 && g_register_writes[(int)g_tacs[current].result_d] == 1) {
-        /* found match! rX can be skipped! */
-        if (tac_set_result(&g_tacs[current], g_tacs[next].result_type, g_tacs[next].result_d, g_tacs[next].result_s) == FAILED)
-          return FAILED;
-        g_tacs[current].result_node = g_tacs[next].result_node;
-        g_tacs[current].result_var_type_promoted = g_tacs[next].result_var_type_promoted;
-        g_tacs[next].op = TAC_OP_DEAD;
-        (*optimizations_counter)++;
-  if (g_register_allocator_trace) {
-        fprintf(stderr, "_optimize_il_13(): SUCCESS!\n");
-  }
-
-      }
-
-      i = next;
-    }
-
-    if (is_last_function == YES)
-      break;
-  }
-
-  return SUCCEEDED;
-}
-
-
-static int _optimize_il_14(int *optimizations_counter) {
-
-  /*
-    rX = function_call() <--- REMOVE rX if rX doesn't appear elsewhere
-    ?  = rX              <--- REMOVE rX if rX doesn't appear elsewhere
-  */
-
-  int i = 0;
-
-  while (1) {
-    int is_last_function = NO;
-    int end = _find_end_of_il_function(i, &is_last_function);
-    if (end < 0)
-      return FAILED;
-
-    if (_count_and_allocate_register_usage(i, end) == FAILED)
-      return FAILED;
-
-    while (i < end) {
-      int current, next;
-
-      current = _find_next_living_tac(i);
-      next = _find_next_living_tac(current + 1);
-
-      if (current < 0 || next < 0)
-        break;
-
-      if (g_tacs[current].op == TAC_OP_FUNCTION_CALL_USE_RETURN_VALUE && g_tacs[next].op == TAC_OP_ASSIGNMENT &&
-          g_tacs[current].result_type == TAC_ARG_TYPE_TEMP && g_tacs[next].arg1_type == TAC_ARG_TYPE_TEMP &&
-          (int)g_tacs[current].result_d == (int)g_tacs[next].arg1_d &&
-          g_register_reads[(int)g_tacs[current].result_d] == 1 && g_register_writes[(int)g_tacs[current].result_d] == 1) {
-        /* found match! rX can be skipped! */
-        if (tac_set_result(&g_tacs[current], g_tacs[next].result_type, g_tacs[next].result_d, g_tacs[next].result_s) == FAILED)
-          return FAILED;
-        g_tacs[current].result_node = g_tacs[next].result_node;
-        g_tacs[current].result_var_type_promoted = g_tacs[next].result_var_type_promoted;
-        g_tacs[next].op = TAC_OP_DEAD;
-        (*optimizations_counter)++;
-  if (g_register_allocator_trace) {
-        fprintf(stderr, "_optimize_il_14(): SUCCESS!\n");
   }
 
       }
@@ -2242,61 +2021,6 @@ static int _optimize_il_23(int *optimizations_counter) {
       }
 
       i = current + 1;
-    }
-
-    if (is_last_function == YES)
-      break;
-  }
-
-  return SUCCEEDED;
-}
-
-
-static int _optimize_il_24(int *optimizations_counter) {
-
-  /*
-    rX = ~? <--- REMOVE rX if rX doesn't appear elsewhere
-    ?  = rX <--- REMOVE rX if rX doesn't appear elsewhere
-  */
-
-  int i = 0;
-
-  while (1) {
-    int is_last_function = NO;
-    int end = _find_end_of_il_function(i, &is_last_function);
-    if (end < 0)
-      return FAILED;
-
-    if (_count_and_allocate_register_usage(i, end) == FAILED)
-      return FAILED;
-
-    while (i < end) {
-      int current, next;
-
-      current = _find_next_living_tac(i);
-      next = _find_next_living_tac(current + 1);
-
-      if (current < 0 || next < 0)
-        break;
-
-      if (g_tacs[current].op == TAC_OP_COMPLEMENT && g_tacs[next].op == TAC_OP_ASSIGNMENT &&
-          g_tacs[current].result_type == TAC_ARG_TYPE_TEMP && g_tacs[next].arg1_type == TAC_ARG_TYPE_TEMP &&
-          (int)g_tacs[current].result_d == (int)g_tacs[next].arg1_d &&
-          g_register_reads[(int)g_tacs[current].result_d] == 1 && g_register_writes[(int)g_tacs[current].result_d] == 1) {
-        /* found match! rX can be skipped! */
-        if (tac_set_result(&g_tacs[current], g_tacs[next].result_type, g_tacs[next].result_d, g_tacs[next].result_s) == FAILED)
-          return FAILED;
-        g_tacs[current].result_node = g_tacs[next].result_node;
-        g_tacs[current].result_var_type_promoted = g_tacs[next].result_var_type_promoted;
-        g_tacs[next].op = TAC_OP_DEAD;
-        (*optimizations_counter)++;
-  if (g_register_allocator_trace) {
-        fprintf(stderr, "_optimize_il_24(): SUCCESS!\n");
-  }
-
-      }
-
-      i = next;
     }
 
     if (is_last_function == YES)
@@ -3360,11 +3084,11 @@ int optimize_il(void) {
       return FAILED;
     if (_optimize_il_3(&optimizations_counter) == FAILED)
       return FAILED;
-    if (_optimize_il_4(&optimizations_counter) == FAILED)
+    if (_pack_result_assignments(&optimizations_counter, TAC_OP_GET_ADDRESS) == FAILED)
       return FAILED;
-    if (_optimize_il_5(&optimizations_counter) == FAILED)
+    if (_pack_result_assignments(&optimizations_counter, TAC_OP_GET_ADDRESS_ARRAY) == FAILED)
       return FAILED;
-    if (_optimize_il_6(&optimizations_counter) == FAILED)
+    if (_pack_result_assignments(&optimizations_counter, TAC_OP_ARRAY_READ) == FAILED)
       return FAILED;
     if (_optimize_il_7(&optimizations_counter) == FAILED)
       return FAILED;
@@ -3380,9 +3104,9 @@ int optimize_il(void) {
     */
     if (_optimize_il_12(&optimizations_counter) == FAILED)
       return FAILED;
-    if (_optimize_il_13(&optimizations_counter) == FAILED)
+    if (_pack_result_assignments(&optimizations_counter, TAC_OP_DEAD) == FAILED)
       return FAILED;
-    if (_optimize_il_14(&optimizations_counter) == FAILED)
+    if (_pack_result_assignments(&optimizations_counter, TAC_OP_FUNCTION_CALL_USE_RETURN_VALUE) == FAILED)
       return FAILED;
     if (_optimize_il_15(&optimizations_counter) == FAILED)
       return FAILED;
@@ -3407,7 +3131,7 @@ int optimize_il(void) {
       return FAILED;
     if (_optimize_il_23(&optimizations_counter) == FAILED)
       return FAILED;
-    if (_optimize_il_24(&optimizations_counter) == FAILED)
+    if (_pack_result_assignments(&optimizations_counter, TAC_OP_COMPLEMENT) == FAILED)
       return FAILED;
     if (_optimize_il_25(&optimizations_counter) == FAILED)
       return FAILED;
@@ -4954,6 +4678,30 @@ int get_register_allocator_address_materialization_mode(int location_kind, int a
 }
 
 
+int get_z80_constant_array_address_offset(struct tac *t, int *byte_offset) {
+
+  int element_type, index = 0;
+
+  if (g_allocator_enabled != YES || g_allocator_force_all_spill == YES ||
+      (t->op != TAC_OP_GET_ADDRESS && t->op != TAC_OP_GET_ADDRESS_ARRAY) ||
+      t->arg1_type != TAC_ARG_TYPE_LABEL || t->arg1_node == NULL ||
+      t->arg1_node->type != TREE_NODE_TYPE_CREATE_VARIABLE || t->arg1_node->value <= 0)
+    return NO;
+  if (t->op == TAC_OP_GET_ADDRESS_ARRAY) {
+    if (t->arg2_type != TAC_ARG_TYPE_CONSTANT || !(t->arg2_d >= 0.0 && t->arg2_d <= 32767.0) ||
+        t->arg2_d >= t->arg1_node->value || t->arg2_d != (double)(int)t->arg2_d)
+      return NO;
+    index = (int)t->arg2_d;
+  }
+  element_type = get_array_item_variable_type(t->arg1_node);
+  if (element_type != VARIABLE_TYPE_INT8 && element_type != VARIABLE_TYPE_UINT8 &&
+      element_type != VARIABLE_TYPE_INT16 && element_type != VARIABLE_TYPE_UINT16)
+    return NO;
+  *byte_offset = index * (element_type == VARIABLE_TYPE_INT16 || element_type == VARIABLE_TYPE_UINT16 ? 2 : 1);
+  return YES;
+}
+
+
 static int _get_register_allocator_split_reload_physical_register(struct tac *consumer, int consumer_arg, int size) {
 
   struct register_allocator_target_policy *target_policy;
@@ -6289,7 +6037,8 @@ static void _observe_register_allocator_transition_preparation(void *context,
   int known[2] = {YES, YES};
   char *unknown[2] = {"none", "none"};
   enum { indexed_cycles = 19, indexed_bytes = 3, move_cycles = 4,
-    address_cycles = 29, address_bytes = 6, immediate_cycles = 10, immediate_bytes = 3 };
+    address_cycles = 29, address_bytes = 6, immediate_cycles = 10, immediate_bytes = 3,
+    frame_address_cycles = 21, frame_address_bytes = 4 };
   int choice, decision, active_future, frequency;
   struct register_allocator_active_slot *active;
 
@@ -6373,15 +6122,19 @@ static void _observe_register_allocator_transition_preparation(void *context,
           costs[choice][1] -= 3;
         }
         if (resident == NO) {
-          int rematerialize = g_tacs[producer].op == TAC_OP_GET_ADDRESS_ARRAY &&
-            g_tacs[producer].arg1_type == TAC_ARG_TYPE_LABEL && g_tacs[producer].arg1_node != NULL &&
-            g_tacs[producer].arg1_node->type == TREE_NODE_TYPE_CREATE_VARIABLE &&
-            (g_tacs[producer].arg1_node->flags & TREE_NODE_FLAG_GLOBAL) != 0 &&
-            g_tacs[producer].arg1_node->value > 0 && g_tacs[producer].arg2_type == TAC_ARG_TYPE_CONSTANT &&
-            g_tacs[producer].arg2_d >= 0.0 && g_tacs[producer].arg2_d < g_tacs[producer].arg1_node->value &&
-            g_tacs[producer].arg2_d <= 32767.0 && g_tacs[producer].arg2_d == (double)(int)g_tacs[producer].arg2_d;
-          costs[choice][0] -= rematerialize == YES ? immediate_cycles : byte_count * indexed_cycles;
-          costs[choice][1] -= rematerialize == YES ? immediate_bytes : byte_count * indexed_bytes;
+          int displacement, reload_cycles = byte_count * indexed_cycles, reload_bytes = byte_count * indexed_bytes;
+          if (byte_count == 2 && get_z80_constant_array_address_offset(&g_tacs[producer], &displacement) == YES) {
+            if ((g_tacs[producer].arg1_node->flags & TREE_NODE_FLAG_GLOBAL) != 0) {
+              reload_cycles = immediate_cycles;
+              reload_bytes = immediate_bytes;
+            }
+            else if (physical_register == Z80_PHY_HL) {
+              reload_cycles = frame_address_cycles;
+              reload_bytes = frame_address_bytes;
+            }
+          }
+          costs[choice][0] -= reload_cycles;
+          costs[choice][1] -= reload_bytes;
           resident = YES;
         }
         if (operand == TAC_USE_ARG1)

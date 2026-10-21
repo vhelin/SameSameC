@@ -3707,6 +3707,8 @@ static int _generate_asm_get_address_z80(struct tac *t, FILE *file_out, struct t
   struct z80_location result_location;
   struct z80_location arg1_location;
   struct z80_location arg2_location;
+  char address_label[MAX_NAME_LENGTH + 32];
+  int byte_offset;
   int ix_offset = 0, index_materialized = NO, base_memory_pointer_load = NO, retained_bc_base_hl_index = NO;
 
   /* result */
@@ -3721,6 +3723,30 @@ static int _generate_asm_get_address_z80(struct tac *t, FILE *file_out, struct t
 
   if (op == TAC_OP_GET_ADDRESS_ARRAY)
     base_memory_pointer_load = _base_needs_memory_pointer_load(t->arg1_type, t->arg1_node, &arg1_location);
+
+  if (base_memory_pointer_load == NO &&
+      (arg1_location.kind == LOC_GLOBAL || arg1_location.kind == LOC_STACK_LOCAL) &&
+      get_z80_constant_array_address_offset(t, &byte_offset) == YES) {
+    if (arg1_location.kind == LOC_GLOBAL) {
+      if (byte_offset != 0) {
+        snprintf(address_label, sizeof(address_label), "%s+%d&65535", arg1_location.label, byte_offset);
+        arg1_location.label = address_label;
+      }
+    }
+    else {
+      arg1_location.offset = ((arg1_location.offset & 65535) + byte_offset) & 65535;
+      if (arg1_location.offset > 32767)
+        arg1_location.offset -= 65536;
+    }
+    fprintf(file_out, "      ; folded constant array address offset=%d\n", byte_offset);
+    op = TAC_OP_GET_ADDRESS;
+    if (arg1_location.kind == LOC_GLOBAL && result_location.kind == LOC_PHY_BC &&
+        (t->result_var_type == VARIABLE_TYPE_INT16 || t->result_var_type == VARIABLE_TYPE_UINT16)) {
+      _load_label_to_bc(arg1_location.label, file_out);
+      fprintf(file_out, "      ; retained result in BC\n");
+      return SUCCEEDED;
+    }
+  }
 
   /* arg2 */
 
@@ -4179,23 +4205,19 @@ static int _transfer_array_base_spill(struct tac *t, struct tree_node *function_
       if (definition->op == TAC_OP_DEAD || definition->result_type != TAC_ARG_TYPE_TEMP ||
           (int)definition->result_d != temp)
         continue;
-      if (definition->op == TAC_OP_GET_ADDRESS_ARRAY && definition->arg1_type == TAC_ARG_TYPE_LABEL &&
-          definition->arg1_node != NULL && definition->arg1_node->type == TREE_NODE_TYPE_CREATE_VARIABLE &&
-          (definition->arg1_node->flags & TREE_NODE_FLAG_GLOBAL) != 0 && definition->arg1_node->value > 0 &&
-          definition->arg2_type == TAC_ARG_TYPE_CONSTANT && definition->arg2_d >= 0.0 &&
-          definition->arg2_d < definition->arg1_node->value && definition->arg2_d <= 32767.0 &&
-          definition->arg2_d == (double)(int)definition->arg2_d) {
-        int displacement = (int)definition->arg2_d;
-        int element_type = get_array_item_variable_type(definition->arg1_node);
-        if (element_type == VARIABLE_TYPE_INT16 || element_type == VARIABLE_TYPE_UINT16)
-          displacement *= 2;
-        if (displacement == 0)
-          fprintf(file_out, "      LD  %s,%s\n", _get_z80_physical_register_name(physical_register), definition->arg1_s);
-        else
-          fprintf(file_out, "      LD  %s,%s+%d\n", _get_z80_physical_register_name(physical_register), definition->arg1_s, displacement);
-        fprintf(file_out, "      ; rematerialize %s from stable global address into %s\n",
-            operand_name, _get_z80_physical_register_name(physical_register));
-        return SUCCEEDED;
+      {
+        int displacement;
+        if (get_z80_constant_array_address_offset(definition, &displacement) == YES &&
+            ((definition->arg1_node->flags & TREE_NODE_FLAG_GLOBAL) != 0 || physical_register == Z80_PHY_HL)) {
+          spill_tac = *definition;
+          spill_tac.result_physical_register = physical_register;
+          if (_generate_asm_get_address_z80(&spill_tac, file_out, function_node, definition->op) == FAILED)
+            return FAILED;
+          fprintf(file_out, "      ; rematerialize %s from stable %s address into %s\n",
+              operand_name, (definition->arg1_node->flags & TREE_NODE_FLAG_GLOBAL) != 0 ? "global" : "frame",
+              _get_z80_physical_register_name(physical_register));
+          return SUCCEEDED;
+        }
       }
       break;
     }

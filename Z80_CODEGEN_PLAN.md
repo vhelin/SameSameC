@@ -143,9 +143,9 @@ extraction.
 - [x] **2w. Bounded loop-carried scalar register ownership:** start with the
   measured call-free CRC bit loop, keeping its word state in HL and its existing
   counter in BC, with proven entry, branch, back-edge and exit ownership.
-- [ ] **2x. Allocation costs, assignment packing and rematerialization:**
-  extend the existing cost observer and copy/address handling rather than
-  introducing another allocator or optimization framework.
+- [x] **2x. Allocation costs, assignment packing and rematerialization:**
+  consolidate existing result packing and share bounded stable-array address
+  proofs between lowering, reload rematerialization and the cost observer.
 - [ ] **2y. Explicit compatible internal register calls:** measure a gated
   argument/result convention with complete caller/callee/adaptor costs and
   unchanged public, banked, indirect, pureasm and old-object contracts.
@@ -3019,7 +3019,7 @@ Parent binaries, exact sources, initial obsolete-selection assertion failures,
 per-input results, complete-ROM hashes and qualification/commit binding are
 retained in `C:\cygwin64\tmp\crc-loop-2w-20261021`.
 
-#### 2x. Allocation Costs, Assignment Packing And Rematerialization [PLANNED]
+#### 2x. Allocation Costs, Assignment Packing And Rematerialization [DONE: BOUNDED ADDRESSES / PACKING CONSOLIDATION]
 
 Stock SDCC r17016's `ralloc2.cc::instruction_cost` checks candidate legality,
 assigns operands/surviving registers and calls `dryZ80iCode` for actual lowering
@@ -3035,6 +3035,74 @@ Extend it and existing copy/address handling instead of duplicating them:
   temporary storage; preserve definition, alias, width and clobber proofs.
 - Measure the same workloads and full linked programs. Reject local regressions
   hidden by aggregate gains; qualify spill/all-spill/no-RA and verifier controls.
+
+**Qualified bounded outcome:** one shared eligibility/byte-offset query now
+covers true byte/word arrays with a stable base and an integral in-bounds
+constant index (0..32767), or the unindexed array address. Mutable pointer
+contents and variable indices retain the previous lowering. This is normal
+`-ra` only; default, `-no-ra` and `-ra-all-spill` remain unchanged.
+
+- Reuse `_generate_asm_get_address_z80` rather than maintaining a separate
+  reload-address emitter. Fold the constant byte displacement into its existing
+  global-label or frame-offset materialization, including word-element scaling
+  and 16-bit address wrapping. Global BC destinations load BC directly instead
+  of clobbering HL to copy the address across.
+- Extend existing same-block reload rematerialization from global arrays to
+  local arrays **in HL only**. Local BC reloads keep their indexed spill path:
+  computing a frame address through HL would violate the reload's clobber
+  contract. The existing nearest-definition scan, call/ASM/label/jump/return
+  barriers, spill validation and live backing-store rules remain in force.
+- The existing cost observer uses the same query and destination restriction:
+  a global reload costs 10 T / 3 bytes; a frame-address HL reload costs
+  21 T / 4 bytes instead of two indexed loads at 38 T / 6 bytes. Existing
+  conservative handling of unknown costs and active-range pressure remains.
+- Six duplicate producer/result-assignment packers now reuse one existing
+  implementation. Preserve all six original invocation positions, arithmetic
+  opcode membership, function-local single-read/single-write proof, result
+  node/type propagation and dead-assignment handling. This changes no packing
+  policy. Net production change: **225 fewer C lines and four fewer functions**
+  (224 fewer lines when the shared declaration is included).
+
+Focused results, measured against `efe4516`, include all original frame space
+and execution overhead:
+
+| Address case | Function bytes before -> after | T-states saved per call | Frame reads saved per call |
+| --- | ---: | ---: | ---: |
+| Global byte array | 141 -> 137 | 21 | 0 |
+| Global word array | 164 -> 159 | 32 | 0 |
+| Local byte array | 149 -> 143 | 38 | 2 |
+| Local word array | 172 -> 165 | 49 | 2 |
+| Far-frame byte array | 226 -> 220 | 38 | 2 |
+| Far-frame word array | 261 -> 254 | 49 | 2 |
+
+Frames are unchanged. Mutable-pointer and variable-index controls are unchanged.
+The ten focused functions pass 32 inputs in all five compiler modes
+(1,600 guarded calls per build); the parent passes every runtime oracle before
+failing only the intended new-selection assertion. Another 3,200 instrumented
+parent/current calls prove 1,600 non-growing per-input cycle, frame-read,
+frame-write and stack-high-water comparisons. Disabled/all-spill ROMs are
+byte-identical to the parent.
+
+Release/traced/ASan builds pass the 41 condition/policy tests and 21 optimized
+policy tests each, strict C89 checks, and all 175 existing fixtures. One exact
+byte snapshot removes the intended redundant `LD BC,0 / ADD HL,BC`; its
+original failure is retained. Native controls are unchanged: 32 rejections,
+seven accepts, 10,200 endpoints and 65 frame-increment controls.
+
+**Application impact is deliberately not overstated:** all 104 rows of the
+pinned 13-kernel comparison are unchanged, including caller costs and per-input
+timing/frame/stack results. Shared profiles also do not regress. Independently
+linked complete ROM sizes are unchanged: calculations-1 is 19,007 bytes default
+/ 18,987 shared; calculations-2 is 28,956 / 28,688. These workloads have no
+explicit reload-rematerialization sites, so this batch is a bounded address
+improvement and source-size reduction, not the next large application speedup.
+It adds no allocator, generic dry-run framework, register class or ABI.
+
+Evidence: `C:\cygwin64\tmp\allocation-packing-2x-20261021`, including focused
+per-input metrics, original/rechecked byte snapshot logs, pinned comparisons,
+independent complete links, source hashes and qualification/commit bindings.
+Broader lowering-cost or copy-chain extensions remain optional and require
+their own measured opportunity; they are not new SM83 prerequisites.
 
 #### 2y. Explicit Compatible Internal Register Calls [PLANNED]
 

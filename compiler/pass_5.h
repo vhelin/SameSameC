@@ -64,6 +64,7 @@ int get_register_allocator_return_value_byte_offset(int return_value_size, int b
 int get_register_allocator_call_frame_prefix_value(int value_kind);
 int get_register_allocator_location_kind(int source_kind, int physical_register);
 int get_register_allocator_address_materialization_mode(int location_kind, int address_target, int offset);
+int get_z80_constant_array_address_offset(struct tac *t, int *byte_offset);
 int is_z80_register_allocator_byte_transparent_tac(struct tac *t, int physical_register);
 
 #endif

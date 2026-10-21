@@ -15,6 +15,77 @@ from ra_cpu import execute
 
 
 class BranchConditionsTests(unittest.TestCase):
+    def test_constant_array_address_rematerialization(self):
+        cases = {}
+        programs = []
+        for kind in ("global", "local", "far", "pointer", "variable"):
+            for item_type in ("u8", "u16"):
+                name = f"address_{kind}_{item_type}"
+                array = "ra_buffer" if item_type == "u8" else "address_words"
+                prefix = ""
+                if kind in ("local", "far", "variable"):
+                    prefix = f"{item_type} data[16]; "
+                    array = "data"
+                if kind == "far":
+                    prefix = "u8 workspace[260]; workspace[259]=a; " + prefix
+                if kind == "pointer":
+                    prefix = f"{item_type} *source={array}; "
+                    array = "source"
+                offset = "(a&3)" if kind == "variable" else "3"
+                body = (f"{prefix} u8 first=a&7; u8 second=b&7; "
+                        f"{array}[first+{offset}]=a; {array}[second+{offset}]=b; "
+                        f"{item_type} *base=&{array}[{offset}]; "
+                        f"{item_type} out=base[first]; out=out+base[second]; "
+                        f"{'u16 total=out; return total+workspace[259];' if kind == 'far' else 'return out;'}")
+                programs.append(Program(name, kind, 0, 0, [2, 2], 2, [],
+                                        f"u16 {name}(u16 a,u16 b) {{ {body} }}"))
+                cases[name] = (kind, item_type)
+        directory = self.output / "constant-array-address"
+        images = compile_generated(directory, os.environ.get("SAMESAMECC") or "samesamecc",
+                                   os.environ.get("SAMESAMECL") or "samesamecl", programs,
+                                   "u8 ra_buffer[128]; u16 address_words[16];\n"
+                                   + "\n".join(p.source for p in programs) + "\nvoid main(void) {}\n")
+        calls = 0
+        for program in programs:
+            kind, item_type = cases[program.name]
+            item_size = 1 if item_type == "u8" else 2
+            mask = (1 << (item_size * 8)) - 1
+            for a in (0, 1, 7, 128, 255, 0x8000, 0xa55a, 65535):
+                for b in (0, 7, 255, 0x9234):
+                    first, second = a & 7, b & 7
+                    expected_value = (((b if first == second else a) + b) & mask)
+                    if kind == "far":
+                        expected_value = (expected_value + (a & 255)) & 65535
+                    initial = bytes((index*37+a+b) & 255 for index in range(160))
+                    for mode, image in images.items():
+                        expected_buffer = bytearray(initial)
+                        if kind in ("global", "pointer"):
+                            offset = 0 if item_size == 1 else image.symbols["address_words"] - image.symbols["ra_buffer"]
+                            self.assertGreaterEqual(offset, 0)
+                            self.assertLessEqual(offset + 32, len(initial))
+                            for index, value in ((first + 3, a), (second + 3, b)):
+                                start = offset + index*item_size
+                                expected_buffer[start:start+item_size] = (value & mask).to_bytes(item_size, "little")
+                        result = execute(image.rom, image.symbols[program.name], [a, b], [2, 2],
+                                         initial, image.symbols["ra_buffer"], 2, image.transfers, frame_bytes=1024)
+                        self.assertEqual((result["value"], result["buffer"], result["port_writes"]),
+                                         (expected_value, expected_buffer, []), (program.name, mode, a, b))
+                        self.assertEqual(result["unmapped_instructions"], 0)
+                        calls += 1
+        for mode in images:
+            assembly = (directory / mode / "main.asm").read_text()
+            for program in programs:
+                kind, item_type = cases[program.name]
+                body = assembly.split(f'.SECTION "{program.name}" FREE')[1].split(".ENDS")[0]
+                selected = mode in ("ra", "ra_quiet") and kind in ("global", "local", "far")
+                self.assertEqual(f"; folded constant array address offset={3 if item_type == 'u8' else 6}" in body,
+                                 selected, (program.name, mode))
+                if selected:
+                    self.assertIn(f"from stable {'global' if kind == 'global' else 'frame'} address into HL", body)
+                elif kind in ("pointer", "variable"):
+                    self.assertNotIn("; rematerialize", body)
+        self.assertEqual(calls, len(programs) * 32 * len(images))
+
     def test_bounded_word_crc_loops(self):
         cases = {
             "word": (8, 0x1021, True), "one": (1, 0x8005, True),
