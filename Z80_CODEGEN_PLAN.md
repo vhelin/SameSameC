@@ -2336,7 +2336,52 @@ builds, as do the complete default/shared ROMs. Evidence, including the rejected
 prototypes and verifier diagnostics, is retained in
 `C:\cygwin64\tmp\scalar-loads-2t-20261021`.
 
-**2t remains in progress.** These checkpoints remove redundant copy/load
+**Third investigation checkpoint: loop-carried word locals [NO-GO].** Test
+broader reuse of the existing scalar promotion and CFG/loop allocator against
+the qualified parent at `54a0230`; do not enable a change merely because it
+removes a named local. All trial production changes were reverted.
+
+- Unrestricted promotion of repeated definitions admits locals reused across
+  independent loops. The existing loop reservation planner correctly rejects
+  consumers outside its reachable region: Array's reused index and Tile's
+  reused inner-loop counter expose this limitation. Keep those checks intact;
+  function-wide renaming is not a substitute for loop-scoped value ownership.
+- Restricting promotion to two definitions avoids those compile failures but
+  still disables existing advancing-loop lowering. A promoted checksum live
+  across an unrelated loop is enough to trigger the emitter's conservative
+  live-temp barrier. Stencil's frame shrinks by two bytes without a code or
+  timing improvement; that does not justify the other regressions.
+- Requiring one enclosing backedge, retaining the existing unit-counter
+  policy, and allowing arithmetic/shift definitions promotes Tile's CRC, but
+  does not reduce its bytes or cycles. A private final-metadata check can
+  preserve unrelated advancing loops when a spanning temp is fully spilled
+  and untouched. Even then, promoting the word accumulator itself defeats
+  the existing advancing word-sum emitter.
+
+Each of the three completed restricted variants ran the same 26 SSC/no-RA
+rows and 464 oracle calls. The important rejected changes are:
+
+| Rejected case | Bytes before -> after | Kernel T-states before -> after |
+| --- | ---: | ---: |
+| Path, without preserving its unrelated advancing loop | 1384 -> 1438 | 5647913 -> 6221633 (10.16% more) |
+| sumBytes, even after preserving unrelated loops | 99 -> 98 | 76126 -> 220663 (189.87% more) |
+
+These are isolated-kernel results, not whole-ROM measurements. Do not accept
+the one-byte sum reduction, the frame-only improvement, or unqualified
+promotion in exchange for those losses. No new production code, functions,
+verifier relaxation or snapshot updates are retained from this investigation.
+Trial sources, reports and rejection diagnostics are retained in
+`C:\cygwin64\tmp\loop-values-2t-20261021`.
+
+Before extending promotion again, reuse the existing loop/join ownership
+analysis to separate values belonging to independent loops, preserve the
+existing advancing sum/copy/fill lowering, and prove that arithmetic locals
+actually stay in registers across the relevant clobbers. Cost promotion
+against the complete specialized loop, not just the removed frame store.
+Keep these as 2t prerequisites rather than moving the unresolved traffic into
+an ungated ABI or frame-layout change.
+
+**2t remains in progress.** The accepted checkpoints remove redundant copy/load
 traffic and some backing storage, not general loop/CFG scalar residency.
 Continue with costed scalar/address residency across loops/joins and the
 existing alias/clobber proofs before 2u.
