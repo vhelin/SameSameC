@@ -7915,8 +7915,8 @@ int generate_asm_z80(FILE *file_out) {
       /* function start! */
       struct tree_node *function_node = t->function_node;
       int function_start = i, frame_joins = g_allocator_enabled == YES && g_allocator_force_all_spill == NO;
-      int conditional_jump = -1, unconditional_jump = -1;
-      int conditional_ix = Z80_GLOBAL_OFFSET, unconditional_ix = Z80_GLOBAL_OFFSET;
+      struct { int instruction, offset; } frame_edges[2][8];
+      int frame_edge_count[2] = { 0, 0 }, frame_edge_next[2] = { 0, 0 }, edge_kind;
       int j;
 
       for (j = i + 1; j < g_tacs_count && g_tacs[j].function_node == function_node; j++) {
@@ -8024,15 +8024,19 @@ int generate_asm_z80(FILE *file_out) {
           if (frame_joins == NO || t->is_function == YES)
             g_ix_frame_offset = Z80_GLOBAL_OFFSET;
           else {
-            /* Only previously emitted, uniquely recorded forward edges can prove the same base. */
+            int edge;
+            /* Every incoming edge must have an exact recorded frame-state witness. */
             for (j = function_start + 1; j < g_tacs_count && g_tacs[j].function_node == function_node; j++) {
               struct tac *branch = &g_tacs[j];
               if (branch->op < TAC_OP_JUMP || branch->op > TAC_OP_JUMP_GTE ||
                   strcmp(branch->result_s, t->result_s) != 0)
                 continue;
-              if (j >= i || (branch->op == TAC_OP_JUMP ?
-                  (j != unconditional_jump || unconditional_ix != g_ix_frame_offset) :
-                  (j != conditional_jump || conditional_ix != g_ix_frame_offset)))
+              edge_kind = branch->op == TAC_OP_JUMP ? 0 : 1;
+              for (edge = 0; edge < frame_edge_count[edge_kind]; edge++) {
+                if (frame_edges[edge_kind][edge].instruction == j)
+                  break;
+              }
+              if (j >= i || edge == frame_edge_count[edge_kind] || frame_edges[edge_kind][edge].offset != g_ix_frame_offset)
                 g_ix_frame_offset = Z80_GLOBAL_OFFSET;
             }
           }
@@ -8228,13 +8232,13 @@ int generate_asm_z80(FILE *file_out) {
         }
         else
           fprintf(stderr, "generate_asm_z80(): Unimplemented IL -> Z80 ASM op %d! Please submit a bug report!\n", op);
-        if (g_tacs[i].op == TAC_OP_JUMP) {
-          unconditional_jump = i;
-          unconditional_ix = g_ix_frame_offset;
-        }
-        else if (g_tacs[i].op >= TAC_OP_JUMP_EQ && g_tacs[i].op <= TAC_OP_JUMP_GTE) {
-          conditional_jump = i;
-          conditional_ix = g_ix_frame_offset;
+        if (g_tacs[i].op >= TAC_OP_JUMP && g_tacs[i].op <= TAC_OP_JUMP_GTE) {
+          edge_kind = g_tacs[i].op == TAC_OP_JUMP ? 0 : 1;
+          frame_edges[edge_kind][frame_edge_next[edge_kind]].instruction = i;
+          frame_edges[edge_kind][frame_edge_next[edge_kind]].offset = g_ix_frame_offset;
+          frame_edge_next[edge_kind] = (frame_edge_next[edge_kind] + 1) % 8;
+          if (frame_edge_count[edge_kind] < 8)
+            frame_edge_count[edge_kind]++;
         }
       }
 

@@ -2437,6 +2437,58 @@ ROM. No instruction selection or immutable expectation is relaxed.
 Evidence and source/commit bindings are retained in
 `C:\cygwin64\tmp\shift-residency-2t-20261021`.
 
+**Fifth implementation checkpoint: exact incoming-edge frame witnesses.**
+Replace the two single-branch snapshots with bounded caches of eight exact
+instruction/offset witnesses per branch kind. Reuse the same label scan and
+frame-offset proof, and share conditional/unconditional recording rather than
+duplicating it. This adds **four net production C lines and no functions**.
+Every incoming edge must still match the current fallthrough frame base;
+missing or evicted witnesses, conflicting offsets and backward edges retain
+the old invalidation. Existing call, inline-assembly and clobber barriers,
+default/no-RA/all-spill behavior, allocator policy and ABI remain unchanged.
+
+Keep the caches separate: otherwise many conditional branches could evict an
+unconditional witness that the previous implementation retained indefinitely.
+The latest witness of each kind is always available, preserving the earlier
+optimization while allowing joins with several recorded predecessors.
+A smaller same-target branch-run prototype made no measured improvement and
+was discarded; do not retain an extra recognition path for it.
+
+Against `b924000`, complete isolated kernels improve as follows:
+
+| Kernel | Bytes before -> after | Kernel T-states before -> after |
+| --- | ---: | ---: |
+| Array | 1517 -> 1505 | 6094692 -> 6092372 (0.04% fewer) |
+| Stencil | 1577 -> 1553 | 4108018 -> 4055470 (1.28% fewer) |
+| Tile | 1145 -> 1121 | 1914842 -> 1905388 (0.49% fewer) |
+| Path | 1354 -> 1318 | 5539685 -> 5393409 (2.64% fewer) |
+| PackBits | 535 -> 517 | 151525 -> 150974 (0.36% fewer) |
+| Packed CRC | 874 -> 850 | 11404716 -> 11402744 (0.02% fewer) |
+
+Other kernels, callers and frame footprints do not grow. Independently measured
+whole-ROM used bytes fall from 20437 to 20413 for calculations-1 and from
+30555 to 30315 for calculations-2. Shared-arithmetic ROMs fall from 20417 to
+20393 and from 30287 to 30047 respectively; these are not summed kernel wins.
+
+Extend the existing frame oracle to 51 functions / 18360 executions per build,
+partitioned by frame size to fit the existing ROM-bank limit. Cover short
+circuits, calls between edges, conflicting bases, the exact eight/nine-witness
+eviction boundary and 17-branch cross-kind pressure. The parent passes the
+numeric/memory oracles but fails the new short-circuit selection assertion:
+two IX materializations instead of one. The ninth same-kind incoming edge
+still forces conservative materialization; unrelated branch-kind pressure
+does not discard the original single-edge proof.
+
+Qualification uses all three builds, 36 condition/policy and 21 optimized-policy
+tests per build, the unchanged immutable controls, the full pinned comparison,
+paired shared profiles and complete default/shared ROMs. All 175 fixtures pass;
+two byte vectors in one fixture need only absolute branch-target relocation
+updates, with unchanged source bodies and symbolic instructions checked against
+both ROMs. All 442 condition images and 90 allocator images match across builds,
+and 2320 individual SSC samples are non-growing with 136 independent timing
+checks. Evidence and source/commit bindings are retained in
+`C:\cygwin64\tmp\repeated-joins-2t-20261021`.
+
 **2t remains in progress.** The accepted checkpoints remove redundant copy/load
 traffic, proven forward-join frame setups and some backing storage, not general
 loop/CFG scalar residency.

@@ -33,21 +33,39 @@ class BranchConditionsTests(unittest.TestCase):
             "return": "if(b&1) {{ return workspace[{last}]+b; }} workspace[{last}]+=7;",
             "continue": "u16 i; for(i=0;i<(b&3);i++) {{ if(i==1) {{ continue; }} "
                         "if(a&128) {{ break; }} workspace[{last}]+=7; }}",
+            "or": "if((b&1)||(b&2)||(b&4)) {{ workspace[{last}]=a+3; }} "
+                  "else {{ workspace[{last}]=a+7; }}",
+            "and": "if((b&1)&&(b&2)&&(b&4)) {{ workspace[{last}]=a+3; }} "
+                   "else {{ workspace[{last}]=a+7; }}",
+            "call_or": "if((b&1)||(frame_sink(b&2)>3)||(b&4)) {{ workspace[{last}]=a+3; }} "
+                       "else {{ workspace[{last}]=a+7; }}",
+            "different": "workspace[0]=a; if(b&1) {{ workspace[0]=a+3; }} "
+                         "else {{ workspace[{last}]=a+7; }} return workspace[0]+workspace[{last}]+b;",
+            "pressure": "if(b&1) {{ goto done; }} "
+                        + "if(b&2) {{ workspace[{last}]+=1; }} " * 17 + "done:",
         }
+        for limit in (8, 9):
+            bodies[f"evict{limit}"] = " ".join(
+                "if(b&" + str(1 << index) + ") {{ goto done; }} workspace[{last}]+=1;"
+                for index in range(limit)
+            ) + " done:"
         programs = [
             Program(f"frame_{size}_{family}", family, size, 0, [2, 2], 2, [],
                     f"u16 frame_{size}_{family}(u16 a, u16 b) {{ u8 workspace[{size}]; "
-                    f"workspace[{size-1}]=a; " + body.format(last=size-1).replace("done", f"done_{size}")
+                    f"workspace[{size-1}]=a; " + body.format(last=size-1).replace("done", f"done_{size}_{family}")
                     + f" return workspace[{size-1}]+b; }}")
             for size in (8, 136, 260) for family, body in bodies.items()
         ]
-        source = ("u8 ra_buffer[128];\nu16 frame_sink(u16 a) { ra_buffer[127]+=1; return a+3; }\n"
-                  "void frame_alias(u8 *p, u16 index, u16 a, u16 b) { "
-                  "if(b&1) { p[index]=a+3; } else { p[index]=a+7; } }\n"
-                  + "\n".join(program.source for program in programs) + "\nvoid main(void) {}\n")
         directory = self.output / "forward-frames"
-        images = compile_generated(directory, os.environ.get("SAMESAMECC") or "samesamecc",
-                                   os.environ.get("SAMESAMECL") or "samesamecl", programs, source)
+        images = {}
+        for size in (8, 136, 260):
+            group = [program for program in programs if program.variant == size]
+            source = ("u8 ra_buffer[128];\nu16 frame_sink(u16 a) { ra_buffer[127]+=1; return a+3; }\n"
+                      "void frame_alias(u8 *p, u16 index, u16 a, u16 b) { "
+                      "if(b&1) { p[index]=a+3; } else { p[index]=a+7; } }\n"
+                      + "\n".join(program.source for program in group) + "\nvoid main(void) {}\n")
+            images[size] = compile_generated(directory / str(size), os.environ.get("SAMESAMECC") or "samesamecc",
+                                            os.environ.get("SAMESAMECL") or "samesamecl", group, source)
         calls = 0
         for program in programs:
             for a in (0, 1, 127, 128, 255, 256, 32767, 32768, 65535):
@@ -64,24 +82,37 @@ class BranchConditionsTests(unittest.TestCase):
                         value = a + (0 if a & 128 else 7 * sum(i != 1 for i in range(b & 3)))
                     elif program.family == "return":
                         value = a if b & 1 else a + 7
+                    elif program.family in ("or", "call_or", "and"):
+                        condition = (b & 7) == 7 if program.family == "and" else bool(b & 7)
+                        value = a + (3 if condition else 7)
+                    elif program.family == "pressure":
+                        value = a + (0 if b & 1 else 17 * bool(b & 2))
+                    elif program.family.startswith("evict"):
+                        limit = int(program.family[5:])
+                        value = a + next((i for i in range(limit) if b & (1 << i)), limit)
                     if program.family == "call" and b & 1:
+                        expected_buffer[127] = 128
+                    elif program.family == "call_or" and not b & 1:
                         expected_buffer[127] = 128
                     elif program.family == "global" and b & 1:
                         expected_buffer[1] = a & 255
-                    for mode, image in images.items():
+                    expected = (value & 255) + b
+                    if program.family == "different":
+                        expected = (a & 255) + ((a + (3 if b & 1 else 7)) & 255) + b
+                    for mode, image in images[program.variant].items():
                         result = execute(image.rom, image.symbols[program.name], [a, b], [2, 2],
                                          bytes(range(128)), image.symbols["ra_buffer"], 2, image.transfers,
                                          frame_bytes=512)
                         self.assertEqual((result["value"], result["buffer"], result["port_writes"]),
-                                         (((value & 255) + b) & 65535, expected_buffer, []),
+                                         (expected & 65535, expected_buffer, []),
                                          (program.name, mode, a, b))
                         self.assertEqual(result["unmapped_instructions"], 0)
                         calls += 1
         print(f"Forward-join frame-address oracle executions: {calls}", flush=True)
-        for mode in images:
-            assembly = (directory / mode / "main.asm").read_text()
+        for mode in images[8]:
+            assemblies = {size: (directory / str(size) / mode / "main.asm").read_text() for size in images}
             for program in programs:
-                body = assembly.split(f'.SECTION "{program.name}" FREE')[1].split(".ENDS")[0]
+                body = assemblies[program.variant].split(f'.SECTION "{program.name}" FREE')[1].split(".ENDS")[0]
                 if program.family == "diamond":
                     if mode in ("ra", "ra_quiet"):
                         self.assertEqual(body.count("LD  IX,"), 1, (program.name, mode))
@@ -89,6 +120,9 @@ class BranchConditionsTests(unittest.TestCase):
                         self.assertGreaterEqual(body.count("LD  IX,"), 3, (program.name, mode))
                 elif mode in ("ra", "ra_quiet") and program.family in ("call", "asm"):
                     self.assertEqual(body.count("LD  IX,"), 5 if program.family == "call" else 4,
+                                     (program.name, mode))
+                elif mode in ("ra", "ra_quiet") and program.family in ("or", "and", "pressure", "evict8", "evict9"):
+                    self.assertEqual(body.count("LD  IX,"), 2 if program.family == "evict9" else 1,
                                      (program.name, mode))
 
     def test_scalar_load_promotion(self):
