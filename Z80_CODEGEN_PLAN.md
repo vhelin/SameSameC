@@ -2489,6 +2489,51 @@ and 2320 individual SSC samples are non-growing with 136 independent timing
 checks. Evidence and source/commit bindings are retained in
 `C:\cygwin64\tmp\repeated-joins-2t-20261021`.
 
+**Sixth implementation checkpoint: actual fallthrough predecessors.**
+Reuse the existing exact-edge cache, but do not merge in a nonexistent linear
+predecessor after an emitted unconditional jump or void/value return.
+Initialize the join state from the first real incoming witness, then require
+every remaining predecessor to agree. Missing/evicted witnesses, backward
+edges, unknown states and conflicting real predecessors remain conservative;
+a later valid witness cannot override an earlier invalid one.
+
+Track emitted chunks rather than the last consumed source TAC: folded pointer
+stores and optimized byte loops have real fallthrough even when bulk lowering
+consumes a source backedge. Preserve all existing call, assembly, frame and
+register-clobber barriers and default/no-RA/all-spill behavior. This adds
+**13 net production C lines and no functions**, without allocator-core,
+policy, verifier, cache-capacity or ABI changes.
+
+Against `040d9b9`, complete isolated kernels improve as follows:
+
+| Kernel | Bytes before -> after | Kernel T-states before -> after |
+| --- | ---: | ---: |
+| PackBits | 517 -> 505 | 150974 -> 150684 (0.19% fewer) |
+| Packed CRC | 850 -> 832 | 11402744 -> 11399786 (0.03% fewer) |
+
+Other kernels, callers and frame footprints do not grow. Independently measured
+whole-ROM used bytes fall from 20413 to 20395 for calculations-1 and from
+30315 to 30279 for calculations-2. Shared-arithmetic ROMs fall from 20393 to
+20375 and from 30047 to 30011 respectively; do not sum isolated kernel savings
+and call them a ROM measurement.
+
+Extend the existing frame oracle to 57 functions / 20520 executions per build
+across all five allocator modes. Cover early void/value returns and eight/nine
+incoming edges after a terminating return, while retaining short-circuit call,
+alias, conflicting-base, pressure and assembly controls. The parent passes the
+numeric/memory oracles but needs two IX materializations instead of one in the
+return cases, and five instead of four in the call case. The ninth incoming
+edge still forces conservative materialization, even without fallthrough.
+
+Qualification passes 36 condition/policy and 21 optimized-policy tests per
+release/traced/ASan build, unchanged immutable controls and all 175 fixtures
+without snapshot updates. The 104-row / 1856-call pinned comparison, paired
+52-row / 928-call shared profiles and 136 independent timing checks pass;
+all 2320 individual SSC samples are non-growing. All 442 condition images, 90 allocator
+images and complete default/shared ROMs match across builds.
+Evidence and source/commit bindings are retained in
+`C:\cygwin64\tmp\fallthrough-joins-2t-20261021`.
+
 **2t remains in progress.** The accepted checkpoints remove redundant copy/load
 traffic, proven forward-join frame setups and some backing storage, not general
 loop/CFG scalar residency.

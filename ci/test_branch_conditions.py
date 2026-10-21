@@ -45,10 +45,12 @@ class BranchConditionsTests(unittest.TestCase):
                         + "if(b&2) {{ workspace[{last}]+=1; }} " * 17 + "done:",
         }
         for limit in (8, 9):
-            bodies[f"evict{limit}"] = " ".join(
+            body = " ".join(
                 "if(b&" + str(1 << index) + ") {{ goto done; }} workspace[{last}]+=1;"
                 for index in range(limit)
-            ) + " done:"
+            )
+            bodies[f"evict{limit}"] = body + " done:"
+            bodies[f"terminal{limit}"] = body + " return workspace[{last}]+b; done: workspace[{last}]+=3;"
         programs = [
             Program(f"frame_{size}_{family}", family, size, 0, [2, 2], 2, [],
                     f"u16 frame_{size}_{family}(u16 a, u16 b) {{ u8 workspace[{size}]; "
@@ -62,7 +64,7 @@ class BranchConditionsTests(unittest.TestCase):
             group = [program for program in programs if program.variant == size]
             source = ("u8 ra_buffer[128];\nu16 frame_sink(u16 a) { ra_buffer[127]+=1; return a+3; }\n"
                       "void frame_alias(u8 *p, u16 index, u16 a, u16 b) { "
-                      "if(b&1) { p[index]=a+3; } else { p[index]=a+7; } }\n"
+                      "if(b&1) { p[index]=a+3; return; } p[index]=a+7; }\n"
                       + "\n".join(program.source for program in group) + "\nvoid main(void) {}\n")
             images[size] = compile_generated(directory / str(size), os.environ.get("SAMESAMECC") or "samesamecc",
                                             os.environ.get("SAMESAMECL") or "samesamecl", group, source)
@@ -87,9 +89,10 @@ class BranchConditionsTests(unittest.TestCase):
                         value = a + (3 if condition else 7)
                     elif program.family == "pressure":
                         value = a + (0 if b & 1 else 17 * bool(b & 2))
-                    elif program.family.startswith("evict"):
-                        limit = int(program.family[5:])
-                        value = a + next((i for i in range(limit) if b & (1 << i)), limit)
+                    elif program.family.startswith(("evict", "terminal")):
+                        limit = int(program.family[-1])
+                        first = next((i for i in range(limit) if b & (1 << i)), limit)
+                        value = a + first + (3 if program.family.startswith("terminal") and first < limit else 0)
                     if program.family == "call" and b & 1:
                         expected_buffer[127] = 128
                     elif program.family == "call_or" and not b & 1:
@@ -119,10 +122,11 @@ class BranchConditionsTests(unittest.TestCase):
                     else:
                         self.assertGreaterEqual(body.count("LD  IX,"), 3, (program.name, mode))
                 elif mode in ("ra", "ra_quiet") and program.family in ("call", "asm"):
-                    self.assertEqual(body.count("LD  IX,"), 5 if program.family == "call" else 4,
-                                     (program.name, mode))
-                elif mode in ("ra", "ra_quiet") and program.family in ("or", "and", "pressure", "evict8", "evict9"):
-                    self.assertEqual(body.count("LD  IX,"), 2 if program.family == "evict9" else 1,
+                    self.assertEqual(body.count("LD  IX,"), 4, (program.name, mode))
+                elif mode in ("ra", "ra_quiet") and program.family in (
+                    "or", "and", "pressure", "evict8", "evict9", "terminal8", "terminal9", "return"
+                ):
+                    self.assertEqual(body.count("LD  IX,"), 2 if program.family in ("evict9", "terminal9") else 1,
                                      (program.name, mode))
 
     def test_scalar_load_promotion(self):

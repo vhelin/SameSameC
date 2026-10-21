@@ -7917,6 +7917,7 @@ int generate_asm_z80(FILE *file_out) {
       int function_start = i, frame_joins = g_allocator_enabled == YES && g_allocator_force_all_spill == NO;
       struct { int instruction, offset; } frame_edges[2][8];
       int frame_edge_count[2] = { 0, 0 }, frame_edge_next[2] = { 0, 0 }, edge_kind;
+      int frame_fallthrough = YES;
       int j;
 
       for (j = i + 1; j < g_tacs_count && g_tacs[j].function_node == function_node; j++) {
@@ -8036,9 +8037,16 @@ int generate_asm_z80(FILE *file_out) {
                 if (frame_edges[edge_kind][edge].instruction == j)
                   break;
               }
-              if (j >= i || edge == frame_edge_count[edge_kind] || frame_edges[edge_kind][edge].offset != g_ix_frame_offset)
+              if (j >= i || edge == frame_edge_count[edge_kind])
                 g_ix_frame_offset = Z80_GLOBAL_OFFSET;
+              else if (frame_fallthrough == NO)
+                g_ix_frame_offset = frame_edges[edge_kind][edge].offset;
+              else if (frame_edges[edge_kind][edge].offset != g_ix_frame_offset)
+                g_ix_frame_offset = Z80_GLOBAL_OFFSET;
+              frame_fallthrough = YES;
             }
+            if (frame_fallthrough == NO)
+              g_ix_frame_offset = Z80_GLOBAL_OFFSET;
           }
         }
 
@@ -8098,13 +8106,16 @@ int generate_asm_z80(FILE *file_out) {
               if (_generate_asm_array_write_z80(&folded, file_out, function_node) == FAILED)
                 return FAILED;
               i = next;
+              frame_fallthrough = YES;
               continue;
             }
           }
           if (_generate_asm_byte_loop_z80(&i, file_out, function_node) == FAILED)
             return FAILED;
-          if (i != previous_index)
+          if (i != previous_index) {
+            frame_fallthrough = YES;
             continue;
+          }
         }
         if (op == TAC_OP_ADD || op == TAC_OP_SUB || op == TAC_OP_AND || op == TAC_OP_OR || op == TAC_OP_XOR) {
           int is_reload;
@@ -8240,6 +8251,8 @@ int generate_asm_z80(FILE *file_out) {
           if (frame_edge_count[edge_kind] < 8)
             frame_edge_count[edge_kind]++;
         }
+        frame_fallthrough = g_tacs[i].op == TAC_OP_JUMP || g_tacs[i].op == TAC_OP_RETURN ||
+          g_tacs[i].op == TAC_OP_RETURN_VALUE ? NO : YES;
       }
 
       /* add the const variables to the end of the function */
