@@ -2203,6 +2203,136 @@ Commit this qualified batch locally without pushing. The next finite-roadmap
 implementation target remains the initial SM83 backend; further Z80
 architecture investigations are separate user-requested work.
 
+#### 2t. Improve Scalar/Address Residency Within The Existing ABI [IN PROGRESS]
+
+User-requested extension after the unsigned power-of-two checkpoint. Prioritize
+the remaining frame traffic rather than accumulating arithmetic peepholes.
+The qualified research at `fcd36fc` attributes these own-function costs:
+
+| Workload | SameSameC / stock SDCC own bytes | SameSameC frame setup + indexed accesses |
+| --- | ---: | ---: |
+| Array | 1292 / 516 | 762 |
+| Stencil | 1513 / 868 | 966 |
+| Tile | 1209 / 688 | 867 |
+| Path | 1265 / 737 | 840 |
+| Packed CRC | 345 / 120 | 140 |
+
+These exclude wrappers, callees and runtime libraries. Indexed accesses include
+necessary array work, so the columns are budgets, not removable-byte promises.
+Dynamic tracing separates local-array data from scalar/frame accesses: Tile
+spends 66.0% of its kernel cycles in frame-address setup and scalar-frame-access
+instructions despite having no internal calls.
+
+- Reuse existing copy propagation, local promotion, CFG/join reconciliation,
+  location resolution and address emitters. Do not introduce another allocator
+  or a parallel expression/address framework.
+- Fold stable single-use pointer/address copy chains into their consumers and
+  rematerialize cheap addresses instead of spilling them where proven cheaper.
+- Extend scalar/address residency through loops and CFG joins only when every
+  incoming path proves the same value/base; retain conservative call, alias,
+  inline-assembly and frame/register-clobber barriers.
+- Preserve evaluation order, declared-width conversions, signed extension,
+  pointer wraparound and byte/pair overlap. Do not blindly narrow locals:
+  the private byte-counter probe made CRC 15 bytes larger and 25.7% slower,
+  while Tile shrank 66 bytes but became 11.0% slower.
+
+Acceptance: regressions covering the folded chain and rejected aliases,
+conversions, side effects and control-flow cases; non-growing complete
+kernel/caller/frame costs and a measured real-workload size/speed improvement.
+Run all allocator modes, immutable verification, pinned compiler controls and
+full calculation ROMs. Keep source growth visible and reuse or remove existing
+logic rather than adding overlapping special cases.
+
+**First implementation checkpoint: spilled pointer-store copies.** Reuse the
+existing final allocation metadata and array-write emitter to fold an adjacent,
+single-definition/single-use, actually spilled word-pointer snapshot into its
+store. Skip only dead TACs; require the same function and original pointer node,
+and reject retained bases, spill-transfer boundaries and special I/O labels.
+Keep useful BC/HL pointer retention, no-RA/all-spill lowering, the allocated TAC
+and its frame slots unchanged. This adds 32 production C lines and no functions;
+it is not a second copy-propagation or address-emission framework.
+
+Against `fcd36fc`, complete isolated bodies including their live dependencies:
+
+| Workload | Bytes before -> after | Kernel T-states before -> after (20 calls) |
+| --- | ---: | ---: |
+| Array | 1605 -> 1569 | 6241578 -> 6164298 (1.24% less) |
+| Stencil | 1691 -> 1655 | 4256974 -> 4218334 (0.91% less) |
+| Tile | 1209 -> 1191 | 2049176 -> 2003606 (2.22% less) |
+
+Their callers remain 126 bytes / 14460 T-states over those 20 calls, and frame
+footprints remain 88/120/128 bytes respectively. The other ten measured
+workloads, all 13 no-RA rows and all 78 pinned external controls are unchanged.
+Do not sum isolated reductions and present them as whole-program savings:
+
+| Complete project | Default used ROM before -> after | Shared used ROM before -> after |
+| --- | ---: | ---: |
+| calculations-1 | 20607 -> 20607 | 20587 -> 20587 |
+| calculations-2 | 31439 -> 31115 | 31171 -> 30847 |
+
+Release/traced/ASan qualification covers 34 condition/policy tests plus 21
+optimized-policy tests per build, including 2925 pointer executions per build
+with signed/unsigned byte/word elements, negative indices, local/global pointer
+objects, aliases, calls and sequenced side effects. Check both positive folding
+and retained-base/no-RA/all-spill rejection. Run immutable allocation and real
+cohorts, 175 isolated fixtures without snapshot updates, the original 104-row /
+1856-call comparison and paired shared profiles. All pass, including 136
+independent timing checks; 402 condition images and 90 allocator images match
+across builds, and all 392 pre-existing condition images match the parent.
+Evidence is retained in
+`C:\cygwin64\tmp\residency-2t-20261021`.
+
+**2t remains in progress.** This removes redundant spill-copy traffic, not
+loop-spanning scalar stores or frame slots. Continue with costed scalar/address
+residency across loops/joins and the existing alias/clobber proofs before 2u.
+
+#### 2u. Investigate An Indexed Frame And Allocatable DE [PLANNED]
+
+After 2t, prototype an explicitly gated per-function frame strategy using the
+existing target policy and location/address helpers. SameSameC reserves DE as
+its frame pointer; SDCC can retain values in DE while using an indexed frame.
+Repeated frame-address setup alone occupies 192 bytes in Tile and 354 in Path.
+
+Measure whether persistent indexed addressing and another allocatable pair
+outweigh index-register pressure, pointer operations and call/helper saves.
+Audit flags, displacement limits, local-array addresses, prologue/epilogue,
+frame restoration and every full operand/result clobber contract. Do not
+silently change the public ABI or duplicate the emitter. If external contracts
+must change, version/gate them and retain compatibility adapters.
+
+Acceptance: compare complete bodies, callers, dependencies, cycles and frame
+footprints against the qualified default; test mixed versions, cross-file,
+banked, recursive and assembly-facing calls. Promote the prototype only after
+measured net wins; otherwise record a bounded no-go result.
+
+#### 2v. Reduce Measured Internal Call Transport [PLANNED]
+
+Use the existing call/frame lowering after 2t/2u identify the residual cost.
+Array's three internal transport sequences occupy 241 bytes, excluding
+argument-expression evaluation and callee bodies. The three-argument wrapper
+example is 126 bytes / 729 T-states versus stock SDCC's 20 / 114.
+
+First remove redundant transport within the existing ABI. Investigate explicit
+register arguments/results or narrowly costed inlining only where justified,
+using SDCC/z88dk calling conventions as design evidence, not copied code.
+Preserve argument evaluation, caller/callee saves, result lifetime and bank
+boundaries. Public ABI changes require an explicit compatible convention.
+
+Count retained shared helpers and every call site: the private Array inlining
+probe saved 286 isolated bytes but grew the caller body 27 bytes; Stencil saved
+170 isolated bytes but grew its body 8 bytes. These are not whole-program ROM
+savings if the old helpers remain live elsewhere. Reject blanket inlining and
+benchmark-only specializations.
+
+Acceptance: measured complete-program ROM and hot-call improvements with
+mixed-width, indirect, nested, recursive, cross-file, banked, mixed-version and
+assembly-facing compatibility controls. Keep generic/default fallbacks and do
+not amortize a local regression away in an aggregate.
+
+The source provenance, exact 52-image ledger, 411 guarded research calls and
+21 independent timing checks for these three steps are retained in
+`C:\cygwin64\tmp\major-codegen-study-20261021`.
+
 ### 3. Maintain Induction Addresses And Select Z80 Loops
 
 Reuse existing array/pointer TAC and Z80 address emitters. Introduce a narrowly
@@ -2387,7 +2517,9 @@ to this cross-compiler experiment.
    compiler source growth visible and remove superseded logic. Commit the batch
    locally with the validation summary; do not push.
 
-Steps 1, 2 and 2a-2s are complete. Current implementation target:
-**step 3, the initial SM83 backend**.
-Keep the qualified Z80 behavior and shared core covered throughout;
-do not expand this finite sequence into every possible Z80 optimization.
+Steps 1, 2, 2a-2s and the unsigned power-of-two checkpoint are complete.
+The user-requested extension is the bounded sequence **2t-2v**, with
+**2t, scalar/address residency within the existing ABI**, currently in progress.
+The initial SM83 backend remains the next backend target after this extension.
+Keep the qualified Z80 behavior and shared core covered throughout; do not
+expand this sequence into every possible Z80 optimization.

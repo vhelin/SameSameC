@@ -8042,6 +8042,38 @@ int generate_asm_z80(FILE *file_out) {
 
         if (op == TAC_OP_ASSIGNMENT) {
           int previous_index = i;
+          if (g_allocator_enabled == YES && g_allocator_force_all_spill == NO &&
+              t->result_type == TAC_ARG_TYPE_TEMP && t->result_physical_register == Z80_PHY_NONE &&
+              t->result_var_type == VARIABLE_TYPE_UINT16 && t->arg1_var_type == VARIABLE_TYPE_UINT16 &&
+              t->arg1_type == TAC_ARG_TYPE_LABEL && t->arg1_node != NULL &&
+              (t->arg1_node->type == TREE_NODE_TYPE_CREATE_VARIABLE ||
+               t->arg1_node->type == TREE_NODE_TYPE_CREATE_VARIABLE_FUNCTION_ARGUMENT) &&
+              t->arg1_node->value == 0 && t->arg1_node->children[0]->value_double > 0.0 &&
+              strcmp(t->arg1_s, "__z80_in") != 0 && strcmp(t->arg1_s, "__z80_out") != 0 &&
+              t->store_retained_to_spill_operand == -1 && t->reload_spill_to_physical_operand == -1) {
+            struct temp_register *temporary = _find_z80_temp_register(function_node, (int)t->result_d);
+            int next = i + 1;
+            while (next < g_tacs_count && g_tacs[next].op == TAC_OP_DEAD)
+              next++;
+            if (temporary != NULL && temporary->size == 16 && temporary->spill_required == YES &&
+                temporary->read_count == 1 && temporary->write_count == 1 &&
+                next < g_tacs_count && g_tacs[next].function_node == function_node &&
+                g_tacs[next].store_retained_to_spill_operand == -1 && g_tacs[next].reload_spill_to_physical_operand == -1 &&
+                g_tacs[next].op == TAC_OP_ARRAY_WRITE && g_tacs[next].result_type == TAC_ARG_TYPE_TEMP &&
+                (int)g_tacs[next].result_d == (int)t->result_d && g_tacs[next].result_physical_register == Z80_PHY_NONE &&
+                g_tacs[next].result_node == t->arg1_node) {
+              struct tac folded = g_tacs[next];
+              folded.result_type = TAC_ARG_TYPE_LABEL;
+              folded.result_s = t->arg1_s;
+              folded.result_original_register_index = -1;
+              fprintf(file_out, "      ; folded spilled pointer base\n");
+              print_tac(&folded, YES, file_out);
+              if (_generate_asm_array_write_z80(&folded, file_out, function_node) == FAILED)
+                return FAILED;
+              i = next;
+              continue;
+            }
+          }
           if (_generate_asm_byte_loop_z80(&i, file_out, function_node) == FAILED)
             return FAILED;
           if (i != previous_index)

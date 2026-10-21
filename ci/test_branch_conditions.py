@@ -15,6 +15,87 @@ from ra_cpu import execute
 
 
 class BranchConditionsTests(unittest.TestCase):
+    def test_spilled_pointer_copy_folding(self):
+        programs = [
+            Program(f"pointer_{kind}_{operation}", operation, 0, 0, [2, 2, 2], 2, [],
+                    f"u16 pointer_{kind}_{operation}({kind} *p, s16 index, u16 value) {{ "
+                    + ("p[index]=value+index; return p[index];" if operation == "store" else
+                       "return value*7+p[index];") + " }")
+            for kind in ("u8", "s8", "u16", "s16") for operation in ("store", "read")
+        ]
+        for name, body in (
+            ("pointer_alias", "u8 *q=p; p[index]=value+index; q[index+1]=p[index]+1; "
+             "u16 first=q[index]; return first+p[index+1];"),
+            ("pointer_call", "u16 result=pointer_side(value); p[index]=result+index; return p[index];"),
+            ("pointer_post", "s16 before=index++; p[before]=value; return index+p[before];"),
+        ):
+            programs.append(Program(name, name, 0, 0, [2, 2, 2], 2, [],
+                                    f"u16 {name}(u8 *p, s16 index, u16 value) {{ {body} }}"))
+        for name, body in (
+            ("pointer_local", "u8 *q=p; q[index]=value+index; return q[index];"),
+            ("pointer_global", "ra_pointer=p; ra_pointer[index]=value+index; return ra_pointer[index];"),
+        ):
+            programs.append(Program(name, "store", 0, 0, [2, 2, 2], 2, [],
+                                    f"u16 {name}(u8 *p, s16 index, u16 value) {{ {body} }}"))
+        source = ("u8 ra_buffer[128];\nu8 *ra_pointer;\nu16 pointer_side(u16 value) { "
+                  "ra_buffer[127]=ra_buffer[127]+1; return value; }\n"
+                  + "\n".join(program.source for program in programs) + "\nvoid main(void) {}\n")
+        directory = self.output / "pointer-copies"
+        images = compile_generated(directory, os.environ.get("SAMESAMECC") or "samesamecc",
+                                   os.environ.get("SAMESAMECL") or "samesamecl", programs, source)
+        for image in images.values():
+            self.assertEqual(image.symbols["ra_pointer"], image.symbols["ra_buffer"] + 128)
+        calls = 0
+        for program in programs:
+            width = 2 if program.name.startswith(("pointer_u16_", "pointer_s16_")) else 1
+            signed = program.name.startswith(("pointer_s8_", "pointer_s16_"))
+            for index in (-3, 0, 1, 7, 23):
+                for value in (0, 1, 127, 128, 255, 256, 32767, 32768, 65535):
+                    initial = bytearray((offset * 37 + value) & 255 for offset in range(130))
+                    expected_buffer = initial.copy()
+                    address = 64 + width * index
+                    if program.family == "store":
+                        stored = (value + index) & ((1 << (8 * width)) - 1)
+                        expected_buffer[address:address + width] = stored.to_bytes(width, "little")
+                    else:
+                        stored = int.from_bytes(initial[address:address + width], "little")
+                    if signed and stored & (1 << (8 * width - 1)):
+                        stored -= 1 << (8 * width)
+                    expected = stored if program.family == "store" else value * 7 + stored
+                    if program.family == "pointer_alias":
+                        expected_buffer[address] = (value + index) & 255
+                        expected_buffer[address + 1] = (expected_buffer[address] + 1) & 255
+                        expected = expected_buffer[address] + expected_buffer[address + 1]
+                    elif program.family in ("pointer_call", "pointer_post"):
+                        expected_buffer[address] = (value + index if program.family == "pointer_call" else value) & 255
+                        expected = expected_buffer[address] + (index + 1 if program.family == "pointer_post" else 0)
+                        if program.family == "pointer_call":
+                            expected_buffer[127] = (expected_buffer[127] + 1) & 255
+                    for mode, image in images.items():
+                        expected_memory = expected_buffer.copy()
+                        if program.name == "pointer_global":
+                            expected_memory[128:130] = (image.symbols["ra_buffer"] + 64).to_bytes(2, "little")
+                        result = execute(image.rom, image.symbols[program.name],
+                                         [image.symbols["ra_buffer"] + 64, index & 65535, value], [2, 2, 2],
+                                         initial, image.symbols["ra_buffer"], 2, image.transfers)
+                        self.assertEqual((result["value"], result["buffer"], result["port_writes"]),
+                                         (expected & 65535, expected_memory, []), (program.name, index, value, mode))
+                        self.assertEqual(result["unmapped_instructions"], 0)
+                        calls += 1
+        print(f"Pointer-copy arithmetic oracle executions: {calls}", flush=True)
+        for mode in images:
+            assembly = (directory / mode / "main.asm").read_text()
+            if mode not in ("ra", "ra_quiet"):
+                self.assertNotIn("; folded spilled pointer base", assembly, mode)
+                continue
+            for program in programs[:8]:
+                body = assembly.split(f'.SECTION "{program.name}" FREE')[1].split(".ENDS")[0]
+                if program.family == "store":
+                    self.assertIn("; folded spilled pointer base", body, (program.name, mode))
+                else:
+                    self.assertNotIn("; folded spilled pointer base", body, (program.name, mode))
+                    self.assertIn("; retained arg1 in HL", body, (program.name, mode))
+
     def test_unsigned_power_of_two_arithmetic(self):
         compiler = os.environ.get("SAMESAMECC") or "samesamecc"
         linker = os.environ.get("SAMESAMECL") or "samesamecl"
