@@ -15,6 +15,118 @@ from ra_cpu import execute
 
 
 class BranchConditionsTests(unittest.TestCase):
+    def test_bounded_word_crc_loops(self):
+        cases = {
+            "word": (8, 0x1021, True), "one": (1, 0x8005, True),
+            "sixteen": (16, 0x1021, True), "byte_max": (255, 0x1021, True),
+            "word_bound": (256, 0x8005, True), "high_poly": (7, 0xa500, True),
+            "low_poly": (8, 0x00a5, True), "live_counter": (256, 0x1021, True),
+            "argument": (8, 0x1021, True), "zero": (0, 0x1021, False),
+            "wide": (257, 0x1021, False), "signed": (8, 0x1021, False),
+            "signed_counter": (8, 0x1021, False), "escaped": (8, 0x1021, False),
+            "call": (8, 0x1021, False), "assembly": (8, 0x1021, False),
+            "mask": (8, 0x1021, False), "shift": (8, 0x1021, False),
+            "reverse": (8, 0xa001, False), "global": (8, 0x1021, False),
+            "far": (8, 0x1021, False), "nested": (8, 0x1021, False),
+            "break": (8, 0x1021, False), "continue": (8, 0x1021, False),
+            "counter_read": (8, 0x1021, False), "variable": (8, 0x1021, False),
+        }
+        programs = []
+        for name, (count, polynomial, _) in cases.items():
+            loop = (f"for(i=0;i<{count};i++) {{ "
+                    f"if((crc&0x8000)!=0) {{ crc=(crc<<1)^{polynomial}; }} else {{ crc<<=1; }} }}")
+            prefix, suffix = "", "return crc;"
+            if name == "live_counter":
+                suffix = "return crc+i;"
+            elif name == "escaped":
+                prefix = "crc_escape(&crc);"
+            elif name == "call":
+                loop = loop.replace("if(", "crc=crc_call(crc); if(")
+            elif name == "assembly":
+                prefix = '__asm("NOP");'
+            elif name == "mask":
+                loop = loop.replace("0x8000", "0x4000")
+            elif name == "shift":
+                loop = loop.replace("<<1", "<<2").replace("<<=1", "<<=2")
+            elif name == "reverse":
+                loop = loop.replace("0x8000", "1").replace("<<", ">>")
+            elif name == "far":
+                prefix, suffix = "workspace[259]=b;", "return crc+workspace[259];"
+            elif name == "nested":
+                loop = "for(k=0;k<2;k++) { " + loop + " }"
+            elif name in ("break", "continue"):
+                loop = loop.replace("if(", f"if(i==3) {{ {name}; }} if(", 1)
+            elif name == "counter_read":
+                loop = loop[:-1] + " crc^=i; }"
+            elif name == "variable":
+                loop = loop.replace(f"i<{count}", "i<(b&15)")
+            body = f"u16 crc=a; u16 i; {prefix} {loop} {suffix}"
+            if name == "signed":
+                body = body.replace("u16 crc", "s16 crc")
+            elif name == "signed_counter":
+                body = body.replace("u16 i", "s16 i")
+            elif name == "argument":
+                body = re.sub(r"\bcrc\b", "a", body.replace("u16 crc=a;", ""))
+            elif name == "global":
+                body = re.sub(r"\bcrc\b", "crc_global", body.replace("u16 crc=a;", "crc=a;"))
+            elif name == "far":
+                body = "u8 workspace[260]; " + body
+            elif name == "nested":
+                body = "u16 k; " + body
+            programs.append(Program(f"crc_loop_{name}", name, 0, 0, [2, 2], 2, [],
+                                    f"u16 crc_loop_{name}(u16 a,u16 b) {{ {body} }}"))
+        directory = self.output / "bounded-word-crc"
+        helpers = ("u8 ra_buffer[128]; u16 crc_global;\n"
+                   "void crc_escape(u16 *p) { p[0]^=0x1234; }\n"
+                   "u16 crc_call(u16 value) { return value^7; }\n")
+        images = compile_generated(directory, os.environ.get("SAMESAMECC") or "samesamecc",
+                                   os.environ.get("SAMESAMECL") or "samesamecl", programs,
+                                   helpers + "\n".join(p.source for p in programs) + "\nvoid main(void) {}\n")
+        calls = 0
+        for program in programs:
+            name = program.family
+            count, polynomial, _ = cases[name]
+            for a in (0, 1, 0x7fff, 0x8000, 0x8001, 0xffff, 0x1234, 0xa5a5):
+                for b in (0, 1, 15, 255):
+                    crc = a ^ (0x1234 if name == "escaped" else 0)
+                    iterations = b & 15 if name == "variable" else count
+                    if name in ("break", "continue"):
+                        iterations = 3 if name == "break" else count - 1
+                    for _ in range(2 if name == "nested" else 1):
+                        for index in range(iterations):
+                            if name == "call":
+                                crc ^= 7
+                            high = crc & (1 if name == "reverse" else 0x4000 if name == "mask" else 0x8000)
+                            crc = ((crc >> 1 if name == "reverse" else crc << (2 if name == "shift" else 1))
+                                   ^ (polynomial if high else 0)) & 65535
+                            if name == "counter_read":
+                                crc ^= index
+                    expected_value = (crc + (count if name == "live_counter" else
+                                             b if name == "far" else 0)) & 65535
+                    initial = bytes((index*37+a+b) & 255 for index in range(130))
+                    expected_buffer = bytearray(initial)
+                    if name == "global":
+                        expected_buffer[128:130] = crc.to_bytes(2, "little")
+                    for mode, image in images.items():
+                        self.assertEqual(image.symbols["crc_global"], image.symbols["ra_buffer"] + 128)
+                        result = execute(image.rom, image.symbols[program.name], [a, b], [2, 2],
+                                         initial, image.symbols["ra_buffer"], 2, image.transfers,
+                                         instruction_limit=100000, frame_bytes=1024)
+                        self.assertEqual((result["value"], result["buffer"], result["port_writes"]),
+                                         (expected_value, expected_buffer, []), (name, mode, a, b))
+                        self.assertEqual(result["unmapped_instructions"], 0)
+                        calls += 1
+        for mode in images:
+            assembly = (directory / mode / "main.asm").read_text()
+            for program in programs:
+                body = assembly.split(f'.SECTION "{program.name}" FREE')[1].split(".ENDS")[0]
+                selected = mode in ("ra", "ra_quiet") and cases[program.family][2]
+                self.assertEqual("; bounded word CRC loop" in body, selected, (program.family, mode))
+                if selected:
+                    self.assertRegex(body, r"ADD HL,HL\s+JR\s+NC,\+")
+                    self.assertRegex(body, r"DJNZ _byte_loop_\d+")
+        self.assertEqual(calls, len(programs) * 32 * len(images))
+
     def test_word_argument_push_transport(self):
         cases = {
             "word": ("return transport_word(a,b,7);", lambda a, b: a + 3*b + 35),

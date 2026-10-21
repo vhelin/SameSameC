@@ -140,6 +140,18 @@ extraction.
   unnecessary materialization and choose branches by legality and actual cost.
 - [x] **2s. Shared arithmetic bodies with an explicit size/speed policy:**
   price bank-local helper sharing against inline code without hidden tradeoffs.
+- [x] **2w. Bounded loop-carried scalar register ownership:** start with the
+  measured call-free CRC bit loop, keeping its word state in HL and its existing
+  counter in BC, with proven entry, branch, back-edge and exit ownership.
+- [ ] **2x. Allocation costs, assignment packing and rematerialization:**
+  extend the existing cost observer and copy/address handling rather than
+  introducing another allocator or optimization framework.
+- [ ] **2y. Explicit compatible internal register calls:** measure a gated
+  argument/result convention with complete caller/callee/adaptor costs and
+  unchanged public, banked, indirect, pureasm and old-object contracts.
+- [ ] **2z. Constant byte lanes and bounded pure-expression reuse:** simplify
+  zero/identity lanes and eliminate repeated pure calculations only when
+  accumulator/flags, aliases, evaluation order and register pressure permit it.
 - [ ] **3. Initial SM83 backend:** establish correct Game Boy code generation,
   target-specific addressing/spills/calls and execution tests. Use actual
   requirements to identify reusable code; do not assume IX/IY, `DJNZ` or `LDIR`.
@@ -156,6 +168,9 @@ The numbered detail sections below describe optimization priorities, not a
 requirement to finish every Z80 optimization before implementing SM83. The
 explicit pre-SM83 scope is steps 1, 2 and 2a-2s; priorities 3-5 below supply
 additional implementation guidance for the loop, call and arithmetic follow-ups.
+Steps 2t-2v below record the completed residency, frame and call investigations.
+The new 2w-2z follow-ups are optional measured Z80 improvements, not additional
+prerequisites for initial SM83 support.
 
 Do one bounded, measured change at a time. The numeric observations below are
 baseline anchors, not promised results. Passing a focused test is not permission
@@ -1702,7 +1717,7 @@ not only the inner loop.
 
 #### Step 2p Checkpoint (2026-10-20)
 
-Extend the existing `_generate_asm_byte_loop_z80` copy/fill emitter for two
+Extend the existing copy/fill emitter (now `_generate_asm_bounded_loop_z80`) for two
 bounded unsigned-byte reductions. For a signed or unsigned word-local sum,
 retain the accumulator in HL and advance the source pointer in IY. For a
 fixed-address byte-memory sum, retain the source pointer in HL and the target
@@ -2884,6 +2899,184 @@ and commit binding are retained in
 The source provenance, exact 52-image ledger, 411 guarded research calls and
 21 independent timing checks for these three steps are retained in
 `C:\cygwin64\tmp\major-codegen-study-20261021`.
+
+#### 2w. Bounded Loop-Carried Scalar Register Ownership [DONE: BOUNDED CRC]
+
+The post-2v comparison at `2b14640` reproduces all pinned external results:
+130 unique configurations / 2320 guarded calls pass. Against stock SDCC, the
+five large kernels remain 1.553 times the code size and 1.408 times the cycles
+(geometric means, competitor size/speed settings respectively). Root-function
+frame-address setup and scalar-frame accesses alone consume 62.7% of Tile's
+kernel cycles, 52.3% of Path's and 50.8% of Packed CRC's. These are measured
+traffic budgets, not promised removable percentages.
+
+Start with Tile's call-free CRC bit loop: the existing bounded counter already
+lives in BC, while the CRC is reloaded and stored on every bit. A private
+assembly-only probe keeping the CRC in HL across both branches and the back
+edge, with entry/exit synchronization, gives:
+
+| Tile | Current compiler | Private residency probe |
+| --- | ---: | ---: |
+| Kernel bytes | 1079 | 1065 |
+| Aggregate kernel T-states | 1879172 | 1518518 (-19.2%) |
+| Frame footprint | 126 | 126 |
+
+All 20 guarded calls and one independent timing pass, with unchanged caller
+cost and no frame/stack growth. This is opportunity evidence, not a compiler
+implementation or general loop-ownership proof.
+
+- Reuse existing allocator/CFG legality and target-local loop emission. Keep
+  the first implementation bounded to proven call-free word-state loops with
+  compatible BC-counter/HL-state ownership; do not add a parallel framework.
+- Prove entry, both branch paths, the back edge and exit. Reject escaping or
+  aliased state, calls, pureasm, unsupported clobbers, external entry and
+  conflicting physical-register ownership. Preserve zero iterations, live-out
+  state/counter values, source widths and original ABI/fallback behavior.
+- Retain the failed 2t broad-promotion evidence. Do not revive unrestricted
+  promotion or the generic indexed-frame switch rejected in 2u.
+- Add independent runtime and exact-selection/fallback tests, including
+  signedness, bounds, nested loops, escaping state, calls and existing
+  specialized loops. The parent must pass the runtime oracle and fail the new
+  selection assertion.
+- Before closing a batch, run the existing checkpoint gates, compare every
+  input's cycles/frame/stack metrics, and independently link both complete
+  calculation ROMs under default/shared arithmetic. Do not infer whole-ROM
+  savings by adding isolated gains.
+
+Stock SDCC r17016's `SDCCloop.c::loopInvariants` and `loopInduction` provide
+source-backed precedent for explicit topology, dominance and conservative
+pointer/call handling, not permission to weaken SameSameC's existing contracts.
+
+##### First Qualified 2w Batch
+
+Extend the existing copy/fill/reduction emitter, renamed
+`_generate_asm_bounded_loop_z80`; add no production functions or allocator
+framework. Reuse `_is_z80_bounded_counter`, temporary-lifetime/ownership checks,
+external-entry and address-exposure checks, location resolution, frame loads,
+word stores and the existing live-out counter assignment.
+
+The accepted shape is a zero-initialized unsigned word counter, constant bound
+1..256, and an unsigned word local/argument CRC with the exact high-bit test,
+one-bit left shift and literal-polynomial XOR branches. The CRC stays in HL
+and uses the carry from `ADD HL,HL` instead of reloading/testing its high byte.
+The existing counted-loop machinery uses B, including B=0 for exactly 256
+iterations. Commit the CRC to its original frame location and restore any
+live-out word counter through the original assignment helper.
+
+Keep default/no-RA/all-spill, zero/variable/wide bounds, signed state/counters,
+nonmatching masks/shifts, far/global/escaped state, calls, asm, breaks/continues
+and crossing-temporary/nested-owner cases on their existing paths. This closes
+only the bounded constant-count CRC subset, not general CFG residency or
+multi-exit/variable-bound promotion. ABI, frame layout, DE ownership and all
+other allocator/core policies remain unchanged.
+
+Production growth is **74 net C lines, zero new functions**. Against `2b14640`,
+the final compiler improves beyond the private residency-only probe:
+
+| Tile | Parent compiler | Qualified compiler |
+| --- | ---: | ---: |
+| Kernel bytes | 1079 | 1034 (-45) |
+| Aggregate kernel T-states | 1879172 | 1323474 (-29.57%) |
+| Caller bytes / aggregate T-states | 111 / 12980 | 111 / 12980 |
+| Frame footprint | 126 | 126 |
+
+All other 12 kernels and every no-RA/external row are unchanged. Default and
+shared arithmetic give the same Tile improvement. Independently linked used
+ROM, not summed isolated gains:
+
+| Project | Default before -> after | Shared before -> after |
+| --- | ---: | ---: |
+| calculations-1 | 19007 -> 19007 | 18987 -> 18987 |
+| calculations-2 | 29001 -> 28956 (-45) | 28733 -> 28688 (-45) |
+
+These are whole-program build/size checks, not complete interactive-program
+runtime qualification. Release/traced/ASan images agree under each profile.
+
+Qualification:
+
+- Strict C89 normal/traced checks and release/traced/ASan builds pass.
+- Forty condition/policy tests and 21 optimized-policy tests pass per build.
+  The new 26-function oracle executes 4160 calls per build over five allocator
+  modes, with independent arithmetic, guarded buffers, exact selection and
+  fallback assertions. It covers count 0/1/255/256/257, polynomial byte lanes,
+  high-bit seeds, live-out word counters, argument state and conservative
+  signed/alias/call/asm/global/far/nested/control-flow fallbacks.
+- The saved parent passes all 4160 runtime calls, then fails only the new
+  selection assertion. Default/no-RA/all-spill focused ROMs are identical.
+  An additional 8320 instrumented parent/current calls prove all 4160 paired
+  cycle/frame-traffic/stack-high-water comparisons non-growing.
+- All 175 fixtures pass without snapshot changes. Existing word-counter CI
+  assertions change only for the exact newly selected CRC variants; all
+  numerical oracles and immutable verifier controls remain unchanged.
+- Full pinned comparison: 104 rows / 1856 calls. Shared comparisons: 52 rows /
+  928 calls per traced/ASan build. All 2320 individual SSC samples are
+  non-growing in timing and observed frame/stack metrics; 136 independent
+  timing checks, 540 condition-image identities and 90 allocator-ROM identities
+  pass. Native controls remain 32 rejections, seven accepts, 10200 endpoints
+  and 65 frame-increment controls.
+
+Parent binaries, exact sources, initial obsolete-selection assertion failures,
+per-input results, complete-ROM hashes and qualification/commit binding are
+retained in `C:\cygwin64\tmp\crc-loop-2w-20261021`.
+
+#### 2x. Allocation Costs, Assignment Packing And Rematerialization [PLANNED]
+
+Stock SDCC r17016's `ralloc2.cc::instruction_cost` checks candidate legality,
+assigns operands/surviving registers and calls `dryZ80iCode` for actual lowering
+costs. Its `ralloc.c::packRegisters` propagates assignments and rematerializable
+single-definition addresses, with conservative global/address-taken rules.
+
+SameSameC already has a bounded lowering-aware cost observer in `pass_5.c`.
+Extend it and existing copy/address handling instead of duplicating them:
+
+- Include context-dependent address setup, extension, scratch registers and
+  live-range pressure where they change the actual emitted cost.
+- Reuse safe assignment packing and rematerialization to remove unnecessary
+  temporary storage; preserve definition, alias, width and clobber proofs.
+- Measure the same workloads and full linked programs. Reject local regressions
+  hidden by aggregate gains; qualify spill/all-spill/no-RA and verifier controls.
+
+#### 2y. Explicit Compatible Internal Register Calls [PLANNED]
+
+After 2v, the three-word example caller is still 111 bytes / 655 T-states
+versus stock SDCC's 20 / 114. Inspect r17016 `gen.c::genSend`/`genRet`, including
+its incompatible-return-convention tail-call rejection, and bundled z88dk
+sccz80 `callfunc.c`'s explicit FASTCALL path. The bundled sccz80 source is
+not independently revision-matched to the benchmark binary.
+
+- Investigate selected internal register arguments/results only behind an
+  explicit compatible convention. Reuse existing call/frame/location helpers.
+- Preserve exported, banked, indirect, recursive, mixed-width, pureasm and
+  old-object contracts; any adapters and caller/callee saves count in the cost.
+- Qualify nested calls, argument snapshots/evaluation order, result lifetime,
+  clobbers and old/new object combinations. Keep original ABI paths unchanged.
+- Accept only measured complete caller/callee/helper and independently linked
+  ROM wins. Do not substitute blanket inlining or count a removed standalone
+  callee while it remains live elsewhere.
+
+#### 2z. Constant Byte Lanes And Bounded Pure-Expression Reuse [PLANNED]
+
+Stock SDCC r17016 `gen.c::genAnd` lowers constant zero/identity lanes directly;
+`SDCCcse.c` provides conservative assignment/expression reuse. Extend existing
+SameSameC logical emitters and pure-expression rewrites, not a new peephole/CSE
+framework.
+
+- A private assembly probe replaces a zero high AND lane only when the following
+  low AND overwrites A/flags. Current Tile shrinks 1079 -> 1063 bytes, with smaller
+  Stencil/Path wins; all 232 guarded calls / 14 independent timings pass.
+- Tile still computes `seed >> (i & 7)` twice. An equivalent-source probe
+  reusing the shift shrinks 1079 -> 1060 bytes and reduces aggregate cycles
+  1879172 -> 1854656 (-1.30%), with frame 126 unchanged; all 20 guarded calls /
+  one independent timing pass.
+- Prove A/flags liveness, types, reaching definitions, aliases and evaluation
+  order. Do not reuse across calls/volatile effects or extend live ranges into
+  spills that cancel the gain.
+- Treat these as separate opportunity probes, not additive production or
+  whole-ROM savings. Unsigned power-of-two folds are already implemented.
+
+The comparison, exact instruction ledger, ROM-identical dynamic annotations,
+source provenance and three private probes for 2w-2z are retained in
+`C:\cygwin64\tmp\compiler-reprofile-20261021-2v`.
 
 ### 3. Maintain Induction Addresses And Select Z80 Loops
 

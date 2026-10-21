@@ -1304,7 +1304,10 @@ def check_analytical_assertions(output, programs):
                 raise RuntimeError(f"Variable byte shift used a constant path: {name}")
         if family == "scalar_word_counter":
             body = section_assembly()
-            narrowed = variant in ({3, 24, 25, 26, 31, 34, 36} | set(range(8, 20)))
+            crc_loop = variant in {9, 10, 11, 12, 13, 14, 20, 31, 36}
+            if ("bounded word CRC loop" in body) != crc_loop:
+                raise RuntimeError(f"Bounded CRC loop or conservative fallback mismatch: {name}")
+            narrowed = variant in {3, 8, 15, 16, 17, 18, 19, 24, 25, 26, 34, 36}
             if any(
                 (f"bounded word counter {operation}; high byte preserved" in body) != narrowed
                 for operation in ("comparison", "increment")

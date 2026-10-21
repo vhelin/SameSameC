@@ -7577,7 +7577,7 @@ static int _copy_non_const_array_constants(struct tac *t, struct tree_node *node
 }
 
 
-static int _generate_asm_byte_loop_z80(int *tac_index, FILE *file_out, struct tree_node *function_node) {
+static int _generate_asm_bounded_loop_z80(int *tac_index, FILE *file_out, struct tree_node *function_node) {
 
   struct tac *sequence[16], *access[2] = {NULL, NULL}, *base[2], *bound, *initial, *exit;
   struct tac *reduction = NULL, *accumulator = NULL;
@@ -7586,7 +7586,7 @@ static int _generate_asm_byte_loop_z80(int *tac_index, FILE *file_out, struct tr
   struct tree_node *nodes[3];
   int indices[16], operands[2], displacements[2] = {0, 0};
   int i, j, k, count = 0, end, scratch = 0, offset, constant_count, reload_count = NO;
-  int loop_id, copied = NO;
+  int loop_id, copied = NO, crc_loop = NO;
   char loop_label[48];
 
   initial = &g_tacs[*tac_index];
@@ -7603,7 +7603,8 @@ static int _generate_asm_byte_loop_z80(int *tac_index, FILE *file_out, struct tr
       return SUCCEEDED;
     indices[count] = i;
     sequence[count++] = &g_tacs[i];
-    if (g_tacs[i].op == TAC_OP_JUMP)
+    if (g_tacs[i].op == TAC_OP_JUMP && count > 1 && sequence[1]->op == TAC_OP_LABEL &&
+        strcmp(g_tacs[i].result_s, sequence[1]->result_s) == 0)
       break;
   }
   if (count < 7 || sequence[1]->op != TAC_OP_LABEL ||
@@ -7621,6 +7622,52 @@ static int _generate_asm_byte_loop_z80(int *tac_index, FILE *file_out, struct tr
       strcmp(bound->result_s, g_tacs[end].result_s) != 0)
     return SUCCEEDED;
   exit = &g_tacs[end];
+  if (count == 14 && sequence[3]->op == TAC_OP_AND && sequence[4]->op == TAC_OP_JUMP_EQ &&
+      sequence[5]->op == TAC_OP_SHIFT_LEFT && sequence[6]->op == TAC_OP_XOR &&
+      sequence[7]->op == TAC_OP_JUMP && sequence[8]->op == TAC_OP_LABEL &&
+      sequence[9]->op == TAC_OP_SHIFT_LEFT && sequence[10]->op == TAC_OP_LABEL) {
+    struct tree_node *state = sequence[3]->arg1_node;
+    if (bound->arg2_type != TAC_ARG_TYPE_CONSTANT || bound->arg2_d < 1.0 || bound->arg2_d > 256.0 ||
+        sequence[3]->arg1_type != TAC_ARG_TYPE_LABEL || state == NULL ||
+        (state->type != TREE_NODE_TYPE_CREATE_VARIABLE &&
+         state->type != TREE_NODE_TYPE_CREATE_VARIABLE_FUNCTION_ARGUMENT) ||
+        (state->flags & (TREE_NODE_FLAG_GLOBAL | TREE_NODE_FLAG_STATIC)) != 0 ||
+        state->value != 0 || state->children[0]->value_double != 0.0 ||
+        state->children[0]->value != VARIABLE_TYPE_UINT16 ||
+        sequence[3]->arg2_type != TAC_ARG_TYPE_CONSTANT || sequence[3]->arg2_d != 32768.0 ||
+        sequence[3]->result_type != TAC_ARG_TYPE_TEMP ||
+        sequence[4]->arg1_type != TAC_ARG_TYPE_TEMP || sequence[4]->arg1_d != sequence[3]->result_d ||
+        sequence[4]->arg2_type != TAC_ARG_TYPE_CONSTANT || sequence[4]->arg2_d != 0.0 ||
+        strcmp(sequence[4]->result_s, sequence[8]->result_s) != 0 ||
+        sequence[5]->arg1_type != TAC_ARG_TYPE_LABEL || sequence[5]->arg1_node != state ||
+        sequence[5]->arg2_type != TAC_ARG_TYPE_CONSTANT || sequence[5]->arg2_d != 1.0 ||
+        sequence[5]->result_type != TAC_ARG_TYPE_TEMP ||
+        sequence[6]->arg1_type != TAC_ARG_TYPE_TEMP || sequence[6]->arg1_d != sequence[5]->result_d ||
+        sequence[6]->arg2_type != TAC_ARG_TYPE_CONSTANT || sequence[6]->arg2_d < 0.0 ||
+        sequence[6]->arg2_d > 65535.0 || sequence[6]->arg2_d != (int)sequence[6]->arg2_d ||
+        sequence[6]->result_type != TAC_ARG_TYPE_LABEL || sequence[6]->result_node != state ||
+        strcmp(sequence[7]->result_s, sequence[10]->result_s) != 0 ||
+        sequence[9]->arg1_type != TAC_ARG_TYPE_LABEL || sequence[9]->arg1_node != state ||
+        sequence[9]->arg2_type != TAC_ARG_TYPE_CONSTANT || sequence[9]->arg2_d != 1.0 ||
+        sequence[9]->result_type != TAC_ARG_TYPE_LABEL || sequence[9]->result_node != state)
+      return SUCCEEDED;
+    for (j = 3; j <= 9; j++) {
+      if (j != 3 && j != 5 && j != 6 && j != 9)
+        continue;
+      if (sequence[j]->arg1_var_type != VARIABLE_TYPE_UINT16 ||
+          sequence[j]->arg1_var_type_promoted != VARIABLE_TYPE_UINT16 ||
+          sequence[j]->result_var_type != VARIABLE_TYPE_UINT16 ||
+          sequence[j]->result_var_type_promoted != VARIABLE_TYPE_UINT16)
+        return SUCCEEDED;
+    }
+    crc_loop = YES;
+    reduction = sequence[6];
+    base[0] = sequence[3];
+    operands[0] = TAC_USE_ARG1;
+    nodes[0] = NULL;
+    nodes[1] = nodes[2] = state;
+    goto check_loop_ownership;
+  }
   for (i = 3; i < count - 3; i++) {
     struct tac *t = sequence[i];
     if (t->op == TAC_OP_ASSIGNMENT) {
@@ -7752,6 +7799,7 @@ static int _generate_asm_byte_loop_z80(int *tac_index, FILE *file_out, struct tr
     else if (node->value != 0 || node->children[0]->value_double != 0.0)
       return SUCCEEDED;
   }
+check_loop_ownership:
   for (i = 0; i < function_node->local_variables->temp_registers_count; i++) {
     struct temp_register *temp = &function_node->local_variables->temp_registers[i];
     if (initial->result_type == TAC_ARG_TYPE_TEMP && temp->register_index == (int)initial->result_d)
@@ -7822,9 +7870,33 @@ static int _generate_asm_byte_loop_z80(int *tac_index, FILE *file_out, struct tr
   constant_count = locations[0].kind == LOC_CONST ? locations[0].value : 0;
   loop_id = g_return_id++;
   snprintf(loop_label, sizeof(loop_label), "_byte_loop_%d", loop_id);
-  fprintf(file_out, "      ; advancing byte %s loop\n",
-    reduction != NULL ? (accumulator == NULL ? "sum" : "sum_store") : copied == YES ? "copy" : "fill");
+  if (crc_loop == YES)
+    fprintf(file_out, "      ; bounded word CRC loop\n");
+  else
+    fprintf(file_out, "      ; advancing byte %s loop\n",
+      reduction != NULL ? (accumulator == NULL ? "sum" : "sum_store") : copied == YES ? "copy" : "fill");
   _load_de_with_offset_to_ix(0, file_out);
+  if (crc_loop == YES) {
+    _load_from_ix_to_l(locations[2].offset, file_out);
+    _load_from_ix_to_h(locations[2].offset + 1, file_out);
+    _load_value_to_b(constant_count & 255, file_out);
+    _add_label(loop_label, file_out, NO);
+    _add_hl_to_hl(file_out);
+    fprintf(file_out, "      JR  NC,+\n");
+    for (j = 1; j >= 0; j--) {
+      int value = ((int)reduction->arg2_d >> (j * 8)) & 255;
+      if (value == 0)
+        continue;
+      fprintf(file_out, "      LD  A,%s\n", j == 1 ? "H" : "L");
+      _xor_value_to_a(value, file_out);
+      fprintf(file_out, "      LD  %s,A\n", j == 1 ? "H" : "L");
+    }
+    _add_label("+", file_out, YES);
+    fprintf(file_out, "      DJNZ %s\n", loop_label);
+    if (_store_from_hl(&locations[2], locations[2].offset, file_out) == FAILED)
+      return FAILED;
+    goto loop_done;
+  }
   if (constant_count == 0) {
     if (_materialize_array_index_to_bc(&locations[0], VARIABLE_TYPE_UINT16, locations[0].offset, NO, file_out) == FAILED)
       return FAILED;
@@ -7935,6 +8007,7 @@ static int _generate_asm_byte_loop_z80(int *tac_index, FILE *file_out, struct tr
       fprintf(file_out, "      DJNZ %s\n", loop_label);
     }
   }
+loop_done:
   _add_label(exit->result_s, file_out, NO);
   /* Both the zero-count edge and the loop preserve IX = the restored DE. */
   g_ix_frame_offset = 0;
@@ -7951,7 +8024,8 @@ static int _generate_asm_byte_loop_z80(int *tac_index, FILE *file_out, struct tr
       return FAILED;
   }
   RA_TRACE((stderr, "register_allocator: byte_loop function=%s kind=%s count=%s frame_save=%d instructions=%d target=z80 status=complete\n",
-    function_node->children[1]->label, reduction != NULL ? (accumulator == NULL ? "sum" : "sum_store") : copied == YES ? "copy" : "fill",
+    function_node->children[1]->label, crc_loop == YES ? "crc" :
+    reduction != NULL ? (accumulator == NULL ? "sum" : "sum_store") : copied == YES ? "copy" : "fill",
     constant_count == 0 ? "word" : "constant", copied == YES ? scratch : 0, count));
   *tac_index = end;
   return SUCCEEDED;
@@ -8170,7 +8244,7 @@ int generate_asm_z80(FILE *file_out) {
               continue;
             }
           }
-          if (_generate_asm_byte_loop_z80(&i, file_out, function_node) == FAILED)
+          if (_generate_asm_bounded_loop_z80(&i, file_out, function_node) == FAILED)
             return FAILED;
           if (i != previous_index) {
             frame_fallthrough = YES;
