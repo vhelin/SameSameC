@@ -374,6 +374,50 @@ int main(int argc, char **argv) {
       fprintf(stderr, "allocation_policy_test: direct_bc_bitwise=yes unsigned_widening=yes signed_right_fallback=yes bc_overlap_rejected=yes status=complete\n");
     }
     {
+      struct tree_node variable, other;
+      struct tac increment, before;
+      int variant, register_index, expected;
+      for (variant = 0; variant < 13; variant++) {
+        memset(&variable, 0, sizeof(variable));
+        memset(&other, 0, sizeof(other));
+        memset(&increment, 0, sizeof(increment));
+        variable.type = variant == 1 ? TREE_NODE_TYPE_CREATE_VARIABLE_FUNCTION_ARGUMENT : TREE_NODE_TYPE_CREATE_VARIABLE;
+        increment.op = TAC_OP_ADD;
+        increment.arg1_type = increment.result_type = TAC_ARG_TYPE_LABEL;
+        increment.arg1_node = increment.result_node = &variable;
+        increment.arg2_type = TAC_ARG_TYPE_CONSTANT;
+        increment.arg2_d = 1.0;
+        increment.arg1_var_type = increment.result_var_type = VARIABLE_TYPE_UINT16;
+        increment.arg1_var_type_promoted = increment.arg2_var_type_promoted = VARIABLE_TYPE_UINT16;
+        if (variant == 2) variable.flags = TREE_NODE_FLAG_GLOBAL;
+        if (variant == 3) variable.flags = TREE_NODE_FLAG_STATIC;
+        if (variant == 4) increment.result_node = &other;
+        if (variant == 5) increment.arg2_d = 2.0;
+        if (variant == 6) increment.op = TAC_OP_SUB;
+        if (variant == 7) increment.arg1_physical_register = Z80_PHY_HL;
+        if (variant == 8) increment.result_physical_register = Z80_PHY_HL;
+        if (variant == 9) increment.arg1_type = TAC_ARG_TYPE_TEMP;
+        if (variant == 10) variable.value = 2;
+        if (variant == 11) {
+          increment.arg1_var_type = increment.result_var_type = VARIABLE_TYPE_UINT8;
+          increment.arg1_var_type_promoted = increment.arg2_var_type_promoted = VARIABLE_TYPE_UINT8;
+        }
+        if (variant == 12) increment.arg1_var_type_promoted = VARIABLE_TYPE_UINT8;
+        before = increment;
+        for (register_index = 0; register_index < 5; register_index++) {
+          expected = variant < 2 || (register_index >= 2 && variant != 5 && variant != 12) ? YES : NO;
+          if (_is_z80_basic_block_transparent_tac_for_physical_register(
+              &increment, physical_registers[register_index]) != expected ||
+              memcmp(&increment, &before, sizeof(increment)) != 0) {
+            fprintf(stderr, "allocation_policy_test: frame_increment variant=%d register=%d expected=%d status=failed\n",
+                variant, register_index, expected);
+            return 1;
+          }
+        }
+      }
+      fprintf(stderr, "allocation_policy_test: frame_increment=65 globals_static_alias_width_register_fallbacks=yes unchanged=yes status=complete\n");
+    }
+    {
       struct endpoint_case {
         int op, operand, byte_mask, word_mask, copy_byte_mask, copy_word_mask, complement_bc;
       } endpoints[] = {
@@ -443,13 +487,14 @@ int main(int argc, char **argv) {
                 else if (constant_source)
                   expected_mask &= ~16;
               }
-              if (temp.size == 16 && producer_index >= 1 && producer_index <= 6 &&
+              if (temp.size == 16 && ((producer_index >= 1 && producer_index <= 6) || producer.op == TAC_OP_ARRAY_READ) &&
                   (endpoint_index == 17 || endpoint_index == 19 ||
                    endpoint_index == 21 || endpoint_index >= 22))
                 expected_mask |= 4;
               if (producer_index >= 10)
                 expected_mask &= ~8;
-              if (producer.op == TAC_OP_COMPLEMENT && temp.size == 16 && endpoint->complement_bc == YES)
+              if ((producer.op == TAC_OP_COMPLEMENT || producer.op == TAC_OP_ARRAY_READ) &&
+                  temp.size == 16 && endpoint->complement_bc == YES)
                 expected_mask |= 4;
               if (producer_index >= 1 && producer_index <= 5 && temp.size == 16 && endpoint->operand == TAC_USE_ARG2 &&
                   (endpoint->op == TAC_OP_ADD || endpoint->op == TAC_OP_SUB || endpoint->op == TAC_OP_AND || endpoint->op == TAC_OP_OR || endpoint->op == TAC_OP_XOR))

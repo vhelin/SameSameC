@@ -175,7 +175,7 @@ static int _promote_register_allocator_local_values(void) {
     }
     pointer_base = producer->op == TAC_OP_GET_ADDRESS || producer->op == TAC_OP_GET_ADDRESS_ARRAY;
     if (_is_register_allocator_linear_scan_producer(producer) == NO ||
-        producer->op == TAC_OP_ARRAY_READ || producer->op == TAC_OP_FUNCTION_CALL_USE_RETURN_VALUE ||
+        producer->op == TAC_OP_FUNCTION_CALL_USE_RETURN_VALUE ||
         producer->result_type != TAC_ARG_TYPE_LABEL || function_node == NULL ||
         (function_node->flags & TREE_NODE_FLAG_PUREASM) != 0 ||
         strcmp(function_node->children[1]->label, "mainmain") == 0)
@@ -331,7 +331,7 @@ static int _promote_register_allocator_local_values(void) {
       }
     }
     if (eligible == NO || (word_definitions == NO && (definitions > 1 ||
-        (pointer_base == NO && producer->op != TAC_OP_ASSIGNMENT &&
+        (pointer_base == NO && producer->op != TAC_OP_ASSIGNMENT && producer->op != TAC_OP_ARRAY_READ &&
          _is_first_allocator_producer(producer->op) == NO))) ||
         (definitions > 1 && control_flow == YES && loop_definitions == NO) ||
         (pointer_base == YES ? reads < 2 : reads < 1))
@@ -4046,8 +4046,8 @@ int propagate_operand_types(void) {
       /* RESULT from ARG1? */
       if (t->result_type == TAC_ARG_TYPE_TEMP) {
         if (t->result_var_type == VARIABLE_TYPE_NONE) {
-          /* get the type from the operands */
-          t->result_var_type = t->arg1_var_type;
+          /* Preserve the declared type of promoted scalar loads. */
+          t->result_var_type = t->result_node != NULL ? t->result_node->children[0]->value : t->arg1_var_type;
         }
 
         _set_temp_register_type((int)t->result_d, t->result_var_type);
@@ -4998,9 +4998,10 @@ static int _active_physical_registers_overlap_candidate(char *function_name, int
 
 static int _is_register_allocator_bc_candidate(struct tac *producer, struct tac *consumer, struct temp_register *temp_register, int consumer_arg) {
 
-  if (temp_register->size != 16 || _is_first_allocator_producer(producer->op) == NO)
+  if (temp_register->size != 16 ||
+      (_is_first_allocator_producer(producer->op) == NO && producer->op != TAC_OP_ARRAY_READ))
     return NO;
-  if (producer->op != TAC_OP_COMPLEMENT)
+  if (producer->op != TAC_OP_COMPLEMENT && producer->op != TAC_OP_ARRAY_READ)
     return consumer_arg == TAC_USE_ARG2 && consumer->op != TAC_OP_COMPLEMENT &&
       _is_first_allocator_producer(consumer->op) == YES ? YES : NO;
 
@@ -5127,7 +5128,7 @@ static int _is_z80_register_allocator_candidate_allowed_for_physical_register(st
       _is_register_allocator_bc_candidate(producer, consumer, temp_register, consumer_arg) : NO;
 
   if (temp_register->size == 16 && physical_register == Z80_PHY_BC &&
-      (_is_first_allocator_producer(producer->op) == YES ||
+      (_is_first_allocator_producer(producer->op) == YES || producer->op == TAC_OP_ARRAY_READ ||
        (producer->op == TAC_OP_ASSIGNMENT &&
         ((producer->arg1_type == TAC_ARG_TYPE_CONSTANT && producer->arg1_d >= 0.0 && producer->arg1_d <= 65535.0) ||
          producer->arg1_var_type == VARIABLE_TYPE_UINT16 || producer->arg1_var_type == VARIABLE_TYPE_INT16))) &&
@@ -5709,7 +5710,20 @@ static int _is_z80_basic_block_transparent_tac_for_physical_register(struct tac 
   if (_z80_tac_may_clobber_bc(t->op) == YES)
     scratch_units |= RA_Z80_UNIT_B | RA_Z80_UNIT_C;
 
-  if (t->result_physical_register == Z80_PHY_BC &&
+  /* The frame-local word increment only changes IX and flags. */
+  if (t->op == TAC_OP_ADD && t->arg2_type == TAC_ARG_TYPE_CONSTANT && t->arg2_d == 1.0 &&
+      t->arg1_physical_register == Z80_PHY_NONE && t->arg2_physical_register == Z80_PHY_NONE &&
+      t->result_physical_register == Z80_PHY_NONE &&
+      t->arg1_type == TAC_ARG_TYPE_LABEL && t->result_type == TAC_ARG_TYPE_LABEL &&
+      t->arg1_node != NULL && t->arg1_node == t->result_node &&
+      (t->arg1_node->type == TREE_NODE_TYPE_CREATE_VARIABLE ||
+       t->arg1_node->type == TREE_NODE_TYPE_CREATE_VARIABLE_FUNCTION_ARGUMENT) &&
+      (t->arg1_node->flags & (TREE_NODE_FLAG_GLOBAL | TREE_NODE_FLAG_STATIC)) == 0 &&
+      t->arg1_node->value == 0 &&
+      get_variable_type_size(t->arg1_var_type) == 16 && get_variable_type_size(t->result_var_type) == 16 &&
+      get_variable_type_size(t->arg1_var_type_promoted) == 16 && get_variable_type_size(t->arg2_var_type_promoted) == 16)
+    scratch_units = RA_Z80_UNIT_NONE;
+  else if (t->result_physical_register == Z80_PHY_BC &&
       (t->op == TAC_OP_COMPLEMENT ||
        ((t->op == TAC_OP_AND || t->op == TAC_OP_OR || t->op == TAC_OP_XOR) &&
         (t->arg2_var_type_promoted == VARIABLE_TYPE_UINT16 || t->arg2_var_type_promoted == VARIABLE_TYPE_INT16) &&
@@ -6011,6 +6025,14 @@ static int _is_nearer_competing_candidate(struct tree_node *function_node, int t
   if (_probe_competing_candidate(function_node, tac_index, end_tac,
       RA_CANDIDATE_RANGE_BEFORE_DECISION, physical_register, &probe) == FAILED ||
       probe.qualification.eligible == NO)
+    return NO;
+  /* An alternate pair need not evict this value before a later clobber. */
+  if ((physical_register == Z80_PHY_HL || physical_register == Z80_PHY_BC) &&
+      _is_register_allocator_candidate_allowed_for_physical_register(&g_tacs[tac_index],
+      &g_tacs[probe.candidate.consumer_instruction],
+      &function_node->local_variables->temp_registers[probe.candidate.temp_index],
+      physical_register == Z80_PHY_HL ? Z80_PHY_BC : Z80_PHY_HL,
+      probe.candidate.consumer_operand) == YES)
     return NO;
   if ((physical_register == Z80_PHY_A || physical_register == Z80_PHY_B || physical_register == Z80_PHY_C) &&
       _get_register_allocator_target_policy()->is_tac_transparent_for_physical_register(

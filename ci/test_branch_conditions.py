@@ -15,6 +15,95 @@ from ra_cpu import execute
 
 
 class BranchConditionsTests(unittest.TestCase):
+    def test_scalar_load_promotion(self):
+        bodies = {
+            "linear": "return (saved*257)^value;",
+            "carry": "index++; u16 low=saved&127; u16 high=saved&128; return low+high+index+value;",
+            "replace": "index=value+1; return (saved*257)^index;",
+            "global": "scalar_counter=value; scalar_counter++; return (saved*257)^scalar_counter;",
+            "call": "return scalar_load_sink(saved, value);",
+            "alias": "data[index]=value; return (saved*257)^value;",
+            "sign": "u16 negative=0; if(saved<0) negative=1; return negative+saved*257;",
+            "loop": "u16 i; u16 total=0; for(i=0;i<3;i++) total+=saved; return total^value;",
+            "escape": "scalar_load_escape_{kind}(&saved, value); return (saved*257)^value;",
+            "redefine": "if(value&1) saved=saved+1; return (saved*257)^value;",
+            "narrow": "return (saved*257)^value;",
+        }
+        programs = [
+            Program(f"load_{element}_{kind}_{family}", family, 0, 0, [2, 2, 2], 2, [],
+                    f"u16 load_{element}_{kind}_{family}({element} *data, s16 index, u16 value) {{ "
+                    f"{'u8' if family == 'narrow' else kind} saved=data[index]; "
+                    + body.format(kind=kind) + " }")
+            for element in ("u8", "s8", "u16", "s16") for kind in ("u16", "s16")
+            for family, body in bodies.items()
+        ]
+        source = ("u8 ra_buffer[128];\nu16 scalar_counter;\nu16 scalar_load_sink(u16 a, u16 b) { "
+                  "return (a>>8)+(a&255)+b; }\n"
+                  "void scalar_load_escape_u16(u16 *p, u16 value) { p[0]=value; }\n"
+                  "void scalar_load_escape_s16(s16 *p, u16 value) { p[0]=value; }\n"
+                  + "\n".join(program.source for program in programs) + "\nvoid main(void) {}\n")
+        directory = self.output / "scalar-loads"
+        images = compile_generated(directory, os.environ.get("SAMESAMECC") or "samesamecc",
+                                   os.environ.get("SAMESAMECL") or "samesamecl", programs, source)
+        for image in images.values():
+            self.assertEqual(image.symbols["scalar_counter"], image.symbols["ra_buffer"] + 128)
+        calls = 0
+        for program in programs:
+            _, element, kind, _ = program.name.split("_")
+            width = 1 if element.endswith("8") else 2
+            mask = (1 << (8 * width)) - 1
+            for index in (-3, 0, 1, 7, 23):
+                address = 64 + width * index
+                for loaded in (0, 1, 127, 128, 255, 256, 32767, 32768, 65535):
+                    value = (loaded * 137 + 0x8001) & 65535
+                    initial = bytearray((offset * 37 + value) & 255 for offset in range(130))
+                    initial[address:address + width] = (loaded & mask).to_bytes(width, "little")
+                    raw = loaded & mask
+                    if element.startswith("s") and raw & (1 << (8 * width - 1)):
+                        raw = (raw - (1 << (8 * width))) & 65535
+                    expected_buffer = initial.copy()
+                    if program.family == "alias":
+                        expected_buffer[address:address + width] = (value & mask).to_bytes(width, "little")
+                    if program.family == "escape":
+                        raw = value
+                    elif program.family == "redefine":
+                        raw = (raw + (value & 1)) & 65535
+                    elif program.family == "narrow":
+                        raw &= 255
+                    expected = (raw * 257) ^ value
+                    if program.family == "carry":
+                        expected = (raw & 255) + index + 1 + value
+                    elif program.family == "call":
+                        expected = (raw >> 8) + (raw & 255) + value
+                    elif program.family == "sign":
+                        expected = raw * 257 + (kind == "s16" and bool(raw & 32768))
+                    elif program.family == "loop":
+                        expected = (raw * 3) ^ value
+                    elif program.family in ("replace", "global"):
+                        expected = (raw * 257) ^ ((value + 1) & 65535)
+                        if program.family == "global":
+                            expected_buffer[128:130] = ((value + 1) & 65535).to_bytes(2, "little")
+                    for mode, image in images.items():
+                        result = execute(image.rom, image.symbols[program.name],
+                                         [image.symbols["ra_buffer"] + 64, index & 65535, value], [2, 2, 2],
+                                         initial, image.symbols["ra_buffer"], 2, image.transfers)
+                        self.assertEqual((result["value"], result["buffer"], result["port_writes"]),
+                                         (expected & 65535, expected_buffer, []), (program.name, index, loaded, mode))
+                        self.assertEqual(result["unmapped_instructions"], 0)
+                        calls += 1
+        print(f"Scalar-load promotion oracle executions: {calls}", flush=True)
+        for mode in images:
+            assembly = (directory / mode / "main.asm").read_text()
+            for program in programs:
+                body = assembly.split(f'.SECTION "{program.name}" FREE')[1].split(".ENDS")[0]
+                promoted = mode in ("ra", "ra_quiet") and program.family not in ("escape", "redefine", "narrow")
+                self.assertEqual('; TAC: variable "_saved_' not in body, promoted, (program.name, mode))
+                if promoted and program.name == "load_u8_u16_carry":
+                    load = re.search(r"; TAC: r(\d+)\.u16 \(u16\) := [^\n]*\[", body)
+                    if load is None:
+                        self.fail(f"Missing scalar-load TAC ({mode})")
+                    self.assertIn(f"; register {load[1]} size 2 spill no phy BC", body, mode)
+
     def test_spilled_pointer_copy_folding(self):
         programs = [
             Program(f"pointer_{kind}_{operation}", operation, 0, 0, [2, 2, 2], 2, [],

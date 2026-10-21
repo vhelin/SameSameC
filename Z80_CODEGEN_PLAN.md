@@ -2282,9 +2282,64 @@ across builds, and all 392 pre-existing condition images match the parent.
 Evidence is retained in
 `C:\cygwin64\tmp\residency-2t-20261021`.
 
-**2t remains in progress.** This removes redundant spill-copy traffic, not
-loop-spanning scalar stores or frame slots. Continue with costed scalar/address
-residency across loops/joins and the existing alias/clobber proofs before 2u.
+**Second implementation checkpoint: word-sized load locals.** Extend the
+existing named-local promotion to scalar word locals initialized by array
+reads. Preserve the declared local width and signedness rather than inheriting
+the element type; retain conservative byte-local narrowing, escape, alias,
+call and multiple-definition checks. Reuse existing BC candidate selection and
+word-read result emission. Recognize the existing in-place frame-word increment
+as preserving general registers only for the exact local/argument, width and
+unallocated-operand shape; globals, statics and other arithmetic keep their
+existing clobbers. No new emitter or production functions are needed: this
+checkpoint adds 22 net production C lines.
+
+The existing frame-boundary index-copy cohort exposed a speculative eviction
+assumption: a nearer word candidate can choose the other register pair instead
+of displacing the live value. Reuse endpoint legality to keep checking the
+remaining path when either pair is possible. The immutable verifier initially
+rejected this case and remains unchanged; do not bypass its rejection.
+
+Against the first checkpoint at `c488078`, complete isolated bodies and live
+dependencies, with kernel timings over the same 20 calls:
+
+| Workload | Bytes before -> after | Kernel T-states before -> after | Maximum frame footprint |
+| --- | ---: | ---: | ---: |
+| Array | 1569 -> 1559 | 6164298 -> 6147298 (0.28% less) | 88 -> 88 |
+| Tile | 1191 -> 1181 | 2003606 -> 1990358 (0.66% less) | 128 -> 126 |
+| Path | 1384 -> 1384 | 5647913 -> 5647913 | 187 -> 186 |
+
+All three callers remain 126 bytes / 14460 T-states. The other ten workloads
+and all 91 no-RA/pinned external control rows are unchanged. Shared profiles
+retain the same size/cycle reductions and reduce Path's frame from 189 to 188.
+Measure full projects separately rather than summing isolated improvements:
+
+| Complete project | Default used ROM before -> after | Shared used ROM before -> after |
+| --- | ---: | ---: |
+| calculations-1 | 20607 -> 20607 | 20587 -> 20587 |
+| calculations-2 | 31115 -> 31091 | 30847 -> 30823 |
+
+Release/traced/ASan qualification covers 35 condition/policy tests and 21
+optimized-policy tests per build. The new 88-function load regression executes
+19800 independent return/memory/port oracles per build across all five modes:
+signed/unsigned byte/word elements, word-local conversions, negative indices,
+increments, aliases, calls, loops, escapes, redefinitions and byte narrowing.
+Assert actual spill-free BC selection as well as conservative fallbacks.
+Expand the independent BC endpoint expectations for the newly supported loads;
+10200 endpoint checks, 65 frame-increment controls and all existing 32 immutable
+rejections / seven accepts pass in normal and quiet modes.
+
+Rerun all qualification after fixing the speculative eviction: 175 isolated
+fixtures without snapshot updates, the 104-row / 1856-call comparison, paired
+shared profiles, 136 independent timing checks and 2320 non-growing individual
+SSC samples. All 412 condition images and 90 allocator images match across
+builds, as do the complete default/shared ROMs. Evidence, including the rejected
+prototypes and verifier diagnostics, is retained in
+`C:\cygwin64\tmp\scalar-loads-2t-20261021`.
+
+**2t remains in progress.** These checkpoints remove redundant copy/load
+traffic and some backing storage, not general loop/CFG scalar residency.
+Continue with costed scalar/address residency across loops/joins and the
+existing alias/clobber proofs before 2u.
 
 #### 2u. Investigate An Indexed Frame And Allocatable DE [PLANNED]
 
