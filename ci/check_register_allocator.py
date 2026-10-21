@@ -1104,7 +1104,8 @@ def check_analytical_assertions(output, programs):
         if family == "scalar_call_transport":
             body = re.sub(r";[^\n]*", "", section_assembly())
             if variant == 0 and not all(re.search(pattern, body) for pattern in (
-                r"LD\s+HL,-1\s+ADD HL,SP", r"LD\s+IX,3\s+ADD IX,SP",
+                r"LD\s+HL,-1\s+ADD HL,SP",
+                r"LD\s+SP,HL\s+DEC SP\s+DEC SP\s+DEC SP",
                 r"EX\s+DE,HL\s+JP\s+calculationAdd3", r"DEC IX\s+LD\s+SP,IX\s+RET",
             )):
                 raise RuntimeError(f"Existing-ABI frame setup/return selection missing: {name}")

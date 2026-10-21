@@ -2776,34 +2776,110 @@ frame-specific target policy, actual DE ownership/overlap/clobber contracts,
 operand-aware scratch selection, wide-frame lowering and full compatibility
 qualification. Do not reopen 2t or start an unbounded rewrite here.
 
-The investigation is complete; 2v remains the next planned step. Both
+The investigation is complete; the following 2v batch is now qualified. Both
 executed variants, rejected parser trials, exact baseline/source provenance,
 per-input results, complete-ROM probes and commit binding are retained in
 `C:\cygwin64\tmp\indexed-frame-2u-20261021`.
 
-#### 2v. Reduce Measured Internal Call Transport [PLANNED]
+#### 2v. Reduce Measured Internal Call Transport [DONE]
 
-Use the existing call/frame lowering after 2t/2u identify the residual cost.
-Array's three internal transport sequences occupy 241 bytes, excluding
+Closed with a bounded improvement inside the existing ABI. No register-argument
+convention, new runtime helper, inlining policy or callee change was necessary.
+Before this batch, Array's three internal transport sequences occupied 241 bytes, excluding
 argument-expression evaluation and callee bodies. The three-argument wrapper
-example is 126 bytes / 729 T-states versus stock SDCC's 20 / 114.
+example was 126 bytes / 729 T-states versus stock SDCC's 20 / 114.
 
-First remove redundant transport within the existing ABI. Investigate explicit
-register arguments/results or narrowly costed inlining only where justified,
-using SDCC/z88dk calling conventions as design evidence, not copied code.
-Preserve argument evaluation, caller/callee saves, result lifetime and bank
-boundaries. Public ABI changes require an explicit compatible convention.
+The existing call emitter already prepares each word argument in BC, then
+copies it using two indexed stores. For normal `-ra` calls with at least one
+argument, all declared target arguments word-sized and every target offset
+matching the contiguous ABI layout, reuse `_push_bc` instead. Constants use the
+existing BC immediate loader. Reserve the unchanged zero/one/two return bytes,
+push arguments in the existing order, then restore SP from the already-live
+new-frame HL and decrement it to the exact original entry offset, -3.
+This last restoration is required by the existing small-frame `DEC SP`
+prologues; simply leaving SP below the pushed arguments is not equivalent.
 
-Count retained shared helpers and every call site: the private Array inlining
-probe saved 286 isolated bytes but grew the caller body 27 bytes; Stencil saved
-170 isolated bytes but grew its body 8 bytes. These are not whole-program ROM
-savings if the old helpers remain live elsewhere. Reject blanket inlining and
-benchmark-only specializations.
+The saved caller frame, return label, argument/result offsets, argument
+evaluation/snapshots, conversions, old-frame IY addressing, DE exchange, jump,
+callee prologue/return and caller restore are unchanged. IX remains scratch,
+not an input contract. No-RA, all-spill, byte/mixed-width target lists,
+zero-argument and `__pureasm` calls retain their original paths. Byte sources
+widened to word targets reuse the existing signed/unsigned transport.
+No signature/body-size assumption or speculative extra stack push is needed.
 
-Acceptance: measured complete-program ROM and hot-call improvements with
-mixed-width, indirect, nested, recursive, cross-file, banked, mixed-version and
-assembly-facing compatibility controls. Keep generic/default fallbacks and do
-not amortize a local regression away in an aggregate.
+The production change is **31 net C lines, zero new functions**, confined to
+the existing call emitter. With a two-byte return, even one constant word
+argument saves four bytes / ten T-states; one memory word saves five / twenty.
+The three-word wrapper is now **111 bytes / 655 T-states**, saving 15 bytes
+and 74 T-states (10.2%). This still leaves a substantial gap to SDCC; explicit
+register conventions remain separately scoped future work, not silently
+introduced by this change.
+
+Qualified kernel totals against `fa18484` (caller costs reported separately):
+
+| Kernel | Bytes before -> after | Aggregate kernel T-states before -> after | Frame footprint |
+| --- | ---: | ---: | ---: |
+| Array | 1493 -> 1450 | 6060356 -> 5948852 | 88 |
+| Stencil | 1541 -> 1513 | 4023454 -> 3976350 | 120 |
+| Path | 1306 -> 1292 | 5355245 -> 5353965 | 186 |
+| Packed CRC | 802 -> 784 | 11222306 -> 11220929 | 47 |
+
+Other measured kernels are unchanged; every measured caller shrinks and speeds
+up. All 2320 individual SSC samples across the default/shared qualification
+reports are non-growing in kernel and complete-call cycles, stack high-water,
+stack-access/below-SP extents and frame footprint. Do not infer complete-ROM
+savings by summing these isolated kernels.
+
+Independently linked complete used ROM, retaining all live callees/helpers:
+
+| Project | Default arithmetic before -> after | Shared arithmetic before -> after |
+| --- | ---: | ---: |
+| calculations-1 | 19957 -> 19007 (-950) | 19937 -> 18987 (-950) |
+| calculations-2 | 30183 -> 29001 (-1182) | 29915 -> 28733 (-1182) |
+
+These are used-ROM build/size measurements, not emulator runs of the entire
+interactive programs. Release, traced and ASan builds produce identical
+complete ROMs under each profile.
+
+Qualification:
+
+- Strict C89 normal/traced checks; release/traced/ASan builds; 39 condition/
+  policy tests and 21 optimized-policy tests per build; all 175 fixtures pass.
+- New independent 15-function transport oracle: 4050 executions per build,
+  covering constants/globals, signed/unsigned widening, far/escaped locals,
+  pointer arguments, snapshots around aliasing calls, nested/recursive calls,
+  zero/byte/word/void results, shallow frames, mixed/byte fallbacks and
+  `__pureasm` calls. Parent passes every runtime loop but fails the exact new
+  transport-selection assertion; default/no-RA/all-spill ROMs remain identical.
+- Existing cross-file/banked recursive tests now also link RA callers to
+  no-RA callees and vice versa. An additional run uses the actual saved parent
+  compiler for both old-caller/new-callee and new-caller/old-callee combinations:
+  448 guarded oracle calls across inline/shared arithmetic profiles.
+- Instrumented parent/current execution checks 19980 exact callee-entry
+  SP=-3 witnesses over 8100 calls, including small void/byte/word frames.
+  All 4050 paired per-input stack high-water comparisons are non-growing.
+- Full pinned comparison: 104 rows / 1856 calls. Shared comparison: 52 rows /
+  928 calls per traced/ASan build. 136 independent timing checks, 530 condition
+  image identities across all builds and 90 allocator ROM identities across
+  traced/ASan. All 91 no-RA/external full-comparison rows are unchanged.
+- Eleven fixture headers update exactly 24 tagged vectors. Parent fixtures
+  and old vectors pass; entire symbolic assembly differences are independently
+  reproduced from the qualified call rewrite and unchanged argument layouts.
+  All fixture source bodies and makefile checks remain unchanged. Only the
+  direct call-setup selection assertion and affected frame-join IX count
+  change in CI. Immutable verifier controls remain 32 rejections, seven accepts,
+  10200 endpoints and 65 frame-increment cases, with no policy/core edits.
+
+Reject blanket inlining: the earlier private Array probe saved 286 isolated
+bytes but grew its caller body 27 bytes; Stencil saved 170 isolated bytes but
+grew its body eight bytes. Those are not complete-program savings when the
+old helpers remain live. Any future register ABI still requires an explicit
+compatible convention and its own full compatibility/cost qualification.
+
+Exact parent sources/binaries, parser/assertion trials, per-input metrics,
+stack witnesses, mixed-version commands, snapshot proof, complete-ROM hashes
+and commit binding are retained in
+`C:\cygwin64\tmp\call-transport-2v-20261021`.
 
 The source provenance, exact 52-image ledger, 411 guarded research calls and
 21 independent timing checks for these three steps are retained in

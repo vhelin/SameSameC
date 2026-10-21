@@ -6736,6 +6736,7 @@ static int _generate_asm_function_call_z80(struct tac *t, FILE *file_out, struct
 
   int j, argument, reset_iy = YES, init_ix = NO;
   int frame_end, return_sp_offset, saved_fp_low_offset, saved_fp_high_offset;
+  int push_arguments, return_bytes, argument_offset;
   char return_label[32];
 
   /* __pureasm function calls are very simple */
@@ -6748,6 +6749,19 @@ static int _generate_asm_function_call_z80(struct tac *t, FILE *file_out, struct
   if (_get_z80_call_frame_prefix(&frame_end, &return_sp_offset, &saved_fp_low_offset, &saved_fp_high_offset) == FAILED) {
     fprintf(stderr, "_generate_asm_function_call_z80(): Target policy has an invalid call-frame prefix! Please submit a bug report!\n");
     return FAILED;
+  }
+
+  return_bytes = get_variable_type_size(tree_node_get_max_var_type(t->arg1_node->children[0])) / 8;
+  push_arguments = g_allocator_enabled == YES && g_allocator_force_all_spill == NO &&
+    t->arg1_node->local_variables->arguments_count > 0 && return_bytes >= 0 && return_bytes <= 2 &&
+    frame_end == saved_fp_low_offset - 1 && saved_fp_high_offset == saved_fp_low_offset + 1;
+  argument_offset = saved_fp_low_offset - return_bytes - 2;
+  for (argument = 0; push_arguments && argument < t->arg1_node->local_variables->arguments_count; argument++) {
+    struct local_variable *local = &t->arg1_node->local_variables->local_variables[argument];
+    int type = tree_node_get_max_var_type(local->node->children[0]);
+    if ((type != VARIABLE_TYPE_INT16 && type != VARIABLE_TYPE_UINT16) || local->offset_to_fp != argument_offset)
+      push_arguments = NO;
+    argument_offset -= 2;
   }
 
 #if defined(DEBUG_PASS_6_REGISTER_ALLOCATOR)
@@ -6777,6 +6791,11 @@ static int _generate_asm_function_call_z80(struct tac *t, FILE *file_out, struct
 
   /* old stack frame address -> (stack) */
   _push_de(file_out);
+
+  if (push_arguments) {
+    for (j = 0; j < return_bytes; j++)
+      fprintf(file_out, "      DEC SP\n");
+  }
 
   /* copy arguments to stack frame */
   argument = 0;
@@ -6859,7 +6878,7 @@ static int _generate_asm_function_call_z80(struct tac *t, FILE *file_out, struct
       }
 #endif
 
-      if (init_ix == NO) {
+      if (init_ix == NO && push_arguments == NO) {
         /* load the new stack frame address -> ix */
         init_ix = YES;
 
@@ -6942,7 +6961,12 @@ static int _generate_asm_function_call_z80(struct tac *t, FILE *file_out, struct
       /* copy data bc/c -> (ix) */
       /******************************************************************************************************/
 
-      if (source_location.kind == LOC_CONST) {
+      if (push_arguments) {
+        if (source_location.kind == LOC_CONST)
+          _load_value_to_bc(source_location.value & 0xffff, file_out);
+        _push_bc(file_out);
+      }
+      else if (source_location.kind == LOC_CONST) {
         if (argument_transport == RA_ARGUMENT_TRANSPORT_WORD ||
           argument_transport == RA_ARGUMENT_TRANSPORT_SIGN_EXTEND ||
           argument_transport == RA_ARGUMENT_TRANSPORT_ZERO_EXTEND) {
@@ -6980,6 +7004,13 @@ static int _generate_asm_function_call_z80(struct tac *t, FILE *file_out, struct
   /*
   fprintf(stderr, "FUNCTION CALL %s TOTAL OFFSET %d\n", t->arg1_node->children[1]->label, t->arg1_node->local_variables->offset_to_fp_total);
   */
+
+  if (push_arguments) {
+    /* Small-frame prologues rely on the unchanged post-prefix SP. */
+    _load_hl_to_sp(file_out);
+    for (j = 0; j < -saved_fp_low_offset; j++)
+      fprintf(file_out, "      DEC SP\n");
+  }
 
   fprintf(file_out, "      ; new stack frame -> DE\n");
 

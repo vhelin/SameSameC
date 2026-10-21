@@ -15,6 +15,88 @@ from ra_cpu import execute
 
 
 class BranchConditionsTests(unittest.TestCase):
+    def test_word_argument_push_transport(self):
+        cases = {
+            "word": ("return transport_word(a,b,7);", lambda a, b: a + 3*b + 35),
+            "constant": ("return transport_word(65535,128,32768);", lambda a, b: 65535 + 384 + 5*32768),
+            "extend": ("s8 left=a; u8 right=b; return transport_word(left,right,7);",
+                       lambda a, b: ((a & 255) - (256 if a & 128 else 0)) + 3*(b & 255) + 35),
+            "global": ("transport_global=a; return transport_word(b,transport_global,7);",
+                       lambda a, b: b + 3*a + 35),
+            "alias": ("transport_global=a; return transport_word(transport_global,transport_change(b),transport_global);",
+                      lambda a, b: a + 8*b),
+            "far": ("u8 workspace[260]; u16 local=a; transport_seed(&local,a); "
+                    "workspace[259]=b; return transport_word(local,b,workspace[259]);",
+                    lambda a, b: a + 3*b + 5*(b & 255)),
+            "nested": ("return transport_word(transport_id(a),transport_id(b),transport_id(7));",
+                       lambda a, b: a + 3*b + 35),
+            "recursive": ("return transport_recursive(3,a);", lambda a, b: a + 6),
+            "byte_return": ("return transport_byte(a);", lambda a, b: a & 255),
+            "signed_return": ("return transport_signed(a);",
+                              lambda a, b: (a & 255) | (0xff00 if a & 128 else 0)),
+            "void": ("transport_void(a); return b;", lambda a, b: b),
+            "mixed": ("return transport_mixed(a,b);", lambda a, b: (a & 255) + b),
+            "narrow": ("return transport_narrow(a);", lambda a, b: a & 255),
+            "zero": ("return transport_zero();", lambda a, b: 321),
+            "pure": ("transport_pure(); return a;", lambda a, b: a),
+        }
+        programs = [Program(f"transport_case_{name}", name, 0, 0, [2, 2], 2, [],
+                            f"u16 transport_case_{name}(u16 a,u16 b) {{ {body} }}")
+                    for name, (body, _) in cases.items()]
+        helpers = (
+            "u8 ra_buffer[128]; u16 transport_global;\n"
+            "u16 transport_word(u16 a,u16 b,u16 c) { return a+3*b+5*c; }\n"
+            "u16 transport_id(u16 a) { return a; }\n"
+            "u16 transport_change(u16 a) { transport_global=a; return a; }\n"
+            "void transport_seed(u16 *p,u16 a) { p[0]=a; }\n"
+            "u16 transport_recursive(u16 depth,u16 a) { "
+            "if(depth) { return transport_recursive(depth-1,a)+depth; } return a; }\n"
+            "u8 transport_byte(u16 a) { return a; }\n"
+            "s8 transport_signed(u16 a) { return a; }\n"
+            "void transport_void(u16 a) { ra_buffer[2]=a; }\n"
+            "u16 transport_mixed(u8 a,u16 b) { return a+b; }\n"
+            "u16 transport_narrow(u8 a) { return a; }\n"
+            "u16 transport_zero(void) { return 321; }\n"
+            'void transport_pure(void) __pureasm { __asm("RET"); }\n'
+        )
+        directory = self.output / "word-argument-transport"
+        images = compile_generated(directory, os.environ.get("SAMESAMECC") or "samesamecc",
+                                   os.environ.get("SAMESAMECL") or "samesamecl", programs,
+                                   helpers + "\n".join(p.source for p in programs) + "\nvoid main(void) {}\n")
+        calls = 0
+        for program in programs:
+            for a in (0, 1, 127, 128, 255, 256, 32767, 32768, 65535):
+                for b in (0, 1, 128, 255, 32768, 65535):
+                    initial = bytes((i*37+a+b) & 255 for i in range(130))
+                    expected = bytearray(initial)
+                    if program.family in ("global", "alias"):
+                        expected[128:130] = (a if program.family == "global" else b).to_bytes(2, "little")
+                    elif program.family == "void":
+                        expected[2] = a & 255
+                    for mode, image in images.items():
+                        self.assertEqual(image.symbols["transport_global"], image.symbols["ra_buffer"] + 128)
+                        result = execute(image.rom, image.symbols[program.name], [a, b], [2, 2],
+                                         initial, image.symbols["ra_buffer"], 2, image.transfers, frame_bytes=1024)
+                        self.assertEqual((result["value"], result["buffer"], result["port_writes"]),
+                                         (cases[program.family][1](a, b) & 65535, expected, []),
+                                         (program.name, mode, a, b))
+                        self.assertEqual(result["unmapped_instructions"], 0)
+                        calls += 1
+        for mode in images:
+            assembly = (directory / mode / "main.asm").read_text()
+            for program in programs:
+                body = assembly.split(f'.SECTION "{program.name}" FREE')[1].split(".ENDS")[0]
+                selected = mode in ("ra", "ra_quiet") and program.family not in ("mixed", "narrow", "zero", "pure")
+                self.assertEqual(bool(re.search(r"LD\s+SP,HL\s+DEC SP\s+DEC SP\s+DEC SP\s+; new stack frame -> DE",
+                                                body)), selected, (program.name, mode))
+                if program.family in ("mixed", "narrow") or not selected and program.family not in ("zero", "pure"):
+                    self.assertRegex(body, r"LD\s+IX,3\s+ADD IX,SP")
+                if selected:
+                    self.assertNotRegex(body, r"LD\s+IX,3\s+ADD IX,SP")
+                if program.family == "pure":
+                    self.assertRegex(body, r"CALL transport_pure")
+        print(f"Word-argument transport oracle executions: {calls}", flush=True)
+
     def test_shared_window_memory_copies(self):
         kinds = ("u8", "s8", "u16", "s16")
         shapes = [(left, right, size, "copy") for left in kinds for right in kinds
@@ -332,7 +414,8 @@ class BranchConditionsTests(unittest.TestCase):
                     else:
                         self.assertGreaterEqual(body.count("LD  IX,"), 3, (program.name, mode))
                 elif mode in ("ra", "ra_quiet") and program.family in ("call", "asm"):
-                    self.assertEqual(body.count("LD  IX,"), 4, (program.name, mode))
+                    self.assertEqual(body.count("LD  IX,"), 3 if program.family == "call" else 4,
+                                     (program.name, mode))
                 elif mode in ("ra", "ra_quiet") and program.family in (
                     "or", "and", "pressure", "evict8", "evict9", "terminal8", "terminal9", "return"
                 ):
@@ -682,12 +765,17 @@ class BranchConditionsTests(unittest.TestCase):
              "u16 arithmetic_banked(u16 a, u16 b) { "
              "return a*b+arithmetic_three(a,b)+arithmetic_nested(a,b)+arithmetic_root(a,b); }\n"),
         ]
-        for flags in (("-no-ra",), ("-ra-all-spill",), ("-ra",)):
-            directory = self.output / f"arithmetic-banks-{flags[0][1:]}"
+        profiles = (
+            ("no-ra", ("-no-ra",) * 4), ("ra-all-spill", ("-ra-all-spill",) * 4), ("ra", ("-ra",) * 4),
+            ("ra-callers", ("-ra", "-no-ra", "-no-ra", "-ra")),
+            ("ra-callees", ("-no-ra", "-ra", "-ra", "-no-ra")),
+        )
+        for profile, flags in profiles:
+            directory = self.output / f"arithmetic-banks-{profile}"
             directory.mkdir()
             for index, (bank, slot, source) in enumerate(sources):
                 (directory / f"unit{index}.ssc").write_text(source)
-                command = [compiler, "-mz80", "-rs", "3", "-b", str(bank), "-s", str(slot), *flags,
+                command = [compiler, "-mz80", "-rs", "3", "-b", str(bank), "-s", str(slot), flags[index],
                            "-o", f"unit{index}.asm", f"unit{index}.ssc"]
                 completed = subprocess.run(command, cwd=directory, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
                 (directory / f"unit{index}.compiler.log").write_bytes(completed.stdout)
