@@ -15,6 +15,65 @@ from ra_cpu import execute
 
 
 class BranchConditionsTests(unittest.TestCase):
+    def test_retained_word_frame_copies(self):
+        programs = []
+        for kind in ("u16", "s16"):
+            for size in (0, 8, 112, 113, 114, 115, 116, 117, 136, 260):
+                name = f"word_copy_{kind}_{size}"
+                last = max(size, 8) - 1
+                local = f"{kind} index=a; word_copy_step_{kind}(&index); " if size else ""
+                programs.append(Program(name, kind, size, 0, [2, 2, 2], 2, [],
+                                        f"u16 {name}({kind} {'a' if size else 'index'}, u16 b, u8 *p) {{ "
+                                        f"u8 workspace[{last+1}]; {local}workspace[{last}]=b; "
+                                        f"u16 value=p[index++]; return value+index+workspace[{last}]; }}"))
+        source = ("u8 ra_buffer[128];\n"
+                  "void word_copy_step_u16(u16 *p) { p[0]+=1; }\n"
+                  "void word_copy_step_s16(s16 *p) { p[0]+=1; }\n"
+                  + "\n".join(program.source for program in programs) + "\nvoid main(void) {}\n")
+        directory = self.output / "word-frame-copies"
+        images = compile_generated(directory, os.environ.get("SAMESAMECC") or "samesamecc",
+                                   os.environ.get("SAMESAMECL") or "samesamecl", programs, source)
+        calls = 0
+        for program in programs:
+            for index in (-3, -1, 0, 1, 7, 23, 63):
+                a = (index - bool(program.variant)) & 65535
+                for b in (0, 1, 127, 128, 255, 256, 32767, 32768, 65535):
+                    initial = bytes((offset * 37 + b) & 255 for offset in range(128))
+                    expected = (initial[64 + index] + index + 1 + (b & 255)) & 65535
+                    for mode, image in images.items():
+                        result = execute(image.rom, image.symbols[program.name],
+                                         [a, b, image.symbols["ra_buffer"] + 64], [2, 2, 2],
+                                         initial, image.symbols["ra_buffer"], 2, image.transfers,
+                                         frame_bytes=512)
+                        self.assertEqual((result["value"], result["buffer"], result["port_writes"]),
+                                         (expected, initial, []), (program.name, mode, index, b))
+                        self.assertEqual(result["unmapped_instructions"], 0)
+                        calls += 1
+        print(f"Retained word frame-copy oracle executions: {calls}", flush=True)
+        for mode in images:
+            assembly = (directory / mode / "main.asm").read_text()
+            offsets = set()
+            for program in programs:
+                body = assembly.split(f'.SECTION "{program.name}" FREE')[1].split(".ENDS")[0]
+                variable = re.search(r'; TAC: variable "(index|_index_\d+)" size 2 offset (-?\d+)', body)
+                self.assertIsNotNone(variable, (program.name, mode))
+                copy = re.search(r"; TAC: r(\d+)\.(?:u16|s16) \((?:u16|s16)\) := "
+                                 + re.escape(variable[1]) + r"\.(?:u16|s16) \((?:u16|s16)\)\n"
+                                 r"\s*; -+\n([\s\S]*?)(?=\s*; -+)", body)
+                self.assertIsNotNone(copy, (program.name, mode))
+                offset = int(variable[2])
+                offsets.add(offset)
+                if mode in ("ra", "ra_quiet"):
+                    self.assertIn(f"; register {copy[1]} size 2 spill no phy BC", body, (program.name, mode))
+                    if -128 <= offset <= 126:
+                        self.assertNotIn("IY", copy[2], (program.name, mode))
+                        self.assertRegex(copy[2], r"LD  C,\(IX[+-]\d+\)\n\s*LD  B,\(IX[+-]\d+\)")
+                    else:
+                        self.assertIn(f"LD  IY,{offset}", copy[2], (program.name, mode))
+                else:
+                    self.assertIn(f"LD  IY,{offset}", copy[2], (program.name, mode))
+            self.assertTrue(set(range(-130, -124)).issubset(offsets), (mode, offsets))
+
     def test_forward_join_frame_addresses(self):
         bodies = {
             "diamond": "if(b&1) {{ workspace[{last}]=a+3; }} else {{ workspace[{last}]=a+7; }}",

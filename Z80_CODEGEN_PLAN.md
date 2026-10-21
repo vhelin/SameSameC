@@ -2534,6 +2534,51 @@ images and complete default/shared ROMs match across builds.
 Evidence and source/commit bindings are retained in
 `C:\cygwin64\tmp\fallthrough-joins-2t-20261021`.
 
+**Seventh implementation checkpoint: retained BC frame-word copies.**
+Reuse the existing HL assignment shortcut for word copies into BC instead of
+rebuilding IY while IX can address the source. Keep the same declared-width,
+signedness, frame-displacement, reload-spill and allocator-mode guards; retain
+the existing global/far-frame fallback and all allocation/clobber contracts.
+This adds **eight net production C lines and no functions**, without changing
+allocation policy, the core, verifier or ABI.
+
+Against `11304a1`, complete isolated kernels and live dependencies improve:
+
+| Kernel | Bytes before -> after | Kernel T-states before -> after |
+| --- | ---: | ---: |
+| Tile | 1121 -> 1109 | 1905388 -> 1895180 (0.54% fewer) |
+| PackBits | 505 -> 481 | 150684 -> 142187 (5.64% fewer) |
+| Packed CRC | 832 -> 808 | 11399786 -> 11269634 (1.14% fewer) |
+
+Other kernels, callers and frame footprints do not grow. Whole projects are
+measured separately, not inferred by summing isolated savings:
+
+| Complete project | Default used ROM before -> after | Shared used ROM before -> after |
+| --- | ---: | ---: |
+| calculations-1 | 20395 -> 20083 | 20375 -> 20063 |
+| calculations-2 | 30279 -> 30267 | 30011 -> 29999 |
+
+Add a 20-function / 6300-execution independent return/memory/port oracle per
+build across all five modes. Cover signed/unsigned word arguments and escaped
+locals, calls, sequenced increments, negative/wrapping indices, large frames,
+the exact -130 through -125 displacement boundary and far-frame fallback.
+Assert actual retained BC selection and IX loads, not just numeric agreement.
+The parent passes every runtime oracle but fails the no-redundant-IY assertion.
+Existing width-conversion, alias, clobber and immutable controls remain intact.
+
+Qualification passes 37 condition/policy and 21 optimized-policy tests per
+release/traced/ASan build, unchanged immutable controls and all 175 fixtures.
+Three fixture vectors change only their BC source load: 12 bytes / 67 T-states
+through IY become six bytes / 38 T-states through IX. Check unchanged source
+bodies, the complete symbolic transformation and both old/new ROM vectors;
+do not weaken allocation or rejection assertions.
+
+The 104-row / 1856-call pinned comparison, paired 52-row / 928-call shared
+profiles and 136 independent timing checks pass. All 2320 individual SSC
+samples are non-growing; all 452 condition images, 90 allocator images and
+complete default/shared ROMs match across builds. Evidence and source/commit
+bindings are retained in `C:\cygwin64\tmp\bc-frame-loads-2t-20261021`.
+
 **2t remains in progress.** The accepted checkpoints remove redundant copy/load
 traffic, proven forward-join frame setups and some backing storage, not general
 loop/CFG scalar residency.

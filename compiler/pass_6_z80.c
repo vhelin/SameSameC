@@ -2391,7 +2391,8 @@ static int _generate_asm_assignment_z80(struct tac *t, FILE *file_out, struct tr
   /******************************************************************************************************/
 
   if (g_allocator_enabled == YES && g_allocator_force_all_spill == NO &&
-      result_location.kind == LOC_PHY_HL && t->reload_spill_to_physical_operand == -1 &&
+      (result_location.kind == LOC_PHY_HL || result_location.kind == LOC_PHY_BC) &&
+      t->reload_spill_to_physical_operand == -1 &&
       (t->result_var_type == VARIABLE_TYPE_INT16 || t->result_var_type == VARIABLE_TYPE_UINT16) &&
       (t->arg1_var_type == VARIABLE_TYPE_INT16 || t->arg1_var_type == VARIABLE_TYPE_UINT16) &&
       get_register_allocator_address_materialization_mode(arg1_location.kind, RA_ADDRESS_TARGET_IX,
@@ -2400,8 +2401,15 @@ static int _generate_asm_assignment_z80(struct tac *t, FILE *file_out, struct tr
       return FAILED;
     _trace_z80_specialized_address_materialization(function_node, "assignment_arg1_address", "arg1",
         &arg1_location, RA_ADDRESS_TARGET_IX, ix_offset);
-    _load_from_ix_to_l(ix_offset, file_out);
-    _load_from_ix_to_h(ix_offset + 1, file_out);
+    if (result_location.kind == LOC_PHY_BC) {
+      _load_from_ix_to_c(ix_offset, file_out);
+      _load_from_ix_to_b(ix_offset + 1, file_out);
+      fprintf(file_out, "      ; retained result in BC\n");
+    }
+    else {
+      _load_from_ix_to_l(ix_offset, file_out);
+      _load_from_ix_to_h(ix_offset + 1, file_out);
+    }
     return SUCCEEDED;
   }
 
