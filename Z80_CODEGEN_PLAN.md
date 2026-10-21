@@ -2203,7 +2203,7 @@ Commit this qualified batch locally without pushing. The next finite-roadmap
 implementation target remains the initial SM83 backend; further Z80
 architecture investigations are separate user-requested work.
 
-#### 2t. Improve Scalar/Address Residency Within The Existing ABI [IN PROGRESS]
+#### 2t. Improve Scalar/Address Residency Within The Existing ABI [DONE]
 
 User-requested extension after the unsigned power-of-two checkpoint. Prioritize
 the remaining frame traffic rather than accumulating arithmetic peepholes.
@@ -2673,13 +2673,14 @@ samples and 136 independent timing checks pass. All 512 condition images,
 Evidence and source/commit bindings are retained in
 `C:\cygwin64\tmp\frame-copies-2t-20261021`.
 
-**2t remains in progress.** The accepted checkpoints remove redundant copy/load
-traffic, proven forward-join frame setups and some backing storage, not general
-loop/CFG scalar residency.
-Continue with costed scalar/address residency across loops/joins and the
-existing alias/clobber proofs before 2u.
+**Closed at `fb45e29`.** The qualified checkpoints satisfy this step's bounded
+acceptance criteria: real size/speed wins, non-growing complete kernel/caller/
+frame costs and full compatibility qualification. General loop/CFG scalar
+residency is explicitly deferred, not claimed complete and not a prerequisite
+for 2u. Its rejected promotion probes and loop-scoped ownership requirements
+remain recorded above; do not relax those proofs to reopen this step.
 
-#### 2u. Investigate An Indexed Frame And Allocatable DE [PLANNED]
+#### 2u. Investigate An Indexed Frame And Allocatable DE [DONE: BOUNDED NO-GO]
 
 After 2t, prototype an explicitly gated per-function frame strategy using the
 existing target policy and location/address helpers. SameSameC reserves DE as
@@ -2697,6 +2698,88 @@ Acceptance: compare complete bodies, callers, dependencies, cycles and frame
 footprints against the qualified default; test mixed versions, cross-file,
 banked, recursive and assembly-facing calls. Promote the prototype only after
 measured net wins; otherwise record a bounded no-go result.
+
+Bound this investigation against `fb45e29`: audit the current frame/register
+contracts, then measure one private per-function indexed-frame prototype using
+the existing generated bodies and independent runtime oracles. Account for
+index-register scratch conflicts, frame-address construction, entry/exit ABI
+adapters and stack saves; do not count a nominal free DE as an allocated value.
+Keep unsupported functions on the unchanged path. Conclude with an explicit
+integration decision and compatibility requirements, rather than accumulating
+more scalar-copy optimizations under this step.
+
+**Investigation result: do not promote the frame-switch prototype.** This is
+a bounded no-go for adapting the current emitters with generic scratch saves,
+not proof that allocator-integrated indexed frames cannot win. Production
+code, allocator policy, ABI, verifier controls and snapshots remain unchanged.
+No production functions or C lines are added.
+
+Audit `defines.h`, the pass-5 register/clobber policy and the pass-6 address,
+call, prologue and return helpers. There is no DE candidate/location class.
+DE also supplies the callee frame to the unchanged caller after return, so
+freeing it requires an exit adapter, not just another candidate enum. The
+advancing byte-copy emitter even saves the frame's D/E bytes directly into
+spill storage. Preserve that path rather than translating it speculatively.
+
+Measure two private assembly-level feasibility variants over the existing
+generated bodies, not a production compiler feature or another emitter.
+Keep IY as the canonical frame in supported leaf functions, restore DE for the
+existing ABI, and explicitly spill DE/save IY around TACs requiring scratch
+IY. The second variant also folds proven frame operands onto IY; the first
+leaves target-address copies intact. Retain unchanged fallbacks for calls,
+inline assembly, wide frames and unmapped frame-register uses. Path's wide
+frame and the advancing byte-copy implementation are not converted.
+
+Each variant executes 39 images / 696 independent return, full-buffer, port
+and stack-restoration checks: 13 measured RA images, 13 DE-canary images and
+13 byte-identical no-RA controls. Each also passes 26 independent timing
+checks. In each variant, 2567 executed entry/exit pairs prove that a live DE
+canary survives and IY retains the original frame. This establishes only the
+tested private preservation scheme, not allocation of a useful value to DE
+or general mixed-version/banked/recursive/assembly-facing compatibility.
+
+The more favorable, folded variant against `fb45e29`:
+
+| Complete kernel | Bytes before -> prototype | Kernel T-states before -> prototype | Frame footprint |
+| --- | ---: | ---: | ---: |
+| Array | 1493 -> 1505 | 6060356 -> 6113348 | 88 -> 88 |
+| Stencil | 1541 -> 1549 | 4023454 -> 4047006 | 120 -> 120 |
+| Tile | 1079 -> 1085 | 1879172 -> 1782544 | 126 -> 130 |
+| PackBits | 475 -> 463 | 138272 -> 129620 | 39 -> 41 |
+| Packed CRC | 802 -> 790 | 11222306 -> 11090726 | 47 -> 49 |
+| sumBytes | 93 -> 106 | 75633 -> 77452 | 24 -> 28 |
+
+Packed CRC's gain comes from its converted PackBits dependency, not from
+converting the CRC function itself. All measured caller bytes/cycles remain
+unchanged. Small arithmetic kernels grow four bytes and 32 T-states per call;
+the unconverted byte-copy kernel is unchanged. Faster Tile and PackBits do
+not erase the size, stack or other per-input regressions.
+
+Also build the complete calculation ROMs with the folded prototype:
+
+| Complete project | Default used ROM before -> prototype | Shared used ROM before -> prototype |
+| --- | ---: | ---: |
+| calculations-1 | 19957 -> 19954 | 19937 -> 19934 |
+| calculations-2 | 30183 -> 30231 | 29915 -> 29963 |
+
+These are independently linked complete-ROM sizes, not summed isolated
+savings. The complete ROMs are build/size probes, not runtime-qualified
+releases. Do not promote the three-byte first-project saving while hiding
+the second project's 48-byte growth.
+
+Recheck pinned SDCC r17016's `ralloc2.cc::omit_frame_ptr` and `gen.c`: frame
+selection considers register pressure and parameter-access cost, stack
+operands distinguish ordinary/extended addressing, and index preservation
+depends on actual register availability. A generic frame switch does not
+provide that coordination. Any future revival needs a separately scoped
+frame-specific target policy, actual DE ownership/overlap/clobber contracts,
+operand-aware scratch selection, wide-frame lowering and full compatibility
+qualification. Do not reopen 2t or start an unbounded rewrite here.
+
+The investigation is complete; 2v remains the next planned step. Both
+executed variants, rejected parser trials, exact baseline/source provenance,
+per-input results, complete-ROM probes and commit binding are retained in
+`C:\cygwin64\tmp\indexed-frame-2u-20261021`.
 
 #### 2v. Reduce Measured Internal Call Transport [PLANNED]
 
