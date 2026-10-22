@@ -48,6 +48,17 @@ This adds 15 net production C lines and no functions. See
 [step 2aa](Z80_CODEGEN_PLAN.md#2aa-frame-only-crossings-in-bounded-crc-loops-completed)
 for scope, ownership exclusions, measurements and qualification.
 
+Normal `-ra` now places bounded single-use `u16` division results directly in BC
+for a word multiplication's ARG1, preserving HL across an already-shared
+remainder store. It reuses existing result packing/materialization and one
+extracted DIV/MOD proof; byte/mixed/signed division, conflicting schedules and
+multiple reads retain their fallbacks. PartitionRestore improves 126 -> 116
+bytes and 40052 -> 38896 aggregate T-states, with frame footprint 26 -> 24.
+Its workload dependencies also improve; both complete RA applications save
+10 bytes, with allocator-off output unchanged. See
+[step 2ab](Z80_CODEGEN_PLAN.md#2ab-quotient-result-placement-completed)
+for exact scope, caller/stack costs and qualification.
+
 ---
 
 ## 0. Original Baseline: Before Allocator Implementation

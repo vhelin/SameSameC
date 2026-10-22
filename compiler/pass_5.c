@@ -4884,6 +4884,16 @@ static int _active_physical_registers_overlap_candidate(char *function_name, int
 
 static int _is_register_allocator_bc_candidate(struct tac *producer, struct tac *consumer, struct temp_register *temp_register, int consumer_arg) {
 
+  if (producer->op == TAC_OP_DIV)
+    return temp_register->size == 16 && temp_register->read_count == 1 && temp_register->write_count == 1 &&
+      producer->result_var_type == VARIABLE_TYPE_UINT16 &&
+      producer->arg1_var_type == VARIABLE_TYPE_UINT16 && producer->arg2_var_type == VARIABLE_TYPE_UINT16 &&
+      producer->arg1_var_type_promoted == VARIABLE_TYPE_UINT16 && producer->arg2_var_type_promoted == VARIABLE_TYPE_UINT16 &&
+      consumer->op == TAC_OP_MUL && consumer_arg == TAC_USE_ARG1 &&
+      consumer->arg1_var_type == VARIABLE_TYPE_UINT16 &&
+      (consumer->arg2_var_type == VARIABLE_TYPE_UINT16 || consumer->arg2_type == TAC_ARG_TYPE_CONSTANT) &&
+      consumer->arg1_var_type_promoted == VARIABLE_TYPE_UINT16 && consumer->arg2_var_type_promoted == VARIABLE_TYPE_UINT16 &&
+      consumer->arg2_physical_register != Z80_PHY_BC ? YES : NO;
   if (temp_register->size != 16 ||
       (_is_first_allocator_producer(producer->op) == NO && producer->op != TAC_OP_ARRAY_READ))
     return NO;
@@ -4946,6 +4956,48 @@ static int _is_register_allocator_b_candidate(struct tac *producer, struct tac *
     return YES;
 
   return NO;
+}
+
+
+int is_z80_reusable_remainder(struct tac *t) {
+
+  struct tac *division;
+  int previous;
+
+  if (t->op != TAC_OP_MOD || t->function_node == NULL ||
+      t->arg1_type != TAC_ARG_TYPE_LABEL || t->arg2_type != TAC_ARG_TYPE_LABEL ||
+      t->arg1_node == NULL || t->arg2_node == NULL ||
+      ((t->arg1_node->flags | t->arg2_node->flags) & TREE_NODE_FLAG_GLOBAL) != 0)
+    return NO;
+  for (previous = 0; previous < g_tacs_count && &g_tacs[previous] != t; previous++)
+    ;
+  if (previous == g_tacs_count)
+    return NO;
+  previous--;
+  while (previous >= 0 && g_tacs[previous].function_node == t->function_node &&
+         (g_tacs[previous].op == TAC_OP_DEAD ||
+          (g_tacs[previous].op == TAC_OP_CREATE_VARIABLE && g_tacs[previous].result_node != NULL &&
+           g_tacs[previous].result_node->value == 0)))
+    previous--;
+  if (previous < 0 || g_tacs[previous].function_node != t->function_node)
+    return NO;
+  division = &g_tacs[previous];
+  if (division->op != TAC_OP_DIV || division->arg1_type != t->arg1_type || division->arg2_type != t->arg2_type ||
+      division->arg1_node != t->arg1_node || division->arg2_node != t->arg2_node ||
+      division->arg1_var_type != t->arg1_var_type || division->arg2_var_type != t->arg2_var_type ||
+      division->arg1_var_type_promoted != t->arg1_var_type_promoted ||
+      division->arg2_var_type_promoted != t->arg2_var_type_promoted ||
+      division->result_node == t->arg1_node || division->result_node == t->arg2_node)
+    return NO;
+  if (division->result_physical_register == Z80_PHY_BC)
+    return division->result_var_type == VARIABLE_TYPE_UINT16 &&
+      t->arg1_var_type_promoted == VARIABLE_TYPE_UINT16 && t->arg2_var_type_promoted == VARIABLE_TYPE_UINT16 ? YES : NO;
+  if (division->result_physical_register != Z80_PHY_NONE)
+    return NO;
+  return division->result_type == TAC_ARG_TYPE_TEMP ||
+    (division->result_type == TAC_ARG_TYPE_LABEL && division->result_node != NULL &&
+     (division->result_node->flags & (TREE_NODE_FLAG_GLOBAL | TREE_NODE_FLAG_STATIC)) == 0 &&
+     division->result_node->value == 0) ? YES : NO;
 }
 
 
@@ -5648,6 +5700,11 @@ static int _is_z80_basic_block_transparent_tac_for_physical_register(struct tac 
       scratch_units &= ~RA_Z80_UNIT_B;
     if (is_z80_register_allocator_byte_transparent_tac(t, Z80_PHY_BC) == YES)
       scratch_units &= ~(RA_Z80_UNIT_B | RA_Z80_UNIT_C);
+    if (t->op == TAC_OP_MOD &&
+        (t->arg1_var_type_promoted == VARIABLE_TYPE_UINT16 || t->arg1_var_type_promoted == VARIABLE_TYPE_INT16) &&
+        (t->arg2_var_type_promoted == VARIABLE_TYPE_UINT16 || t->arg2_var_type_promoted == VARIABLE_TYPE_INT16) &&
+        is_z80_reusable_remainder(t) == YES)
+      scratch_units &= ~(RA_Z80_UNIT_B | RA_Z80_UNIT_C);
     if (_is_register_allocator_jump_op(t->op) == YES && t->op != TAC_OP_JUMP &&
         (t->arg1_var_type_promoted == VARIABLE_TYPE_INT8 ||
         t->arg1_var_type_promoted == VARIABLE_TYPE_UINT8) &&
@@ -6205,7 +6262,7 @@ static void _observe_register_allocator_transition_preparation(void *context,
     costs[choice][1] = byte_count * indexed_bytes;
     if (physical_register == Z80_PHY_BC && g_tacs[producer].op != TAC_OP_COMPLEMENT &&
       g_tacs[producer].op != TAC_OP_AND && g_tacs[producer].op != TAC_OP_OR && g_tacs[producer].op != TAC_OP_XOR &&
-        _is_first_allocator_producer(g_tacs[producer].op) == YES) {
+        (_is_first_allocator_producer(g_tacs[producer].op) == YES || g_tacs[producer].op == TAC_OP_DIV)) {
       costs[choice][0] -= 2 * move_cycles;
       costs[choice][1] -= 2;
     }
@@ -6225,7 +6282,8 @@ static void _observe_register_allocator_transition_preparation(void *context,
       if (_tac_reads_temp_register(&effect, temp_index) == YES) {
         operand = _get_register_allocator_consumer_arg(&effect, temp_index);
         if (operand < 0 || (effect.op != TAC_OP_ADD && effect.op != TAC_OP_SUB && effect.op != TAC_OP_AND &&
-            effect.op != TAC_OP_OR && effect.op != TAC_OP_XOR && effect.op != TAC_OP_ARRAY_READ)) {
+            effect.op != TAC_OP_OR && effect.op != TAC_OP_XOR && effect.op != TAC_OP_ARRAY_READ &&
+            !(effect.op == TAC_OP_MUL && operand == TAC_USE_ARG1 && physical_register == Z80_PHY_BC))) {
           known[choice] = NO;
           unknown[choice] = "consumer";
           break;
@@ -6241,7 +6299,7 @@ static void _observe_register_allocator_transition_preparation(void *context,
         if (byte_count == 1)
           transfer_bytes = (operand == TAC_USE_ARG1 && physical_register != Z80_PHY_A) ||
             (effect.op == TAC_OP_ARRAY_READ && operand == TAC_USE_ARG2 && physical_register != Z80_PHY_C) ? 1 : 0;
-        else if (physical_register == Z80_PHY_BC && operand == TAC_USE_ARG1 &&
+        else if (physical_register == Z80_PHY_BC && operand == TAC_USE_ARG1 && effect.op != TAC_OP_MUL &&
           effect.arg2_physical_register != Z80_PHY_HL &&
           _get_register_allocator_target_policy()->is_tac_transparent_for_physical_register(&effect, Z80_PHY_HL) == NO)
           transfer_bytes = 2;
@@ -6285,7 +6343,9 @@ static void _observe_register_allocator_transition_preparation(void *context,
       if (physical_register == Z80_PHY_HL && effect.result_physical_register == Z80_PHY_NONE &&
           _is_intervening_bc_candidate_transparent_for_hl(transition_context->function_node, instruction_index, consumer) == YES)
         effect.result_physical_register = Z80_PHY_BC;
-      if (_get_register_allocator_target_policy()->is_tac_transparent_for_physical_register(&effect, physical_register) == NO)
+      /* Remainder reuse depends on the original instruction position. */
+      if (_get_register_allocator_target_policy()->is_tac_transparent_for_physical_register(
+          effect.op == TAC_OP_MOD ? &g_tacs[instruction_index] : &effect, physical_register) == NO)
         resident = NO;
     }
     costs[choice][0] *= frequency;

@@ -16,6 +16,117 @@ from ra_cpu import execute
 
 
 class BranchConditionsTests(unittest.TestCase):
+    def test_word_quotient_carriers(self):
+        def divide(a, b, mask=65535):
+            return divmod(a, b) if b else (mask, a)
+
+        cases = {
+            "pair": ("u16", "u16 q=a/b; u16 r=a%b; return (q*b)^r;",
+                     lambda a, b, q, r: (q*b)^r, True),
+            "direct": ("u16", "u16 q=a/b; return q*b;",
+                       lambda a, b, q, r: q*b, True),
+            "constant": ("u16", "u16 q=a/b; u16 r=a%b; return (q*3)^r;",
+                         lambda a, b, q, r: (q*3)^r, True),
+            "weighted": ("u16", "u16 q=a/b; u16 r=a%b; return q*(b^0x1234)+r;",
+                         lambda a, b, q, r: q*(b^0x1234)+r, True),
+            "narrow_remainder": ("u16", "u16 q=a/b; u8 r=a%b; return (q*b)^r;",
+                                 lambda a, b, q, r: (q*b)^(r&255), True),
+            "signed_remainder": ("u16", "u16 q=a/b; s8 r=a%b; return (q*b)^r;",
+                                 lambda a, b, q, r: (q*b)^((r&255)-(256 if r&128 else 0)), True),
+            "pressure": ("u16", "u16 held=~a; u16 q=a/b; u16 r=a%b; return ((q*b)^r)+held;",
+                         lambda a, b, q, r: ((q*b)^r)+(a^65535), None),
+            "arg2": ("u16", "u16 q=a/b; u16 r=a%b; return (b*q)^r;",
+                     lambda a, b, q, r: (q*b)^r, False),
+            "multiple": ("u16", "u16 q=a/b; u16 r=a%b; return ((q*b)^r)+q;",
+                         lambda a, b, q, r: ((q*b)^r)+q, False),
+            "byte": ("u8", "u16 q=a/b; u16 r=a%b; return (q*b)^r;",
+                     lambda a, b, q, r: (q*b)^r, False),
+            "narrow_dividend": ("u16", "u8 first=a; u16 q=first/b; u16 r=first%b; return (q*b)^r;",
+                                lambda a, b, q, r: (q*b)^r, False),
+            "narrow_divisor": ("u16", "u8 second=b; u16 q=a/second; u16 r=a%second; return (q*second)^r;",
+                               lambda a, b, q, r: (q*(b&255))^r, False),
+            "signed_dividend": ("u16", "s8 first=a; u16 q=first/b; u16 r=first%b; return (q*b)^r;",
+                                lambda a, b, q, r: (q*b)^r, False),
+            "signed_word": ("s16", "s16 q=a/b; s16 r=a%b; return (q*b)^r;",
+                            lambda a, b, q, r: (q*b)^r, False),
+            "overwrite": ("u16", "a=a/b; u16 r=a%b; return (a*b)^r;",
+                          lambda a, b, q, r: (q*b)^divide(q, b)[1], False),
+            "changed": ("u16", "u16 q=a/b; a^=0x1234; u16 r=a%b; return (q*b)^r;",
+                        lambda a, b, q, r: (q*b)^divide(a^0x1234, b)[1], False),
+            "call": ("u16", "u16 q=a/b; quotient_touch(a); u16 r=a%b; return (q*b)^r;",
+                     lambda a, b, q, r: (q*b)^r, False),
+            "alias": ("u16", "u16 q=a/b; quotient_escape(&a); u16 r=a%b; return (q*b)^r;",
+                      lambda a, b, q, r: (q*b)^divide(a^0x1234, b)[1], False),
+            "asm": ("u16", 'u16 q=a/b; __asm("NOP"); u16 r=a%b; return (q*b)^r;',
+                    lambda a, b, q, r: (q*b)^r, False),
+            "global_input": ("u16", "u16 q=quotient_global/b; "
+                             "u16 r=quotient_global%b; return (q*b)^r;",
+                             lambda a, b, q, r: (q*b)^r, False),
+            "global_result": ("u16", "quotient_global=a/b; u16 r=a%b; return (quotient_global*b)^r;",
+                              lambda a, b, q, r: (q*b)^r, False),
+            "width_change": ("u16", "u16 q=a/b; u8 first=a; u8 second=b; "
+                             "u16 r=first%second; return (q*b)^r;",
+                             lambda a, b, q, r: (q*b)^divide(a&255, b&255, 255)[1], False),
+            "branch": ("u16", "u16 q=a/b; if (a&1) { b^=1; } u16 r=a%b; return (q*b)^r;",
+                       lambda a, b, q, r: (q*(b^(a&1)))^divide(a, b^(a&1))[1], False),
+        }
+        programs = [Program(f"quotient_{name}", name, 0, 0, [1, 1] if kind == "u8" else [2, 2],
+                            2, [], f"u16 quotient_{name}({kind} a,{kind} b) {{ {body} }}")
+                    for name, (kind, body, _, _) in cases.items()]
+        source = ("u8 ra_buffer[128]; u16 quotient_global;\n"
+                  "void quotient_touch(u16 value) { ra_buffer[0]=value; }\n"
+                  "void quotient_escape(u16 *value) { value[0]^=0x1234; }\n")
+        source += "\n".join(program.source for program in programs) + "\nvoid main(void) {}\n"
+        directory = self.output / "word-quotient-carriers"
+        images = compile_generated(directory, os.environ.get("SAMESAMECC") or "samesamecc",
+                                   os.environ.get("SAMESAMECL") or "samesamecl", programs, source)
+        buffer_bytes = max(128, *(image.symbols["quotient_global"]-image.symbols["ra_buffer"]+2
+                                  for image in images.values()))
+        edges = (0, 1, 127, 128, 255, 256, 32768, 65535)
+        arguments = [(edges[seed%8], edges[(seed//8)*2+seed%2]) for seed in range(32)]
+        arguments += [((seed*15373+421)&65535, (seed*7919+12345)&65535) for seed in range(16)]
+        calls = 0
+        for program in programs:
+            kind, _, oracle, _ = cases[program.family]
+            for left, right in arguments:
+                a, b = (left&255, right&255) if kind == "u8" else (left, right)
+                numerator = a&255 if program.family == "narrow_dividend" else (
+                    ((a&255)-(256 if a&128 else 0))&65535 if program.family == "signed_dividend" else a)
+                divisor = b&255 if program.family == "narrow_divisor" else b
+                q, r = divide(numerator, divisor, 255 if kind == "u8" else 65535)
+                expected = oracle(a, b, q, r)&65535
+                initial = bytes((index*37+a+b)&255 for index in range(buffer_bytes))
+                for mode, image in images.items():
+                    if program.family == "global_input":
+                        initial = bytearray(initial)
+                        offset = image.symbols["quotient_global"]-image.symbols["ra_buffer"]
+                        initial[offset:offset+2] = a.to_bytes(2, "little")
+                    expected_buffer = bytearray(initial)
+                    if program.family == "call":
+                        expected_buffer[0] = a&255
+                    if program.family in ("global_input", "global_result"):
+                        offset = image.symbols["quotient_global"]-image.symbols["ra_buffer"]
+                        value = a if program.family == "global_input" else q
+                        expected_buffer[offset:offset+2] = value.to_bytes(2, "little")
+                    result = execute(image.rom, image.symbols[program.name], [a, b], program.widths,
+                                     initial, image.symbols["ra_buffer"], 2, image.transfers, frame_bytes=2048)
+                    self.assertEqual((result["value"], result["buffer"], result["port_writes"]),
+                                     (expected, expected_buffer, []), (program.family, mode, a, b))
+                    self.assertEqual(result["unmapped_instructions"], 0)
+                    calls += 1
+        for mode in images:
+            assembly = (directory / mode / "main.asm").read_text()
+            for program in programs:
+                expected_selection = cases[program.family][3]
+                if expected_selection is None:
+                    continue
+                body = assembly.split(f'.SECTION "{program.name}" FREE')[1].split(".ENDS")[0]
+                selected = bool(re.search(r"; TAC: [^\n]* / [^\n]*\n(?:(?!; TAC:).)*"
+                                          r"; retained result in BC", body, re.DOTALL))
+                self.assertEqual(selected, mode in ("ra", "ra_quiet") and expected_selection,
+                                 (program.family, mode))
+        self.assertEqual(calls, len(programs)*48*len(images))
+
     def test_constant_word_lanes(self):
         programs, oracles = [], {}
         for operation, symbol in (("and", "&"), ("or", "|"), ("xor", "^")):

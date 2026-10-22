@@ -155,7 +155,7 @@ extraction.
 - [x] **2aa. Frame-only crossings in bounded CRC loops:** extend the existing
   matcher to accept proven memory-backed outer state without weakening physical
   ownership, alias or control-flow checks.
-- [ ] **2ab. Quotient result placement:** carry the existing divider's quotient
+- [x] **2ab. Quotient result placement:** carry the existing divider's quotient
   into its next useful register pair across the already-shared remainder store.
 - [ ] **2ac. Register-live-in frameless microleaves:** reuse automatic ABI
   metadata and location handling to avoid profitable leaf argument homes/frames.
@@ -3498,18 +3498,63 @@ guards, corpus and native verifier controls remain unchanged. Detailed evidence
 and source/commit bindings are retained in
 `C:\cygwin64\tmp\crc-frame-crossings-20261022`.
 
-#### 2ab. Quotient Result Placement [PLANNED]
+#### 2ab. Quotient Result Placement [COMPLETED]
 
-Division/remainder sharing already exists. PartitionRestore still stores the
-quotient from C:A to its frame, stores the shared remainder from HL, then reloads
-the quotient into BC for multiplication. Extend existing producer/result packing,
-location, clobber and cost contracts for this bounded transparent sequence.
-Do not introduce another divider or duplicate divmod sharing.
+Normal `-ra` carries single-definition, single-use `u16` quotients directly from
+C:A into BC for a word multiplication's ARG1. Division inputs must be actual
+and promoted `u16`; the multiplication's other input must be a word or constant,
+with word promotion and no conflicting BC owner. Reuse the existing packing,
+operand materialization and divider. ARG2 carriers, byte/mixed/signed division,
+multiple reads and unsupported schedules keep their previous fallbacks.
 
-SDCC r17016 `gen.c::genCall` moves ABI results directly into assigned locations.
-A private BC-carrier probe gives 126 -> 116 bytes and 40052 -> 38896 T-states
-(-2.89%), frame 26 unchanged; 17 guarded cases and an independent timing pass.
-Qualify the compiler implementation and all dependencies/callers separately.
+Extract the existing DIV/MOD matcher into one shared predicate for emission and
+BC transparency. It retains exact input/node/type matching, stable nonglobal
+inputs, scalar-declaration/dead-TAC skips and alias/effect/control barriers.
+Memory quotients retain their existing sharing; the new word BC quotient also
+preserves HL's remainder. Do not infer HL transparency: an HL quotient destroys
+that remainder. The cost observer uses the original MOD position, accounts for
+the two quotient-packing moves and avoids charging a BC-to-HL input transfer
+that multiplication does not need. The paired case predicts and saves 68
+T-states and 10 bytes per invocation, without additional saves or runtime helpers.
+
+SDCC r17016 `gen.c::genCall` was the result-placement precedent. The initial
+private assembly probe gave 126 -> 116 bytes and 40052 -> 38896 T-states with
+frame 26 unchanged. The compiler implementation additionally removes the
+quotient's unused spill home. Against parent `39ad4ec`:
+
+| Normal RA kernel, including dependencies | Bytes | Aggregate T-states | Frame footprint |
+|---|---:|---:|---:|
+| PartitionRestore | 126 -> 116 | 40052 -> 38896 | 26 -> 24 |
+| ArrayWorkload | 1355 -> 1345 | 5683936 -> 5646400 | 86 -> 86 |
+| StencilWorkload | 1445 -> 1435 | 3850538 -> 3838026 | 118 -> 116 |
+| PathWorkload | 1251 -> 1241 | 5325141 -> 5323781 | 184 -> 182 |
+
+The three workloads benefit through their shared PartitionRestore dependency.
+PartitionRestore saves 2.89% kernel cycles; its unchanged caller costs 75 bytes
+and 7752 aggregate T-states, so caller-inclusive costs improve 201 -> 191 bytes
+and 47804 -> 46648 T-states (-2.42%). Stack high-water improves 24 -> 22 bytes.
+Ordinary/shared arithmetic give the same gains. The other nine kernels,
+allocator-off rows and all external-compiler rows are unchanged.
+
+Both complete RA applications save 10 bytes: calculations-1 17263 -> 17253
+(shared 17243 -> 17233), calculations-2 26217 -> 26207 (shared 25949 -> 25939).
+The first application uses the equivalent QuotientRoundTrip sequence.
+Allocator-off complete images are unchanged. Net production growth is 33 C
+lines plus one declaration; extracting the matcher shrinks the backend by 27
+lines. No duplicate packing, new arithmetic helper, flag or annotation was added.
+
+Qualification: 55 tests plus 24 optimized-Python policy tests per
+release/traced/ASan build; all 175 fixtures without snapshot updates; 372
+corresponding regression images identical across builds. The full/shared
+comparisons cover 156 configurations, 2784 calls and 80 independent timing
+checks; all 1392 individual SSC profile samples are non-growing. The 23-function
+focused cohort covers zero/boundary divisors, direct and paired uses, constant
+multiplication, truncated/signed remainders, pressure and conservative fallbacks:
+5520 parent/current pairs (11040 executions) have non-growing cycles, frame
+reads/writes and stack high-water. All 32 complete application builds and 316
+paired real-image samples pass, including both quotient routines and display
+callers. Native controls, corpus, numerical oracles and CPU guards are unchanged.
+Evidence: `C:\cygwin64\tmp\quotient-result-placement-20261022`.
 
 #### 2ac. Register-Live-In Frameless Microleaves [PLANNED]
 

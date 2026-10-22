@@ -6069,38 +6069,11 @@ store_result:
 
 static int _generate_asm_mul_div_mod_z80(struct tac *t, FILE *file_out, struct tree_node *function_node, int op) {
 
-  int previous = (int)(t - g_tacs) - 1, reuse_remainder = NO;
+  int reuse_remainder = is_z80_reusable_remainder(t);
 
-  /* Only a memory quotient preserves the divider's remainder without an extra save. */
-  if (op == TAC_OP_MOD && t->arg1_type == TAC_ARG_TYPE_LABEL && t->arg2_type == TAC_ARG_TYPE_LABEL &&
-      t->arg1_node != NULL && t->arg2_node != NULL &&
-      ((t->arg1_node->flags | t->arg2_node->flags) & TREE_NODE_FLAG_GLOBAL) == 0) {
-    while (previous >= 0 && g_tacs[previous].function_node == function_node &&
-           (g_tacs[previous].op == TAC_OP_DEAD ||
-            (g_tacs[previous].op == TAC_OP_CREATE_VARIABLE && g_tacs[previous].result_node != NULL &&
-             g_tacs[previous].result_node->value == 0)))
-      previous--;
-    if (previous >= 0 && g_tacs[previous].function_node == function_node) {
-      struct tac *division = &g_tacs[previous];
-      struct z80_location quotient_location;
+  if (reuse_remainder == YES)
+    fprintf(file_out, "      ; reuse remainder from preceding DIV\n");
 
-      if (division->op == TAC_OP_DIV && division->arg1_type == t->arg1_type && division->arg2_type == t->arg2_type &&
-          division->arg1_node == t->arg1_node && division->arg2_node == t->arg2_node &&
-          division->arg1_var_type == t->arg1_var_type && division->arg2_var_type == t->arg2_var_type &&
-          division->arg1_var_type_promoted == t->arg1_var_type_promoted &&
-          division->arg2_var_type_promoted == t->arg2_var_type_promoted &&
-          division->result_node != t->arg1_node && division->result_node != t->arg2_node) {
-        if (_resolve_tac_location(division, TAC_USE_RESULT, function_node, &quotient_location) == FAILED)
-          return FAILED;
-        if (quotient_location.kind == LOC_STACK_LOCAL || quotient_location.kind == LOC_STACK_SPILL) {
-          reuse_remainder = YES;
-          fprintf(file_out, "      ; reuse remainder from preceding DIV\n");
-        }
-      }
-    }
-  }
-
-  /* TODO(register-allocator): retained mul/div/mod operands remain disabled until the input scheduling is migrated. */
   /* 8-bit or 16-bit? */
   if ((t->arg1_var_type_promoted == VARIABLE_TYPE_INT8 || t->arg1_var_type_promoted == VARIABLE_TYPE_UINT8) &&
       (t->arg2_var_type_promoted == VARIABLE_TYPE_INT8 || t->arg2_var_type_promoted == VARIABLE_TYPE_UINT8))
