@@ -16,6 +16,111 @@ from ra_cpu import execute
 
 
 class BranchConditionsTests(unittest.TestCase):
+    def test_byte_factors_word_products(self):
+        cases = {
+            "byte_left": ("u8 factor=a; return factor*b;", lambda a, b, v: (a&255)*b, True),
+            "byte_right": ("u8 factor=a; return b*factor;", lambda a, b, v: (a&255)*b, True),
+            "mask_left": ("return (a&255)*b;", lambda a, b, v: (a&255)*b, True),
+            "mask_right": ("return b*(a&255);", lambda a, b, v: (a&255)*b, True),
+            "pair": ("return (a&255)*(b&255);", lambda a, b, v: (a&255)*(b&255), True),
+            "typed_pair": ("u8 first=a; u8 second=b; return first*b+a*second;",
+                           lambda a, b, v: (a&255)*b+a*(b&255), True),
+            "shift_left": ("return (a>>8)*b;", lambda a, b, v: (a>>8)*b, True),
+            "shift_right": ("return b*(a>>8);", lambda a, b, v: (a>>8)*b, True),
+            "load_left": ("return bytes[0]*b;", lambda a, b, v: v*b, True),
+            "load_right": ("return b*bytes[0];", lambda a, b, v: v*b, True),
+            "snapshot": ("u16 factor=bytes[0]; return factor*b;", lambda a, b, v: v*b, True),
+            "or": ("return ((a&127)|128)*b;", lambda a, b, v: ((a&127)|128)*b, True),
+            "xor": ("return ((a&255)^129)*b;", lambda a, b, v: ((a&255)^129)*b, True),
+            "signed_left": ("s8 factor=a; return factor*b;",
+                            lambda a, b, v: ((a&255)-(256 if a&128 else 0))*b, False),
+            "signed_right": ("s8 factor=a; return b*factor;",
+                             lambda a, b, v: ((a&255)-(256 if a&128 else 0))*b, False),
+            "signed_load": ("return bytes[0]*b;", lambda a, b, v: (v-(256 if v&128 else 0))*b, False),
+            "signed_other": ("s16 word=b; return (a&255)*word;", lambda a, b, v: (a&255)*b, True),
+            "wide": ("return (a&511)*b;", lambda a, b, v: (a&511)*b, False),
+            "unknown": ("return a*b;", lambda a, b, v: a*b, False),
+            "carry": ("return ((a&255)+1)*b;", lambda a, b, v: ((a&255)+1)*b, False),
+            "call_before": ("return (product_touch(a)&255)*b;", lambda a, b, v: (a&255)*b, True),
+            "call_after": ("u16 factor=a&255; product_touch(a); return factor*b;",
+                           lambda a, b, v: (a&255)*b, False),
+            "write_after": ("u16 factor=bytes[0]; bytes[0]=a; return factor*b;", lambda a, b, v: v*b, False),
+            "alias": ("u16 factor=a&255; product_escape(&factor); return factor*b;",
+                      lambda a, b, v: ((a&255)^256)*b, False),
+            "branch": ("u16 factor=a&255; if(a&256) { factor|=256; } return factor*b;",
+                       lambda a, b, v: (a&511)*b, False),
+            "assembly": ('u16 factor=a&255; __asm("NOP"); return factor*b;',
+                         lambda a, b, v: (a&255)*b, False),
+            "pressure": ("u16 held=a^b; u16 result=(a&255)*b; return result+held;",
+                         lambda a, b, v: (a&255)*b+(a^b), True),
+            "far": ("u8 workspace[260]; workspace[259]=a; return (a&255)*b+workspace[259];",
+                    lambda a, b, v: (a&255)*b+(a&255), True),
+            "constant": ("return (a&255)*9;", lambda a, b, v: (a&255)*9, False),
+            "store": ("u16 result=(a&255)*b; bytes[2]=result>>8; return result;",
+                      lambda a, b, v: (a&255)*b, True),
+            "narrow": ("u8 result=(a&255)*b; return result;", lambda a, b, v: ((a&255)*b)&255, True),
+            "both_byte": ("u8 first=a; u8 second=b; return first*second;",
+                          lambda a, b, v: ((a&255)*(b&255))&255, False),
+            "read_twice": ("u16 first=bytes[0]; return first*bytes[1];",
+                           lambda a, b, v: v*((v+37)&255), True),
+            "word_load": ("return product_words[a&7]*b;",
+                          lambda a, b, v: (0, 1, 255, 256, 32767, 32768, 65535, 0x9234)[a&7]*b, False),
+        }
+        programs = [
+            Program(f"byte_product_{name}", name, 0, 0, [2, 2, 2], 2, [],
+                    f"u16 byte_product_{name}(u16 a,u16 b,{'s8' if name == 'signed_load' else 'u8'} *bytes) {{ {body} }}")
+            for name, (body, _, _) in cases.items()
+        ]
+        source = ("u8 ra_buffer[128];\n"
+                  "const u16 product_words[8]={0,1,255,256,32767,32768,65535,0x9234};\n"
+                  "u16 product_touch(u16 value) { ra_buffer[0]=ra_buffer[0]+1; return value; }\n"
+                  "void product_escape(u16 *value) { value[0]^=256; }\n" +
+                  "\n".join(program.source for program in programs) + "\nvoid main(void) {}\n")
+        compiler = os.environ.get("SAMESAMECC") or "samesamecc"
+        linker = os.environ.get("SAMESAMECL") or "samesamecl"
+        directory = self.output / "byte-factors-word-products"
+        profiles = {
+            policy: compile_generated(directory / policy, compiler, linker, programs, source,
+                                      linker_flags=("-share-arithmetic",) if policy == "shared" else ())
+            for policy in ("inline", "shared")
+        }
+        for program in programs:
+            name = program.family
+            values = range(256) if name.startswith("byte_") else (0, 1, 127, 128, 255, 256, 257, 32767, 32768, 65535)
+            for a in values:
+                for b in (0, 1, 255, 256, 32768, 65535):
+                    initial = bytes((index*37+a+b)&255 for index in range(128))
+                    expected = cases[name][1](a, b, initial[0]) & 65535
+                    expected_buffer = bytearray(initial)
+                    if name.startswith("call_"):
+                        expected_buffer[0] = (initial[0]+1)&255
+                    elif name == "write_after":
+                        expected_buffer[0] = a&255
+                    elif name == "store":
+                        expected_buffer[2] = expected>>8
+                    for policy, images in profiles.items():
+                        for mode, image in images.items():
+                            address = image.symbols["ra_buffer"]
+                            result = execute(image.rom, image.symbols[program.name], [a, b, address], [2, 2, 2],
+                                             initial, address, 2, image.transfers, frame_bytes=2048)
+                            self.assertEqual((result["value"], result["buffer"], result["port_writes"]),
+                                             (expected, expected_buffer, []), (name, policy, mode, a, b))
+                            self.assertEqual(result["unmapped_instructions"], 0)
+        if os.environ.get("RA_BASELINE") != "1":
+            for policy, images in profiles.items():
+                for mode, image in images.items():
+                    if policy == "shared":
+                        self.assertEqual(sum(name.startswith("ssc.arithmetic_") for name in image.symbols), 3)
+                    if mode not in ("ra", "ra_quiet"):
+                        continue
+                    assembly = (directory / policy / mode / "main.asm").read_text()
+                    for program in programs:
+                        section = assembly.split(f'.SECTION "{program.name}" FREE')[1].split(".ENDS")[0]
+                        selected = any(f"      LD  {register},8 ; number of bits to process" in section
+                                       for register in ("B", "D"))
+                        self.assertEqual(selected, cases[program.family][2],
+                                         (policy, mode, program.family))
+
     def test_scaled_word_byte_reductions(self):
         cases = {
             "dynamic": True, "one": True, "two": True, "sixteen": True,

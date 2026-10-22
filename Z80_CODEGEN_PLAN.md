@@ -157,13 +157,24 @@ extraction.
   ownership, alias or control-flow checks.
 - [x] **2ab. Quotient result placement:** carry the existing divider's quotient
   into its next useful register pair across the already-shared remainder store.
-- [ ] **2ac. Register-live-in frameless microleaves:** reuse automatic ABI
+- [x] **2ac. Register-live-in frameless microleaves:** reuse automatic ABI
   metadata and location handling to avoid profitable leaf argument homes/frames.
-- [ ] **2ad. Bounded nonliteral known-bit facts:** extend existing producer
+- [x] **2ad. Bounded nonliteral known-bit facts:** extend existing producer
   queries beyond literal lanes without changing arithmetic widths or adding a
   global range-analysis framework.
 - [x] **2ae. Costed complex scaled induction:** revisit the deferred multi-access
   loops using existing counter/address proofs, including pressure and call costs.
+- [x] **2af. Proven byte factors in word-result multiplication:** reuse bounded
+  known-bit facts and the word multiplier for eight-bit factors without narrowing
+  the product; measure complete shared-helper costs as well as inline wins.
+- [ ] **2ag. Costed biased frame windows:** reuse the IX address cache to cover
+  nearby arguments and distant locals with fewer complete window rebuilds.
+- [ ] **2ah. Post-increment copy/fill induction:** normalize narrowly proven
+  decoder writes into the existing pointer/counter loop machinery.
+- [ ] **2ai. Dead argument homes and expanded register-entry leaves:** omit
+  unused automatic-ABI homes before broadening profitable frameless schedules.
+- [ ] **2aj. Byte facts for comparisons and bounded dynamic loops:** reuse
+  proven byte ranges without changing general word counts or source semantics.
 - [ ] **3. Initial SM83 backend:** establish correct Game Boy code generation,
   target-specific addressing/spills/calls and execution tests. Use actual
   requirements to identify reusable code; do not assume IX/IY, `DJNZ` or `LDIR`.
@@ -3793,6 +3804,127 @@ The refreshed 130-configuration comparison, per-input metrics, source hashes and
 two private probes underlying 2aa-2ae are retained in
 `C:\cygwin64\tmp\compiler-reprofile-20261022-after-2z`.
 These opportunities are not additive whole-ROM promises.
+
+### 2af. Proven Byte Factors In Word-Result Multiplication (Completed)
+
+**Status: completed.** Path's final checksum previously multiplied a
+zero-extended byte load by a word expression using sixteen iterations.
+The existing word multiplier now selects eight iterations when either operand's
+upper byte is proven zero. BC-byte factors use A/B and the existing DE addend;
+DE-byte factors use A/D and the existing BC addend. This avoids operand swaps,
+new materializers and evaluation-order changes. Both paths preserve the full
+low-word product, original result stores, DE/frame preservation and conservative
+clobber contract. Constant chains and actual byte-expression widths are unchanged.
+
+The existing bounded known-zero query also recognizes a single-definition,
+word-promoted unsigned-byte array-read snapshot using the array emitter's element
+type query. Its three-link/six-scalar-TAC bounds and call, control and intervening
+memory barriers are unchanged. Signed reads and unsupported producers remain
+unknown; this is a fact about an already loaded value, not a memory reread or
+permission to cross aliases. Existing BC materialization reuses the same fact.
+There are **nine net production C lines**, no new functions, flags, frame slots
+or linker changes.
+
+SDCC's `genMultOneChar`/`genMult` demonstrate width-sensitive multiplication;
+use that precedent, not copied implementation. Keep this bounded and Z80-local.
+The earlier private Path probe measured 1241 -> 1239 bytes and
+5323781 -> 4705541 cycles; the compiler result below also benefits from avoiding
+a proven-zero high-byte reload. These are measured complete schedules, not
+inner-loop-only estimates.
+
+| Workload/mode | Kernel + dependency bytes | Aggregate kernel T-states |
+| --- | ---: | ---: |
+| ArrayWorkload, RA | 1325 -> 1324 | 5552765 -> 5546141 (-0.12%) |
+| PathWorkload, RA | 1241 -> 1238 | 5323781 -> 4688981 (-11.92%) |
+| sumBytes, allocator off | 166 -> 165 | 543386 -> 532070 (-2.08%) |
+| PathWorkload, RA/shared | 1233 -> 1238 | 5361581 -> 4688981 (-12.55%) |
+
+The other ten kernels and all competitor rows are unchanged. Ordinary Path's
+frame footprint remains 182 bytes; shared Path drops 184 -> 182, with stack
+high-water 182 -> 180. No per-input execution/frame/stack metric grows.
+
+**Approved shared-ROM trade-off.** Existing exact-body matching safely separates
+the 13/14-byte byte-factor loops from the 15-byte word loop, using the same
+arithmetic family without merging incompatible bodies. Splitting old sharing
+groups can cost ROM. The user explicitly selected retaining fast loops rather
+than restoring sixteen iterations merely to preserve the old sharing ratio.
+The unchanged CALL/RET timing and traffic checks still pass.
+Complete RA calculations-1 saves 2 bytes normally (17252 -> 17250), but grows
+10 bytes shared (17232 -> 17242). RA calculations-2 saves 13 bytes normally
+(26187 -> 26174), but grows 25 bytes shared (25919 -> 25944).
+Allocator-off complete images are unchanged. The focused cohort saves 36 bytes
+with ordinary RA and 9 with allocator off/all-spill; shared images grow 29 bytes
+because two specialized helpers supplement the original word helper.
+
+Qualification: release, traced and ASan each pass 59 normal and 24 optimized
+Python tests, with 432 identical regression images per build. The 34-function
+cohort covers both operand orders, all byte factors against full-word edge
+values, products above 255, wrap, signed operands, snapshots, masks/shifts,
+constant chains, narrow results, pressure, escapes and effect/control barriers
+under all five allocator modes and both sharing policies. Its 99840 guarded
+parent/current executions provide 49920 non-growing cycle/traffic/stack pairs.
+Full/shared profiles cover 156 configurations, 2784 calls, 80 independent
+timings and 1392 individual SSC comparisons; only the documented shared Path
+ROM comparison grows. All 32 complete application builds and 384 paired
+routine/display samples pass, including the documented shared-ROM costs.
+All 175 fixtures pass after changing one exact expected instruction,
+`DD 46 FD` -> `06 00`, in the far-word initializer snapshot: a high-byte frame
+reload becomes `LD B,0`. The rechecked ROM is identical to the initially
+generated ROM, and 1310 additional guarded initializer executions verify the
+calculation independently. Strict normal/traced C89 and Python syntax pass;
+numerical oracles, CPU guards, corpus and native verifier controls are unchanged.
+Evidence: `C:\cygwin64\tmp\byte-factor-word-multiply-20261022`.
+
+### 2ag. Costed Biased Frame Windows
+
+**Status: planned.** Reuse the current IX window cache/materializers rather than
+introducing a new frame layout or address allocator. Path repeatedly rebuilds
+windows for near arguments and locals around frame offsets -152 through -156.
+A private final-loop probe biased IX by -64, retained coverage of both regions,
+restored the original window at exit and measured 1241 to 1235 bytes and
+5323781 to 5204301 cycles (-2.24%). This is not a general compiler result.
+
+Charge entry, exit, joins, calls, pressure and invalidations; preserve aliases,
+stack/frame size, displacement bounds and exceptional control flow. SDCC's
+allocation-aware dry emitter is a precedent for complete schedule costs, not a
+reason to add a second cost framework.
+
+### 2ah. Post-Increment Copy/Fill Induction
+
+**Status: planned.** Tile's adjacent `bytes[written++] = tile` and
+`bytes[written++] = cursor[j]` writes miss the existing canonical loop shapes.
+Normalize only proven equivalent TAC and reuse current copy/fill, pointer and
+counter emitters. Preserve zero/256 counts, source-order overlap, wraparound,
+aliases, calls, live-out indices and full buffer guards. SDCC's memcpy/memset
+lowering charges register preservation and setup; require a complete measured
+win rather than merely shorter inner-loop instructions.
+
+### 2ai. Dead Argument Homes And Expanded Register-Entry Leaves
+
+**Status: planned.** ShiftRestore's unused mask arithmetic is already removed,
+but its automatic register entry still pushes that unused argument and builds
+a frame. First omit proven dead homes using existing ABI/use metadata; then
+extend the existing microleaf schedules when caller plus callee costs improve.
+Preserve argument-expression effects, recursive/cross-unit calls, stack offsets,
+escaped addresses and compatible public entries. Reuse SDCC register-parameter
+and z88dk fastcall concepts without adding a source annotation or default flag.
+
+### 2aj. Byte Facts For Comparisons And Bounded Dynamic Loops
+
+**Status: planned.** Reuse the existing bounded facts for Tile control/length
+values masked by 0x7f, byte comparisons and eligible dynamic counters. Do not
+assume benchmark-only bounds for general counts or change signedness, widths,
+zero/256 behavior or observable wraparound. Keep calls, aliases, control and
+unsupported producers conservative. z88dk's character-compare selection and
+SDCC's width-sensitive arithmetic provide precedents; reuse current comparison
+and counter emitters instead of adding a global range-analysis pass.
+
+The after-2ae comparison and private probes underlying 2af-2aj are retained in
+`C:\cygwin64\tmp\compiler-reprofile-20261022-after-2ae`.
+Root scalar frame-memory/address cycle shares remain material (21.34% Array,
+39.03% Stencil, 51.37% Tile, 52.62% Path and 27.59% PackedCrc) at that baseline;
+these attributed shares are not wholly
+removable and the probes are not additive whole-program promises.
 
 ### 3. Maintain Induction Addresses And Select Z80 Loops
 

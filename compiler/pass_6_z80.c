@@ -1453,27 +1453,29 @@ static void _multiply_h_and_e_to_hl(FILE *file_out) {
 }
 
 
-static void _multiply_bc_and_de_to_hl(FILE *file_out) {
+static void _multiply_bc_and_de_to_hl(FILE *file_out, int byte_factor) {
 
   fprintf(file_out, "      ; ssc_arithmetic_begin 1 %d %d\n", g_bank, g_slot);
   fprintf(file_out, "      ; multiply BC * DE -> HL\n");
 
-  /* Shift the multiplier through A:C, leaving B available for DJNZ. */
-  fprintf(file_out, "      LD  A,B\n");
-  fprintf(file_out, "      LD  B,16 ; number of bits to process\n");
+  /* A holds a byte factor; only the full word factor also needs C. */
+  fprintf(file_out, "      LD  A,%s\n", byte_factor == TAC_USE_ARG1 ? "C" : byte_factor == TAC_USE_ARG2 ? "E" : "B");
+  fprintf(file_out, "      LD  %s,%d ; number of bits to process\n",
+          byte_factor == TAC_USE_ARG2 ? "D" : "B", byte_factor == NO ? 16 : 8);
   fprintf(file_out, "      LD  HL,0\n");
 
   _add_label("-", file_out, YES);
 
   fprintf(file_out, "      ADD HL,HL\n");
-  fprintf(file_out, "      SLA C\n");
+  if (byte_factor == NO)
+    fprintf(file_out, "      SLA C\n");
   fprintf(file_out, "      RLA\n");
   fprintf(file_out, "      JR  NC,+\n");
-  fprintf(file_out, "      ADD HL,DE\n");
+  fprintf(file_out, "      ADD HL,%s\n", byte_factor == TAC_USE_ARG2 ? "BC" : "DE");
 
   _add_label("+", file_out, YES);
 
-  fprintf(file_out, "      DJNZ -\n");
+  fprintf(file_out, byte_factor == TAC_USE_ARG2 ? "      DEC D\n      JR  NZ,-\n" : "      DJNZ -\n");
   fprintf(file_out, "      ; ssc_arithmetic_end\n");
 }
 
@@ -1752,6 +1754,11 @@ static int _get_z80_known_zero_bits(struct tac *t, int operand, int depth) {
         op != TAC_OP_SHIFT_LEFT && op != TAC_OP_SHIFT_RIGHT))
       return 0;
   }
+  if (producer->op == TAC_OP_ARRAY_READ &&
+      get_variable_type_size(producer->result_var_type_promoted) == 16 &&
+      (producer->arg1_node != NULL ? get_array_item_variable_type(producer->arg1_node) :
+       producer->arg1_var_type) == VARIABLE_TYPE_UINT8)
+    return 65280;
   left = _get_z80_known_zero_bits(producer, TAC_USE_ARG1, depth - 1);
   if (producer->op == TAC_OP_ASSIGNMENT)
     return left;
@@ -5712,7 +5719,9 @@ static int _generate_asm_mul_div_mod_z80_16bit(struct tac *t, FILE *file_out, st
   /******************************************************************************************************/
 
   if (op == TAC_OP_MUL)
-    _multiply_bc_and_de_to_hl(file_out);
+    _multiply_bc_and_de_to_hl(file_out,
+                             (arg1_location.known_zero & 65280) == 65280 ? TAC_USE_ARG1 :
+                             (arg2_location.known_zero & 65280) == 65280 ? TAC_USE_ARG2 : NO);
 
   /******************************************************************************************************/
   /* bc / de -> ca (result), hl (remainder) */

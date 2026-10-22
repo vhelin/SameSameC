@@ -100,6 +100,24 @@ This adds 61 net production C lines. See
 [step 2ae](Z80_CODEGEN_PLAN.md#2ae-costed-complex-scaled-induction-completed)
 for complete setup/preservation costs, conservative exclusions and qualification.
 
+Word-result multiplication now reuses bounded known-zero facts to process a
+proven unsigned-byte factor in eight iterations, in either operand position.
+The other operand and the product remain word-sized; constant chains, actual
+byte-expression widths, signed extension, evaluation order and frame/ownership
+contracts are preserved. Unsigned-byte array-read snapshots also feed the
+existing BC materializer without weakening producer or effect barriers.
+This adds nine net production C lines, no functions, flags or linker changes.
+Normal RA Path improves 1241 -> 1238 bytes and 5323781 -> 4688981 aggregate
+T-states (-11.92%), with frame footprint unchanged. Array saves another byte,
+and allocator-off sumBytes saves one byte and 2.08% cycles.
+The user approved keeping the faster specialized loops when old sharing groups
+split: shared RA Path grows 5 bytes but becomes 12.55% faster.
+Complete ordinary RA calculations-1/2 save 2/13 bytes; their shared RA images
+grow 10/25 bytes. Existing sharing timing/traffic controls are unchanged.
+See [step 2af](Z80_CODEGEN_PLAN.md#2af-proven-byte-factors-in-word-result-multiplication-completed)
+for full costs, the precise initializer snapshot update, conservative fallbacks
+and release/traced/ASan qualification. Steps 2ag-2aj record the next opportunities.
+
 ---
 
 ## 0. Original Baseline: Before Allocator Implementation
