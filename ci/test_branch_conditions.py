@@ -232,6 +232,83 @@ class BranchConditionsTests(unittest.TestCase):
                                          (cases[program.family][1](a, b)&65535, expected_buffer, 0),
                                          (program.name, mode, a, b))
 
+    def test_bounded_known_bits(self):
+        cases = {
+            "mask7": ("return a>>(b&7);", lambda a, b: a>>(b&7), True),
+            "mask31": ("return a<<(b&31);", lambda a, b: a<<(b&31), True),
+            "mask255": ("return a>>(b&255);", lambda a, b: a>>(b&255), True),
+            "reverse": ("return a>>(255&b);", lambda a, b: a>>(b&255), True),
+            "high": ("return a>>(b>>8);", lambda a, b: a>>(b>>8), True),
+            "or": ("return a<<((b&31)|1);", lambda a, b: a<<((b&31)|1), True),
+            "xor": ("return a>>((b&31)^16);", lambda a, b: a>>((b&31)^16), True),
+            "and": ("return a>>((b&31)&15);", lambda a, b: a>>((b&31)&15), True),
+            "byte": ("u8 count=b; return a>>count;", lambda a, b: a>>(b&255), True),
+            "signed": ("s16 count=b&127; return a>>count;", lambda a, b: a>>(b&127), True),
+            "wide": ("return a>>(b&511);", lambda a, b: a>>(b&511), False),
+            "unknown": ("return a>>b;", lambda a, b: a>>b, False),
+            "carry": ("return a>>((b&255)+1);", lambda a, b: a>>((b&255)+1), False),
+            "call_before": ("return a>>(known_tick(b)&31);", lambda a, b: a>>(b&31), True),
+            "call_after": ("u16 count=b&31; known_tick(b); return a>>count;",
+                           lambda a, b: a>>(b&31), False),
+            "alias": ("u16 count=b&31; known_change(&count); return a>>count;", lambda a, b: 0, False),
+            "branch": ("u16 count=b&31; if (b&256) { count=256; } return a>>count;",
+                       lambda a, b: 0 if b&256 else a>>(b&31), False),
+            "asm": ('u16 count=b&31; __asm("NOP"); return a>>count;', lambda a, b: a>>(b&31), False),
+            "index": ("return a+ra_buffer[b&63];", lambda a, b: a+((b&63)*37+a+b)%256, None),
+            "index_high": ("return a+ra_buffer[b>>3];", lambda a, b: a+((b>>3)*37+a+b)%256, None),
+            "word_index": ("u16 words[8]={3,257,511,1023,32767,32768,0x9234,65535}; return a+words[b&7];",
+                           lambda a, b: a+(3,257,511,1023,32767,32768,0x9234,65535)[b&7], None),
+            "word_value": ("return (a&255)-(b>>8);", lambda a, b: (a&255)-(b>>8), None),
+            "sign_extend": ("s8 small=a; s16 value=small; return b-value;",
+                            lambda a, b: b-((a&255)-(256 if a&128 else 0)), None),
+            "legacy": ("u16 count=b&7; " + " ".join(
+                f"a=(a+{i+1})^{0x1234+i};" for i in range(8)) + " return a>>count;", None, True),
+        }
+        programs = [Program(f"known_bits_{name}", name, 0, 0, [2, 2], 2, [],
+                            f"u16 known_bits_{name}(u16 a,u16 b) {{ {body} }}")
+                    for name, (body, _, _) in cases.items()]
+        source = ("u8 ra_buffer[128];\n"
+                  "u16 known_tick(u16 value) { ra_buffer[0]=ra_buffer[0]+1; return value; }\n"
+                  "void known_change(u16 *value) { value[0]^=256; }\n" +
+                  "\n".join(program.source for program in programs)+"\nvoid main(void) {}\n")
+        directory = self.output / "bounded-known-bits"
+        images = compile_generated(directory, os.environ.get("SAMESAMECC") or "samesamecc",
+                                   os.environ.get("SAMESAMECL") or "samesamecl", programs, source)
+        for program in programs:
+            for a in (0, 1, 127, 128, 255, 256, 0x9234, 65535):
+                counts = (0, 1, 7, 15, 16, 31, 127, 128, 255, 256, 257, 511)
+                if program.family not in ("unknown", "index_high"):
+                    counts += (0xff00, 65535)
+                for b in counts:
+                    initial = bytes((index*37+a+b)&255 for index in range(128))
+                    expected_buffer = bytearray(initial)
+                    if program.family.startswith("call_"):
+                        expected_buffer[0] = (expected_buffer[0]+1)&255
+                    oracle = cases[program.family][1]
+                    if oracle is None:
+                        expected = a
+                        for i in range(8):
+                            expected = ((expected+i+1)^(0x1234+i))&65535
+                        expected >>= b&7
+                    else:
+                        expected = oracle(a, b)&65535
+                    for mode, image in images.items():
+                        result = execute(image.rom, image.symbols[program.name], [a, b], [2, 2],
+                                         initial, image.symbols["ra_buffer"], 2, image.transfers,
+                                         instruction_limit=30000, frame_bytes=2048)
+                        self.assertEqual((result["value"], result["buffer"], result["port_writes"]),
+                                         (expected, expected_buffer, []), (mode, program.family, a, b))
+                        self.assertEqual(result["unmapped_instructions"], 0)
+        for mode, image in images.items():
+            if mode not in ("ra", "ra_quiet"):
+                continue
+            assembly = (directory / mode / "main.asm").read_text()
+            for program in programs:
+                selected = cases[program.family][2]
+                if selected is not None:
+                    section = assembly.split(f'.SECTION "{program.name}"')[1].split(".ENDS")[0]
+                    self.assertEqual("bounded variable word shift" in section, selected, (mode, program.family))
+
     def test_frameless_register_leaves(self):
         cases = {
             "zero": ("void", "return 0x9234;", "", lambda a, b: 0x9234, True),

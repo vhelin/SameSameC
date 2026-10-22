@@ -3631,15 +3631,77 @@ other reader/oracle/control code is AST-identical to the parent. Numerical
 oracles, CPU guards, corpus and native verifier controls remain unchanged.
 Evidence: `C:\cygwin64\tmp\register-live-in-leaves-20261022`.
 
-#### 2ad. Bounded Nonliteral Known-Bit Facts [PLANNED]
+#### 2ad. Bounded Nonliteral Known-Bit Facts [COMPLETED]
 
-SDCC r17016 `aopIsLitVal` / `aopIsLitBit` query proven bits of nonliteral operands.
-Extend existing local producer/type queries beyond 2z's literal lane patterns:
-masked shift counts, masked indices and proven zero high bytes are initial
-candidates. Preserve declared widths, signedness, overflow, aliases and
-evaluation order; narrow only proven internal work, never public source types.
-Reuse current folds and location helpers instead of adding a range framework.
-Require measured size/speed wins and unchanged unknown/effectful fallbacks.
+Following SDCC r17016 `aopIsLitVal` / `aopIsLitBit`, query proven zero bits of
+nonliteral operands using existing types and temporary producer metadata.
+One backend-local query feeds the existing location resolver, BC/index
+materializer and word-shift emitter; no new optimization pass, exported API,
+runtime helper, flag or source annotation is needed. Net production growth is
+70 C lines, including one location field and one shared bounded query.
+
+Constants and zero-extended `u8` operands provide direct facts. Follow at most
+three single-definition temporary producers, each within six intervening live
+scalar TACs in the same function/block. Reuse existing write counts/live-start
+metadata rather than guessing from a register or frame home. Supported
+producers are assignments, word AND/OR/XOR and constant unsigned word shifts.
+Calls, asm, ordinary memory/address operations and control flow end traversal;
+dead TACs, declarations and compiler spill TACs are skipped. Signed-byte
+extension and unsupported/narrow operation widths remain unknown. No public
+types, allocator ownership, aliases, evaluation order or source operations are
+rewritten.
+
+- A proven zero high byte selects the existing guarded DJNZ word-shift loop
+  for counts 0..255. Keep the zero-count guard; do not interpret zero as 256.
+  Counts with an unknown high byte retain the full BC loop. Reuse the existing
+  loop-counter proof with bounds through 255; a 256 bound remains conservative.
+- The shared BC/index materializer loads a proven-zero high byte as zero rather
+  than reading it from the frame. This also benefits its existing word
+  arithmetic callers. Physical word locations keep their current copies;
+  there is no growing one-byte register copy to immediate-zero substitution.
+- Preserve the previous single-definition AND-mask-below-16 proof independently
+  of the new query's block/distance limits. A long-lived-count probe caught the
+  initial regression; its final regression cohort retains identical costs.
+  Do not discard existing optimizations when introducing a narrower query.
+
+Against parent `fc84c37`, normal-RA focused costs over 112 calls per row are:
+
+| Shape | Function bytes | Aggregate T-states | Frame bytes |
+|---|---:|---:|---:|
+| `a << (b & 31)` | 48 -> 48 | 95744 -> 64064 (-33.09%) | 9 -> 9 |
+| `a >> (b & 255)` | 49 -> 49 | 453992 -> 278904 (-38.57%) | 9 -> 9 |
+| `a >> (b >> 8)` | 50 -> 50 | 227864 -> 145544 (-36.13%) | 9 -> 9 |
+| `(a & 255) - (b >> 8)` | 68 -> 67 | 44464 -> 43120 (-3.02%) | 13 -> 13 |
+
+The last row removes 112 high-byte frame reads, with writes unchanged. An
+independently linked pressured masked-index case shrinks 122 -> 121 bytes and
+8640 -> 8496 T-states over 12 calls; frame 17 and writes are unchanged, reads
+192 -> 180. Additional loop probes verify 16/255/256 boundaries: the 255-bound
+cohort improves 19936932 -> 12146244 T-states while the 256-bound fallback stays
+identical. Direct byte counts and some frame-backed facts also benefit
+allocator-off/all-spill modes; temporary compaction can conservatively prevent
+other nonliteral proofs there.
+
+The existing 13-kernel full/shared profiles are unchanged in every mode.
+Complete calculations-1 RA images save one byte, 17253 -> 17252
+(shared 17233 -> 17232), in the bank-switching static main display routine.
+Default calculations-1 and every calculations-2 image are unchanged. The 384
+sampled real routine/display pairs have identical runtime costs; no application
+runtime gain is claimed from the one-byte display-root saving.
+
+Qualification: 57 tests plus 24 optimized-Python policy tests per
+release/traced/ASan build; all 175 fixtures without snapshot updates; 417
+corresponding regression images identical across builds. The 24-function cohort
+checks masks, composed counts, signedness, carries, zero/255/256/257 boundaries,
+calls before/after producers, aliases, branches, asm, indices and long-lived
+legacy counts. All 13280 parent/current pairs (26560 guarded executions) have
+non-growing cycles, frame reads/writes, frame size and observed stack high-water.
+Five independently linked index/loop probes add 300 non-growing cycle/traffic
+pairs. Full/shared profiles cover 156 configurations, 2784 calls, 80 independent
+timing checks and 1392 non-growing individual SSC samples. All 32 complete
+application builds pass. Strict normal/traced C89 and Python syntax pass.
+Numerical oracles, CPU guards, corpus and native verifier controls are unchanged.
+Evidence: `C:\cygwin64\tmp\known-bit-facts-20261022`.
 
 #### 2ae. Costed Complex Scaled Induction [PLANNED]
 

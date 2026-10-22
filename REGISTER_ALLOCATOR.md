@@ -72,6 +72,20 @@ and both complete applications are unchanged; these are bounded primitive wins.
 See [step 2ac](Z80_CODEGEN_PLAN.md#2ac-register-live-in-frameless-microleaves-completed)
 for exclusions, compatibility, source reuse and full qualification.
 
+Bounded known-zero-bit queries now reuse existing types and single-definition
+temporary metadata. One shared query enables the existing guarded DJNZ shift
+loop for proven byte-sized word counts and avoids frame high-byte reloads in
+the existing BC/index materializer. Source widths and allocator ownership are
+unchanged; calls/control/memory barriers and unsupported signed/narrow shapes
+retain conservative facts, while the older long-lived masked-count proof is
+preserved. Over the focused normal-RA cohort, `a << (b & 31)` saves 33.09%
+cycles without growing code/frame size; a pressured masked index saves one
+byte and one frame-byte read per call. Existing kernel profiles are unchanged;
+the complete calculations-1 RA image saves one byte, with no measured application
+runtime gain. See
+[step 2ad](Z80_CODEGEN_PLAN.md#2ad-bounded-nonliteral-known-bit-facts-completed)
+for bounds, type/effect safeguards, costs and qualification.
+
 ---
 
 ## 0. Original Baseline: Before Allocator Implementation

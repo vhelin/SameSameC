@@ -56,6 +56,7 @@ struct z80_location {
   int phy;
   int size;
   int value;
+  int known_zero;
   char *label;
   struct tree_node *node;
 };
@@ -1359,7 +1360,7 @@ static void _shift_hl_by_bc(const struct z80_location *location, int op, int bou
     count = 1;
     loop = YES;
     if (bounded == YES) {
-      fprintf(file_out, "      ; bounded variable word shift; count proven below 16\n");
+      fprintf(file_out, "      ; bounded variable word shift; count proven below 256\n");
       fprintf(file_out, "      LD  A,B\n      OR  C\n      JR  Z,+\n");
       fprintf(file_out, "      LD  B,C\n");
     }
@@ -1627,6 +1628,7 @@ static int _resolve_z80_location(int type, char *name, int value, struct tree_no
   location->kind = RA_LOCATION_NONE;
   location->offset = 0;
   location->phy = Z80_PHY_NONE;
+  location->known_zero = 0;
   bits = get_variable_type_size(var_type);
   location->size = bits > 0 ? bits / 8 : 0;
   location->value = value;
@@ -1717,9 +1719,67 @@ static int _resolve_z80_location(int type, char *name, int value, struct tree_no
 }
 
 
+static int _get_z80_known_zero_bits(struct tac *t, int operand, int depth) {
+
+  int type = operand == TAC_USE_ARG1 ? t->arg1_type : t->arg2_type;
+  int var_type = operand == TAC_USE_ARG1 ? t->arg1_var_type : t->arg2_var_type;
+  double value = operand == TAC_USE_ARG1 ? t->arg1_d : t->arg2_d;
+  struct temp_register *temp;
+  struct tac *producer;
+  int i, distance = 0, left, right, count;
+
+  if (type == TAC_ARG_TYPE_CONSTANT)
+    return (~(int)value) & 65535;
+  if (var_type == VARIABLE_TYPE_UINT8)
+    return 65280;
+  if (depth == 0 || type != TAC_ARG_TYPE_TEMP ||
+      (var_type != VARIABLE_TYPE_UINT16 && var_type != VARIABLE_TYPE_INT16))
+    return 0;
+  temp = _find_z80_temp_register(t->function_node, (int)value);
+  if (temp == NULL || temp->write_count != 1 || temp->live_start < 0 ||
+      temp->live_start >= (int)(t - g_tacs))
+    return 0;
+  producer = &g_tacs[temp->live_start];
+  if (producer->function_node != t->function_node || producer->result_type != TAC_ARG_TYPE_TEMP ||
+      producer->result_d != value || producer->result_var_type != var_type)
+    return 0;
+  for (i = temp->live_start + 1; i < (int)(t - g_tacs); i++) {
+    int op = g_tacs[i].op;
+    if (op == TAC_OP_DEAD || op == TAC_OP_CREATE_VARIABLE || op == TAC_OP_REGISTER_SPILL)
+      continue;
+    if (++distance > 6 || (op != TAC_OP_ASSIGNMENT && op != TAC_OP_ADD && op != TAC_OP_SUB &&
+        op != TAC_OP_AND && op != TAC_OP_OR && op != TAC_OP_XOR && op != TAC_OP_COMPLEMENT &&
+        op != TAC_OP_SHIFT_LEFT && op != TAC_OP_SHIFT_RIGHT))
+      return 0;
+  }
+  left = _get_z80_known_zero_bits(producer, TAC_USE_ARG1, depth - 1);
+  if (producer->op == TAC_OP_ASSIGNMENT)
+    return left;
+  if (get_variable_type_size(producer->result_var_type_promoted) != 16)
+    return 0;
+  if (producer->op == TAC_OP_AND || producer->op == TAC_OP_OR || producer->op == TAC_OP_XOR) {
+    right = _get_z80_known_zero_bits(producer, TAC_USE_ARG2, depth - 1);
+    return producer->op == TAC_OP_AND ? left | right : left & right;
+  }
+  if ((producer->op != TAC_OP_SHIFT_LEFT && producer->op != TAC_OP_SHIFT_RIGHT) ||
+      producer->arg1_var_type_promoted != VARIABLE_TYPE_UINT16 ||
+      producer->arg2_type != TAC_ARG_TYPE_CONSTANT || producer->arg2_d < 0.0 ||
+      producer->arg2_d > 65535.0 || producer->arg2_d != (int)producer->arg2_d)
+    return 0;
+  count = (int)producer->arg2_d;
+  if (count >= 16)
+    return 65535;
+  if (count == 0)
+    return left;
+  return producer->op == TAC_OP_SHIFT_RIGHT ?
+    (left >> count) | (65535 ^ (65535 >> count)) :
+    ((left << count) | (65535 >> (16 - count))) & 65535;
+}
+
+
 static int _resolve_tac_location(struct tac *t, int which_operand, struct tree_node *function_node, struct z80_location *location) {
 
-  int type;
+  int type, status;
   int value;
   int var_type;
   int retained_physical_register;
@@ -1782,7 +1842,10 @@ static int _resolve_tac_location(struct tac *t, int which_operand, struct tree_n
   if (type != TAC_ARG_TYPE_TEMP)
     retained_physical_register = Z80_PHY_NONE;
 
-  return _resolve_z80_location(type, name, value, node, var_type, function_node, location, _get_z80_tac_operand_name(which_operand), retained_physical_register);
+  status = _resolve_z80_location(type, name, value, node, var_type, function_node, location, _get_z80_tac_operand_name(which_operand), retained_physical_register);
+  if (status == SUCCEEDED && which_operand != TAC_USE_RESULT)
+    location->known_zero = _get_z80_known_zero_bits(t, which_operand, 3);
+  return status;
 }
 
 
@@ -2090,7 +2153,10 @@ static int _materialize_array_index_to_bc(struct z80_location *location, int var
   else if (location->kind == LOC_GLOBAL || location->kind == LOC_STACK_LOCAL || location->kind == LOC_STACK_SPILL) {
     if (var_type == VARIABLE_TYPE_INT16 || var_type == VARIABLE_TYPE_UINT16) {
       _load_from_ix_to_c(ix_offset, file_out);
-      _load_from_ix_to_b(ix_offset + 1, file_out);
+      if ((location->known_zero & 65280) == 65280)
+        _load_value_to_b(0, file_out);
+      else
+        _load_from_ix_to_b(ix_offset + 1, file_out);
     }
     else {
       _load_from_ix_to_c(ix_offset, file_out);
@@ -5150,12 +5216,16 @@ static int _aaa_generate_asm_shift_left_right_z80_16bit(struct tac *t, FILE *fil
   /* hl <</>> bc */
   /******************************************************************************************************/
 
-  if (g_allocator_enabled == YES && g_allocator_force_all_spill == NO &&
+  if (t->arg1_var_type == VARIABLE_TYPE_UINT16 && arg2_location.kind != LOC_CONST &&
+      (arg2_location.known_zero & 65280) == 65280)
+    bounded = YES;
+  else if (g_allocator_enabled == YES && g_allocator_force_all_spill == NO &&
       t->arg1_var_type == VARIABLE_TYPE_UINT16 && t->arg2_type == TAC_ARG_TYPE_TEMP &&
       (t->arg2_var_type == VARIABLE_TYPE_UINT8 || t->arg2_var_type == VARIABLE_TYPE_UINT16)) {
     counter = _find_z80_temp_register(function_node, (int)t->arg2_d);
     if (counter != NULL && counter->live_start >= 0 && counter->live_start < (int)(t - g_tacs)) {
       struct tac *initial = &g_tacs[counter->live_start];
+      /* Keep the older mask proof outside the new query's bounded block. */
       if (counter->write_count == 1 && initial->function_node == function_node && initial->op == TAC_OP_AND &&
           initial->result_type == TAC_ARG_TYPE_TEMP && initial->result_d == t->arg2_d &&
           (initial->result_var_type_promoted == VARIABLE_TYPE_UINT8 ||
@@ -5163,7 +5233,7 @@ static int _aaa_generate_asm_shift_left_right_z80_16bit(struct tac *t, FILE *fil
           ((initial->arg1_type == TAC_ARG_TYPE_CONSTANT && initial->arg1_d >= 0.0 && initial->arg1_d < 16.0) ||
            (initial->arg2_type == TAC_ARG_TYPE_CONSTANT && initial->arg2_d >= 0.0 && initial->arg2_d < 16.0)))
         bounded = YES;
-      else if (_is_z80_bounded_counter(initial, function_node, 15) == YES)
+      else if (_is_z80_bounded_counter(initial, function_node, 255) == YES)
         bounded = YES;
     }
   }
