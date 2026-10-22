@@ -25,6 +25,18 @@ tradeoffs are recorded in
 [Z80 code generation step 2y](Z80_CODEGEN_PLAN.md#2y-explicit-compatible-internal-register-calls-completed).
 It does not change the allocator's general call-clobber or verifier contracts.
 
+Word logical constant-lane simplification now applies in every Z80 mode.
+Normal `-ra` additionally reuses bounded, identically typed dynamic shifts and
+their masked counts using the existing IL rewrite pass. Scalar inputs must
+remain stable; effect/control-flow barriers and a short live-range pressure
+proof keep unsupported shapes unchanged. BC-result constant logical operations
+reload their shared input into BC, preserving an unrelated HL owner.
+No production helper functions, flags or annotations were added. Tile improves
+1041 -> 1001 bytes and about 3% in aggregate cycles without growing its frame,
+but needs two extra spill-byte writes per encoding iteration. See
+[step 2z](Z80_CODEGEN_PLAN.md#2z-constant-byte-lanes-and-bounded-pure-expression-reuse-completed)
+for exact scope, full-image costs, tradeoffs and qualification.
+
 ---
 
 ## 0. Original Baseline: Before Allocator Implementation

@@ -149,7 +149,7 @@ extraction.
 - [x] **2y. Automatic compatible register calls:** select supported leaf
   arguments/results across units by default, with complete caller/callee/adapter
   costs and conservative assembly, escaped-address and old-object boundaries.
-- [ ] **2z. Constant byte lanes and bounded pure-expression reuse:** simplify
+- [x] **2z. Constant byte lanes and bounded pure-expression reuse:** simplify
   zero/identity lanes and eliminate repeated pure calculations only when
   accumulator/flags, aliases, evaluation order and register pressure permit it.
 - [ ] **3. Initial SM83 backend:** establish correct Game Boy code generation,
@@ -3327,7 +3327,7 @@ Normal/traced strict C89 checks pass. Detailed reports, parent binaries and
 source/commit qualification bindings are retained in
 `C:\cygwin64\tmp\automatic-register-calls-20261022`.
 
-#### 2z. Constant Byte Lanes And Bounded Pure-Expression Reuse [PLANNED]
+#### 2z. Constant Byte Lanes And Bounded Pure-Expression Reuse [COMPLETED]
 
 Stock SDCC r17016 `gen.c::genAnd` lowers constant zero/identity lanes directly;
 `SDCCcse.c` provides conservative assignment/expression reuse. Extend existing
@@ -3346,6 +3346,68 @@ framework.
   spills that cancel the gain.
 - Treat these as separate opportunity probes, not additive production or
   whole-ROM savings. Unsigned power-of-two folds are already implemented.
+
+**Qualified implementation (2026-10-22), relative to `5fee275`:**
+
+- Extend the existing word logical emitter for both HL and BC destinations.
+  Constant high AND-zero / OR-255 lanes become direct loads; high identity
+  lanes become copies or disappear, and high XOR-255 uses `CPL`. The following
+  low operation always overwrites A and every logical flag. Low identities
+  instead retain the exact accumulator and flags with `AND A,A` / `OR A,A`;
+  do not replace observable low zero/255 results with flag-changing shortcuts.
+  Use existing `tac_swap_args()` on a local TAC copy for constant-first forms.
+  These instruction-selection improvements apply without `-ra`.
+- Extend existing `_optimize_il_25()` rather than introduce another pass.
+  Normal RA can reuse a dynamic word shift, and its repeated AND count, within
+  six live scalar TACs. Require identical actual/promoted types, unique
+  definitions and stable scalar local/argument or constant inputs. Do not
+  common global/static, array or pointer sources. Calls, inline assembly,
+  array/pointer accesses, control flow and global/static writes stop the scan.
+  Reject another live temporary spanning the duplicate or more than one
+  intervening named result. Recount uses after each rewrite; ignore dead reads
+  in the pressure proof. Default, `-no-ra` and all-spill keep both calculations.
+- Reuse the existing split-reload policy to reload a constant word logical
+  operation's first operand into BC when its result is allocated to BC.
+  Reloading into HL would otherwise destroy an unrelated retained value.
+  The new straight-line reuse tests expose and verify this conflict with the
+  unchanged native allocation verifier. No production helper functions,
+  optimizer framework, compiler flags or source annotations were added.
+
+Final pinned Tile kernel: **1041 -> 1001 bytes**, aggregate cycles
+**1324334 -> 1284632 (-3.00%)**, stack high-water **122**, frame footprint
+**124**, unchanged. Without RA: **1703 -> 1676 bytes** and
+**3634240 -> 3614638 cycles**. Array, Stencil and Path also improve; none of
+the 13 ordinary kernels regresses in code bytes, cycles or stack footprint.
+These are final production results, not sums of the historical probes above.
+
+Independently linked, unmodified applications include all live callees,
+compatible entries/adapters and helpers:
+
+| Application | Default used bytes | RA used bytes |
+| --- | ---: | ---: |
+| calculations-1 | 22446 -> 22405 (-41) | 17339 -> 17308 (-31) |
+| calculations-2 | 38440 -> 38275 (-165) | 26389 -> 26217 (-172) |
+
+Shared arithmetic retains the same additional savings: 20 / 268 bytes
+respectively. All 108 paired complete-image samples have nonincreasing cycles
+and frame reads. **Bounded tradeoff:** retaining Tile's shared shift needs one
+two-byte spill write per encoding iteration, up to 32 extra frame-byte writes
+at count 16; its frame footprint does not grow. This also appears inside the
+bank-3 display workload, in 12 sampled RA executions including shared builds.
+Do not claim universal frame-write reduction.
+
+Qualification: 54 tests in each release/traced/ASan suite, with the affected
+word-copy snapshot rechecked in all three after improving **333 -> 325 cycles**
+and **59 -> 57 bytes**; 175 existing fixtures, with only two directly affected
+byte expectations refreshed and rechecked; original pinned comparison
+**104 rows / 1856 calls / 24 independent timings**, plus ordinary/shared
+**52 rows / 928 calls**; **14280 additional parent/current pairs / 28560
+executions**, including exact full-AF capture equality, side effects, pressure
+and alias barriers; 32 complete application builds / 108 paired real samples.
+Strict normal/traced C89, Python syntax, exact three-build image identity,
+default/no-RA and traced/quiet-RA identity remain qualified. Numerical oracles,
+CPU guards, compiler-comparison corpus and native verifier controls are
+unchanged. Evidence: `C:\cygwin64\tmp\constant-lanes-reuse-20261022`.
 
 The comparison, exact instruction ledger, ROM-identical dynamic annotations,
 source provenance and three private probes for 2w-2z are retained in

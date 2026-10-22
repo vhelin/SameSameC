@@ -16,6 +16,111 @@ from ra_cpu import execute
 
 
 class BranchConditionsTests(unittest.TestCase):
+    def test_constant_word_lanes(self):
+        programs, oracles = [], {}
+        for operation, symbol in (("and", "&"), ("or", "|"), ("xor", "^")):
+            for mask in (0, 1, 0x80, 0xff, 0xff00, 0xffff, 0x1234, 0x8000):
+                for reverse in (False, True):
+                    expression = f"{mask}{symbol}value" if reverse else f"value{symbol}{mask}"
+                    for captured in (False, True):
+                        name = f"lane_{operation}_{mask}_{int(reverse)}_{int(captured)}"
+                        snapshot = ('__asm("PUSH AF","POP BC","LD HL,ra_buffer",'
+                                    '"LD (HL),C","INC HL","LD (HL),B");') if captured else ""
+                        programs.append(Program(name, operation, int(captured), mask, [2, 2], 2, [],
+                                                f"u16 {name}(u16 a,u16 b) {{ u16 value=a+b; "
+                                                f"u16 result={expression}; {snapshot} "
+                                                f"return result{'' if captured else '^b'}; }}"))
+                        oracles[name] = lambda a, b, mask=mask, symbol=symbol, captured=captured: (
+                            {"&": lambda x: x&mask, "|": lambda x: x|mask, "^": lambda x: x^mask}[symbol](
+                                (a+b)&65535)^(0 if captured else b))&65535
+        source = "u8 ra_buffer[128];\n"+"\n".join(program.source for program in programs)+"\nvoid main(void) {}\n"
+        images = compile_generated(self.output / "constant-word-lanes",
+                                   os.environ.get("SAMESAMECC") or "samesamecc",
+                                   os.environ.get("SAMESAMECL") or "samesamecl", programs, source)
+        for mode, image in images.items():
+            assembly = (self.output / "constant-word-lanes" / mode / "main.asm").read_text()
+            self.assertNotRegex(assembly, r"LD  A,0\n      AND A,[HB]\n      LD  [HB],A")
+            self.assertNotRegex(assembly, r"LD  A,255\n      XOR A,[HB]\n      LD  [HB],A")
+            self.assertIn("      CPL\n", assembly)
+            for program in programs:
+                for a in (0, 1, 127, 128, 255, 256, 0x7fff, 0x8000, 0xff00, 65535):
+                    for b in (0, 1, 0x9234, 65535):
+                        initial = bytes((index*37+a+b)&255 for index in range(128))
+                        result = execute(image.rom, image.symbols[program.name], [a, b], [2, 2], initial,
+                                         image.symbols["ra_buffer"], 2, image.transfers, frame_bytes=2048)
+                        expected = oracles[program.name](a, b)
+                        self.assertEqual((result["value"], result["unmapped_instructions"]),
+                                         (expected, 0), (program.name, mode, a, b))
+                        if program.variant:
+                            low = expected&255
+                            flags = (low&128) | (64 if low == 0 else 0) | (4 if low.bit_count()%2 == 0 else 0)
+                            self.assertEqual((result["buffer"][0]&0xc4, result["buffer"][1], result["buffer"][2:]),
+                                             (flags, low, initial[2:]), (program.name, mode, a, b))
+                        else:
+                            self.assertEqual(result["buffer"], initial, (program.name, mode, a, b))
+
+    def test_bounded_pure_expression_reuse(self):
+        cases = {
+            "masked": ("u16 first=1+((a>>(b&7))&3); return first+((a>>(b&7))&1);",
+                       lambda a, b: 1+((a>>(b&7))&3)+((a>>(b&7))&1), True),
+            "left": ("u16 first=1+((a<<(b&7))&3); return first+((a<<(b&7))&1);",
+                     lambda a, b: 1+((a<<(b&7))&3)+((a<<(b&7))&1), True),
+            "direct": ("u16 count=b&7; u16 first=1+((a>>count)&3); return first+((a>>count)&1);",
+                       lambda a, b: 1+((a>>(b&7))&3)+((a>>(b&7))&1), True),
+            "changed_value": ("u16 first=1+((a>>(b&7))&3); a++; return first+((a>>(b&7))&1);",
+                              lambda a, b: 1+((a>>(b&7))&3)+((((a+1)&65535)>>(b&7))&1), False),
+            "changed_count": ("u16 first=1+((a>>(b&7))&3); b++; return first+((a>>(b&7))&1);",
+                              lambda a, b: 1+((a>>(b&7))&3)+((a>>((b+1)&7))&1), False),
+            "call": ("u16 first=1+((a>>(b&7))&3); a=reuse_touch(a); return first+((a>>(b&7))&1);",
+                     lambda a, b: 1+((a>>(b&7))&3)+((((a+1)&65535)>>(b&7))&1), False),
+            "assembly": ('u16 first=1+((a>>(b&7))&3); __asm("NOP"); return first+((a>>(b&7))&1);',
+                         lambda a, b: 1+((a>>(b&7))&3)+((a>>(b&7))&1), False),
+            "alias": ("u16 *pointer=&a; u16 first=1+((a>>(b&7))&3); pointer[0]=a+1; "
+                      "return first+((pointer[0]>>(b&7))&1);",
+                      lambda a, b: 1+((a>>(b&7))&3)+((((a+1)&65535)>>(b&7))&1), False),
+            "store": ("u16 first=1+((a>>(b&7))&3); ra_buffer[1]=a; return first+((a>>(b&7))&1);",
+                      lambda a, b: 1+((a>>(b&7))&3)+((a>>(b&7))&1), False),
+            "branch": ("u16 first=1+((a>>(b&7))&3); if(b&1) { a++; } return first+((a>>(b&7))&1);",
+                       lambda a, b: 1+((a>>(b&7))&3)+((((a+(b&1))&65535)>>(b&7))&1), False),
+            "narrow": ("u8 first=a>>(b&7); return first+((a>>(b&7))&1);",
+                       lambda a, b: ((a>>(b&7))&255)+((a>>(b&7))&1), False),
+            "pressure": ("u16 first=1+((a>>(b&7))&3); u16 extra=a+b; "
+                         "return first+((a>>(b&7))&1)+extra;",
+                         lambda a, b: 1+((a>>(b&7))&3)+((a>>(b&7))&1)+a+b, False),
+            "temp_pressure": ("return (1+((a>>(b&7))&3))+((a>>(b&7))&1);",
+                              lambda a, b: 1+((a>>(b&7))&3)+((a>>(b&7))&1), False),
+        }
+        programs = [Program(f"reuse_{name}", name, 0, 0, [2, 2], 2, [],
+                            f"u16 reuse_{name}(u16 a,u16 b) {{ {body} }}")
+                    for name, (body, _, _) in cases.items()]
+        source = ("u8 ra_buffer[128]; u16 reuse_touch(u16 value) { ra_buffer[0]=ra_buffer[0]+1; return value+1; }\n"+
+                  "\n".join(program.source for program in programs)+"\nvoid main(void) {}\n")
+        images = compile_generated(self.output / "bounded-expression-reuse",
+                                   os.environ.get("SAMESAMECC") or "samesamecc",
+                                   os.environ.get("SAMESAMECL") or "samesamecl", programs, source)
+        for mode, image in images.items():
+            assembly = (self.output / "bounded-expression-reuse" / mode / "main.asm").read_text()
+            for program in programs:
+                body = assembly.split(f'.SECTION "{program.name}" FREE', 1)[1].split(".ENDS", 1)[0]
+                shifts = len(re.findall(r"; TAC:.* (?:>>|<<) ", body))
+                self.assertEqual(shifts, 1 if mode.startswith("ra") and cases[program.family][2] else 2,
+                                 (program.name, mode))
+                if mode.startswith("ra") and cases[program.family][2]:
+                    self.assertIn("; reload arg1 from spill slot into BC", body)
+                for a in (0, 1, 127, 128, 255, 256, 0x7fff, 0x8000, 65535):
+                    for b in (0, 1, 3, 7, 8, 15, 255, 65535):
+                        initial = bytes((index*37+a+b)&255 for index in range(128))
+                        expected_buffer = bytearray(initial)
+                        if program.family == "call":
+                            expected_buffer[0] = (initial[0]+1)&255
+                        if program.family == "store":
+                            expected_buffer[1] = a&255
+                        result = execute(image.rom, image.symbols[program.name], [a, b], [2, 2], initial,
+                                         image.symbols["ra_buffer"], 2, image.transfers, frame_bytes=2048)
+                        self.assertEqual((result["value"], result["buffer"], result["unmapped_instructions"]),
+                                         (cases[program.family][1](a, b)&65535, expected_buffer, 0),
+                                         (program.name, mode, a, b))
+
     def test_automatic_register_calls(self):
         cases = {
             "zero": ("return er_zero()+a+b;", lambda a, b: 0x9234+a+b),
@@ -883,7 +988,7 @@ u16 rc_four(u16 a,u16 b,u16 c,u16 d) { return a+b+c+d; }
                                          (expected, initial, []), (program.name, mode, index, b))
                         self.assertEqual(result["unmapped_instructions"], 0)
                         if program.family == "arguments" and mode in ("ra", "ra_quiet"):
-                            self.assertEqual(result["cycles"], 333, (program.name, mode, index, b))
+                            self.assertEqual(result["cycles"], 325, (program.name, mode, index, b))
                         calls += 1
         print(f"Retained word frame-copy oracle executions: {calls}", flush=True)
         for mode in images["plain"]:
@@ -915,7 +1020,7 @@ u16 rc_four(u16 a,u16 b,u16 c,u16 d) { return a+b+c+d; }
                     else:
                         self.assertIn(f"LD  IY,{offset}", copy[2], (program.name, mode))
                     if program.family == "arguments":
-                        self.assertEqual(images[program.family][mode].staticMetrics["functions"][program.name]["rom_bytes"], 59)
+                        self.assertEqual(images[program.family][mode].staticMetrics["functions"][program.name]["rom_bytes"], 57)
                 else:
                     self.assertIn(f"LD  IY,{offset}", copy[2], (program.name, mode))
             self.assertTrue(set(range(-130, -124)).issubset(offsets), (mode, offsets))

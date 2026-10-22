@@ -907,19 +907,46 @@ static void _xor_from_ix_to_a(int offset, FILE *file_out) {
 }
 
 
-static void _bitwise_hl(FILE *file_out, int op, int result_in_bc, struct z80_location *constant) {
+static void _bitwise_word(FILE *file_out, int op, int source_in_bc, int result_in_bc, struct z80_location *constant) {
 
   char *mnemonic = op == TAC_OP_OR ? "OR " : op == TAC_OP_XOR ? "XOR" : "AND";
   int byte_offset;
 
   for (byte_offset = 1; byte_offset >= 0; byte_offset--) {
+    char *source = source_in_bc == YES ? (byte_offset ? "B" : "C") : (byte_offset ? "H" : "L");
+    char *result = result_in_bc == YES ? (byte_offset ? "B" : "C") : (byte_offset ? "H" : "L");
+    int value = constant == NULL ? -1 : (constant->value >> (byte_offset * 8)) & 255;
+    int identity = (op == TAC_OP_AND && value == 255) ||
+      ((op == TAC_OP_OR || op == TAC_OP_XOR) && value == 0);
+
+    /* The low lane overwrites A and all logical flags after a high-lane fold. */
+    if (byte_offset == 1 && constant != NULL) {
+      if ((op == TAC_OP_AND && value == 0) || (op == TAC_OP_OR && value == 255)) {
+        fprintf(file_out, "      LD  %s,%d\n", result, value);
+        continue;
+      }
+      if (identity) {
+        if (source_in_bc != result_in_bc)
+          fprintf(file_out, "      LD  %s,%s\n", result, source);
+        continue;
+      }
+      if (op == TAC_OP_XOR && value == 255) {
+        fprintf(file_out, "      LD  A,%s\n      CPL\n      LD  %s,A\n", source, result);
+        continue;
+      }
+    }
+    if (byte_offset == 0 && identity) {
+      fprintf(file_out, "      LD  A,%s\n      %s A,A\n", source, op == TAC_OP_AND ? "AND" : "OR ");
+      if (source_in_bc != result_in_bc)
+        fprintf(file_out, "      LD  %s,A\n", result);
+      continue;
+    }
     if (constant == NULL)
       fprintf(file_out, "      LD  A,%s\n", byte_offset == 1 ? "B" : "C");
     else
-      fprintf(file_out, "      LD  A,%d\n", (constant->value >> (byte_offset * 8)) & 255);
-    fprintf(file_out, "      %s A,%s\n", mnemonic, byte_offset == 1 ? "H" : "L");
-    fprintf(file_out, "      LD  %s,A\n", result_in_bc == YES ?
-        (byte_offset == 1 ? "B" : "C") : (byte_offset == 1 ? "H" : "L"));
+      fprintf(file_out, "      LD  A,%d\n", value);
+    fprintf(file_out, "      %s A,%s\n", mnemonic, source);
+    fprintf(file_out, "      LD  %s,A\n", result);
   }
 }
 
@@ -3027,6 +3054,7 @@ static int _is_z80_bounded_counter(struct tac *t, struct tree_node *function_nod
 
 static int _aaa_generate_asm_add_sub_or_xor_and_z80_16bit(struct tac *t, FILE *file_out, struct tree_node *function_node, int op) {
 
+  struct tac swapped;
   struct z80_location result_location;
   struct z80_location arg1_location;
   struct z80_location arg2_location;
@@ -3034,6 +3062,13 @@ static int _aaa_generate_asm_add_sub_or_xor_and_z80_16bit(struct tac *t, FILE *f
   int ix_offset = 0;
   int arg1_in_hl = NO, arg2_in_hl = NO, result_in_hl = NO, constant_step = 0;
   int arg1_in_bc = NO, arg2_in_bc = NO, result_in_bc = NO;
+
+  if ((op == TAC_OP_AND || op == TAC_OP_OR || op == TAC_OP_XOR) &&
+      t->arg1_type == TAC_ARG_TYPE_CONSTANT && t->arg2_type != TAC_ARG_TYPE_CONSTANT) {
+    swapped = *t;
+    tac_swap_args(&swapped);
+    t = &swapped;
+  }
 
   /* result */
 
@@ -3098,8 +3133,6 @@ static int _aaa_generate_asm_add_sub_or_xor_and_z80_16bit(struct tac *t, FILE *f
   if (op == TAC_OP_AND || op == TAC_OP_OR || op == TAC_OP_XOR) {
     if (arg2_location.kind == LOC_CONST)
       constant_operand = &arg2_location;
-    else if (arg1_location.kind == LOC_CONST && arg2_in_hl == YES)
-      constant_operand = &arg1_location;
   }
 
   if (result_in_bc == YES && (op == TAC_OP_AND || op == TAC_OP_OR || op == TAC_OP_XOR) &&
@@ -3124,7 +3157,9 @@ static int _aaa_generate_asm_add_sub_or_xor_and_z80_16bit(struct tac *t, FILE *f
     if ((arg2_location.kind == LOC_GLOBAL || arg2_location.kind == LOC_STACK_LOCAL || arg2_location.kind == LOC_STACK_SPILL) &&
         _load_location_address_to_ix(&arg2_location, &ix_offset, file_out) == FAILED)
       return FAILED;
-    for (byte_offset = 1; byte_offset >= 0; byte_offset--) {
+    if (arg2_location.kind == LOC_CONST)
+      _bitwise_word(file_out, op, YES, YES, &arg2_location);
+    else for (byte_offset = 1; byte_offset >= 0; byte_offset--) {
       if (byte_offset == 1 && t->arg2_var_type == VARIABLE_TYPE_UINT8 && arg2_location.kind != LOC_CONST)
         _load_value_to_a(0, file_out);
       else if (arg2_location.kind == LOC_GLOBAL || arg2_location.kind == LOC_STACK_LOCAL || arg2_location.kind == LOC_STACK_SPILL)
@@ -3290,7 +3325,7 @@ static int _aaa_generate_asm_add_sub_or_xor_and_z80_16bit(struct tac *t, FILE *f
       _sub_bc_from_hl(file_out);
   }
   else if (op == TAC_OP_OR || op == TAC_OP_XOR || op == TAC_OP_AND)
-    _bitwise_hl(file_out, op, result_in_bc, constant_operand);
+    _bitwise_word(file_out, op, NO, result_in_bc, constant_operand);
   else {
     fprintf(stderr, "_aaa_generate_asm_add_sub_or_xor_and_z80_16bit(): Unsupported TAC op %d! Please submit a bug report!\n", op);
     return FAILED;

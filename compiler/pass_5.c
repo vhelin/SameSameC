@@ -49,6 +49,7 @@ static int _is_register_allocator_jump_op(int op);
 static int _is_first_allocator_producer(int op);
 static int _is_first_allocator_consumer(int op);
 static int _is_register_allocator_linear_scan_producer(struct tac *producer);
+static int _tac_reads_temp_register(struct tac *t, int register_index);
 
 static void _debug_register_allocator_temp_compaction_stage(char *stage);
 
@@ -2139,6 +2140,138 @@ static int _optimize_il_25(int *optimizations_counter) {
         g_tacs[next].op = TAC_OP_ASSIGNMENT;
         g_tacs[current].op = TAC_OP_DEAD;
         (*optimizations_counter)++;
+      }
+
+      if (g_backend == BACKEND_Z80 && g_allocator_enabled == YES && g_allocator_force_all_spill == NO &&
+          g_tacs[start].is_function == YES && g_tacs[start].function_node != NULL &&
+          strcmp(g_tacs[start].function_node->children[1]->label, "mainmain") != 0 &&
+          (g_tacs[current].op == TAC_OP_AND ||
+           ((g_tacs[current].op == TAC_OP_SHIFT_LEFT || g_tacs[current].op == TAC_OP_SHIFT_RIGHT) &&
+            g_tacs[current].arg2_type != TAC_ARG_TYPE_CONSTANT)) &&
+          g_tacs[current].result_type == TAC_ARG_TYPE_TEMP &&
+          g_register_writes[(int)g_tacs[current].result_d] == 1 &&
+          g_register_reads[(int)g_tacs[current].result_d] == 1 &&
+          (g_tacs[current].result_var_type_promoted == VARIABLE_TYPE_UINT16 ||
+           g_tacs[current].result_var_type_promoted == VARIABLE_TYPE_INT16)) {
+        struct tac *producer = &g_tacs[current], *first_use = &g_tacs[next];
+        int scan, distance = 0, operand_count = producer->op == TAC_OP_AND ? 3 : 2;
+
+        if (producer->op == TAC_OP_AND &&
+            ((first_use->op != TAC_OP_SHIFT_LEFT && first_use->op != TAC_OP_SHIFT_RIGHT) ||
+             first_use->arg2_type != TAC_ARG_TYPE_TEMP || first_use->arg2_d != producer->result_d ||
+             first_use->result_type != TAC_ARG_TYPE_TEMP ||
+             g_register_reads[(int)first_use->result_d] != 1 ||
+             g_register_writes[(int)first_use->result_d] != 1)) {
+          i = next;
+          continue;
+        }
+        for (scan = next; scan < end && distance < 6; scan++) {
+          struct tac *candidate = &g_tacs[scan];
+          int operand, stable = YES, match = YES, second_use = _find_next_living_tac(scan + 1);
+
+          if (candidate->op == TAC_OP_DEAD || candidate->op == TAC_OP_CREATE_VARIABLE)
+            continue;
+          distance++;
+          if ((_is_first_allocator_producer(candidate->op) == NO &&
+               candidate->op != TAC_OP_ASSIGNMENT && candidate->op != TAC_OP_SHIFT_LEFT &&
+               candidate->op != TAC_OP_SHIFT_RIGHT) ||
+              (candidate->result_type == TAC_ARG_TYPE_TEMP && candidate->result_d == producer->result_d) ||
+              (candidate->result_type == TAC_ARG_TYPE_LABEL && (candidate->result_node == NULL ||
+               (candidate->result_node->flags & (TREE_NODE_FLAG_GLOBAL | TREE_NODE_FLAG_STATIC)) != 0)))
+            break;
+          if (candidate->op != producer->op || candidate->result_type != TAC_ARG_TYPE_TEMP ||
+              candidate->result_var_type != producer->result_var_type ||
+              candidate->result_var_type_promoted != producer->result_var_type_promoted ||
+              g_register_writes[(int)candidate->result_d] != 1)
+            match = NO;
+          if (producer->op == TAC_OP_AND &&
+              (second_use < 0 || second_use >= end || g_tacs[second_use].op != first_use->op ||
+               g_tacs[second_use].arg2_type != TAC_ARG_TYPE_TEMP ||
+               g_tacs[second_use].arg2_d != candidate->result_d ||
+               g_tacs[second_use].result_type != TAC_ARG_TYPE_TEMP ||
+               g_tacs[second_use].result_var_type != first_use->result_var_type ||
+               g_tacs[second_use].result_var_type_promoted != first_use->result_var_type_promoted ||
+               g_register_writes[(int)g_tacs[second_use].result_d] != 1))
+            match = NO;
+          for (operand = 0; operand < operand_count; operand++) {
+            struct tac *left = operand == 2 ? first_use : producer;
+            struct tac *right = operand == 2 && second_use >= 0 ? &g_tacs[second_use] : candidate;
+            int type = operand == 1 ? left->arg2_type : left->arg1_type;
+            int other_type = operand == 1 ? right->arg2_type : right->arg1_type;
+            double value = operand == 1 ? left->arg2_d : left->arg1_d;
+            double other_value = operand == 1 ? right->arg2_d : right->arg1_d;
+            struct tree_node *node = operand == 1 ? left->arg2_node : left->arg1_node;
+            struct tree_node *other_node = operand == 1 ? right->arg2_node : right->arg1_node;
+            int var_type = operand == 1 ? left->arg2_var_type : left->arg1_var_type;
+            int other_var_type = operand == 1 ? right->arg2_var_type : right->arg1_var_type;
+            int promoted = operand == 1 ? left->arg2_var_type_promoted : left->arg1_var_type_promoted;
+            int other_promoted = operand == 1 ? right->arg2_var_type_promoted : right->arg1_var_type_promoted;
+
+            if (type == TAC_ARG_TYPE_LABEL) {
+              if (node == NULL || (node->type != TREE_NODE_TYPE_CREATE_VARIABLE &&
+                  node->type != TREE_NODE_TYPE_CREATE_VARIABLE_FUNCTION_ARGUMENT) ||
+                  (node->flags & (TREE_NODE_FLAG_GLOBAL | TREE_NODE_FLAG_STATIC)) != 0 ||
+                  node->value != 0 || node->children[0]->value_double != 0.0 ||
+                  (candidate->result_type == TAC_ARG_TYPE_LABEL && candidate->result_node == node))
+                stable = NO;
+            }
+            else if (type == TAC_ARG_TYPE_TEMP) {
+              if (g_register_writes[(int)value] != 1 ||
+                  (candidate->result_type == TAC_ARG_TYPE_TEMP && candidate->result_d == value))
+                stable = NO;
+            }
+            else if (type != TAC_ARG_TYPE_CONSTANT)
+              stable = NO;
+            if (type != other_type || var_type != other_var_type || promoted != other_promoted ||
+                (type == TAC_ARG_TYPE_LABEL ? node != other_node : value != other_value))
+              match = NO;
+          }
+          if (stable == NO)
+            break;
+          if (match == YES) {
+            int j, k, named_results = 0;
+            /* Do not keep another intermediate alive across the reused value. */
+            for (j = current + 1; j < scan && match == YES; j++) {
+              if (g_tacs[j].op == TAC_OP_DEAD || g_tacs[j].op == TAC_OP_CREATE_VARIABLE)
+                continue;
+              if (g_tacs[j].result_type == TAC_ARG_TYPE_LABEL && ++named_results > 1)
+                match = NO;
+              if (g_tacs[j].result_type != TAC_ARG_TYPE_TEMP)
+                continue;
+              if (g_register_reads[(int)g_tacs[j].result_d] != 1)
+                match = NO;
+              for (k = j + 1; k <= scan; k++)
+                if (g_tacs[k].op != TAC_OP_DEAD &&
+                    _tac_reads_temp_register(&g_tacs[k], (int)g_tacs[j].result_d) == YES)
+                  break;
+              if (k > scan)
+                match = NO;
+            }
+            if (match == NO)
+              continue;
+            if (tac_set_arg1(candidate, TAC_ARG_TYPE_TEMP, producer->result_d, NULL) == FAILED)
+              return FAILED;
+            free(candidate->arg1_s);
+            candidate->arg1_s = NULL;
+            candidate->arg1_node = NULL;
+            candidate->arg1_var_type = producer->result_var_type;
+            candidate->arg1_var_type_promoted = producer->result_var_type_promoted;
+            candidate->op = TAC_OP_ASSIGNMENT;
+            candidate->arg2_type = TAC_ARG_TYPE_CONSTANT;
+            candidate->arg2_d = 0;
+            candidate->arg2_original_register_index = -1;
+            candidate->arg2_var_type = VARIABLE_TYPE_NONE;
+            candidate->arg2_var_type_promoted = VARIABLE_TYPE_NONE;
+            candidate->arg2_node = NULL;
+            free(candidate->arg2_s);
+            candidate->arg2_s = NULL;
+            (*optimizations_counter)++;
+            RA_TRACE((stderr, "register_allocator: pure_expression_reuse function=%s producer_tac=%d reused_tac=%d op=%d scope=bounded_block\n",
+                      g_tacs[start].function_node->children[1]->label, current, scan, producer->op));
+            /* Recount uses before another rewrite can consume the shared temp. */
+            return SUCCEEDED;
+          }
+        }
       }
 
       i = next;
@@ -4473,8 +4606,13 @@ static int _get_z80_register_allocator_split_reload_physical_register(struct tac
     int type = consumer_arg == TAC_USE_ARG1 ? consumer->arg1_var_type_promoted : consumer->arg2_var_type_promoted;
     if (size == 8 && (type == VARIABLE_TYPE_UINT8 || type == VARIABLE_TYPE_INT8))
       return consumer_arg == TAC_USE_ARG1 ? Z80_PHY_A : Z80_PHY_C;
-    if (size == 16 && (type == VARIABLE_TYPE_UINT16 || type == VARIABLE_TYPE_INT16))
+    if (size == 16 && (type == VARIABLE_TYPE_UINT16 || type == VARIABLE_TYPE_INT16)) {
+      if (consumer_arg == TAC_USE_ARG1 && consumer->result_physical_register == Z80_PHY_BC &&
+          consumer->arg2_type == TAC_ARG_TYPE_CONSTANT &&
+          (consumer->op == TAC_OP_AND || consumer->op == TAC_OP_OR || consumer->op == TAC_OP_XOR))
+        return Z80_PHY_BC;
       return consumer_arg == TAC_USE_ARG1 ? Z80_PHY_HL : Z80_PHY_BC;
+    }
     return Z80_PHY_NONE;
   }
   if (consumer->op == TAC_OP_ASSIGNMENT && consumer_arg == TAC_USE_ARG1 && size == 16 &&
