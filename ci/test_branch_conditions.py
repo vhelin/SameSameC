@@ -16,6 +16,118 @@ from ra_cpu import execute
 
 
 class BranchConditionsTests(unittest.TestCase):
+    def test_scaled_word_byte_reductions(self):
+        cases = {
+            "dynamic": True, "one": True, "two": True, "sixteen": True,
+            "zero": False, "max_byte": True, "word_bound": True, "wide": True,
+            "dynamic_wide": True, "alias": True, "live_counter": True,
+            "low_mask": True, "high_mask": True, "wrap_mask": True,
+            "identity": True, "signed_word": False, "signed_byte": False,
+            "signed_sum": False, "signed_counter": False, "byte_counter": False,
+            "pointer_word": False, "reverse": False, "stride": False, "row": False,
+            "write": False, "call": False, "branch": False, "continue": False,
+            "break": False, "escaped": False, "assembly": False, "pressure": False,
+            "far": False, "changing_bound": False, "full_word": False,
+        }
+        fixed_counts = {"zero": 0, "one": 1, "two": 2, "sixteen": 16,
+                        "max_byte": 255, "word_bound": 256, "wide": 257, "full_word": 65535}
+        global_cases = {"max_byte", "word_bound", "wide", "dynamic_wide", "alias", "pointer_word"}
+        masks = {"low_mask": 15, "high_mask": 0xff00, "wrap_mask": 0x8001,
+                 "identity": 65535, "changing_bound": 1}
+        words = [(index*0x1234 ^ 65535) & 65535 for index in range(512)]
+        word_bytes = b"".join(value.to_bytes(2, "little") for value in words)
+        programs = []
+        for name in cases:
+            size = 32 if name == "stride" else 16
+            prefix = ("u16 *values=scaled_words;" if name == "pointer_word" else "" if name in global_cases else
+                      f"u16 values[{size}]; for(k=0;k<{size};k++) {{ values[k]=(a+k*0x1234)^65535; }}")
+            array = "scaled_words" if name in global_cases and name != "pointer_word" else "values"
+            index = "i*2" if name == "stride" else "(i&3)*4+(i>>2)" if name == "row" else "i"
+            sources = f"bytes[i]+{array}[{index}]" if name == "reverse" else f"{array}[{index}]+bytes[i]"
+            body = f"sum=(sum+{sources})&{masks.get(name, 0x1fff)};"
+            before = {
+                "write": "bytes[i]=bytes[i]+1;", "call": "sum=scaled_touch(sum);",
+                "branch": "if(i&1) { sum^=7; }", "continue": "if(i==3) { continue; }",
+                "break": "if(i==3) { break; }",
+            }.get(name, "")
+            after = "if(i==15) { break; }" if name == "full_word" else ""
+            extra = {"escaped": "scaled_escape(&sum);", "assembly": '__asm("NOP");',
+                     "pressure": "u16 held=a^b;", "far": "workspace[259]=a;"}.get(name, "")
+            suffix = ("+i" if name in ("live_counter", "break", "full_word") else
+                      "+held" if name == "pressure" else "+workspace[259]" if name == "far" else "")
+            bound = "sum" if name == "changing_bound" else str(fixed_counts.get(name, "b"))
+            source = (f"u16 scaled_{name}(u16 a,u16 b,{'s8' if name == 'signed_byte' else 'u8'} *bytes) {{ "
+                      f"{'u8 workspace[260];' if name == 'far' else ''} u16 k; {prefix} "
+                      f"{'s16' if name == 'signed_sum' else 'u16'} sum=a&{15 if name == 'changing_bound' else 8191}; "
+                      f"{'s16' if name == 'signed_counter' else 'u8' if name == 'byte_counter' else 'u16'} i; "
+                      f"{extra} for(i=0;i<{bound};i++) {{ {before} {body} {after} }} return sum{suffix}; }}")
+            if name == "signed_word":
+                source = source.replace("u16 values[", "s16 values[")
+            programs.append(Program(f"scaled_{name}", name, 0, 0, [2, 2, 2], 2, [], source))
+        source = ("u8 ra_buffer[1024];\nconst u16 scaled_words[512]={" +
+                  ",".join(map(str, words)) + "};\n"
+                  "u16 scaled_touch(u16 value) { return value^7; }\n"
+                  "void scaled_escape(u16 *value) { value[0]^=0x1234; }\n" +
+                  "\n".join(program.source for program in programs) + "\nvoid main(void) {}\n")
+        directory = self.output / "scaled-word-byte-reductions"
+        images = compile_generated(directory, os.environ.get("SAMESAMECC") or "samesamecc",
+                                   os.environ.get("SAMESAMECL") or "samesamecl", programs, source)
+        for program in programs:
+            name = program.family
+            counts = (0, 1, 2, 16, 255, 256, 257, 512) if name == "dynamic_wide" else (0, 1, 2, 7, 15, 16)
+            for a in (0, 1, 0x7fff, 0x8000, 0xffff, 0xa5a5):
+                for b in counts:
+                    initial = bytes((index*29+a+b) & 255 for index in range(1024))
+                    expected_buffer = bytearray(initial)
+                    values = words if name in global_cases else [
+                        ((a+index*0x1234) ^ 65535) & 65535 for index in range(32)]
+                    sum_value = a & (15 if name == "changing_bound" else 8191)
+                    if name == "escaped":
+                        sum_value ^= 0x1234
+                    count = fixed_counts.get(name, b)
+                    if name == "changing_bound":
+                        count = int(sum_value != 0)
+                    counter = 0
+                    for index in range(min(count, 16) if name == "full_word" else count):
+                        counter = index
+                        if name == "break" and index == 3:
+                            break
+                        if name == "continue" and index == 3:
+                            continue
+                        if name == "write":
+                            expected_buffer[index] = (expected_buffer[index]+1) & 255
+                        if name == "call" or name == "branch" and index & 1:
+                            sum_value ^= 7
+                        word_index = index*2 if name == "stride" else (index & 3)*4+(index >> 2) if name == "row" else index
+                        byte_value = word_bytes[index+1] if name == "alias" else expected_buffer[index]
+                        if name == "signed_byte" and byte_value & 128:
+                            byte_value -= 256
+                        sum_value = (sum_value+values[word_index]+byte_value) & masks.get(name, 0x1fff)
+                    else:
+                        counter = count
+                    if name in ("live_counter", "break", "full_word"):
+                        sum_value += 15 if name == "full_word" else counter
+                    elif name == "pressure":
+                        sum_value += a ^ b
+                    elif name == "far":
+                        sum_value += a & 255
+                    for mode, image in images.items():
+                        address = image.symbols["ra_buffer"]
+                        pointer = image.symbols["scaled_words"]+1 if name == "alias" else address
+                        result = execute(image.rom, image.symbols[program.name], [a, b, pointer], [2, 2, 2],
+                                         initial, address, 2, image.transfers,
+                                         instruction_limit=100000, frame_bytes=1024)
+                        self.assertEqual((result["value"], result["buffer"], result["port_writes"]),
+                                         (sum_value & 65535, expected_buffer, []), (name, mode, a, b))
+                        self.assertEqual(result["unmapped_instructions"], 0, (name, mode))
+        if os.environ.get("RA_BASELINE") != "1":
+            for mode in images:
+                assembly = (directory / mode / "main.asm").read_text()
+                for program in programs:
+                    body = assembly.split(f'.SECTION "{program.name}" FREE')[1].split(".ENDS")[0]
+                    self.assertEqual("; advancing scaled word-byte sum loop" in body,
+                                     mode in ("ra", "ra_quiet") and cases[program.family], (mode, program.family))
+
     def test_word_quotient_carriers(self):
         def divide(a, b, mask=65535):
             return divmod(a, b) if b else (mask, a)

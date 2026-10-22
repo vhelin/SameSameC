@@ -162,7 +162,7 @@ extraction.
 - [ ] **2ad. Bounded nonliteral known-bit facts:** extend existing producer
   queries beyond literal lanes without changing arithmetic widths or adding a
   global range-analysis framework.
-- [ ] **2ae. Costed complex scaled induction:** revisit the deferred multi-access
+- [x] **2ae. Costed complex scaled induction:** revisit the deferred multi-access
   loops using existing counter/address proofs, including pressure and call costs.
 - [ ] **3. Initial SM83 backend:** establish correct Game Boy code generation,
   target-specific addressing/spills/calls and execution tests. Use actual
@@ -3703,15 +3703,91 @@ application builds pass. Strict normal/traced C89 and Python syntax pass.
 Numerical oracles, CPU guards, corpus and native verifier controls are unchanged.
 Evidence: `C:\cygwin64\tmp\known-bit-facts-20261022`.
 
-#### 2ae. Costed Complex Scaled Induction [PLANNED]
+#### 2ae. Costed Complex Scaled Induction [COMPLETED]
 
-Revisit the multi-access row/scaled loops conservatively deferred in 2p.
-SDCC r17016 `SDCCloop.c::loopInduction` replaces repeated scaling with recurrence;
-SameSameC's constant multiplication itself is already implemented efficiently.
-Use existing loop/address machinery to advance values or addresses only when
-bounds, wraparound, aliases, control flow and calls permit it. Include the cost
-of every extra live value, spill and preservation operation; do not trade a
-cheap shift/add chain for greater frame traffic.
+Revisited the multi-access scaled loops conservatively deferred in 2p, using
+SDCC r17016 `SDCCloop.c::loopInduction` as the recurrence precedent. Extend the
+existing bounded-loop matcher/emitter rather than adding an induction pass,
+helper function or another cost framework. Constant multiplication and general
+row/stencil loops are unchanged.
+
+**Selected scope.** Normal `-ra` recognizes the existing canonical TAC shape:
+
+```c
+for (i = 0; i < count; i++)
+  checksum = (checksum + values[i] + bytes[i]) & constant_mask;
+```
+
+`values` must be a fixed local/global `u16` array, `bytes` an invariant unsigned
+byte pointer, and `checksum` an unescaped local/argument `u16` scalar. The
+existing unsigned word-counter proof requires initialization at zero, unit
+increments, a stable bound and proven entry/backedge/exit ownership. Match the
+word read, pointer snapshot, byte read, two additions and constant word mask
+in source order, retaining their exact widths and def/use links. The mask may
+include low/high zero lanes or be 65535. Addition and address increments retain
+16-bit wraparound.
+
+**Schedule and cost admission.** Reuse the copy path's two-pointer setup and
+existing dead word spill home to preserve DE, then the sum path's IY setup,
+accumulator loads/stores and counter loop. IY advances by two bytes, DE by one,
+HL holds the sum, and BC/B holds the remaining count. IX remains the frame base.
+Use the existing logical emitter for the mask and existing assignment emitter
+for any live-out counter. Dynamic zero skips pointer setup, DE preservation,
+memory accesses and accumulator stores; constant 1..256 uses DJNZ, including
+B=0 for 256, while larger/dynamic counts retain the full-word loop.
+
+Only admit an already-allocated, dead, single-definition word spill home within
+IX displacement range. The existing crossing-temp/physical-owner, split
+transition, invariant-address, frame-location and incoming-control checks remain
+in force; there is no new slot, frame growth or push/pop. All preserved DE
+bytes, setup/reloads, final stores and observable counter publication are charged
+in the complete parent/current executions, including one iteration and zero.
+The production change is **61 net C lines and no new functions**.
+
+General word-pointer sources, signed/narrowed values or counters, non-unit/row
+indices, extra writes, helper calls, branches/break/continue, escaped scalar
+state, inline assembly, distant scalar homes and crossing retained owners keep
+the existing lowering. These exclusions deliberately avoid speculative
+profitability and call-preservation machinery. Read-only overlapping sources
+are supported; word bytes are still read before the byte source.
+
+**Measured results against 2ad.** Complete routine costs, not inner-loop-only
+estimates; all rows use normal RA:
+
+| Workload | Bytes before -> after | Aggregate T-states before -> after | Frame bytes |
+| --- | ---: | ---: | ---: |
+| ArrayWorkload, existing 20-input profile | 1345 -> 1325 | 5646400 -> 5552765 (-1.66%) | 86 -> 86 footprint |
+| Dynamic local-array reduction, 36 calls including initialization | 262 -> 230 | 500160 -> 373203 (-25.38%) | 51 -> 51 |
+| One iteration, 36 calls including initialization | 250 -> 211 | 350640 -> 338980 (-3.33%) | 51 -> 51 |
+| Constant 256, 36 complete calls | 166 -> 119 | 5959548 -> 1331367 (-77.66%) | 19 -> 19 |
+| Constant 257, 36 complete calls | 166 -> 124 | 5982768 -> 1438573 (-75.95%) | 19 -> 19 |
+| Overlapping read-only sources, 36 complete calls | 169 -> 132 | 181146 -> 56346 (-68.89%) | 19 -> 19 |
+
+ArrayWorkload frame-byte reads improve 85248 -> 82272 and writes
+50480 -> 49268 over the same inputs. Wrapper cost and stack bounds are unchanged.
+The other 12 kernel profiles are unchanged in every measured mode. Complete
+calculations-2 RA images improve 26207 -> 26187 used bytes, or 25939 -> 25919
+with shared arithmetic. Calculations-1 and allocator-off images are unchanged.
+Complete-image routine/display samples retain numerical, buffer and port
+oracles; this is not a claim to emulate the SMS main root's bank switching.
+
+**Qualification.** The 35-function focused cohort covers zero/one, 255/256/257,
+dynamic counts through 512, arithmetic wrap, low/high/identity masks,
+read-only overlap, live-out counters, ownership pressure and the exclusions
+above. It includes a full-word bound with an early-break fallback. The identical
+parent/current sources pass 12720 guarded executions: every one of 6360
+pairs has non-growing cycles, frame reads/writes and observed stack high-water;
+all 175 function/mode combinations have non-growing ROM and frame size.
+Release/traced/ASan each pass 58 normal and 24 optimized-policy tests, with
+422 identical linked regression images per build. All 175 fixtures pass without
+snapshot changes. Full/shared profiles cover 156 configurations, 2784 calls,
+80 independent timings and 1392 non-growing individual SSC comparisons.
+All 32 complete application builds and 384 paired routine/display samples pass.
+Strict normal/traced C89 and Python syntax pass. Numerical oracles, CPU guards,
+corpus and native verifier controls are unchanged.
+An initial parallel qualification exhausted host memory; diagnostics are
+retained and affected checks were repeated without source/tool/control changes.
+Evidence: `C:\cygwin64\tmp\scaled-induction-20261022`.
 
 The refreshed 130-configuration comparison, per-input metrics, source hashes and
 two private probes underlying 2aa-2ae are retained in

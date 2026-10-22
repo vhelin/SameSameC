@@ -86,6 +86,20 @@ runtime gain. See
 [step 2ad](Z80_CODEGEN_PLAN.md#2ad-bounded-nonliteral-known-bit-facts-completed)
 for bounds, type/effect safeguards, costs and qualification.
 
+Normal `-ra` now advances both source addresses in a bounded masked word/byte
+checksum loop: a fixed `u16` array advances by two bytes and an invariant `u8`
+pointer by one. The existing loop matcher, ownership/address proofs, counter,
+logical emitter and final-counter publication are reused. DE preservation must
+fit an already-dead spill home; no new frame slot, pushes or helper functions
+are introduced. Unsupported types, control/calls, escapes and crossing owners
+retain their existing paths. ArrayWorkload improves 1345 -> 1325 bytes and
+5646400 -> 5552765 aggregate T-states (-1.66%), with frame footprint 86
+unchanged. The complete calculations-2 RA image saves 20 bytes, including with
+shared arithmetic; calculations-1 and allocator-off output are unchanged.
+This adds 61 net production C lines. See
+[step 2ae](Z80_CODEGEN_PLAN.md#2ae-costed-complex-scaled-induction-completed)
+for complete setup/preservation costs, conservative exclusions and qualification.
+
 ---
 
 ## 0. Original Baseline: Before Allocator Implementation
