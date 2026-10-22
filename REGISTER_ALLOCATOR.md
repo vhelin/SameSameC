@@ -130,7 +130,22 @@ unchanged. Complete calculations-2 saves 72 bytes with either sharing policy;
 the other twelve kernels and allocator-off output are unchanged.
 See [step 2ag](Z80_CODEGEN_PLAN.md#2ag-costed-biased-frame-windows-completed)
 for complete costs, the mixed-join fallback, unchanged native snapshots and
-release/traced/ASan qualification. Steps 2ah-2aj record the next opportunities.
+release/traced/ASan qualification.
+
+Bounded post-increment byte writes now reuse the existing advancing copy/fill
+matcher, address materializer, counter publication and private spill-home
+preservation. An independent unsigned-word destination index may start anywhere
+and wrap; zero counts leave it untouched, while overlapping copies keep forward
+load/store order. Existing type, alias, escape, effect, ownership and cost
+fallbacks remain conservative. Reusing BC's bound and compacting the existing
+word-fill setup avoids new production functions or frames; the change adds
+65 net C lines. Ordinary/shared normal-RA Tile improves 1001 -> 980 bytes and
+1284632 -> 1165178 aggregate T-states (-9.30%). PackedCrc improves 739 -> 733
+bytes and 14.20% in cycles; complete calculations-1/2 save 6/21 bytes under
+either sharing policy, with allocator-off output unchanged.
+See [step 2ah](Z80_CODEGEN_PLAN.md#2ah-post-increment-copyfill-induction-completed)
+for scope, full costs, rejected ROM growth and qualification.
+Steps 2ai-2aj record the next opportunities.
 
 ---
 

@@ -16,6 +16,113 @@ from ra_cpu import execute
 
 
 class BranchConditionsTests(unittest.TestCase):
+    def test_postincrement_copy_fill_loops(self):
+        forms = {
+            "copy": ("", "dst[written++]=src[i];"),
+            "copy_offset": ("", "dst[written++]=src[i+3];"),
+            "fill": ("", "dst[written++]=value;"),
+            "dead": ("", "dst[written++]=value;"),
+            "counter": ("", "dst[written++]=i;"),
+            "repeat": ("", "dst[written++]=value;"),
+            "pre": ("", "dst[++written]=value;"),
+            "double": ("", "dst[written++]=value; dst[written++]=value;"),
+            "stride": ("", "dst[written]=value; written+=2;"),
+            "dependent": ("", "dst[written++]=written;"),
+            "bound": ("", "dst[written++]=value;"),
+            "escape_index": ("post_escape(&written);", "dst[written++]=value;"),
+            "escape_bound": ("post_escape(&n);", "dst[written++]=value;"),
+            "call": ("", "dst[written++]=post_touch(value);"),
+            "assembly": ("", '__asm("NOP"); dst[written++]=value;'),
+            "pressure": ("u16 saved=n*start;", "dst[written++]=value;"),
+            "pointer": ("", "dst[written++]=src[0]; src++;"),
+            "byte": ("", "dst[written++]=value;"),
+            "signed": ("", "dst[written++]=value;"),
+        }
+        programs = []
+        for family, constant in ([(kind, -1) for kind in forms] +
+                                 [("fill", count) for count in (0, 1, 2, 3, 127, 128, 255, 256, 257)] +
+                                 [("copy", count) for count in (1, 2, 256)]):
+            prefix, body = forms[family]
+            name = f"post_loop_{family}_{'word' if constant < 0 else constant}"
+            copied = family in ("copy", "copy_offset", "pointer")
+            bound = "written" if family == "bound" else "n" if constant < 0 else str(constant)
+            loop = f"for(i=0;i<{bound};i++) {{ {body} }}"
+            source = (f"u16 {name}({'u8' if family == 'byte' else 'u16'} n,u16 start,u8 *dst,"
+                      f"{'u8 *src' if copied else 'u16 value'}) {{ "
+                      f"{'s16' if family == 'signed' else 'u16'} written=start; u16 i; {prefix} "
+                      f"{loop} {loop if family == 'repeat' else ''} "
+                      f"return written{'' if family == 'dead' else '^i'}"
+                      f"{'^saved' if family == 'pressure' else ''}; }}")
+            programs.append(Program(name, family, 0, constant, [1 if family == "byte" else 2, 2, 2, 2],
+                                    2, [], source))
+        directory = self.output / "postincrement-loops"
+        source = ("u8 ra_buffer[1024];\nvoid post_escape(u16 *p) { p[0]^=3; }\n"
+                  "u16 post_touch(u16 value) { ra_buffer[1023]+=1; return value^7; }\n" +
+                  "\n".join(program.source for program in programs) + "\nvoid main(void) {}\n")
+        profiles = {policy: compile_generated(directory / policy, os.environ.get("SAMESAMECC") or "samesamecc",
+                                             os.environ.get("SAMESAMECL") or "samesamecl", programs, source,
+                                             linker_flags=("-share-arithmetic",) if policy == "shared" else ())
+                    for policy in ("inline", "shared")}
+        vectors = ([(count, 0, 64, 32, count*37+5) for count in (0, 1, 2, 7, 127, 128, 255, 256, 257)] +
+                   [(3, start, 64, 32, 65535) for start in (0, 1, 127, 128, 255, 256, 65534, 65535)] +
+                   [(7, 65535, dst, src, 255) for dst, src in ((32, 32), (33, 32), (32, 33), (64, 32), (32, 64))] +
+                   [(1, 256, 64, 32, value) for value in (0, 1, 127, 128, 255, 256, 65535)])
+        calls = 0
+        for program in programs:
+            cases = vectors if program.constant < 0 else (
+                (0, 0, 64, 32, 0), (1, 65535, 33, 32, 255),
+                (1, 128, 32, 33, 128), (1, 65534, 32, 32, 65535))
+            if program.family == "bound":
+                cases = ((0, 0, 64, 32, 255), (1, 65535, 64, 32, 255))
+            for n, start, dst, src, value in cases:
+                initial = bytes((index*37+n+start+value)&255 for index in range(1024))
+                expected_buffer = bytearray(initial)
+                written = start^3 if program.family == "escape_index" else start
+                base = written
+                count = (program.constant if program.constant >= 0 else n^3 if program.family == "escape_bound"
+                         else n&255 if program.family == "byte" else 1 if program.family == "bound" and start
+                         else 0 if program.family == "bound" else n)
+                for index in range(count*(2 if program.family in ("double", "repeat") else 1)):
+                    position = dst+index*(2 if program.family == "stride" else 1)+(program.family == "pre")
+                    byte = (expected_buffer[src+index+(3 if program.family == "copy_offset" else 0)]
+                            if program.family in ("copy", "copy_offset", "pointer") else
+                            index if program.family == "counter" else
+                            written+1 if program.family == "dependent" else
+                            value^7 if program.family == "call" else value)
+                    expected_buffer[position] = byte&255
+                    written = (written+(2 if program.family == "stride" else 1))&65535
+                    if program.family == "call":
+                        expected_buffer[1023] = (expected_buffer[1023]+1)&255
+                expected = written^(0 if program.family == "dead" else count)^(
+                    (n*start)&65535 if program.family == "pressure" else 0)
+                for policy, images in profiles.items():
+                    for mode, image in images.items():
+                        address = image.symbols["ra_buffer"]
+                        parameters = [n, start, (address+dst-base)&65535,
+                                      address+src if program.family in ("copy", "copy_offset", "pointer") else value]
+                        with self.subTest(program=program.name, policy=policy, mode=mode,
+                                          n=n, start=start, dst=dst, src=src):
+                            result = execute(image.rom, image.symbols[program.name], parameters, program.widths,
+                                             initial, address, 2, image.transfers, instruction_limit=200000,
+                                             frame_bytes=512)
+                            self.assertEqual((result["value"], result["buffer"], result["port_writes"]),
+                                             (expected, expected_buffer, []))
+                            self.assertEqual(result["unmapped_instructions"], 0)
+                            calls += 1
+        if os.environ.get("RA_BASELINE") != "1":
+            for policy, images in profiles.items():
+                for mode in images:
+                    assembly = (directory / policy / mode / "main.asm").read_text()
+                    for program in programs:
+                        body = assembly.split(f'.SECTION "{program.name}" FREE')[1].split(".ENDS")[0]
+                        selected = "; advancing byte " in body
+                        supported = program.family in ("copy", "copy_offset", "fill", "repeat", "pressure")
+                        if program.family in ("repeat", "pressure", "dead") and mode in ("ra", "ra_quiet"):
+                            continue
+                        self.assertEqual(selected, supported and program.constant != 0 and mode in ("ra", "ra_quiet"),
+                                         (program.name, policy, mode))
+        self.assertEqual(calls, 5720)
+
     def test_biased_frame_windows(self):
         sizes = (8, 112, 116, 120, 128, 136, 176, 208, 220, 228, 236, 252, 260, 512)
         programs = []

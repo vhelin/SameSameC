@@ -169,7 +169,7 @@ extraction.
   the product; measure complete shared-helper costs as well as inline wins.
 - [x] **2ag. Costed biased frame windows:** reuse the IX address cache to cover
   nearby arguments and distant locals with fewer complete window rebuilds.
-- [ ] **2ah. Post-increment copy/fill induction:** normalize narrowly proven
+- [x] **2ah. Post-increment copy/fill induction:** normalize narrowly proven
   decoder writes into the existing pointer/counter loop machinery.
 - [ ] **2ai. Dead argument homes and expanded register-entry leaves:** omit
   unused automatic-ABI homes before broadening profitable frameless schedules.
@@ -3945,15 +3945,79 @@ normal/traced C89 and Python syntax pass; numerical oracles, CPU guards, corpus
 and native verifier controls are unchanged.
 Evidence: `C:\cygwin64\tmp\biased-frame-windows-20261022`.
 
-### 2ah. Post-Increment Copy/Fill Induction
+### 2ah. Post-Increment Copy/Fill Induction (Completed)
 
-**Status: planned.** Tile's adjacent `bytes[written++] = tile` and
-`bytes[written++] = cursor[j]` writes miss the existing canonical loop shapes.
-Normalize only proven equivalent TAC and reuse current copy/fill, pointer and
-counter emitters. Preserve zero/256 counts, source-order overlap, wraparound,
-aliases, calls, live-out indices and full buffer guards. SDCC's memcpy/memset
-lowering charges register preservation and setup; require a complete measured
-win rather than merely shorter inner-loop instructions.
+**Status: completed.** Reuse the existing
+bounded-loop matcher/emitter for an adjacent unsigned-word old-value snapshot
+and unit post-increment used by the destination byte index. The separate loop
+counter still controls the count; `written` may start anywhere, including
+65534/65535, and accumulate across consecutive decoder runs. No benchmark source,
+global TAC, frame layout, ABI or linker changes are needed.
+
+**Scope and reuse.** Materialize `destination + written` with the existing
+index/address helpers, then use the existing advancing fill or forward copy
+schedule. On the positive-count path, publish `written + bound` modulo 65536
+after restoring DE. The zero-count edge leaves `written` untouched. Reuse BC's
+retained bound when publishing a live counter to its existing near word home;
+dynamic post-increment fills without that profitable publication shape retain
+the ordinary path. Copy preservation still requires an already-dead word spill
+home: no extra slot, push, frame or production helper function is introduced.
+
+Compact the existing positive word-fill setup from five bytes to three:
+`DEC BC; INC B; INC C` preserves the low count and encodes the rounded-up page
+count in B, including 256/65535. Exhaustive execution of all 65535 positive word
+counts confirms the old/new BC values agree; setup drops from 19/20 to 14 T-states.
+The existing zero guard remains outside this sequence. This removes duplicate
+counter reloads and shortens existing fills rather than adding a separate
+post-increment loop implementation. Production C grows by 65 net lines.
+
+**Conservative fallbacks.** Retain all existing width, counter, ownership,
+spill-transition, scalar-address escape and external-entry checks. The index
+must be an unescaped word scalar distinct from the bound, loop counter, bases
+and fill value; source indexing remains subject to the existing counter/affine
+proof. Pre-increments, multiple writes/increments, non-unit strides, dependent
+values, moving pointers, signed indices, byte bounds, calls, assembly and
+unsupported crossing owners keep their ordinary schedules. Forward source
+load/store order is preserved for overlapping copies.
+
+**Measured complete costs against `a1ed139` (step 2ag).** Ordinary and shared
+normal-RA results agree:
+
+| Kernel/dependencies | Bytes before -> after | Aggregate T-states before -> after | Cycle change |
+| --- | ---: | ---: | ---: |
+| Tile | 1001 -> 980 | 1284632 -> 1165178 | -9.30% |
+| unpackPackBits | 475 -> 469 | 138272 -> 99328 | -28.16% |
+| PackedCrc | 739 -> 733 | 5635305 -> 4834860 | -14.20% |
+| fillBytes | 67 -> 65 | 32970 -> 32894 | -0.23% |
+
+Frames, wrapper costs and stack bounds are unchanged. The other nine kernels,
+all competitor rows and allocator-off output are unchanged. Complete RA
+calculations-1 saves six bytes (17250 -> 17244 ordinary, 17242 -> 17236 shared);
+calculations-2 saves 21 (26102 -> 26081 ordinary, 25872 -> 25851 shared).
+The complete bank-3 display sample improves 2.30%. No shared-ROM trade-off is
+introduced.
+
+The focused 31-function cohort covers both sharing policies and five allocator
+modes: 310 configurations, 11440 guarded parent/current executions and 5720
+individual non-growing cycle/frame-traffic/stack comparisons. It includes
+zero/one/two, 127/128/255/256/257 counts, arbitrary/wrapping starts, forward
+overlap, consecutive loops, live-out indices, pressure and negative controls.
+Every function/frame and complete cohort ROM is non-growing. Ordinary/shared
+RA cohort ROM shrinks 4326 -> 4083 bytes; dynamic fill/repeat functions retain
+their original sizes while becoming faster. The initial eight-byte dynamic
+fill growth was rejected and removed by the shared setup/publication changes.
+
+**Qualification.** Release, traced and ASan each pass 62 normal and 24
+optimized-Python tests, with 502 byte-identical regression images per build.
+All 175 native fixtures pass without snapshot changes; the existing
+57-byte/325-T-state word-copy controls remain intact. Full ordinary/shared
+profiles cover 156 configurations, 2784 numerical calls, 80 independent timings
+and 1392 individual SSC sample comparisons. All 32 complete application builds
+and 384 paired routine/display samples pass. Every measured cycle, frame-traffic,
+stack, function/frame and ordinary/shared ROM guard is non-growing. Strict
+normal/traced C89 and Python syntax pass. Numerical oracles, CPU guards,
+competitor inputs, corpus and native verifier controls are unchanged.
+Evidence: `C:\cygwin64\tmp\postincrement-induction-20261023`.
 
 ### 2ai. Dead Argument Homes And Expanded Register-Entry Leaves
 
