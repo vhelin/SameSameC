@@ -16,6 +16,91 @@ from ra_cpu import execute
 
 
 class BranchConditionsTests(unittest.TestCase):
+    def test_dead_argument_homes_and_shift_leaves(self):
+        cases = {
+            "left": (3, "return a<<b;", lambda a, b, c: a<<b if b < 16 else 0, True),
+            "right": (3, "return a>>b;", lambda a, b, c: a>>b, True),
+            "restore": (3, "return (a<<b)>>b;",
+                        lambda a, b, c: ((a<<b)&65535)>>b if b < 16 else 0, True),
+            "reverse": (3, "return (a>>b)<<b;", lambda a, b, c: (a>>b)<<b, True),
+            "constant": (3, "return (a<<9)>>9;", lambda a, b, c: a&127, True),
+            "first": (3, "return a;", lambda a, b, c: a, True),
+            "second": (3, "return b;", lambda a, b, c: b, True),
+            "zero": (3, "return 0x9234;", lambda a, b, c: 0x9234, True),
+            "add": (3, "return a+b;", lambda a, b, c: a+b, True),
+            "sub": (3, "return a-b;", lambda a, b, c: a-b, True),
+            "effects": (3, "return a;", lambda a, b, c: a, True),
+            "one_shift": (1, "return a<<7;", lambda a, b, c: a<<7, True),
+            "two_shift": (2, "return a>>b;", lambda a, b, c: a>>b, True),
+            "mul": (3, "return a*b;", lambda a, b, c: a*b, False),
+            "mul_two": (2, "return a*a;", lambda a, b, c: a*a, False),
+            "memory_one": (1, "return ra_buffer[5];", lambda a, b, c: (185+a+b+c)&255, False),
+            "memory_two": (2, "return ra_buffer[5];", lambda a, b, c: (185+a+b+c)&255, False),
+            "memory_three": (3, "return ra_buffer[5];", lambda a, b, c: (185+a+b+c)&255, False),
+            "gap": (3, "return a*c;", lambda a, b, c: a*c, False),
+            "dead_first": (3, "return b*c;", lambda a, b, c: b*c, False),
+            "assigned": (3, "c=a; return c*b;", lambda a, b, c: a*b, False),
+            "escape": (3, "u16 *p=&c; p[0]^=a; return c;", lambda a, b, c: a^c, False),
+            "third": (3, "return c;", lambda a, b, c: c, False),
+            "different": (3, "return (a<<b)>>c;",
+                          lambda a, b, c: ((a<<b)&65535)>>c if b < 16 else 0, False),
+            "reverse_sub": (3, "return b-a;", lambda a, b, c: b-a, False),
+            "call": (3, "return home_inner(a)+b;", lambda a, b, c: a+1+b, False),
+            "recursive": (3, "if((a&3)==0) { return b; } return home_recursive(a-1,b,c)+1;",
+                          lambda a, b, c: b+(a&3), False),
+        }
+        programs, helpers = [], []
+        for name, (count, body, _, _) in cases.items():
+            parameters = ",".join(f"u16 {value}" for value in ("a", "b", "c")[:count])
+            arguments = ",".join(("a", "b", "home_touch(c)" if name == "effects" else "c")[:count])
+            helpers.append(f"u16 home_{name}({parameters}) {{ {body} }}")
+            helpers.append(f"u16 home_witness_{name}(u16 a,u16 b,u16 c) {{ return home_{name}({arguments}); }}")
+            programs.append(Program(f"home_caller_{name}", name, 0, count, [2, 2, 2], 2, [],
+                                    f"u16 home_caller_{name}(u16 a,u16 b,u16 c) {{ return home_{name}({arguments}); }}"))
+        source = ("u8 ra_buffer[128];\nu16 home_inner(u16 a) { return a+1; }\n"
+                  "u16 home_touch(u16 value) { ra_buffer[0]^=value; return value; }\n" +
+                  "\n".join(helpers+[program.source for program in programs])+"\nvoid main(void) {}\n")
+        directory = self.output / "argument-homes"
+        profiles = {policy: compile_generated(
+            directory / policy, os.environ.get("SAMESAMECC") or "samesamecc",
+            os.environ.get("SAMESAMECL") or "samesamecl", programs,
+            source+('void home_noise(void) { __asm("NOP"); }\n' if policy == "opaque" else ""),
+            linker_flags=("-share-arithmetic",) if policy == "shared" else ())
+                    for policy in ("inline", "shared", "opaque")}
+        calls = 0
+        for program in programs:
+            for a in (0, 1, 32768, 65535):
+                for b in (0, 1, 7, 8, 15, 16, 17, 31, 255, 256, 257):
+                    c = b+1 if program.family == "different" else (a*37+b)&65535
+                    initial = bytes((index*37+a+b+c)&255 for index in range(128))
+                    expected = cases[program.family][2](a, b, c)&65535
+                    for policy, images in profiles.items():
+                        for mode, image in images.items():
+                            expected_buffer = bytearray(initial)
+                            if program.family == "effects":
+                                expected_buffer[0] ^= c&255
+                            for legacy in (False, True) if policy == "opaque" else (False,):
+                                name = f"home_{program.family}" if legacy else program.name
+                                parameters = [a, b, c][:program.constant] if legacy else [a, b, c]
+                                with self.subTest(program=name, policy=policy, mode=mode, a=a, b=b, c=c):
+                                    result = execute(image.rom, image.symbols[name], parameters, [2]*len(parameters),
+                                                     initial, image.symbols["ra_buffer"], 2, image.transfers,
+                                                     instruction_limit=200000, frame_bytes=2048)
+                                    self.assertEqual((result["value"], result["buffer"], result["port_writes"]),
+                                                     (expected, initial if legacy else expected_buffer, []))
+                                    self.assertEqual(result["unmapped_instructions"], 0)
+                                    calls += 1
+        if os.environ.get("RA_BASELINE") != "1":
+            for policy, images in profiles.items():
+                for mode, image in images.items():
+                    for program in programs:
+                        selected = cases[program.family][3] and policy != "opaque"
+                        self.assertEqual(f"ssc.regleaf.home_{program.family}" in image.symbols,
+                                         selected, (policy, mode, program.name))
+                        if selected:
+                            self.assertEqual(image.staticMetrics["functions"][f"home_{program.family}"]["frame_bytes"], 0)
+        self.assertEqual(calls, len(programs)*44*5*4)
+
     def test_postincrement_copy_fill_loops(self):
         forms = {
             "copy": ("", "dst[written++]=src[i];"),
@@ -942,10 +1027,13 @@ static u16 pr_discard(u16 a,u16 b,u16 c) { ra_buffer[0]=a; return a+3*b+5*c; }
         flags = ((), ("-no-ra",), ("-ra-all-spill",), ("-ra",), ("-ra", "-z80-regcalls"))
         for caller_index, caller_flags in enumerate(flags):
             for callee_index, callee_flags in enumerate(flags):
-                for count, parameters, body, arguments, oracle in (
-                        (3, "u16 a,u16 b,u16 c", "a+3*b+5*c", "a,b,7", lambda a, b: a+3*b+35),
-                        (2, "u16 a,u16 b", "a-b", "a,b", lambda a, b: a-b)):
-                    work = self.output / f"automatic-objects-{caller_index}-{callee_index}-{count}"
+                for kind, count, parameters, body, arguments, oracle in (
+                        ("full", 3, "u16 a,u16 b,u16 c", "a+3*b+5*c", "a,b,7", lambda a, b: a+3*b+35),
+                        ("sub", 2, "u16 a,u16 b", "a-b", "a,b", lambda a, b: a-b),
+                        ("dead", 3, "u16 a,u16 b,u16 c", "a*b", "a,b,7", lambda a, b: a*b),
+                        ("shift", 3, "u16 a,u16 b,u16 c", "(a<<b)>>b", "a,b&15,7",
+                         lambda a, b: ((a<<(b&15))&65535)>>(b&15))):
+                    work = self.output / f"automatic-objects-{caller_index}-{callee_index}-{kind}"
                     work.mkdir()
                     (work / "callee.ssc").write_text(f"u16 cross_leaf({parameters}) {{ return {body}; }}\n")
                     (work / "caller.ssc").write_text(
@@ -957,13 +1045,14 @@ static u16 pr_discard(u16 a,u16 b,u16 c) { ra_buffer[0]=a; return a+3*b+5*c; }
                     run(linker, ["-lsms", "-v", "-o", "linked.sms", "caller.asm", "callee.asm"], work, "linker.log")
                     image = read_image(work)
                     self.assertNotIn("cross_leaf", image.symbols)
-                    self.assertEqual("ssc.regleaf.cross_leaf" in image.symbols, count == 2)
-                    if count == 2:
+                    selected = kind == "sub" or (kind == "shift" and os.environ.get("RA_BASELINE") != "1")
+                    self.assertEqual("ssc.regleaf.cross_leaf" in image.symbols, selected)
+                    if selected:
                         self.assertEqual(image.staticMetrics["functions"]["cross_leaf"]["frame_bytes"], 0)
                     for a, b in ((0, 7), (0x8000, 65535), (65535, 0x9234)):
                         result = execute(image.rom, image.symbols["cross_caller"], [a, b], [2, 2], bytes(128),
                                          image.symbols["ra_buffer"], 2, image.transfers, frame_bytes=2048)
-                        self.assertEqual(result["value"], oracle(a, b)&65535, (caller_index, callee_index, count, a, b))
+                        self.assertEqual(result["value"], oracle(a, b)&65535, (caller_index, callee_index, kind, a, b))
                         self.assertEqual(result["unmapped_instructions"], 0)
 
     def test_register_call_cross_object_boundaries(self):

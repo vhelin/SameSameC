@@ -171,7 +171,7 @@ extraction.
   nearby arguments and distant locals with fewer complete window rebuilds.
 - [x] **2ah. Post-increment copy/fill induction:** normalize narrowly proven
   decoder writes into the existing pointer/counter loop machinery.
-- [ ] **2ai. Dead argument homes and expanded register-entry leaves:** omit
+- [x] **2ai. Dead argument homes and expanded register-entry leaves:** omit
   unused automatic-ABI homes before broadening profitable frameless schedules.
 - [ ] **2aj. Byte facts for comparisons and bounded dynamic loops:** reuse
   proven byte ranges without changing general word counts or source semantics.
@@ -4019,15 +4019,92 @@ normal/traced C89 and Python syntax pass. Numerical oracles, CPU guards,
 competitor inputs, corpus and native verifier controls are unchanged.
 Evidence: `C:\cygwin64\tmp\postincrement-induction-20261023`.
 
-### 2ai. Dead Argument Homes And Expanded Register-Entry Leaves
+### 2ai. Dead Argument Homes And Expanded Register-Entry Leaves (Completed)
 
-**Status: planned.** ShiftRestore's unused mask arithmetic is already removed,
-but its automatic register entry still pushes that unused argument and builds
-a frame. First omit proven dead homes using existing ABI/use metadata; then
-extend the existing microleaf schedules when caller plus callee costs improve.
-Preserve argument-expression effects, recursive/cross-unit calls, stack offsets,
-escaped addresses and compatible public entries. Reuse SDCC register-parameter
-and z88dk fastcall concepts without adding a source annotation or default flag.
+**Status: completed.** Reuse the
+existing register-call eligibility walk to record argument-node references in
+nondead TAC, including writes and address-taking. Omit only dead trailing
+register-entry homes, charging DE's entry offset for the pushes actually emitted.
+Live argument offsets, the canonical DE anchor and framed-body SP allocation
+remain unchanged. Dead holes preceding a live argument remain materialized;
+this avoids replacing a one-byte push with a larger/slower gap adjustment.
+Caller argument transport and expression evaluation are unchanged.
+
+**Expanded existing microleaves.** Reuse the existing frameless matcher,
+location resolver, word arithmetic/shift emitters and return emitter:
+
+- Accept up to three declared word arguments when only the first two are
+  referenced. Convert the needed IY/HL live-ins to the existing HL/BC schedule;
+  no new physical-register kind or global scheduling state is needed.
+- Add an unsigned-word shift, or a two-shift chain whose second input is the
+  first result and whose count is identical. Values/results remain word-sized;
+  zero, 16+, 255/256/257 and high-byte counts keep the existing shift semantics.
+- Preserve a repeated variable count in DE between the two existing shift
+  emitters. The register caller already saves/restores DE; no extra count push,
+  spill home or frame is added. The temporary IY-to-HL push/pop is included in
+  the complete stack/cycle measurements.
+- Keep the existing no-local, word-operand and direct-return proofs.
+  Multiplication/division, different-count or more general multi-operation
+  chains, unsupported operand layouts, a live third argument, narrow/signed
+  shift values, memory, calls/recursion and address escapes retain their framed
+  paths. Functions containing source ASM remain outside register-call eligibility.
+
+The v1 register-call metadata, linker selection and compatible public entries
+are unchanged. Opaque inputs and escaping function addresses still select the
+shared framed body rather than duplicating it to manufacture a microbenchmark
+win. Dead trailing register-entry pushes can still be omitted there, while old
+public callers keep their existing argument/result homes. This adds 44 net
+production C lines, no functions, fields, linker code, flags or annotations.
+
+**Measured complete costs against `fedb9cd` (step 2ah).** Ordinary normal-RA
+kernel/dependency results:
+
+| Kernel/dependencies | Bytes before -> after | Aggregate T-states before -> after | Cycle change |
+| --- | ---: | ---: | ---: |
+| ShiftRestore | 66 -> 29 | 10665 -> 6891 | -35.39% |
+| PartitionRestore | 116 -> 115 | 38896 -> 38709 | -0.48% |
+| ArrayWorkload | 1324 -> 1286 | 5546141 -> 5417525 | -2.32% |
+| StencilWorkload | 1435 -> 1397 | 3838026 -> 3713458 | -3.25% |
+| PathWorkload | 1232 -> 1231 | 4648961 -> 4648741 | -0.005% |
+
+ShiftRestore stack high-water/access extent drops 18 -> 14 bytes and frame
+footprint 20 -> 16; its wrapper is unchanged. The other listed frame/stack
+bounds are unchanged. Shared RA saves the same byte counts, with no new helper
+or ROM trade-off. Allocator-off ShiftRestore improves 90 -> 89 bytes and
+13249 -> 13062 T-states (-1.41%); its retained local keeps the framed fallback.
+Allocator-off dependencies also benefit from dead-home omission. The other
+eight kernels and all competitor rows are unchanged.
+
+The complete banked applications retain compatible framed entries because
+their opaque assembly inputs require them: calculations-1 saves only one byte
+(17244 -> 17243 ordinary RA, 17236 -> 17235 shared RA), and calculations-2 saves
+two (26081 -> 26079 ordinary RA, 25851 -> 25849 shared RA). Allocator-off images
+save the same 1/2 bytes. Complete bank-1/2/3 display samples save 275/836/143
+T-states, not the isolated frameless-kernel percentages above.
+
+The 27-function focused cohort covers five allocator modes under inline,
+shared and opaque policies, including direct public legacy calls: 47520 guarded
+parent/current executions and 23760 individually non-growing cycle/traffic/stack
+comparisons. Every callee, caller, witness, frame and complete cohort ROM is
+non-growing. Ordinary RA cohort ROM shrinks 4592 -> 4155 bytes; opaque RA shrinks
+5176 -> 5148. A zero-count caller-plus-ShiftRestore schedule shrinks 122 -> 85
+bytes and 659 -> 437 T-states, with stack high-water 21 -> 17. A framed multiply
+with one dead trailing home saves one byte, 11 T-states and two stack writes.
+Mixed allocator-mode cross-unit tests cover 100 linked configurations; 36
+additional parent/current/default/spill/RA/shared/older-header builds pass
+1152 guarded executions and 576 non-growing sample pairs.
+
+**Qualification.** Release, traced and ASan each pass 63 normal and 24
+optimized-Python tests, with 567 byte-identical regression images per build.
+All 175 native fixtures pass without snapshot changes, including the unchanged
+57-byte/325-T-state word-copy controls. Full ordinary/shared profiles cover
+156 configurations, 2784 numerical calls, 80 independent timings and 1392
+individual SSC sample comparisons. All 32 complete application builds and 384
+paired routine/display samples pass. Cycle, frame-traffic, stack, function/frame
+and complete ordinary/shared ROM guards are non-growing. Strict normal/traced
+C89 and Python syntax pass. Existing numerical oracles, CPU guards, corpus,
+competitor inputs and native verifier controls are unchanged.
+Evidence: `C:\cygwin64\tmp\dead-argument-homes-20261023`.
 
 ### 2aj. Byte Facts For Comparisons And Bounded Dynamic Loops
 

@@ -145,7 +145,21 @@ bytes and 14.20% in cycles; complete calculations-1/2 save 6/21 bytes under
 either sharing policy, with allocator-off output unchanged.
 See [step 2ah](Z80_CODEGEN_PLAN.md#2ah-post-increment-copyfill-induction-completed)
 for scope, full costs, rejected ROM growth and qualification.
-Steps 2ai-2aj record the next opportunities.
+Dead trailing word-register argument homes now reuse the existing eligibility
+walk and argument-node identities. Omit only profitable trailing pushes while
+preserving live/legacy offsets, DE and framed-body SP allocation; caller
+argument effects and transport are unchanged. The existing frameless emitter
+also accepts a dead third argument and bounded unsigned-word shift shapes,
+preserving repeated counts in already-saved DE. No functions, fields, linker
+code, flags or annotations are added; production C grows by 44 net lines.
+Normal-RA ShiftRestore improves 66 -> 29 bytes and 10665 -> 6891 aggregate
+T-states (-35.39%), with stack high-water 18 -> 14. Array/Stencil profiles
+save 38 bytes each and 2.32%/3.25% cycles. Complete applications still require
+compatible framed entries because of opaque assembly, so their ordinary/shared
+images save only 1/2 bytes, including allocator-off builds.
+See [step 2ai](Z80_CODEGEN_PLAN.md#2ai-dead-argument-homes-and-expanded-register-entry-leaves-completed)
+for exact scope, unchanged compatibility, caller-inclusive costs and qualification.
+Step 2aj records the next opportunity.
 
 ---
 
