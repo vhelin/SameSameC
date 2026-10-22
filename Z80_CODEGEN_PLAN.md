@@ -167,7 +167,7 @@ extraction.
 - [x] **2af. Proven byte factors in word-result multiplication:** reuse bounded
   known-bit facts and the word multiplier for eight-bit factors without narrowing
   the product; measure complete shared-helper costs as well as inline wins.
-- [ ] **2ag. Costed biased frame windows:** reuse the IX address cache to cover
+- [x] **2ag. Costed biased frame windows:** reuse the IX address cache to cover
   nearby arguments and distant locals with fewer complete window rebuilds.
 - [ ] **2ah. Post-increment copy/fill induction:** normalize narrowly proven
   decoder writes into the existing pointer/counter loop machinery.
@@ -3875,19 +3875,75 @@ calculation independently. Strict normal/traced C89 and Python syntax pass;
 numerical oracles, CPU guards, corpus and native verifier controls are unchanged.
 Evidence: `C:\cygwin64\tmp\byte-factor-word-multiply-20261022`.
 
-### 2ag. Costed Biased Frame Windows
+### 2ag. Costed Biased Frame Windows (Completed)
 
-**Status: planned.** Reuse the current IX window cache/materializers rather than
-introducing a new frame layout or address allocator. Path repeatedly rebuilds
-windows for near arguments and locals around frame offsets -152 through -156.
-A private final-loop probe biased IX by -64, retained coverage of both regions,
-restored the original window at exit and measured 1241 to 1235 bytes and
-5323781 to 5204301 cycles (-2.24%). This is not a general compiler result.
+**Status: completed.** Reuse the existing IX
+cache, target address policy and materializer. No frame layout, address allocator,
+production helper function or separate cost framework is added.
 
-Charge entry, exit, joins, calls, pressure and invalidations; preserve aliases,
-stack/frame size, displacement bounds and exceptional control flow. SDCC's
-allocation-aware dry emitter is a precedent for complete schedule costs, not a
-reason to add a second cost framework.
+Normal allocation, without source ASM, may use IX=DE-126 when the existing frame
+total is between -254 and -129. This window covers starting offsets -254 through
+0 while reserving the high-byte displacement. Selection still prefers an
+already-covered address or the existing cheap one/two-step adjustment. Only an
+otherwise-required complete 6-byte/29-T-state rebuild can select the bias.
+The target policy validates the folded displacement, including the high byte.
+
+**Closed-region scope is necessary.** The existing TAC walk looks ahead through
+straight-line regions, allowing labels without jump references. A region is
+eligible only if its sole outgoing edge is an unconditional backedge. Calls,
+returns, conditional exits and forward jumps end the region without enabling
+the bias. Existing loop-header joins already discard backedge cache witnesses;
+no new state can disturb an otherwise-profitable forward join. There is no
+loop-invariance assumption, hoisting, edge restore or extra preservation.
+Raw call/return anchors, global/DE invalidations, physical ownership, memory-copy
+fallbacks and arithmetic-helper IX preservation remain unchanged.
+
+A smaller whole-function prototype was rejected despite larger Path gains:
+mixed biased and cheap-adjusted incoming windows lost an old matching join.
+Its cold path grew 4320 -> 4342 cycles, even though the hot path improved.
+The added escaped-word diamond now keeps the original schedule. This is why
+setup parity and a window covering the entire frame are not sufficient cost
+proofs on their own.
+
+Against the completed 2af compiler:
+
+| Mode | Path bytes | Aggregate kernel T-states | Frame footprint |
+|---|---:|---:|---:|
+| RA | 1238 -> 1232 | 4688981 -> 4648961 (-0.85%) | 182 -> 182 |
+| RA/shared | 1238 -> 1232 | 4688981 -> 4648961 (-0.85%) | 182 -> 182 |
+
+The complete comparison unit emits 42 -> 41 full IX rebuilds. The existing
+final checksum loop saves one rebuild per iteration, including all setup and
+exit costs. Both sharing policies pass all twenty inputs and independent
+timing checks. This narrower compiler result supersedes the private pre-2af
+assembly probe; its proposed gains are not assumed additive.
+
+The other twelve kernels and all competitor rows are unchanged. Complete RA
+calculations-2 saves 72 bytes ordinarily (26174 -> 26102) and with sharing
+(25944 -> 25872); calculations-1 and allocator-off images are unchanged.
+Complete-image Path, complex bank-2 display and complex bank-3 display sample
+totals improve by 0.96%, 0.64% and 0.34%, respectively. No sampled execution,
+frame-traffic or stack metric grows.
+
+This adds 44 net production C lines, with no new functions, flags, frame slots,
+ABI or linker changes. The two focused tests cover 77 functions, frame totals
+on both sides of the exact selection limit, zero/one/multiple iterations,
+word/byte wrap, high-bit inputs, aliases, calls, global IX clobbers, source ASM
+and the mixed-join fallback under all five allocator modes and both sharing
+policies. Their 86240 guarded parent/current executions provide 43120
+non-growing cycle/frame-traffic/stack comparisons; individual function/frame
+sizes and complete ordinary/shared cohort ROM are also non-growing.
+
+Final qualification: release, traced and ASan each pass 61 normal and 24
+optimized-Python tests, with 492 byte-identical linked regression images per
+build. All 175 native fixtures pass without snapshot changes, including the
+existing 57-byte/325-T-state word-copy controls. Full/shared profiles cover
+156 configurations, 2784 calls, 80 independent timings and 1392 individual SSC
+sample comparisons. All 32 complete application builds and 384 paired
+routine/display samples pass, with no new shared-ROM trade-off. Strict
+normal/traced C89 and Python syntax pass; numerical oracles, CPU guards, corpus
+and native verifier controls are unchanged.
+Evidence: `C:\cygwin64\tmp\biased-frame-windows-20261022`.
 
 ### 2ah. Post-Increment Copy/Fill Induction
 

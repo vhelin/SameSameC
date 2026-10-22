@@ -38,6 +38,7 @@ extern char g_tmp[4096], g_error_message[sizeof(g_tmp) + MAX_NAME_LENGTH + 1 + 1
 #define Z80_FRAMELESS_REGISTER_BODY 2
 
 static int g_return_id = 1, g_ix_frame_offset = Z80_GLOBAL_OFFSET;
+static int g_ix_frame_bias = 0;
 static int g_register_call_body = NO;
 
 #define LOC_CONST       RA_LOCATION_CONST
@@ -1873,6 +1874,13 @@ static int _load_location_address_to_ix(struct z80_location *location, int *ix_o
       /* Reserve the high-byte displacement even when the source is a byte. */
       *ix_offset = displacement - adjustment;
       offset = g_ix_frame_offset + adjustment;
+      address_mode = RA_ADDRESS_MODE_FRAME_DISPLACEMENT;
+    }
+    else if (g_ix_frame_bias != 0 &&
+             get_register_allocator_address_materialization_mode(location->kind, RA_ADDRESS_TARGET_IX,
+               offset - g_ix_frame_bias) == RA_ADDRESS_MODE_FRAME_DISPLACEMENT) {
+      *ix_offset = offset - g_ix_frame_bias;
+      offset = g_ix_frame_bias;
       address_mode = RA_ADDRESS_MODE_FRAME_DISPLACEMENT;
     }
     else if (address_mode == RA_ADDRESS_MODE_FRAME_DISPLACEMENT) {
@@ -8496,6 +8504,7 @@ int generate_asm_z80(FILE *file_out) {
       struct { int instruction, offset; } frame_edges[2][8];
       int frame_edge_count[2] = { 0, 0 }, frame_edge_next[2] = { 0, 0 }, edge_kind;
       int frame_fallthrough = YES;
+      int frame_bias, frame_region_end = i;
       int j, register_call = _is_z80_register_call(function_node, YES);
       int register_leaf = NO;
       int explicit_call = (function_node->flags & TREE_NODE_FLAG_Z80_REGCALL) != 0;
@@ -8507,6 +8516,11 @@ int generate_asm_z80(FILE *file_out) {
         if (g_tacs[j].op == TAC_OP_ASM)
           frame_joins = NO;
       }
+      /* Cover the entire bounded frame, including the reserved high byte. */
+      frame_bias = frame_joins == YES && function_node->local_variables != NULL &&
+        function_node->local_variables->offset_to_fp_total >= -254 &&
+        function_node->local_variables->offset_to_fp_total < -128 ? -126 : 0;
+      g_ix_frame_bias = 0;
 
       if ((function_node->flags & TREE_NODE_FLAG_ORG_DEFINED) == TREE_NODE_FLAG_ORG_DEFINED) {
         fprintf(file_out, "  .ORG $%x\n", (unsigned int)function_node->value_double);
@@ -8654,6 +8668,36 @@ int generate_asm_z80(FILE *file_out) {
           continue;
 
         /* IL -> ASM */
+
+        if (i > frame_region_end) {
+          int k;
+          g_ix_frame_bias = 0;
+          for (j = i; frame_bias != 0 && j < g_tacs_count && g_tacs[j].function_node == function_node; j++) {
+            struct tac *next = &g_tacs[j];
+            if (next->op == TAC_OP_LABEL) {
+              for (k = function_start + 1; k < g_tacs_count && g_tacs[k].function_node == function_node; k++) {
+                if (g_tacs[k].op >= TAC_OP_JUMP && g_tacs[k].op <= TAC_OP_JUMP_GTE &&
+                    strcmp(g_tacs[k].result_s, next->result_s) == 0)
+                  break;
+              }
+              if (next->is_function == YES || (k < g_tacs_count && g_tacs[k].function_node == function_node))
+                break;
+            }
+            if ((next->op >= TAC_OP_JUMP && next->op <= TAC_OP_JUMP_GTE) ||
+                next->op == TAC_OP_RETURN || next->op == TAC_OP_RETURN_VALUE ||
+                next->op == TAC_OP_FUNCTION_CALL || next->op == TAC_OP_FUNCTION_CALL_USE_RETURN_VALUE) {
+              /* Biased states may only leave through a backedge, whose cache witness is discarded. */
+              for (k = function_start; next->op == TAC_OP_JUMP && k < i; k++) {
+                if (g_tacs[k].op == TAC_OP_LABEL && strcmp(g_tacs[k].result_s, next->result_s) == 0) {
+                  g_ix_frame_bias = frame_bias;
+                  break;
+                }
+              }
+              break;
+            }
+          }
+          frame_region_end = j;
+        }
 
         if (op == TAC_OP_LABEL) {
           if (frame_joins == NO || t->is_function == YES)

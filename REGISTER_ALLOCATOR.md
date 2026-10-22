@@ -116,7 +116,21 @@ Complete ordinary RA calculations-1/2 save 2/13 bytes; their shared RA images
 grow 10/25 bytes. Existing sharing timing/traffic controls are unchanged.
 See [step 2af](Z80_CODEGEN_PLAN.md#2af-proven-byte-factors-in-word-result-multiplication-completed)
 for full costs, the precise initializer snapshot update, conservative fallbacks
-and release/traced/ASan qualification. Steps 2ag-2aj record the next opportunities.
+and release/traced/ASan qualification.
+
+Bounded biased IX windows now reuse the existing cache, target address policy
+and materializer in straight-line regions whose sole outgoing edge is a
+backedge. This preserves forward-join schedules, cheap adjustments, raw ABI
+anchors, frame layout and ownership without adding production functions or a
+cost-analysis framework. A whole-function prototype was rejected because an
+otherwise-matching cold join grew by 22 cycles. The safe scope adds 44 net
+production C lines. Normal and shared RA Path improve 1238 -> 1232 bytes and
+4688981 -> 4648961 aggregate T-states (-0.85%), with frame footprint 182
+unchanged. Complete calculations-2 saves 72 bytes with either sharing policy;
+the other twelve kernels and allocator-off output are unchanged.
+See [step 2ag](Z80_CODEGEN_PLAN.md#2ag-costed-biased-frame-windows-completed)
+for complete costs, the mixed-join fallback, unchanged native snapshots and
+release/traced/ASan qualification. Steps 2ah-2aj record the next opportunities.
 
 ---
 

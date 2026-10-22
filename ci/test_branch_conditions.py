@@ -16,6 +16,112 @@ from ra_cpu import execute
 
 
 class BranchConditionsTests(unittest.TestCase):
+    def test_biased_frame_windows(self):
+        sizes = (8, 112, 116, 120, 128, 136, 176, 208, 220, 228, 236, 252, 260, 512)
+        programs = []
+        for family in ("plain", "guarded", "alias", "assembly", "edge"):
+            for size in (range(220, 240) if family == "edge" else sizes):
+                before = f"bytes=&workspace[{size-1}];" if family == "alias" else ""
+                body = ('if(i&1) { sum=window_touch(sum); } else { ra_buffer[126]=sum; }'
+                        if family == "guarded" else '__asm("LD IX,4660");' if family == "assembly" else "")
+                loop = (f"u16 i; for(i=0;i<(b&7);i++) {{ {body} "
+                        f"sum=(sum+bytes[{'0' if family == 'alias' else 'i'}]*(i+1))&8191; }}")
+                source = (f"u16 biased_{family}_{size}(u16 a,u16 b,u8 *bytes) {{ u8 workspace[{size}]; "
+                          f"u16 sum=a; window_escape(&sum); workspace[{size-1}]=a; {before} {loop} "
+                          f"return sum+workspace[{size-1}]+b; }}")
+                programs.append(Program(f"biased_{family}_{size}", family, size, 0, [2, 2, 2], 2, [], source))
+        directory = self.output / "biased-frame-windows"
+        profiles = {}
+        for family in ("plain", "guarded", "alias", "assembly", "edge"):
+            group = [program for program in programs if program.family == family]
+            source = ("u8 ra_buffer[128];\nvoid window_escape(u16 *p) { p[0]^=3; }\n"
+                      "u16 window_touch(u16 value) { ra_buffer[127]+=1; return value^7; }\n" +
+                      "\n".join(program.source for program in group) + "\nvoid main(void) {}\n")
+            for policy in ("inline", "shared"):
+                profiles[family, policy] = compile_generated(
+                    directory / family / policy, os.environ.get("SAMESAMECC") or "samesamecc",
+                    os.environ.get("SAMESAMECL") or "samesamecl", group, source,
+                    linker_flags=("-share-arithmetic",) if policy == "shared" else ())
+        calls = 0
+        for program in programs:
+            for a in (0, 1, 127, 128, 255, 256, 32768, 65535):
+                for b in (0, 1, 2, 7, 8, 15, 65535):
+                    initial = bytes((index*37+a+b)&255 for index in range(128))
+                    expected_buffer = bytearray(initial)
+                    value = a^3
+                    for index in range(b&7):
+                        if program.family == "guarded":
+                            if index&1:
+                                value ^= 7
+                                expected_buffer[127] = (expected_buffer[127]+1)&255
+                            else:
+                                expected_buffer[126] = value&255
+                        byte = a&255 if program.family == "alias" else initial[32+index]
+                        value = (value+byte*(index+1))&8191
+                    expected = (value+(a&255)+b)&65535
+                    for policy in ("inline", "shared"):
+                        for mode, image in profiles[program.family, policy].items():
+                            address = image.symbols["ra_buffer"]
+                            result = execute(image.rom, image.symbols[program.name], [a, b, address+32], [2, 2, 2],
+                                             initial, address, 2, image.transfers, frame_bytes=1024)
+                            self.assertEqual((result["value"], result["buffer"], result["port_writes"]),
+                                             (expected, expected_buffer, []), (program.name, policy, mode, a, b))
+                            self.assertEqual(result["unmapped_instructions"], 0)
+                            calls += 1
+        if os.environ.get("RA_BASELINE") != "1":
+            boundary_frames = set()
+            for (family, policy), images in profiles.items():
+                for mode in images:
+                    assembly = (directory / family / policy / mode / "main.asm").read_text()
+                    for program in (item for item in programs if item.family == family):
+                        body = assembly.split(f'.SECTION "{program.name}" FREE')[1].split(".ENDS")[0]
+                        frame = int(re.search(r"allocate space for the stack frame bytes=(\d+)", body)[1])
+                        selected = "      LD  IX,-126\n      ADD IX,DE\n" in body
+                        if family == "edge" and mode == "ra":
+                            boundary_frames.add(frame)
+                        if mode not in ("ra", "ra_quiet") or family == "assembly" or frame > 253:
+                            self.assertFalse(selected, (program.name, policy, mode, frame))
+                        elif family != "alias" and program.variant >= 128:
+                            self.assertTrue(selected, (program.name, policy, mode, frame))
+                        for displacement in re.findall(r"\(IX([+-]\d+)\)", body):
+                            self.assertLessEqual(-128, int(displacement))
+                            self.assertLessEqual(int(displacement), 127)
+            self.assertTrue({253, 254}.issubset(boundary_frames), boundary_frames)
+        self.assertEqual(calls, 42560)
+
+    def test_biased_frame_join_fallback(self):
+        source = """
+u16 ra_buffer[64];
+void perturb(u16 *p) { p[0]^=3; }
+void biased_join(u16 a,u16 b) {
+  u16 near; u8 padding[119]; u16 x,y,z; u8 far_padding[17]; u16 far;
+  ra_buffer[0]=&x; ra_buffer[1]=&y; ra_buffer[2]=&z; ra_buffer[3]=&far;
+  ra_buffer[4]=padding; ra_buffer[5]=far_padding; ra_buffer[6]=&near;
+  x=a; y=a; z=a; far=a;
+  perturb(&x); perturb(&y); perturb(&z); perturb(&far);
+  if(b&1) { near=b+far; near+=a; near+=x; near+=y; near+=z; }
+  else { near=b+a; near+=x; near+=y; near+=z; }
+  ra_buffer[16]=near;
+}
+void main(void) {}
+"""
+        program = Program("biased_join", "join", 0, 0, [2, 2], 0, [], source)
+        directory = self.output / "biased-frame-windows" / "join"
+        for policy in ("inline", "shared"):
+            images = compile_generated(directory / policy, os.environ.get("SAMESAMECC") or "samesamecc",
+                                       os.environ.get("SAMESAMECL") or "samesamecl", [program], source,
+                                       linker_flags=("-share-arithmetic",) if policy == "shared" else ())
+            for mode, image in images.items():
+                self.assertNotIn("      LD  IX,-126\n", (directory / policy / mode / "main.asm").read_text())
+                for a in (0, 1, 127, 128, 255, 256, 32768, 65535):
+                    for b in (0, 1, 2, 7, 8, 15, 65535):
+                        result = execute(image.rom, image.symbols[program.name], [a, b], [2, 2], bytes(128),
+                                         image.symbols["ra_buffer"], 0, image.transfers, frame_bytes=512)
+                        expected = ((a^3)*(4 if b&1 else 3)+a+b)&65535
+                        self.assertEqual(int.from_bytes(result["buffer"][32:34], "little"), expected)
+                        self.assertEqual(result["buffer"][14:32]+result["buffer"][34:], bytes(112))
+                        self.assertEqual((result["port_writes"], result["unmapped_instructions"]), ([], 0))
+
     def test_byte_factors_word_products(self):
         cases = {
             "byte_left": ("u8 factor=a; return factor*b;", lambda a, b, v: (a&255)*b, True),
