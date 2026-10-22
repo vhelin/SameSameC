@@ -7995,8 +7995,23 @@ check_loop_ownership:
     struct temp_register *temp = &function_node->local_variables->temp_registers[i];
     if (initial->result_type == TAC_ARG_TYPE_TEMP && temp->register_index == (int)initial->result_d)
       counter = temp;
-    else if (temp->live_start < *tac_index && temp->live_end >= *tac_index)
-      return SUCCEEDED;
+    else if (temp->live_start < *tac_index && temp->live_end >= *tac_index) {
+      if (crc_loop == NO || temp->spill_required != YES || temp->physical_register != Z80_PHY_NONE)
+        return SUCCEEDED;
+      /* Exclude retained prefixes; later reloads can use the unchanged home. */
+      for (j = temp->live_start; j <= temp->live_end && j <= end; j++) {
+        struct tac *t = &g_tacs[j];
+        if (t->op == TAC_OP_DEAD)
+          continue;
+        if ((t->arg1_type == TAC_ARG_TYPE_TEMP && t->arg1_d == temp->register_index &&
+             t->arg1_physical_register != Z80_PHY_NONE) ||
+            (t->arg2_type == TAC_ARG_TYPE_TEMP && t->arg2_d == temp->register_index &&
+             t->arg2_physical_register != Z80_PHY_NONE) ||
+            (t->result_type == TAC_ARG_TYPE_TEMP && t->result_d == temp->register_index &&
+             t->result_physical_register != Z80_PHY_NONE))
+          return SUCCEEDED;
+      }
+    }
     for (j = 3; j < count - 3; j++) {
       if (sequence[j]->op == TAC_OP_ARRAY_WRITE || sequence[j]->result_type != TAC_ARG_TYPE_TEMP ||
           sequence[j]->result_d != temp->register_index)

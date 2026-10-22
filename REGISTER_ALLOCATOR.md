@@ -37,6 +37,17 @@ but needs two extra spill-byte writes per encoding iteration. See
 [step 2z](Z80_CODEGEN_PLAN.md#2z-constant-byte-lanes-and-bounded-pure-expression-reuse-completed)
 for exact scope, full-image costs, tradeoffs and qualification.
 
+Bounded word CRC loops now accept crossing temporaries only with a spill home,
+no declared physical owner and no physically retained prefix through the loop
+exit. Reuse the existing matcher/emitter; other loops and all type, alias,
+transition, counter and control-flow guards retain their previous contracts.
+Normal RA PackedCrc improves 784 -> 739 bytes and 11220929 -> 5635305 aggregate
+T-states (-49.78%), with frame footprint 47 unchanged. The complete calculations-1
+RA ROM saves 45 bytes; allocator-off output and calculations-2 are unchanged.
+This adds 15 net production C lines and no functions. See
+[step 2aa](Z80_CODEGEN_PLAN.md#2aa-frame-only-crossings-in-bounded-crc-loops-completed)
+for scope, ownership exclusions, measurements and qualification.
+
 ---
 
 ## 0. Original Baseline: Before Allocator Implementation

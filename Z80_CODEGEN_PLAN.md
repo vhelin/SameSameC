@@ -152,6 +152,18 @@ extraction.
 - [x] **2z. Constant byte lanes and bounded pure-expression reuse:** simplify
   zero/identity lanes and eliminate repeated pure calculations only when
   accumulator/flags, aliases, evaluation order and register pressure permit it.
+- [x] **2aa. Frame-only crossings in bounded CRC loops:** extend the existing
+  matcher to accept proven memory-backed outer state without weakening physical
+  ownership, alias or control-flow checks.
+- [ ] **2ab. Quotient result placement:** carry the existing divider's quotient
+  into its next useful register pair across the already-shared remainder store.
+- [ ] **2ac. Register-live-in frameless microleaves:** reuse automatic ABI
+  metadata and location handling to avoid profitable leaf argument homes/frames.
+- [ ] **2ad. Bounded nonliteral known-bit facts:** extend existing producer
+  queries beyond literal lanes without changing arithmetic widths or adding a
+  global range-analysis framework.
+- [ ] **2ae. Costed complex scaled induction:** revisit the deferred multi-access
+  loops using existing counter/address proofs, including pressure and call costs.
 - [ ] **3. Initial SM83 backend:** establish correct Game Boy code generation,
   target-specific addressing/spills/calls and execution tests. Use actual
   requirements to identify reusable code; do not assume IX/IY, `DJNZ` or `LDIR`.
@@ -169,8 +181,8 @@ requirement to finish every Z80 optimization before implementing SM83. The
 explicit pre-SM83 scope is steps 1, 2 and 2a-2s; priorities 3-5 below supply
 additional implementation guidance for the loop, call and arithmetic follow-ups.
 Steps 2t-2v below record the completed residency, frame and call investigations.
-The new 2w-2z follow-ups are optional measured Z80 improvements, not additional
-prerequisites for initial SM83 support.
+The 2w-2z follow-ups and new 2aa-2ae work are optional measured Z80 improvements,
+not additional prerequisites for initial SM83 support.
 
 Do one bounded, measured change at a time. The numeric observations below are
 baseline anchors, not promised results. Passing a focused test is not permission
@@ -3412,6 +3424,131 @@ unchanged. Evidence: `C:\cygwin64\tmp\constant-lanes-reuse-20261022`.
 The comparison, exact instruction ledger, ROM-identical dynamic annotations,
 source provenance and three private probes for 2w-2z are retained in
 `C:\cygwin64\tmp\compiler-reprofile-20261021-2v`.
+
+#### 2aa. Frame-Only Crossings In Bounded CRC Loops [COMPLETED]
+
+The post-2z profile at `f4c2a1f` identifies another eligible eight-round CRC in
+PackedCrc. The existing matcher rejects its crossing outer counter even though
+that counter is frame-backed. Reuse `_generate_asm_bounded_loop_z80`, not a new
+emitter or general loop-promotion pass.
+
+- Require a real spill home and no physical ownership for accepted crossing
+  temporaries. A spill flag or function-wide `phy NONE` alone is insufficient:
+  interval-local retained operands must also be considered.
+- Preserve the existing unsigned-state/count proof, exact loop shape, spill
+  transitions, address-exposure, external-entry, call/asm and live-out checks.
+  Keep non-CRC loop ownership unchanged.
+- Extend existing CRC regressions with frame-only outer loops, live-out state
+  and retained-owner/control/alias fallbacks. Keep numerical oracles, CPU
+  guards, native verifier controls and the pinned comparison corpus unchanged.
+- A private residency-only probe gives 784 -> 770 bytes and
+  11220929 -> 7604417 aggregate T-states (-32.23%), frame 47 unchanged.
+  Its 17 guarded cases and independent timing pass establish an opportunity,
+  not qualified compiler gains or a promise for the counted-loop implementation.
+
+**Implementation and measured results (2026-10-22), relative to `f4c2a1f`:**
+
+Extend only the existing CRC ownership check. A crossing temporary needs a spill
+home, `phy NONE`, and no physically annotated read/write from its first
+definition through the loop exit. This conservatively rejects retained prefixes
+even when the function-wide summary says spilled; later reloads may establish
+their own owners from the unchanged home. All non-CRC crossing checks, shape,
+type, alias, transition and external-entry guards remain unchanged. Keep the
+existing counter proof, including its fallback for an inner counter live across
+an outer back-edge. Reuse the original CRC emitter and live-out assignment.
+Production growth is **15 net C lines, zero new functions**, flags or annotations.
+
+| PackedCrc, normal RA | Parent | Current |
+| --- | ---: | ---: |
+| Kernel plus dependencies, bytes | 784 | 739 (-45) |
+| Aggregate kernel T-states | 11220929 | 5635305 (-49.78%) |
+| Stack high-water, bytes | 45 | 45 |
+| Frame footprint, bytes | 47 | 47 |
+
+Ordinary/shared arithmetic give the same improvement. All other 12 ordinary
+kernels, all allocator-off and external rows, and caller costs are unchanged.
+The counted implementation improves beyond the historical residency-only probe;
+do not add the two savings together.
+
+Independently linked complete RA applications:
+
+| Application | Ordinary used bytes | Shared used bytes |
+| --- | ---: | ---: |
+| calculations-1 | 17308 -> 17263 (-45) | 17288 -> 17243 (-45) |
+| calculations-2 | 26217 -> 26217 | 25949 -> 25949 |
+
+Default allocator-off application sizes remain 22405 / 38275 bytes respectively.
+The extended 35-function CRC oracle covers 5600 calls per build in five allocator
+modes, including nested frame state, bounds 1/255/256, live-out counters, calls
+outside versus inside the loop, escapes, asm, control flow and partial retained
+prefixes. The parent passes every runtime oracle and fails the newly required
+nested selection.
+
+Qualification: 54 tests plus 24 optimized-Python policy tests per
+release/traced/ASan build; all 175 fixtures without snapshot updates; original
+104-row/1856-call and shared 52-row/928-call comparisons with 80 independent
+timings. All 1392 individual SSC profile comparisons and 5600 additional
+parent/current pairs (11200 executions) have nonincreasing cycles, frame traffic
+and observed stack/frame metrics. The 32 complete application builds include
+176 paired runtime samples with nonincreasing cycles and frame reads/writes.
+All 367 condition images per build and corresponding complete ROMs agree across
+the three builds; default/no-RA/all-spill CRC images remain identical to the
+parent. Strict normal/traced C89 and Python syntax pass. Numerical oracles,
+guards, corpus and native verifier controls remain unchanged. Detailed evidence
+and source/commit bindings are retained in
+`C:\cygwin64\tmp\crc-frame-crossings-20261022`.
+
+#### 2ab. Quotient Result Placement [PLANNED]
+
+Division/remainder sharing already exists. PartitionRestore still stores the
+quotient from C:A to its frame, stores the shared remainder from HL, then reloads
+the quotient into BC for multiplication. Extend existing producer/result packing,
+location, clobber and cost contracts for this bounded transparent sequence.
+Do not introduce another divider or duplicate divmod sharing.
+
+SDCC r17016 `gen.c::genCall` moves ABI results directly into assigned locations.
+A private BC-carrier probe gives 126 -> 116 bytes and 40052 -> 38896 T-states
+(-2.89%), frame 26 unchanged; 17 guarded cases and an independent timing pass.
+Qualify the compiler implementation and all dependencies/callers separately.
+
+#### 2ac. Register-Live-In Frameless Microleaves [PLANNED]
+
+Automatic register calls still home incoming arguments and construct frames.
+Use existing ABI metadata, location resolution and frame handling to retain
+incoming values and omit only provably unnecessary leaf work. Account for
+compiler-generated arithmetic/copy helper calls as well as source calls,
+address escapes, asm, stack objects, register pressure and compatible entries.
+Do not revive the rejected global DE-to-indexed-frame switch or require new
+flags/source annotations.
+
+Source precedents are SDCC r17016 `genReceive` and `omit_frame_ptr`, and bundled
+z88dk 2.4 sccz80 FASTCALL handling. No gain has been measured yet; compare complete
+caller/callee costs and independently linked applications before closing.
+
+#### 2ad. Bounded Nonliteral Known-Bit Facts [PLANNED]
+
+SDCC r17016 `aopIsLitVal` / `aopIsLitBit` query proven bits of nonliteral operands.
+Extend existing local producer/type queries beyond 2z's literal lane patterns:
+masked shift counts, masked indices and proven zero high bytes are initial
+candidates. Preserve declared widths, signedness, overflow, aliases and
+evaluation order; narrow only proven internal work, never public source types.
+Reuse current folds and location helpers instead of adding a range framework.
+Require measured size/speed wins and unchanged unknown/effectful fallbacks.
+
+#### 2ae. Costed Complex Scaled Induction [PLANNED]
+
+Revisit the multi-access row/scaled loops conservatively deferred in 2p.
+SDCC r17016 `SDCCloop.c::loopInduction` replaces repeated scaling with recurrence;
+SameSameC's constant multiplication itself is already implemented efficiently.
+Use existing loop/address machinery to advance values or addresses only when
+bounds, wraparound, aliases, control flow and calls permit it. Include the cost
+of every extra live value, spill and preservation operation; do not trade a
+cheap shift/add chain for greater frame traffic.
+
+The refreshed 130-configuration comparison, per-input metrics, source hashes and
+two private probes underlying 2aa-2ae are retained in
+`C:\cygwin64\tmp\compiler-reprofile-20261022-after-2z`.
+These opportunities are not additive whole-ROM promises.
 
 ### 3. Maintain Induction Addresses And Select Z80 Loops
 

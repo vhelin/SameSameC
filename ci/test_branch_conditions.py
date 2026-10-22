@@ -633,22 +633,29 @@ u16 rc_four(u16 a,u16 b,u16 c,u16 d) { return a+b+c+d; }
             "call": (8, 0x1021, False), "assembly": (8, 0x1021, False),
             "mask": (8, 0x1021, False), "shift": (8, 0x1021, False),
             "reverse": (8, 0xa001, False), "global": (8, 0x1021, False),
-            "far": (8, 0x1021, False), "nested": (8, 0x1021, False),
+            "far": (8, 0x1021, False), "nested": (8, 0x1021, True),
             "break": (8, 0x1021, False), "continue": (8, 0x1021, False),
             "counter_read": (8, 0x1021, False), "variable": (8, 0x1021, False),
+            "outer_word": (8, 0x1021, True), "outer_word_bound": (256, 0x8005, True),
+            "outer_live_counter": (8, 0x1021, False), "outer_call": (8, 0x1021, True),
+            "outer_escaped": (8, 0x1021, False), "outer_assembly": (8, 0x1021, False),
+            "outer_break": (8, 0x1021, False), "outer_variable": (8, 0x1021, False),
+            "partial_owner": (8, 0x1021, False),
         }
         programs = []
         for name, (count, polynomial, _) in cases.items():
+            outer = name.startswith("outer_")
+            kind = name[6:] if outer else name
             loop = (f"for(i=0;i<{count};i++) {{ "
                     f"if((crc&0x8000)!=0) {{ crc=(crc<<1)^{polynomial}; }} else {{ crc<<=1; }} }}")
             prefix, suffix = "", "return crc;"
-            if name == "live_counter":
+            if kind == "live_counter":
                 suffix = "return crc+i;"
-            elif name == "escaped":
+            elif kind == "escaped":
                 prefix = "crc_escape(&crc);"
-            elif name == "call":
+            elif kind == "call" and not outer:
                 loop = loop.replace("if(", "crc=crc_call(crc); if(")
-            elif name == "assembly":
+            elif kind == "assembly":
                 prefix = '__asm("NOP");'
             elif name == "mask":
                 loop = loop.replace("0x8000", "0x4000")
@@ -660,12 +667,18 @@ u16 rc_four(u16 a,u16 b,u16 c,u16 d) { return a+b+c+d; }
                 prefix, suffix = "workspace[259]=b;", "return crc+workspace[259];"
             elif name == "nested":
                 loop = "for(k=0;k<2;k++) { " + loop + " }"
-            elif name in ("break", "continue"):
-                loop = loop.replace("if(", f"if(i==3) {{ {name}; }} if(", 1)
+            elif kind in ("break", "continue"):
+                loop = loop.replace("if(", f"if(i==3) {{ {kind}; }} if(", 1)
             elif name == "counter_read":
                 loop = loop[:-1] + " crc^=i; }"
-            elif name == "variable":
+            elif kind == "variable":
                 loop = loop.replace(f"i<{count}", "i<(b&15)")
+            elif name == "partial_owner":
+                prefix, suffix = "u16 held=a+b; crc^=held;", "return crc+held;"
+            if outer:
+                call = "crc=crc_call(crc);" if kind == "call" else ""
+                loop = f"for(k=0;k<((b&3)+1);k++) {{ crc^=k; {call} {loop} }}"
+                suffix = "return crc+k+i;" if kind == "live_counter" else "return crc+k;"
             body = f"u16 crc=a; u16 i; {prefix} {loop} {suffix}"
             if name == "signed":
                 body = body.replace("u16 crc", "s16 crc")
@@ -677,7 +690,7 @@ u16 rc_four(u16 a,u16 b,u16 c,u16 d) { return a+b+c+d; }
                 body = re.sub(r"\bcrc\b", "crc_global", body.replace("u16 crc=a;", "crc=a;"))
             elif name == "far":
                 body = "u8 workspace[260]; " + body
-            elif name == "nested":
+            elif name == "nested" or outer:
                 body = "u16 k; " + body
             programs.append(Program(f"crc_loop_{name}", name, 0, 0, [2, 2], 2, [],
                                     f"u16 crc_loop_{name}(u16 a,u16 b) {{ {body} }}"))
@@ -691,24 +704,34 @@ u16 rc_four(u16 a,u16 b,u16 c,u16 d) { return a+b+c+d; }
         calls = 0
         for program in programs:
             name = program.family
+            outer = name.startswith("outer_")
+            kind = name[6:] if outer else name
             count, polynomial, _ = cases[name]
             for a in (0, 1, 0x7fff, 0x8000, 0x8001, 0xffff, 0x1234, 0xa5a5):
                 for b in (0, 1, 15, 255):
-                    crc = a ^ (0x1234 if name == "escaped" else 0)
-                    iterations = b & 15 if name == "variable" else count
-                    if name in ("break", "continue"):
-                        iterations = 3 if name == "break" else count - 1
-                    for _ in range(2 if name == "nested" else 1):
+                    crc = a ^ (0x1234 if kind == "escaped" else
+                               (a+b) & 65535 if name == "partial_owner" else 0)
+                    iterations = b & 15 if kind == "variable" else count
+                    if kind in ("break", "continue"):
+                        iterations = 3 if kind == "break" else count - 1
+                    rounds = (b & 3)+1 if outer else 2 if name == "nested" else 1
+                    for outer_index in range(rounds):
+                        if outer:
+                            crc ^= outer_index
+                            if kind == "call":
+                                crc ^= 7
                         for index in range(iterations):
-                            if name == "call":
+                            if kind == "call" and not outer:
                                 crc ^= 7
                             high = crc & (1 if name == "reverse" else 0x4000 if name == "mask" else 0x8000)
                             crc = ((crc >> 1 if name == "reverse" else crc << (2 if name == "shift" else 1))
                                    ^ (polynomial if high else 0)) & 65535
                             if name == "counter_read":
                                 crc ^= index
-                    expected_value = (crc + (count if name == "live_counter" else
-                                             b if name == "far" else 0)) & 65535
+                    expected_value = (crc + (count if kind == "live_counter" else
+                                             b if name == "far" else
+                                             (a+b) & 65535 if name == "partial_owner" else 0)
+                                      + (rounds if outer else 0)) & 65535
                     initial = bytes((index*37+a+b) & 255 for index in range(130))
                     expected_buffer = bytearray(initial)
                     if name == "global":
