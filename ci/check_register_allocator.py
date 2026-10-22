@@ -882,6 +882,8 @@ def read_image(directory):
             frame = re.search(r"^LD\s+HL,-(\d+)$", source)
         if frame:
             name, size = re.sub(STATIC_SUFFIX, r"\1<id>", section), int(frame[1])
+            if f"ssc.regleaf.{section}" in symbols:
+                size = 0
             if section not in section_sizes or name in static_metrics["functions"]:
                 raise RuntimeError(f"Invalid function-frame section {section} in {directory}")
             static_metrics["functions"][name] = {"rom_bytes": section_sizes[section], "frame_bytes": size}

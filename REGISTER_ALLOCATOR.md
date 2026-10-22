@@ -59,6 +59,19 @@ Its workload dependencies also improve; both complete RA applications save
 [step 2ab](Z80_CODEGEN_PLAN.md#2ab-quotient-result-placement-completed)
 for exact scope, caller/stack costs and qualification.
 
+Automatically converted word-register microleaves now keep their BC/HL live-ins
+and omit argument homes and frames in every allocator mode. The bounded shape
+is a direct word return or one supported word arithmetic/logical operation,
+with at most two arguments and no stack locals. Reuse existing ABI/location,
+arithmetic and return machinery; helpers, branches, memory, pressure and legacy
+requirements keep their existing framed paths. No flags or annotations are
+needed. A two-argument addition shrinks 40 -> 2 callee bytes and 239 -> 21
+callee T-states; caller-inclusive costs improve 87 -> 49 bytes and 514 -> 296
+T-states, with stack high-water 17 -> 13 bytes. The existing 13-kernel profiles
+and both complete applications are unchanged; these are bounded primitive wins.
+See [step 2ac](Z80_CODEGEN_PLAN.md#2ac-register-live-in-frameless-microleaves-completed)
+for exclusions, compatibility, source reuse and full qualification.
+
 ---
 
 ## 0. Original Baseline: Before Allocator Implementation

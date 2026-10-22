@@ -35,6 +35,7 @@ extern char g_tmp[4096], g_error_message[sizeof(g_tmp) + MAX_NAME_LENGTH + 1 + 1
 #define DEBUG_PASS_6_REGISTER_ALLOCATOR 1
 
 #define Z80_GLOBAL_OFFSET 999999
+#define Z80_FRAMELESS_REGISTER_BODY 2
 
 static int g_return_id = 1, g_ix_frame_offset = Z80_GLOBAL_OFFSET;
 static int g_register_call_body = NO;
@@ -1761,6 +1762,23 @@ static int _resolve_tac_location(struct tac *t, int which_operand, struct tree_n
     return FAILED;
   }
 
+  if (g_register_call_body == Z80_FRAMELESS_REGISTER_BODY &&
+      (type == TAC_ARG_TYPE_LABEL || type == TAC_ARG_TYPE_TEMP)) {
+    int argument, physical_register = Z80_PHY_HL;
+    if (type == TAC_ARG_TYPE_LABEL) {
+      for (argument = 0; argument < function_node->local_variables->arguments_count; argument++) {
+        if (function_node->local_variables->local_variables[argument].node == node)
+          break;
+      }
+      if (argument == function_node->local_variables->arguments_count)
+        return print_error_using_tree_node("Invalid register-live-in operand in a frameless leaf.\n", ERROR_ERR, function_node);
+      physical_register = argument == function_node->local_variables->arguments_count - 1 ? Z80_PHY_BC : Z80_PHY_HL;
+    }
+    memset(location, 0, sizeof(*location));
+    location->size = 2;
+    location->node = node;
+    return _set_z80_location_to_physical_register(location, physical_register, value);
+  }
   if (type != TAC_ARG_TYPE_TEMP)
     retained_physical_register = Z80_PHY_NONE;
 
@@ -3626,7 +3644,8 @@ static int _generate_asm_complement_z80_16bit(struct tac *t, FILE *file_out, str
   /* source address (arg1) -> ix */
   /******************************************************************************************************/
 
-  if (arg1_location.kind == LOC_CONST || arg1_location.kind == LOC_PHY_HL || arg1_location.kind == LOC_PHY_A) {
+  if (arg1_location.kind == LOC_CONST || arg1_location.kind == LOC_PHY_HL ||
+      arg1_location.kind == LOC_PHY_BC || arg1_location.kind == LOC_PHY_A) {
   }
   else {
     if (_load_location_address_to_ix(&arg1_location, &ix_offset, file_out) == FAILED)
@@ -3639,7 +3658,7 @@ static int _generate_asm_complement_z80_16bit(struct tac *t, FILE *file_out, str
   /* copy data (arg1) -> hl */
   /******************************************************************************************************/
 
-  if (arg1_location.kind == LOC_CONST || arg1_location.kind == LOC_PHY_HL) {
+  if (arg1_location.kind == LOC_CONST || arg1_location.kind == LOC_PHY_HL || arg1_location.kind == LOC_PHY_BC) {
     if (_materialize_to_hl(&arg1_location, file_out) == FAILED)
       return FAILED;
   }
@@ -6663,7 +6682,7 @@ static int _generate_asm_return_value_z80(struct tac *t, FILE *file_out, struct 
   }
 
 #if defined(DEBUG_PASS_6_REGISTER_ALLOCATOR)
-  if (g_allocator_enabled == YES) {
+  if (g_allocator_enabled == YES && register_body != Z80_FRAMELESS_REGISTER_BODY) {
     RA_TRACE((stderr, "register_allocator: target_return_slot_access function=%s role=callee_store size=%d target=z80 low_offset=%d high_offset=%d\n",
             function_node->children[1]->label, return_value_size, return_low_offset, return_high_offset));
     RA_TRACE((stderr, "register_allocator: return_value_source function=%s kind=%s size=%d phy=%s arg_type=%d return_type=%d\n",
@@ -6796,6 +6815,10 @@ static int _generate_asm_return_value_z80(struct tac *t, FILE *file_out, struct 
   /* copy return data hl/l -> stack frame */
   /******************************************************************************************************/
 
+  if (register_body == Z80_FRAMELESS_REGISTER_BODY) {
+    _ret(file_out);
+    return SUCCEEDED;
+  }
   if (register_body == YES) {
     frame_cache = g_ix_frame_offset;
     fprintf(file_out, "  .IFDEF ssc.auto.v1.w%d.%s\n",
@@ -8211,6 +8234,96 @@ loop_done:
 }
 
 
+static int _generate_asm_register_leaf_z80(struct tree_node *function_node, int start, FILE *file_out, int *selected) {
+
+  struct tac *body[2];
+  struct local_variables *locals = function_node->local_variables;
+  int count = 0, i, operand, argument;
+  char label[MAX_NAME_LENGTH + 32];
+
+  *selected = NO;
+  if (locals->arguments_count > 2 || locals->local_variables_count != locals->arguments_count)
+    return SUCCEEDED;
+  for (i = start + 1; i < g_tacs_count && g_tacs[i].function_node == function_node; i++) {
+    struct tac *t = &g_tacs[i];
+    if (t->op == TAC_OP_DEAD || (t->op == TAC_OP_CREATE_VARIABLE && t->result_node != NULL &&
+        t->result_node->type == TREE_NODE_TYPE_CREATE_VARIABLE_FUNCTION_ARGUMENT))
+      continue;
+    if (count == 2)
+      return SUCCEEDED;
+    body[count++] = t;
+  }
+  if (count == 0 || body[count - 1]->op != TAC_OP_RETURN_VALUE)
+    return SUCCEEDED;
+  if (count == 2 && ((body[0]->op != TAC_OP_ADD && body[0]->op != TAC_OP_SUB &&
+      body[0]->op != TAC_OP_AND && body[0]->op != TAC_OP_OR && body[0]->op != TAC_OP_XOR &&
+      body[0]->op != TAC_OP_COMPLEMENT) ||
+      body[0]->result_type != TAC_ARG_TYPE_TEMP || body[1]->arg1_type != TAC_ARG_TYPE_TEMP ||
+      body[0]->result_d != body[1]->arg1_d || get_variable_type_size(body[0]->result_var_type) != 16))
+    return SUCCEEDED;
+  for (i = 0; i < count; i++) {
+    struct tac *t = body[i];
+    int operands = t->op == TAC_OP_RETURN_VALUE || t->op == TAC_OP_COMPLEMENT ? 1 : 2;
+    for (operand = 0; operand < operands; operand++) {
+      int type = operand == 0 ? t->arg1_type : t->arg2_type;
+      int var_type = operand == 0 ? t->arg1_var_type : t->arg2_var_type;
+      int promoted = operand == 0 ? t->arg1_var_type_promoted : t->arg2_var_type_promoted;
+      double value = operand == 0 ? t->arg1_d : t->arg2_d;
+      struct tree_node *node = operand == 0 ? t->arg1_node : t->arg2_node;
+      if (t->op != TAC_OP_RETURN_VALUE && get_variable_type_size(promoted) != 16)
+        return SUCCEEDED;
+      if (type == TAC_ARG_TYPE_CONSTANT) {
+        if (value < -32768 || value > 65535 || value != (int)value)
+          return SUCCEEDED;
+      }
+      else {
+        if (get_variable_type_size(var_type) != 16)
+          return SUCCEEDED;
+        if (type == TAC_ARG_TYPE_LABEL) {
+          for (argument = 0; argument < locals->arguments_count; argument++) {
+            if (locals->local_variables[argument].node == node)
+              break;
+          }
+          if (argument == locals->arguments_count ||
+              (t->op == TAC_OP_SUB && operand == 1 && argument == locals->arguments_count - 2))
+            return SUCCEEDED;
+        }
+        else if (type != TAC_ARG_TYPE_TEMP || t->op != TAC_OP_RETURN_VALUE || count != 2)
+          return SUCCEEDED;
+      }
+    }
+  }
+
+  fprintf(file_out, "  .IFDEF ssc.auto.v1.w%d.%s\n  .IFNDEF ssc.legacy.v1.w%d.%s\n",
+          locals->arguments_count, function_node->children[1]->label,
+          locals->arguments_count, function_node->children[1]->label);
+  fprintf(file_out, "  .DEFINE ssc.frameless.%s 1\n", function_node->children[1]->label);
+  snprintf(label, sizeof(label), (function_node->flags & TREE_NODE_FLAG_Z80_REGCALL) != 0 ?
+           "ssc.regcall.v1.w%d.%s" : "ssc.autocall.v1.w%d.%s", locals->arguments_count, function_node->children[1]->label);
+  _add_label(label, file_out, NO);
+  snprintf(label, sizeof(label), "ssc.regleaf.%s", function_node->children[1]->label);
+  _add_label(label, file_out, NO);
+  fprintf(file_out, "      ; frameless register leaf; BC/HL live-ins, HL result\n");
+  g_register_call_body = Z80_FRAMELESS_REGISTER_BODY;
+  g_ix_frame_offset = Z80_GLOBAL_OFFSET;
+  if (count == 2) {
+    if (body[0]->op == TAC_OP_COMPLEMENT) {
+      if (_generate_asm_complement_z80_16bit(body[0], file_out, function_node) == FAILED)
+        return FAILED;
+    }
+    else if (_aaa_generate_asm_add_sub_or_xor_and_z80_16bit(body[0], file_out, function_node, body[0]->op) == FAILED)
+      return FAILED;
+  }
+  if (_generate_asm_return_value_z80(body[count - 1], file_out, function_node) == FAILED)
+    return FAILED;
+  g_register_call_body = NO;
+  g_ix_frame_offset = Z80_GLOBAL_OFFSET;
+  fprintf(file_out, "  .ENDIF\n  .ENDIF\n");
+  *selected = YES;
+  return SUCCEEDED;
+}
+
+
 int generate_asm_z80(FILE *file_out) {
 
   int i, opaque = NO, file_id = -1, line_number = -1, const_variables_count;
@@ -8244,6 +8357,7 @@ int generate_asm_z80(FILE *file_out) {
       int frame_edge_count[2] = { 0, 0 }, frame_edge_next[2] = { 0, 0 }, edge_kind;
       int frame_fallthrough = YES;
       int j, register_call = _is_z80_register_call(function_node, YES);
+      int register_leaf = NO;
       int explicit_call = (function_node->flags & TREE_NODE_FLAG_Z80_REGCALL) != 0;
 
       if (explicit_call && register_call == NO)
@@ -8288,6 +8402,10 @@ int generate_asm_z80(FILE *file_out) {
         if (explicit_call)
           fprintf(file_out, "  .IFNDEF ssc.auto.v1.w%d.%s\n  .DEFINE ssc.auto.v1.w%d.%s 1\n  .ENDIF\n",
                   count, function_node->children[1]->label, count, function_node->children[1]->label);
+        if (_generate_asm_register_leaf_z80(function_node, i, file_out, &register_leaf) == FAILED)
+          return FAILED;
+        if (register_leaf == YES)
+          fprintf(file_out, "  .IFNDEF ssc.frameless.%s\n", function_node->children[1]->label);
         fprintf(file_out, "  .IFDEF ssc.auto.v1.w%d.%s\n", count, function_node->children[1]->label);
         fprintf(file_out, "  .IFDEF ssc.legacy.v1.w%d.%s\n", count, function_node->children[1]->label);
         _add_label(function_node->children[1]->label, file_out, NO);
@@ -8635,6 +8753,8 @@ int generate_asm_z80(FILE *file_out) {
       if (_add_const_variables(const_variables, const_variables_count, file_out) == FAILED)
         return FAILED;
 
+      if (register_leaf == YES)
+        fprintf(file_out, "  .ENDIF\n");
       fprintf(file_out, "  .ENDS\n\n");
     }
     else if (op == TAC_OP_ASM) {

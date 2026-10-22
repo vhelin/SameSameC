@@ -3556,19 +3556,80 @@ paired real-image samples pass, including both quotient routines and display
 callers. Native controls, corpus, numerical oracles and CPU guards are unchanged.
 Evidence: `C:\cygwin64\tmp\quotient-result-placement-20261022`.
 
-#### 2ac. Register-Live-In Frameless Microleaves [PLANNED]
+#### 2ac. Register-Live-In Frameless Microleaves [COMPLETED]
 
-Automatic register calls still home incoming arguments and construct frames.
-Use existing ABI metadata, location resolution and frame handling to retain
-incoming values and omit only provably unnecessary leaf work. Account for
-compiler-generated arithmetic/copy helper calls as well as source calls,
-address escapes, asm, stack objects, register pressure and compatible entries.
-Do not revive the rejected global DE-to-indexed-frame switch or require new
-flags/source annotations.
+Automatically converted word-register leaves retain their BC/HL live-ins and
+omit argument homes, frame construction and cleanup when the final TACs prove
+the frame unnecessary. This applies in every allocator mode without new flags
+or annotations. Reuse the existing ABI eligibility/metadata, physical-location
+resolver, word arithmetic/complement emitters and return materialization.
+Incoming register order and the caller are unchanged: one argument uses BC;
+two arguments use HL then BC; the result uses HL.
+
+The bounded shape has at most two word arguments, no remaining stack locals,
+and either a direct word argument/constant return or one word ADD/SUB/AND/OR/XOR/
+COMPLEMENT immediately returned. Reject other TACs, source calls and generated
+arithmetic/copy helpers, branches, address-taking, memory access, stack arrays,
+byte arguments, narrowing and pressure-bearing expressions. In particular,
+BC-minus-HL stays framed because the existing subtraction schedule does not
+support it. This is not general frame omission or a new register allocator.
+
+The existing linker conversion/legacy requirements select either the frameless
+prefix or the original framed implementation, never both in the linked image.
+Opaque asm, escaping function addresses and older inputs retain their existing
+compatible path. Explicit register-call contracts retain their existing rules.
+No ABI version, linker changes, global DE-to-indexed-frame switch or new runtime
+helper is needed. A scoped resolver mode describes only the checked live-ins
+and single HL result; it does not mutate TACs or allocator annotations.
+The complement emitter now accepts BC through its existing HL materializer.
+One combined eligibility/emission helper adds 120 net production C lines,
+without a separate pass, allocator, duplicate arithmetic emitter or new header.
 
 Source precedents are SDCC r17016 `genReceive` and `omit_frame_ptr`, and bundled
-z88dk 2.4 sccz80 FASTCALL handling. No gain has been measured yet; compare complete
-caller/callee costs and independently linked applications before closing.
+z88dk 2.4 sccz80 FASTCALL handling. Against parent `9078f1d`, normal-RA primitive
+costs are:
+
+| Leaf | Callee bytes | Callee T-states | Caller-inclusive T-states | Extra callee stack bytes |
+|---|---:|---:|---:|---:|
+| Return a word constant | 22 -> 4 | 111 -> 20 | 273 -> 182 | 0 -> 0 |
+| Return first of two arguments | 33 -> 1 | 190 -> 10 | 465 -> 285 | 4 -> 0 |
+| Add two arguments | 40 -> 2 | 239 -> 21 | 514 -> 296 | 4 -> 0 |
+| XOR two arguments | 45 -> 7 | 252 -> 34 | 527 -> 309 | 4 -> 0 |
+| Complement one argument | 40 -> 11 | 209 -> 48 | 438 -> 277 | 2 -> 0 |
+
+All 15 selected primitive shapes shrink. Caller bytes and caller-exclusive
+cycles are unchanged; for addition these are 47 bytes / 275 T-states, so the
+complete caller/callee pair shrinks 87 -> 49 bytes and saves 42.41% cycles.
+Observed caller-inclusive stack high-water improves 17 -> 13 bytes. The selected
+callee's static frame is zero, with no local stack growth. Zero-argument leaves
+already had no extra stack growth but still remove frame-pointer work.
+Ordinary/shared arithmetic and all five allocator modes benefit; opaque cohort
+images remain byte-identical to the parent.
+
+The existing 13-kernel full/shared profiles do not change. Neither complete
+application gains: calculations-1 remains 22405 default / 17253 RA bytes
+(shared 22385 / 17233); calculations-2 remains 38275 default / 26207 RA
+(shared 38007 / 25939). Their independently linked images and all 384 sampled
+routine/display pairs are identical to the parent. Do not extrapolate primitive
+wins to unsupported multi-operation helpers or asm-constrained applications.
+
+Qualification: 56 tests plus 24 optimized-Python policy tests per
+release/traced/ASan build; all 175 fixtures without snapshot changes; 412
+corresponding regression images identical across builds. The new 27-function
+ordinary/shared/opaque cohort supplies 12960 parent/current pairs (25920 guarded
+executions), all non-growing in cycles, frame reads/writes and stack high-water.
+Its 4800 independently timed selected callee/caller pairs confirm zero callee
+stack growth and unchanged caller-exclusive cycles. The cross-object matrix
+also executes frameless subtraction under all 25 caller/callee mode combinations.
+Full/shared profiles cover 156 configurations, 2784 calls, 80 independent timing
+checks and 1392 non-growing individual SSC sample comparisons. All 32 application
+builds pass. Strict normal/traced C89 and Python syntax pass.
+
+WLA listings retain inactive compatibility-frame comments. The image reader now
+reports zero frame size only when the linked `ssc.regleaf` marker exists; all
+other reader/oracle/control code is AST-identical to the parent. Numerical
+oracles, CPU guards, corpus and native verifier controls remain unchanged.
+Evidence: `C:\cygwin64\tmp\register-live-in-leaves-20261022`.
 
 #### 2ad. Bounded Nonliteral Known-Bit Facts [PLANNED]
 

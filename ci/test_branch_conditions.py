@@ -232,6 +232,92 @@ class BranchConditionsTests(unittest.TestCase):
                                          (cases[program.family][1](a, b)&65535, expected_buffer, 0),
                                          (program.name, mode, a, b))
 
+    def test_frameless_register_leaves(self):
+        cases = {
+            "zero": ("void", "return 0x9234;", "", lambda a, b: 0x9234, True),
+            "first": ("u16 a,u16 b", "return a;", "a,b", lambda a, b: a, True),
+            "second": ("u16 a,u16 b", "return b;", "a,b", lambda a, b: b, True),
+            "add": ("u16 a,u16 b", "return a+b;", "a,b", lambda a, b: a+b, True),
+            "reverse_add": ("u16 a,u16 b", "return b+a;", "a,b", lambda a, b: a+b, True),
+            "reverse_sub": ("u16 a,u16 b", "return b-a;", "a,b", lambda a, b: b-a, False),
+            "sub_constant": ("u16 a", "return a-0x1234;", "a", lambda a, b: a-0x1234, True),
+            "constant_sub": ("u16 a", "return 0x1234-a;", "a", lambda a, b: 0x1234-a, True),
+            "and": ("u16 a,u16 b", "return a&b;", "a,b", lambda a, b: a&b, True),
+            "or": ("u16 a,u16 b", "return a|b;", "a,b", lambda a, b: a|b, True),
+            "xor": ("u16 a,u16 b", "return a^b;", "a,b", lambda a, b: a^b, True),
+            "complement": ("u16 a", "return ~a;", "a", lambda a, b: a^65535, True),
+            "same_add": ("u16 a", "return a+a;", "a", lambda a, b: a+a, True),
+            "mask": ("u16 a", "return a&0xff00;", "a", lambda a, b: a&0xff00, True),
+            "signed": ("s16 a,s16 b", "return a^b;", "a,b", lambda a, b: a^b, True),
+            "sub": ("u16 a,u16 b", "return a-b;", "a,b", lambda a, b: a-b, True),
+            "multiply": ("u16 a,u16 b", "return a*b;", "a,b", lambda a, b: a*b, False),
+            "divide": ("u16 a,u16 b", "return a/b;", "a,b",
+                       lambda a, b: a//b if b else 65535, False),
+            "modulo": ("u16 a,u16 b", "return a%b;", "a,b",
+                       lambda a, b: a%b if b else a, False),
+            "pressure": ("u16 a,u16 b", "return (a+b)*(a^b);", "a,b",
+                         lambda a, b: (a+b)*(a^b), False),
+            "three": ("u16 a,u16 b,u16 c", "return c;", "a,b,a^b", lambda a, b: a^b, False),
+            "byte": ("u8 a,u8 b", "return a^b;", "a,b", lambda a, b: (a^b)&255, False),
+            "narrow": ("u16 a", "u8 small=a; return small;", "a", lambda a, b: a&255, False),
+            "branch": ("u16 a,u16 b", "if (a<b) { return a; } return b;", "a,b", min, False),
+            "call": ("u16 a", "return leaf_first(a,7);", "a", lambda a, b: a, False),
+            "alias": ("u16 a", "leaf_escape(&a); return a;", "a", lambda a, b: a^0x1234, False),
+            "copy": ("u16 a,u16 b", "u8 data[8]={3,5,7,11,13,17,19,23}; return a^data[b&7];",
+                     "a,b", lambda a, b: a^(3,5,7,11,13,17,19,23)[b&7], False),
+        }
+        helpers = ("u8 ra_buffer[128];\n"
+                   "void leaf_escape(u16 *value) { value[0]^=0x1234; }\n")
+        helpers += "\n".join(f"u16 leaf_{name}({parameters}) {{ {body} }}"
+                             for name, (parameters, body, _, _, _) in cases.items()) + "\n"
+        programs = [Program(f"microleaf_{name}", name, 0, 0, [2, 2], 2, [],
+                            f"u16 microleaf_{name}(u16 a,u16 b) {{ return leaf_{name}({arguments}); }}")
+                    for name, (_, _, arguments, _, _) in cases.items()]
+        source = helpers + "\n".join(program.source for program in programs) + "\nvoid main(void) {}\n"
+        expected_code = {"zero": bytes.fromhex("213492c9"), "first": bytes.fromhex("c9"),
+                         "second": bytes.fromhex("6960c9"), "add": bytes.fromhex("09c9"),
+                         "reverse_add": bytes.fromhex("09c9"), "sub": bytes.fromhex("a7ed42c9")}
+        calls, cohorts = 0, []
+        for cohort, flags, suffix in (("ordinary", (), ""), ("shared", ("-share-arithmetic",), ""),
+                                      ("opaque", (), 'void leaf_noise(void) { __asm("NOP"); }\n')):
+            directory = self.output / f"frameless-leaves-{cohort}"
+            images = compile_generated(directory, os.environ.get("SAMESAMECC") or "samesamecc",
+                                       os.environ.get("SAMESAMECL") or "samesamecl", programs,
+                                       source+suffix, linker_flags=flags)
+            cohorts.append((cohort, images))
+            for program in programs:
+                for a in (0, 1, 127, 128, 255, 256, 32768, 65535):
+                    for b in (0, 1, 255, 0x9234):
+                        initial = bytes((index*37+a+b)&255 for index in range(128))
+                        expected = cases[program.family][3](a, b)&65535
+                        for mode, image in images.items():
+                            result = execute(image.rom, image.symbols[program.name], [a, b], [2, 2],
+                                             initial, image.symbols["ra_buffer"], 2, image.transfers,
+                                             frame_bytes=2048)
+                            self.assertEqual((result["value"], result["buffer"], result["port_writes"]),
+                                             (expected, initial, []), (cohort, mode, program.name, a, b))
+                            self.assertEqual(result["unmapped_instructions"], 0)
+                            calls += 1
+        for cohort, images in cohorts:
+            for mode, image in images.items():
+                for name, (_, _, arguments, _, eligible) in cases.items():
+                    selected = eligible and cohort != "opaque"
+                    marker = f"ssc.regleaf.leaf_{name}"
+                    self.assertEqual(marker in image.symbols, selected, (cohort, mode, name))
+                    if selected:
+                        count = len(arguments.split(",")) if arguments else 0
+                        entry = image.symbols[f"ssc.autocall.v1.w{count}.leaf_{name}"]
+                        self.assertEqual(entry, image.symbols[marker])
+                        self.assertEqual(image.staticMetrics["functions"][f"leaf_{name}"]["frame_bytes"], 0)
+                        if name in expected_code:
+                            code = expected_code[name]
+                            self.assertEqual(image.rom[entry:entry+len(code)], code, (cohort, mode, name))
+                    else:
+                        self.assertGreater(image.staticMetrics["functions"][f"leaf_{name}"]["frame_bytes"], 0)
+                        if cohort == "opaque" and eligible:
+                            self.assertIn(f"leaf_{name}", image.symbols)
+        self.assertEqual(calls, len(programs)*32*5*3)
+
     def test_automatic_register_calls(self):
         cases = {
             "zero": ("return er_zero()+a+b;", lambda a, b: 0x9234+a+b),
@@ -349,24 +435,29 @@ static u16 pr_discard(u16 a,u16 b,u16 c) { ra_buffer[0]=a; return a+3*b+5*c; }
         flags = ((), ("-no-ra",), ("-ra-all-spill",), ("-ra",), ("-ra", "-z80-regcalls"))
         for caller_index, caller_flags in enumerate(flags):
             for callee_index, callee_flags in enumerate(flags):
-                work = self.output / f"automatic-objects-{caller_index}-{callee_index}"
-                work.mkdir()
-                (work / "callee.ssc").write_text(
-                    "u16 cross_leaf(u16 a,u16 b,u16 c) { return a+3*b+5*c; }\n")
-                (work / "caller.ssc").write_text(
-                    "u8 ra_buffer[128]; u16 cross_leaf(u16 a,u16 b,u16 c);\n"
-                    "u16 cross_caller(u16 a,u16 b) { return cross_leaf(a,b,7); }\nvoid main(void) {}\n")
-                for unit, options in (("caller", caller_flags), ("callee", callee_flags)):
-                    run(compiler, ["-mz80", "-rs", "3", *options, "-o", f"{unit}.asm", f"{unit}.ssc"],
-                        work, f"{unit}.compiler.log")
-                run(linker, ["-lsms", "-v", "-o", "linked.sms", "caller.asm", "callee.asm"], work, "linker.log")
-                image = read_image(work)
-                self.assertNotIn("cross_leaf", image.symbols)
-                for a, b in ((0, 7), (0x8000, 65535), (65535, 0x9234)):
-                    result = execute(image.rom, image.symbols["cross_caller"], [a, b], [2, 2], bytes(128),
-                                     image.symbols["ra_buffer"], 2, image.transfers, frame_bytes=2048)
-                    self.assertEqual(result["value"], (a+3*b+35)&65535, (caller_index, callee_index, a, b))
-                    self.assertEqual(result["unmapped_instructions"], 0)
+                for count, parameters, body, arguments, oracle in (
+                        (3, "u16 a,u16 b,u16 c", "a+3*b+5*c", "a,b,7", lambda a, b: a+3*b+35),
+                        (2, "u16 a,u16 b", "a-b", "a,b", lambda a, b: a-b)):
+                    work = self.output / f"automatic-objects-{caller_index}-{callee_index}-{count}"
+                    work.mkdir()
+                    (work / "callee.ssc").write_text(f"u16 cross_leaf({parameters}) {{ return {body}; }}\n")
+                    (work / "caller.ssc").write_text(
+                        f"u8 ra_buffer[128]; u16 cross_leaf({parameters});\n"
+                        f"u16 cross_caller(u16 a,u16 b) {{ return cross_leaf({arguments}); }}\nvoid main(void) {{}}\n")
+                    for unit, options in (("caller", caller_flags), ("callee", callee_flags)):
+                        run(compiler, ["-mz80", "-rs", "3", *options, "-o", f"{unit}.asm", f"{unit}.ssc"],
+                            work, f"{unit}.compiler.log")
+                    run(linker, ["-lsms", "-v", "-o", "linked.sms", "caller.asm", "callee.asm"], work, "linker.log")
+                    image = read_image(work)
+                    self.assertNotIn("cross_leaf", image.symbols)
+                    self.assertEqual("ssc.regleaf.cross_leaf" in image.symbols, count == 2)
+                    if count == 2:
+                        self.assertEqual(image.staticMetrics["functions"]["cross_leaf"]["frame_bytes"], 0)
+                    for a, b in ((0, 7), (0x8000, 65535), (65535, 0x9234)):
+                        result = execute(image.rom, image.symbols["cross_caller"], [a, b], [2, 2], bytes(128),
+                                         image.symbols["ra_buffer"], 2, image.transfers, frame_bytes=2048)
+                        self.assertEqual(result["value"], oracle(a, b)&65535, (caller_index, callee_index, count, a, b))
+                        self.assertEqual(result["unmapped_instructions"], 0)
 
     def test_register_call_cross_object_boundaries(self):
         compiler, linker = os.environ.get("SAMESAMECC") or "samesamecc", os.environ.get("SAMESAMECL") or "samesamecl"
