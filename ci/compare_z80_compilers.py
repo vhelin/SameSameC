@@ -15,35 +15,38 @@ import time
 
 from check_register_allocator import PACK_BITS_VECTORS, calibrate_counters, real_oracle, write_json
 from ra_cpu import Z80Machine, step
+from z80_application_oracles import APPLICATION_CASES, application_inputs
 
 
 ROOT = Path(__file__).resolve().parent.parent
 BASELINE = Path(__file__).with_name("z80_compiler_baseline.json")
+APPLICATION_BASELINE = Path(__file__).with_name("z80_application_baseline_v2.json")
 CASES = 17
 ROUTINES = {
-    "calculationMultiplyAdd": ("calculations-1", "main.ssc"),
-    "calculationProductRestore": ("calculations-2", "main.ssc"),
-    "calculationShiftRestore": ("calculations-2", "main.ssc"),
-    "calculationPartitionRestore": ("calculations-2", "main.ssc"),
-    "calculationArrayWorkload": ("calculations-2", "main.ssc"),
-    "calculationStencilWorkload": ("calculations-2", "bank_2.ssc"),
-    "calculationTileWorkload": ("calculations-2", "bank_3.ssc"),
-    "calculationPathWorkload": ("calculations-2", "bank_3.ssc"),
-    "unpackPackBits": ("calculations-1", "bank_1.ssc"),
-    "calculationPackedCrc": ("calculations-1", "bank_1.ssc"),
+    "calculationMultiplyAdd": ("tests", "z80", "sms", "calculations-1", "main.ssc"),
+    "calculationProductRestore": ("tests", "z80", "sms", "calculations-2", "main.ssc"),
+    "calculationShiftRestore": ("tests", "z80", "sms", "calculations-2", "main.ssc"),
+    "calculationPartitionRestore": ("tests", "z80", "sms", "calculations-2", "main.ssc"),
+    "calculationArrayWorkload": ("tests", "z80", "sms", "calculations-2", "main.ssc"),
+    "calculationStencilWorkload": ("tests", "z80", "sms", "calculations-2", "bank_2.ssc"),
+    "calculationTileWorkload": ("tests", "z80", "sms", "calculations-2", "bank_3.ssc"),
+    "calculationPathWorkload": ("tests", "z80", "sms", "calculations-2", "bank_3.ssc"),
+    "unpackPackBits": ("tests", "z80", "sms", "calculations-1", "bank_1.ssc"),
+    "calculationPackedCrc": ("tests", "z80", "sms", "calculations-1", "bank_1.ssc"),
     "sumBytes": None,
     "copyBytes": None,
     "fillBytes": None,
+    **{name: ("ci", "z80_application_workloads.ssc") for name in APPLICATION_CASES},
 }
 DEPENDENCIES = {
     "calculationArrayWorkload": ["calculationPartitionRestore", "calculationProductRestore", "calculationShiftRestore"],
     "calculationStencilWorkload": ["calculationShiftRestore", "calculationPartitionRestore"],
     "calculationPathWorkload": ["calculationPartitionRestore"],
     "calculationPackedCrc": ["unpackPackBits"],
+    "calculationTrackerWorkload": ["calculationMultiplyAdd"],
 }
 MODES = {
     "ssc-ra": ("ssc", ["-ra"]),
-    "ssc-no-ra": ("ssc", ["-no-ra"]),
     "sdcc-size": ("sdcc", ["--opt-code-size"]),
     "sdcc-speed": ("sdcc", ["--opt-code-speed"]),
     "sccz80-size": ("sccz80", []),
@@ -52,7 +55,7 @@ MODES = {
     "zsdcc-speed": ("zsdcc", ["--opt-code-speed"]),
 }
 DEFAULT_MODES = tuple(MODES)
-MODES.update({"ssc-ra-shared": MODES["ssc-ra"], "ssc-no-ra-shared": MODES["ssc-no-ra"]})
+MODES["ssc-ra-shared"] = MODES["ssc-ra"]
 MODES["ssc-ra-regcalls"] = ("ssc", ["-ra", "-z80-regcalls"])
 MODES["ssc-ra-regcalls-shared"] = MODES["ssc-ra-regcalls"]
 FLAGS = {
@@ -75,7 +78,7 @@ def sources():
         if location is None:
             result[name] = f"u16 {name}(u16 seed, u16 count, u8 *bytes) {{ {PORTABLE[name]} }}"
             continue
-        path = ROOT / "tests" / "z80" / "sms" / location[0] / location[1]
+        path = ROOT.joinpath(*location)
         text = path.read_text()
         match = re.search(rf"^u16 {name}\([^;\n]*\) \{{", text, re.M)
         if match is None:
@@ -116,9 +119,11 @@ def source_for(name, kind, functions, packed):
 
 
 def inputs(name, seed):
+    if name in APPLICATION_CASES:
+        return application_inputs(name, seed)
     if ROUTINES[name] is not None:
         parameters, buffer, expected_buffer, _address, width, expected, ports = real_oracle(
-            ROUTINES[name][0], name, seed, CASES,
+            ROUTINES[name][-2], name, seed, CASES,
         )
         if width != 2 or ports:
             raise RuntimeError(f"Unexpected oracle contract for {name}")
@@ -140,7 +145,7 @@ def inputs(name, seed):
 def corpus(functions, packed):
     result = {}
     for name in ROUTINES:
-        count = len(PACK_BITS_VECTORS) if name == "unpackPackBits" else CASES + (3 if name.endswith("Workload") else 0)
+        count = APPLICATION_CASES.get(name, len(PACK_BITS_VECTORS) if name == "unpackPackBits" else CASES + (3 if name.endswith("Workload") else 0))
         result[name] = {
             "ssc_sha256": hashlib.sha256(source_for(name, "ssc", functions, packed).encode()).hexdigest(),
             "c_sha256": hashlib.sha256(source_for(name, "sdcc", functions, packed).encode()).hexdigest(),
@@ -151,6 +156,26 @@ def corpus(functions, packed):
             ], separators=(",", ":")).encode()).hexdigest(),
         }
     return result
+
+
+def baseline():
+    original = BASELINE.read_text(encoding="utf-8")
+    reference = json.loads(original)
+    application = json.loads(APPLICATION_BASELINE.read_text())
+    expected = {(name, mode) for name in APPLICATION_CASES for mode in DEFAULT_MODES}
+    pairs = [(row["routine"], row["mode"]) for row in application["results"]]
+    if (application["schema"] != 2
+            or application["parent_sha256"] != hashlib.sha256(original.encode("utf-8")).hexdigest()
+            or set(application["corpus"]) != set(APPLICATION_CASES)
+            or set(application["modes"]) != set(DEFAULT_MODES)
+            or set(pairs) != expected or len(pairs) != len(expected)
+            or set(reference["corpus"]) & set(application["corpus"])):
+        raise RuntimeError("Invalid versioned application baseline or historical parent fingerprint")
+    reference["corpus"].update(application["corpus"])
+    reference["results"].extend(application["results"])
+    reference["modes"] = {mode: reference["modes"][mode] for mode in DEFAULT_MODES}
+    reference["application_commit"] = application["compiler_commit"]
+    return reference
 
 
 def tool(command):
@@ -432,7 +457,7 @@ def main():
     parser.add_argument("--output-dir", type=Path, help="New or empty artifact directory; default: system temporary directory")
     parser.add_argument("--names", choices=ROUTINES, nargs="+", default=list(ROUTINES))
     parser.add_argument("--modes", choices=MODES, nargs="+", default=list(DEFAULT_MODES),
-                        help="Original eight modes by default; shared and register-call modes require their ordinary paired modes")
+                        help="Seven RA-only/competitor modes by default; shared and register-call modes require their ordinary paired modes")
     parser.add_argument("--allow-competitor-drift", action="store_true",
                         help="Record, but do not fail on, changed external tool versions/results; never relax SameSameC gates")
     args = parser.parse_args()
@@ -451,7 +476,7 @@ def main():
               "results": [], "issues": [], "independent_timing_checks": 0}
     print(f"Artifacts: {output}", flush=True)
     try:
-        reference = json.loads(BASELINE.read_text())
+        reference = baseline()
         if reference["flags"] != FLAGS or reference["modes"] != {
             mode: [MODES[mode][0], MODES[mode][1]] for mode in DEFAULT_MODES
         }:
@@ -462,7 +487,9 @@ def main():
         if measured_corpus != reference["corpus"]:
             raise RuntimeError("Benchmark sources, asset or oracle changed; preserve/review the corpus before comparing baselines")
         report["corpus"] = measured_corpus
+        report["corpus_version"] = 2
         report["baseline_commit"] = reference["commit"]
+        report["application_baseline_commit"] = reference["application_commit"]
         kinds = {MODES[mode][0] for mode in args.modes}
         tools = {}
         if "ssc" in kinds:
@@ -503,6 +530,7 @@ def main():
                     independent = tools.get("ticks") if (
                         (name == "fillBytes" and seed == 10)
                         or (seed == 0 and name in ("calculationMultiplyAdd", "calculationPackedCrc"))
+                        or (seed == 0 and name in APPLICATION_CASES)
                         or (seed == 0 and shared_requested)
                     ) else None
                     value, buffer, counters = execute(

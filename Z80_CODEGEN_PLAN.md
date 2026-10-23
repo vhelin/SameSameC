@@ -81,6 +81,67 @@ Specific evidence worth retaining:
 - Compiler executable bytes and host `-O3`/`-Os` settings are separate from target
   code quality. Do not use host EXE size as a generated-code metric.
 
+### Current Comparison Corpus: Version 2
+
+The original 13-workload [baseline](ci/z80_compiler_baseline.json) remains
+immutable. The [versioned application extension](ci/z80_application_baseline_v2.json)
+adds three larger [portable application kernels](ci/z80_application_workloads.ssc),
+with [independent Python models](ci/z80_application_oracles.py):
+
+- **Sprite scene:** twelve actors on a 16x12 collision map, 8.8 tile positions,
+  replayed controls, wall response, pairwise collisions, animation and tile
+  composition across up to six frames. Publish positions, collision counters
+  and animation state as well as the rendered map.
+- **Tracker:** four channels of row-event decoding, period-table lookup,
+  envelopes, pitch slides, arpeggios and vibrato, followed by four PCM samples
+  per tick for up to 24 ticks. Reuse the existing multiply/add leaf for mixing;
+  observe PCM, decoded pattern and voice state.
+- **Navigation:** repeated warehouse-route jobs on a 16x12 map, with a word
+  distance field, BFS queue, predecessor reconstruction, run-length route
+  encoding and a distance heatmap. Exercise open, blocked and gated maps, up
+  to three jobs and a 960-byte local-array footprint.
+
+Each application has twelve deterministic input cases, including zero work,
+short/long runs and high-bit seeds. Models use actor records, voice records and
+a deque/dictionary BFS rather than executing the compiled source. Hand-checked
+PCM and route vectors and state/route invariants supplement full 512-byte
+buffer and numerical checks. These are application kernels, not whole-game,
+hardware-I/O, startup, interrupt or library parity claims.
+
+All future SameSameC **performance comparisons use `-ra` only**. The default
+is sixteen workloads in seven configurations: SameSameC RA, stock SDCC
+size/speed, sccz80 size/speed and ZSDCC size/speed. This is 112 builds and 1876
+guarded calls. Optional shared arithmetic adds the paired RA configuration;
+allocator-off comparison modes are rejected. Historical allocator-off records
+remain readable in the original baseline but are not rerun. The extension
+pins its historical parent's UTF-8 text by SHA-256 after LF normalization and
+adds only new corpus/results, without
+duplicating or changing old sources, settings, oracle fingerprints or metrics.
+
+The extension's first measurements use the unchanged compiler at `17f4cd9`.
+All 24 application builds (including paired shared arithmetic) pass 288
+guarded calls and 48 independent timings. Ordinary RA kernel/dependency costs
+for the twelve inputs per application are:
+
+| Application | SameSameC bytes | Smallest external bytes | SameSameC aggregate T-states | Fewest external T-states |
+| --- | ---: | ---: | ---: | ---: |
+| Sprite scene | 3725 | 2024 | 17331570 | 9574871 |
+| Tracker | 3572 | 1873 | 11518619 | 6105673 |
+| Navigation | 3056 | 1866 | 12019455 | 6926438 |
+
+External minima are selected independently across the pinned size/speed modes,
+not claimed as a single optimum. These larger kernels deliberately expose
+remaining frame, argument-transport and loop costs; adding them does not
+improve or replace any original result.
+
+Expansion qualification passes 33 comparison/model unit tests and the full
+128-build ordinary/shared comparison: 2144 guarded calls and 136 independent
+timings. All thirteen original corpus fingerprints, 26 original RA images and
+78 original external result rows reproduce the after-2aj profile exactly.
+Compiler/linker implementation and unrelated working-tree changes are
+unchanged. Detailed evidence is retained under
+`C:\cygwin64\tmp\application-comparison-20261023`.
+
 ## Implementation Order
 
 ### Progress Toward Game Boy Support
@@ -175,6 +236,14 @@ extraction.
   unused automatic-ABI homes before broadening profitable frameless schedules.
 - [x] **2aj. Byte facts for comparisons and bounded dynamic loops:** reuse
   proven byte ranges without changing general word counts or source semantics.
+- [ ] **2ak. Hot scalar/spill placement before large local arrays:** reuse
+  existing frame assignment and packing to reduce distant-home window changes.
+- [ ] **2al. Direct call-argument register placement:** avoid redundant staging
+  and reloads within the existing automatic register ABI.
+- [ ] **2am. Costed nested-loop invariant hoisting:** move proven stable pure
+  expressions to existing loop preheaders only when complete costs justify it.
+- [ ] **2an. Live-third-argument frameless multiply leaves:** reuse existing
+  word multiplication and leaf lowering without new ABI contracts or flags.
 - [ ] **3. Initial SM83 backend:** establish correct Game Boy code generation,
   target-specific addressing/spills/calls and execution tests. Use actual
   requirements to identify reusable code; do not assume IX/IY, `DJNZ` or `LDIR`.
@@ -4223,6 +4292,140 @@ Root scalar frame-memory/address cycle shares remain material (21.34% Array,
 these attributed shares are not wholly
 removable and the probes are not additive whole-program promises.
 
+### 2ak. Hot Scalar/Spill Placement Before Large Local Arrays (Pending)
+
+The RA-only profile after 2aj (`17f4cd9`, 2026-10-23) leaves Path 39.0% larger
+and 40.1% more kernel cycles than the independently best external size and
+speed results. Its scalar/frame accesses and frame-address construction account
+for 1861488 and 822092 of 4467377 kernel cycles, respectively; these costs are
+not wholly removable. SDCC's emitted Path keeps hot counters at IX offsets
+-4/-2, whereas SameSameC's large arrays separate parameters from deep scalar
+and temporary homes.
+
+- Reuse `assign_local_variable_offsets`, spill packing, existing location
+  offsets and 2ag's biased IX windows. Start with scalar and movable spill
+  homes before large arrays; do not add another address cache or allocator.
+- Preserve argument/return and saved-frame offsets, word alignment/width,
+  address identity within objects, escaped storage, fixed owners and assembly
+  constraints. Keep node/slot identity independent of placement order.
+- Price actual accesses and complete rebases, including branch joins and calls,
+  not only displacement size or an inner-loop instruction count.
+- Qualify exact -129/-128/+126/+127 boundaries, large arrays, address-taking,
+  fixed/forced spills, pressure, legacy calls and target-policy fallbacks.
+
+Evidence, not an implemented compiler result: moving only Path's uninitialized
+array declarations below its scalars in a private fixture changes 1201 -> 1117
+kernel/dependency bytes and 4467377 -> 4375157 cycles (-2.06%). Wrapper bytes
+111 and observed full call/frame span 182 are unchanged. The same experiment
+does not improve Array or Stencil; do not promise an additive or general win.
+The new navigation and sprite applications supply larger-frame controls.
+
+Acceptance: compiler-selected placement without source changes or additional
+flags; independent numerical/buffer checks; complete caller, frame and helper
+costs; no silent tradeoff or regression in other kernels or full applications.
+
+### 2al. Direct Call-Argument Register Placement (Pending)
+
+Automatic register calls still often load argument temporaries, store them in
+frame homes and reload them immediately into ABI registers. The after-2aj
+MultiplyAdd wrapper is 75 bytes / 7752 aggregate cycles versus stock SDCC's
+20-byte wrapper. The larger calculation wrappers remain 111 bytes versus 19.
+Array spends 312432 of 5417525 cycles in call transport, excluding some earlier
+argument-expression work.
+
+- Reuse existing call lowering, location ownership, liveness, result packing
+  and transfer helpers. Prefer destination registers for safely placed argument
+  results rather than adding a second staging or parallel-copy framework.
+- Preserve evaluation order and value snapshots across subsequent arguments,
+  aliases, calls, volatile/effectful reads and byte/pair overlaps. A dead
+  argument's effects must still execute even when its transport can be omitted.
+- Resolve register conflicts using existing moves/saves; retain ordinary staging
+  and old-ABI fallbacks whenever direct placement is not proven profitable.
+- Cover mixed-width/sign arguments, nested calls, swapped pairs, escaping
+  addresses, assembly-facing and cross-unit/banked contracts. Do not create a
+  new convention or require source annotations/options.
+
+SDCC r17016's `genSend` chooses argument-register destinations while guarding
+still-needed operands and previously sent registers. This is implementation
+precedent, not copied compiler code. A private pure fixed-global-load caller
+using SameSameC's existing ABI reduces the wrapper 75 -> 25 bytes and
+7752 -> 2499 aggregate cycles, with the kernel unchanged and observed whole-call
+span 22 -> 16. This is not a general eligibility proof.
+
+Acceptance: improve complete caller-plus-callee costs, not just transport
+listings. Include the new tracker mixer and existing call-heavy Array/Stencil;
+measure wrappers separately and count retained adapters and shared helpers.
+
+### 2am. Costed Nested-Loop Invariant Hoisting (Pending)
+
+Stencil recomputes `(seed >> pass) & 31` for each processed cell. Stock SDCC
+computes it once per pass, before the row loop; SDCC r17016's `loopInvariants`
+checks definitions, volatile accesses, pointers and calls before preheader
+movement. Array also repeats pass-invariant arithmetic inside its inner loop.
+
+- Reuse existing TAC, CFG/preheader, single-definition, effect, type and
+  pressure machinery. Begin with bounded pure scalar arithmetic, not general
+  memory-load hoisting or a global value-numbering framework.
+- Prove invariant operands and availability on every entry. Preserve zero-trip,
+  early-exit and short-circuit behavior, widths, signedness and wraparound.
+  Never speculate effectful operations or potentially trapping division.
+- Include longer live ranges, new homes/spills, setup, exits, calls and helper
+  sharing in profitability. Do not accept a faster inner body that silently
+  grows the complete default output or frame.
+- Qualify nested/irreducible entries, changing bounds/inputs, aliases, calls,
+  volatile/assembly barriers and pressure fallbacks, including zero work.
+
+A private Stencil fixture hoisting only the pass bias changes 3701458 ->
+3605014 cycles (-2.61%), but 1391 -> 1393 bytes; frame span 116 is unchanged.
+Hoisting its row expression as well makes that prototype slightly slower,
+larger and two frame bytes deeper. This is evidence for a costed search, not
+approval for an unconditional default size/speed tradeoff.
+
+Acceptance: independently correct profitable sites in Stencil and an application
+kernel, with whole-function/application costs. Reject unprofitable candidates;
+document any deliberately accepted policy change rather than hiding it in an
+aggregate or changing compiler defaults/arguments.
+
+### 2an. Live-Third-Argument Frameless Multiply Leaves (Pending)
+
+The existing register-leaf emitter excludes multiplication and a live third
+argument. MultiplyAdd therefore still saves argument registers, creates a
+frame and reloads inputs even though the existing multiply sequence suffices.
+SDCC's corresponding leaf avoids a general frame.
+
+- Extend the existing 2ac/2ai leaf eligibility and location handling; reuse the
+  current word multiply, argument/result transfers and return machinery.
+- Begin with bounded unsigned word multiply and multiply/add shapes using the
+  current IY/HL/BC live-ins and HL result. Preserve all 16-bit wraparound and
+  byte-versus-word expression semantics; do not invent a narrower source type.
+- Account for a live third argument across multiply clobbers and for DE, flags,
+  physical owners, caller saves and stack extent. Retain framed paths for
+  unsupported effects, locals, pressure, control flow and legacy requirements.
+- Measure mixed legacy/automatic callers and arithmetic sharing on assembled
+  active paths. Keep automatic selection: no new ABI, annotations or flags.
+
+A closed-world private normal-RA assembly experiment reusing the current
+multiply sequence changes 65 -> 24 kernel bytes and 19537 -> 15491 aggregate
+cycles (-20.71%), with its 75-byte wrapper unchanged. Combined with 2al's
+private caller, kernel plus native wrapper changes 140 -> 49 bytes and
+27289 -> 17990 cycles; shared arithmetic gives 53 bytes / 18449 cycles.
+These are not whole-ROM figures, additive general promises or production
+legacy-compatibility qualification. Corpus and 793 extra boundary/random
+argument combinations per mode pass independently.
+
+Acceptance: qualify live/dead third arguments, operand orders, zero/high-bit/
+maximum words, aliases, width/sign fallbacks, shared helpers and legacy entries.
+Keep full native caller/frame costs visible. The tracker uses this leaf for
+actual per-channel mixing, rather than adding only another arithmetic toy.
+
+The four follow-ups above come from the retained RA-only research under
+`C:\cygwin64\tmp\compiler-reprofile-20261023-after-2aj-ra-only`. Rejected private
+experiments are also relevant: saving a Path address in a new local saves 13
+bytes but costs 1.05% more cycles and one frame byte; inlining Array's
+constant-argument ProductRestore call saves 2.64% cycles but adds 77 ordinary
+bytes. Do not adopt blanket pointer spilling or inlining as a substitute for
+the measured bounded steps.
+
 ### 3. Maintain Induction Addresses And Select Z80 Loops
 
 Reuse existing array/pointer TAC and Z80 address emitters. Introduce a narrowly
@@ -4339,14 +4542,20 @@ provenance, not hashes of POSIX executables.
 For a focused development run:
 
 ```sh
-python ci/compare_z80_compilers.py --names fillBytes sumBytes copyBytes --modes ssc-ra ssc-no-ra sdcc-size
+python ci/compare_z80_compilers.py --names fillBytes sumBytes copyBytes --modes ssc-ra sdcc-size
+python ci/compare_z80_compilers.py --names calculationSpriteSceneWorkload calculationTrackerWorkload calculationNavigationWorkload
 python -m unittest discover -s ci -p test_compare_z80_compilers.py
 ```
 
 A subset is explicitly reported as `partial`, not a full comparison. Before
-closing a compiler batch, run all 13 workloads and all eight configurations.
-The full runner also repeats 24 independent whole-call timing checks across
-three workloads/eight configurations, including the 256-byte fill.
+closing a compiler batch, run all 16 workloads and all seven default
+configurations. The full default runner repeats 42 independent whole-call
+timing checks across six workloads/seven configurations, including the
+256-byte fill and all three applications. To include shared arithmetic, select
+`ssc-ra ssc-ra-shared sdcc-size sdcc-speed sccz80-size sccz80-speed zsdcc-size
+zsdcc-speed`: all sixteen workloads then receive a seed-zero independent
+timing, plus the fill boundary, for 128 builds, 2144 calls and 136 timing checks.
+No SameSameC allocator-off performance builds are permitted.
 
 ### What Fails And What Gets Recorded
 
@@ -4365,12 +4574,18 @@ three workloads/eight configurations, including the 256-byte fill.
   whole-call storage, not global RAM, interrupt headroom or an unexecuted-path
   bound. These additional observations do not regenerate the historical
   five-metric baseline; compare them against a consistently remeasured parent.
+  The version-2 application extension records all four observations from its
+  first qualified measurement.
 - `report.json` records partial/full status, tool versions/hashes, baseline
   deltas and SameSameC/competitor geometric ratios. Negative deltas are gains.
   Build seconds are observations, not a statistically qualified speed benchmark.
-- Any increase in SameSameC kernel bytes, wrapper bytes, total kernel/caller
-  cycles or observed maximum SP displacement fails the reference gate. Inspect
-  each workload: an aggregate win does not cancel a local regression.
+- SameSameC regressions fail the existing reference gates: compare complete
+  kernel-plus-wrapper bytes/cycles for automatic register-call output, otherwise
+  compare the individual kernel/caller metrics. Keep maximum SP displacement
+  and, where recorded, full frame/access observations non-growing. Shared
+  arithmetic retains its separate paired 27-T-state call-cost and two-byte
+  stack allowances. Inspect each workload; an aggregate win does not cancel
+  a local regression.
 - Pinned competitors must reproduce their reference metrics exactly. This also
   catches library/peephole changes despite an unchanged version banner.
 - `--allow-competitor-drift` is only for separately evaluating new external
@@ -4393,9 +4608,11 @@ to this cross-compiler experiment.
 2. Add the smallest regression that exposes the intended source/TAC/assembly
    change. Test legal fallbacks and boundary cases as well as the fast path.
 3. Run focused compiler fixtures, then the existing allocator verifier and
-   generated/real-program execution corpus. Keep independent oracles, default/
-   `-no-ra` equivalence and traced/quiet target-code equivalence.
-4. Run the full eight-configuration competitor comparison. Report per-workload
+   generated/real-program execution corpus. Keep independent oracles and
+   traced/quiet target-code equivalence. Allocator-off checks in existing
+   correctness suites are separate from performance comparisons.
+4. Run the full seven-configuration, sixteen-workload RA-only competitor
+   comparison, with the paired shared mode when relevant. Report per-workload
    bytes, cycles, caller overhead and stack observations; preserve exact external
    controls and identify any intentionally accepted tradeoff.
 5. At a checkpoint, rebuild both full calculation projects and report used ROM,
@@ -4407,9 +4624,9 @@ to this cross-compiler experiment.
    compiler source growth visible and remove superseded logic. Commit the batch
    locally with the validation summary; do not push.
 
-Steps 1, 2, 2a-2s and the unsigned power-of-two checkpoint are complete.
-The user-requested extension is the bounded sequence **2t-2v**, with
-**2t, scalar/address residency within the existing ABI**, currently in progress.
-The initial SM83 backend remains the next backend target after this extension.
-Keep the qualified Z80 behavior and shared core covered throughout; do not
-expand this sequence into every possible Z80 optimization.
+The recorded implementation batches through **2aj** are complete. The next
+user-requested bounded sequence is **2ak-2an**, all pending; adding the larger
+comparison applications does not implement those optimizations. The initial
+SM83 backend remains the next backend target, not a reason to make every
+possible Z80 optimization mandatory. Keep qualified Z80 behavior and shared
+core coverage intact throughout.

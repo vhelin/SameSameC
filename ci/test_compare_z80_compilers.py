@@ -10,12 +10,13 @@ from unittest.mock import patch
 import check_register_allocator as allocator
 import compare_z80_compilers as benchmark
 from ra_cpu import Z80Machine, execute, step
+from z80_application_oracles import APPLICATION_CASES, application_inputs, navigation, sprite_scene, tracker
 
 
 class ComparisonTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.reference = json.loads(benchmark.BASELINE.read_text())
+        cls.reference = benchmark.baseline()
 
     def test_random_static_names_do_not_relax_code_identity(self):
         for mutation in (None, "assembly", "rom"):
@@ -42,11 +43,61 @@ class ComparisonTests(unittest.TestCase):
     def test_reference_is_complete_and_current(self):
         packed = (benchmark.ROOT / "tests" / "z80" / "sms" / "calculations-1" / "tiles.packbits").read_bytes()
         self.assertEqual(benchmark.corpus(benchmark.sources(), packed), self.reference["corpus"])
-        rows = self.reference["results"]
-        self.assertEqual(len(rows), 104)
-        self.assertEqual(len({(row["routine"], row["mode"]) for row in rows}), 104)
-        self.assertEqual(sum(row["cases"] for row in rows), 1856)
+        original = json.loads(benchmark.BASELINE.read_text())
+        self.assertEqual(self.reference["results"][:104], original["results"])
+        self.assertEqual(len(original["results"]), 104)
+        self.assertEqual(sum(row["cases"] for row in original["results"]), 1856)
+        rows = [row for row in self.reference["results"] if row["mode"] in benchmark.DEFAULT_MODES]
+        self.assertEqual(len(rows), 112)
+        self.assertEqual(len({(row["routine"], row["mode"]) for row in rows}), 112)
+        self.assertEqual(sum(row["cases"] for row in rows), 1876)
         self.assertEqual(self.reference["flags"], benchmark.FLAGS)
+
+    def test_application_baseline_rejects_incomplete_or_rewritten_history(self):
+        original = json.loads(benchmark.APPLICATION_BASELINE.read_text())
+        for mutation in ("schema", "parent", "missing", "duplicate", "corpus", "modes"):
+            with self.subTest(mutation=mutation):
+                changed = copy.deepcopy(original)
+                if mutation == "schema":
+                    changed["schema"] = 99
+                elif mutation == "parent":
+                    changed["parent_sha256"] = "0" * 64
+                elif mutation == "missing":
+                    changed["results"].pop()
+                elif mutation == "duplicate":
+                    changed["results"].append(changed["results"][0])
+                elif mutation == "corpus":
+                    changed["corpus"].pop(next(iter(changed["corpus"])))
+                else:
+                    changed["modes"].append("ssc-no-ra")
+                with patch.object(benchmark, "APPLICATION_BASELINE") as path:
+                    path.read_text.return_value = json.dumps(changed)
+                    with self.assertRaisesRegex(RuntimeError, "Invalid versioned application baseline"):
+                        benchmark.baseline()
+
+    def test_parent_fingerprint_is_independent_of_checkout_line_endings(self):
+        original = benchmark.BASELINE.read_text(encoding="utf-8")
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / benchmark.BASELINE.name
+            for ending in ("\n", "\r\n"):
+                with self.subTest(ending=repr(ending)):
+                    path.write_bytes(original.replace("\n", ending).encode("utf-8"))
+                    with patch.object(benchmark, "BASELINE", path):
+                        self.assertEqual(benchmark.baseline(), self.reference)
+
+    def test_comparison_modes_require_ra(self):
+        self.assertEqual(len(benchmark.DEFAULT_MODES), 7)
+        for mode, (kind, flags) in benchmark.MODES.items():
+            if kind == "ssc":
+                self.assertIn("-ra", flags, mode)
+                self.assertNotIn("-no-ra", flags, mode)
+        for mode in ("ssc-no-ra", "ssc-no-ra-shared"):
+            with self.subTest(mode=mode), patch("sys.argv", ["compare", "--modes", mode]), \
+                    patch("sys.stderr", new=io.StringIO()), patch.object(benchmark, "tool") as tool:
+                with self.assertRaises(SystemExit) as error:
+                    benchmark.main()
+                self.assertEqual(error.exception.code, 2)
+                tool.assert_not_called()
 
     def test_candidate_improvement_is_not_a_regression(self):
         reference = next(row for row in self.reference["results"] if row["mode"] == "ssc-ra")
@@ -90,7 +141,7 @@ class ComparisonTests(unittest.TestCase):
         reference = dict(routine="probe", mode="ssc-ra", code_bytes=100, wrapper_bytes=100,
                          total_kernel_cycles=400, total_wrapper_cycles=400, max_stack_bytes=20,
                          max_stack_access_bytes=20, max_below_sp_bytes=8, max_frame_footprint_bytes=22)
-        for mode in ("ssc-ra-regcalls", "ssc-ra", "ssc-no-ra"):
+        for mode in ("ssc-ra-regcalls", "ssc-ra"):
             result = dict(reference, mode=mode, register_calls=True, code_bytes=120, wrapper_bytes=70,
                           total_kernel_cycles=410, total_wrapper_cycles=300)
             self.assertEqual(benchmark.compare_result(result, reference), [])
@@ -143,6 +194,24 @@ class ComparisonTests(unittest.TestCase):
         functions["fillBytes"] += "\n"
         packed = (benchmark.ROOT / "tests" / "z80" / "sms" / "calculations-1" / "tiles.packbits").read_bytes()
         self.assertNotEqual(benchmark.corpus(functions, packed), self.reference["corpus"])
+
+    def test_application_drift_preserves_original_corpus(self):
+        functions = benchmark.sources()
+        packed = (benchmark.ROOT / "tests" / "z80" / "sms" / "calculations-1" / "tiles.packbits").read_bytes()
+        for name in APPLICATION_CASES:
+            with self.subTest(name=name):
+                changed = dict(functions)
+                changed[name] += "\n"
+                measured = benchmark.corpus(changed, packed)
+                self.assertNotEqual(measured[name], self.reference["corpus"][name])
+                for original_name in self.reference["corpus"].keys() - APPLICATION_CASES.keys():
+                    self.assertEqual(measured[original_name], self.reference["corpus"][original_name])
+        original_inputs = benchmark.inputs
+        for name in APPLICATION_CASES:
+            with self.subTest(oracle=name), patch.object(benchmark, "inputs", side_effect=lambda routine, seed: (
+                    *original_inputs(routine, seed)[:3],
+                    original_inputs(routine, seed)[3] ^ (routine == name))):
+                self.assertNotEqual(benchmark.corpus(functions, packed)[name], self.reference["corpus"][name])
 
     def test_missing_tool_is_an_error(self):
         with patch.object(benchmark.shutil, "which", return_value=None):
@@ -271,6 +340,97 @@ class ComparisonTests(unittest.TestCase):
                 self.assertEqual(counters["stack_access_extent"], access)
                 self.assertEqual(counters["below_sp_extent"], below)
                 self.assertEqual(counters["frame_footprint"], footprint)
+
+
+class ApplicationOracleTests(unittest.TestCase):
+    def test_application_cases_are_deterministic_and_preserve_inputs(self):
+        models = dict(zip(APPLICATION_CASES, (sprite_scene, tracker, navigation)))
+        for name, cases in APPLICATION_CASES.items():
+            counts = set()
+            for case in range(cases):
+                with self.subTest(name=name, case=case):
+                    parameters, initial, expected, value = application_inputs(name, case)
+                    self.assertEqual(len(initial), 512)
+                    self.assertEqual(len(expected), 512)
+                    self.assertTrue(0 <= value <= 65535)
+                    self.assertEqual(application_inputs(name, case), (parameters, initial, expected, value))
+                    before = bytes(initial)
+                    self.assertEqual(models[name](*parameters[:2], initial), (expected, value))
+                    self.assertEqual(initial, before)
+                    self.assertEqual(initial[384:], expected[384:])
+                    counts.add(parameters[1])
+            self.assertIn(0, counts)
+            self.assertGreaterEqual(len(counts), 4)
+        for name, case in (("unknown", 0), ("calculationTrackerWorkload", -1),
+                           ("calculationTrackerWorkload", 12)):
+            with self.assertRaisesRegex(ValueError, "Unknown application case"):
+                application_inputs(name, case)
+
+    def test_sprite_collision_and_position_observations(self):
+        for case in range(12):
+            _, _, output, _ = application_inputs("calculationSpriteSceneWorkload", case)
+            collisions = int.from_bytes(output[296:298], "little")
+            self.assertEqual(sum(output[192:204]), collisions * 2)
+            for actor in range(12):
+                offset = 224 + actor * 4
+                self.assertTrue(256 <= int.from_bytes(output[offset:offset + 2], "little") <= 3584)
+                self.assertTrue(256 <= int.from_bytes(output[offset + 2:offset + 4], "little") <= 2560)
+                self.assertLess(output[272 + actor], 4)
+                self.assertLess(output[284 + actor], 4)
+        _, _, output, _ = application_inputs("calculationSpriteSceneWorkload", 0)
+        self.assertEqual(output[296:300], bytes((0, 0, 0, 12)))
+        self.assertEqual(sum(value >= 16 for value in output[:192]), 12)
+
+    def test_tracker_has_hand_checked_pcm_and_voice_state(self):
+        _, _, output, _ = application_inputs("calculationTrackerWorkload", 1)
+        self.assertEqual(output[:4], bytes((15, 30, 45, 75)))
+        voice = (856).to_bytes(2, "little") + (40).to_bytes(2, "little") + bytes((15, 1, 0, 0))
+        self.assertEqual(output[128:160], voice * 4)
+        effects = set()
+        for case in range(12):
+            _, _, output, _ = application_inputs("calculationTrackerWorkload", case)
+            effects.update(output[134:160:8])
+        self.assertEqual(effects, {0, 1, 2, 3})
+
+    def test_navigation_open_and_unreachable_routes(self):
+        for terrain, distance, route in ((1, 7, bytes((7, 0))), (0, 65535, bytes((0, 255)))):
+            with self.subTest(terrain=terrain):
+                initial = bytearray([terrain] * 512)
+                output, _ = navigation(0, 1, initial)
+                self.assertEqual(output[288:290], bytes((17, 24)))
+                self.assertEqual(int.from_bytes(output[290:292], "little"), distance)
+                self.assertEqual(output[192:194], route)
+                self.assertEqual(initial, bytearray([terrain] * 512))
+
+    def test_navigation_route_stream_reaches_each_goal(self):
+        for case in range(12):
+            parameters, _, output, _ = application_inputs("calculationNavigationWorkload", case)
+            cursor = 192
+            for job in range(parameters[1]):
+                offset = 288 + job * 8
+                position, goal = output[offset:offset + 2]
+                distance = int.from_bytes(output[offset + 2:offset + 4], "little")
+                steps = 0
+                while cursor < 288 and output[cursor]:
+                    command = output[cursor]
+                    cursor += 1
+                    direction, length = divmod(command, 64)
+                    self.assertGreater(length, 0)
+                    for _ in range(length):
+                        previous = position
+                        position += (1, -1, 16, -16)[direction]
+                        self.assertTrue(0 <= position < 192)
+                        if direction < 2:
+                            self.assertEqual(position // 16, previous // 16)
+                    steps += length
+                self.assertLess(cursor, 288)
+                cursor += 1
+                self.assertEqual(steps, output[offset + 6])
+                if distance != 65535:
+                    self.assertEqual((position, steps), (goal, distance))
+                else:
+                    self.assertEqual(steps, 0)
+            self.assertEqual(cursor - 192, output[319])
 
 
 if __name__ == "__main__":
