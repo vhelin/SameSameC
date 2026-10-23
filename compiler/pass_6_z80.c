@@ -1722,32 +1722,53 @@ static int _resolve_z80_location(int type, char *name, int value, struct tree_no
 }
 
 
-static int _get_z80_known_zero_bits(struct tac *t, int operand, int depth) {
+static int _get_z80_known_zero_bits(struct tac *t, int operand, int depth, struct tac *before) {
 
   int type = operand == TAC_USE_ARG1 ? t->arg1_type : t->arg2_type;
   int var_type = operand == TAC_USE_ARG1 ? t->arg1_var_type : t->arg2_var_type;
   double value = operand == TAC_USE_ARG1 ? t->arg1_d : t->arg2_d;
+  struct tree_node *node = operand == TAC_USE_ARG1 ? t->arg1_node : t->arg2_node;
   struct temp_register *temp;
-  struct tac *producer;
-  int i, distance = 0, left, right, count;
+  struct tac *producer = NULL;
+  int i, start = -1, distance = 0, left, right, count;
 
   if (type == TAC_ARG_TYPE_CONSTANT)
     return (~(int)value) & 65535;
   if (var_type == VARIABLE_TYPE_UINT8)
     return 65280;
-  if (depth == 0 || type != TAC_ARG_TYPE_TEMP ||
+  if (depth == 0 || (type != TAC_ARG_TYPE_TEMP && type != TAC_ARG_TYPE_LABEL) ||
       (var_type != VARIABLE_TYPE_UINT16 && var_type != VARIABLE_TYPE_INT16))
     return 0;
-  temp = _find_z80_temp_register(t->function_node, (int)value);
-  if (temp == NULL || temp->write_count != 1 || temp->live_start < 0 ||
-      temp->live_start >= (int)(t - g_tacs))
+  if (type == TAC_ARG_TYPE_TEMP) {
+    temp = _find_z80_temp_register(t->function_node, (int)value);
+    if (temp == NULL || temp->write_count != 1)
+      return 0;
+    start = temp->live_start;
+  }
+  else if (node == NULL ||
+           (node->type != TREE_NODE_TYPE_CREATE_VARIABLE &&
+            node->type != TREE_NODE_TYPE_CREATE_VARIABLE_FUNCTION_ARGUMENT) ||
+           (node->flags & (TREE_NODE_FLAG_GLOBAL | TREE_NODE_FLAG_STATIC)) != 0 ||
+           node->value != 0 || node->children[0]->value_double != 0.0)
     return 0;
-  producer = &g_tacs[temp->live_start];
-  if (producer->function_node != t->function_node || producer->result_type != TAC_ARG_TYPE_TEMP ||
-      producer->result_d != value || producer->result_var_type != var_type)
-    return 0;
-  for (i = temp->live_start + 1; i < (int)(t - g_tacs); i++) {
-    int op = g_tacs[i].op;
+  if (type == TAC_ARG_TYPE_TEMP) {
+    if (start < 0 || start >= g_tacs_count)
+      return 0;
+    producer = &g_tacs[start];
+  }
+  for (i = type == TAC_ARG_TYPE_TEMP ? start + 1 : (int)(before - g_tacs) - 1;
+       i >= 0 && i < g_tacs_count; i += type == TAC_ARG_TYPE_TEMP ? 1 : -1) {
+    struct tac *current = &g_tacs[i];
+    int op = current->op;
+    if (type == TAC_ARG_TYPE_TEMP && current == before)
+      break;
+    if (current->function_node != t->function_node || current->is_function == YES)
+      return 0;
+    if (type == TAC_ARG_TYPE_LABEL && op != TAC_OP_ARRAY_WRITE &&
+        current->result_type == type && current->result_node == node) {
+      producer = current;
+      break;
+    }
     if (op == TAC_OP_DEAD || op == TAC_OP_CREATE_VARIABLE || op == TAC_OP_REGISTER_SPILL)
       continue;
     if (++distance > 6 || (op != TAC_OP_ASSIGNMENT && op != TAC_OP_ADD && op != TAC_OP_SUB &&
@@ -1755,18 +1776,25 @@ static int _get_z80_known_zero_bits(struct tac *t, int operand, int depth) {
         op != TAC_OP_SHIFT_LEFT && op != TAC_OP_SHIFT_RIGHT))
       return 0;
   }
+  if (i < 0 || i >= g_tacs_count || producer == NULL || producer->function_node != t->function_node ||
+      producer->result_type != type || producer->result_var_type != var_type ||
+      (type == TAC_ARG_TYPE_TEMP && producer->result_d != value))
+    return 0;
   if (producer->op == TAC_OP_ARRAY_READ &&
       get_variable_type_size(producer->result_var_type_promoted) == 16 &&
       (producer->arg1_node != NULL ? get_array_item_variable_type(producer->arg1_node) :
        producer->arg1_var_type) == VARIABLE_TYPE_UINT8)
     return 65280;
-  left = _get_z80_known_zero_bits(producer, TAC_USE_ARG1, depth - 1);
+  left = _get_z80_known_zero_bits(producer, TAC_USE_ARG1, depth - 1, producer);
   if (producer->op == TAC_OP_ASSIGNMENT)
     return left;
   if (get_variable_type_size(producer->result_var_type_promoted) != 16)
     return 0;
-  if (producer->op == TAC_OP_AND || producer->op == TAC_OP_OR || producer->op == TAC_OP_XOR) {
-    right = _get_z80_known_zero_bits(producer, TAC_USE_ARG2, depth - 1);
+  if (producer->op == TAC_OP_AND || producer->op == TAC_OP_OR || producer->op == TAC_OP_XOR ||
+      producer->op == TAC_OP_ADD) {
+    right = _get_z80_known_zero_bits(producer, TAC_USE_ARG2, depth - 1, producer);
+    if (producer->op == TAC_OP_ADD)
+      return ((65535 ^ left) + (65535 ^ right)) <= 255 ? 65280 : 0;
     return producer->op == TAC_OP_AND ? left | right : left & right;
   }
   if ((producer->op != TAC_OP_SHIFT_LEFT && producer->op != TAC_OP_SHIFT_RIGHT) ||
@@ -1852,7 +1880,7 @@ static int _resolve_tac_location(struct tac *t, int which_operand, struct tree_n
 
   status = _resolve_z80_location(type, name, value, node, var_type, function_node, location, _get_z80_tac_operand_name(which_operand), retained_physical_register);
   if (status == SUCCEEDED && which_operand != TAC_USE_RESULT)
-    location->known_zero = _get_z80_known_zero_bits(t, which_operand, 3);
+    location->known_zero = _get_z80_known_zero_bits(t, which_operand, 3, t);
   return status;
 }
 
@@ -3052,12 +3080,26 @@ static int _is_z80_bounded_counter(struct tac *t, struct tree_node *function_nod
     last = counter->live_end;
   }
   else {
-    if (maximum != 65535 || t->op != TAC_OP_ASSIGNMENT || t->result_type != TAC_ARG_TYPE_LABEL ||
-        t->result_node == NULL || t->result_node->type != TREE_NODE_TYPE_CREATE_VARIABLE ||
-        (t->result_node->flags & (TREE_NODE_FLAG_GLOBAL | TREE_NODE_FLAG_STATIC)) != 0 ||
-        t->result_node->value != 0 || t->result_node->children[0]->value_double != 0.0)
+    struct tree_node *node = t->op == TAC_OP_ASSIGNMENT ? t->result_node : t->arg1_node;
+    if ((maximum == 65535 && t->op != TAC_OP_ASSIGNMENT) ||
+        (t->op == TAC_OP_ASSIGNMENT ? t->result_type : t->arg1_type) != TAC_ARG_TYPE_LABEL ||
+        node == NULL || node->type != TREE_NODE_TYPE_CREATE_VARIABLE ||
+        (node->flags & (TREE_NODE_FLAG_GLOBAL | TREE_NODE_FLAG_STATIC)) != 0 ||
+        node->value != 0 || node->children[0]->value_double != 0.0)
       return NO;
     initial = t;
+    if (t->op != TAC_OP_ASSIGNMENT) {
+      for (i = (int)(t - g_tacs) - 1; i >= 0; i--) {
+        if (g_tacs[i].function_node != function_node || g_tacs[i].is_function == YES)
+          return NO;
+        if (g_tacs[i].op != TAC_OP_DEAD && g_tacs[i].op != TAC_OP_ARRAY_WRITE &&
+            g_tacs[i].result_type == TAC_ARG_TYPE_LABEL && g_tacs[i].result_node == node)
+          break;
+      }
+      if (i < 0)
+        return NO;
+      initial = &g_tacs[i];
+    }
     index = -1;
     last = g_tacs_count - 1;
   }
@@ -3088,8 +3130,11 @@ static int _is_z80_bounded_counter(struct tac *t, struct tree_node *function_nod
           current->arg2_var_type_promoted != VARIABLE_TYPE_UINT16 ||
           (current->arg2_type == TAC_ARG_TYPE_CONSTANT ?
            (current->arg2_d < 0.0 || current->arg2_d > maximum || current->arg2_d != (int)current->arg2_d) :
-           (maximum != 65535 || current->arg2_type != TAC_ARG_TYPE_LABEL ||
-            current->arg2_var_type != VARIABLE_TYPE_UINT16)))
+           ((current->arg2_type != TAC_ARG_TYPE_LABEL &&
+             (maximum != 255 || current->arg2_type != TAC_ARG_TYPE_TEMP)) ||
+            (current->arg2_var_type != VARIABLE_TYPE_UINT16 &&
+             (maximum != 255 || current->arg2_var_type != VARIABLE_TYPE_UINT8)) ||
+            (maximum == 255 && (_get_z80_known_zero_bits(current, TAC_USE_ARG2, 3, initial) & 65280) != 65280))))
         return NO;
       bound = current;
     }
@@ -3131,6 +3176,12 @@ static int _is_z80_bounded_counter(struct tac *t, struct tree_node *function_nod
     if (current->function_node != function_node || current->op == TAC_OP_DEAD)
       continue;
     if (current->op == TAC_OP_ASM ||
+        (maximum == 255 && bound->arg2_type == TAC_ARG_TYPE_LABEL &&
+         bound->arg2_var_type != VARIABLE_TYPE_UINT8 &&
+         (((current->op == TAC_OP_GET_ADDRESS || current->op == TAC_OP_GET_ADDRESS_ARRAY) &&
+           current->arg1_node == bound->arg2_node) ||
+          (current > bound && current < exit && current->op != TAC_OP_ARRAY_WRITE &&
+           current->result_type == TAC_ARG_TYPE_LABEL && current->result_node == bound->arg2_node))) ||
         ((current->op == TAC_OP_GET_ADDRESS || current->op == TAC_OP_GET_ADDRESS_ARRAY) &&
          current->arg1_type == initial->result_type &&
          (counter != NULL ? (int)current->arg1_d == index : current->arg1_node == initial->result_node)) ||
@@ -3162,13 +3213,6 @@ static int _aaa_generate_asm_add_sub_or_xor_and_z80_16bit(struct tac *t, FILE *f
   int arg1_in_hl = NO, arg2_in_hl = NO, result_in_hl = NO, constant_step = 0;
   int arg1_in_bc = NO, arg2_in_bc = NO, result_in_bc = NO;
 
-  if ((op == TAC_OP_AND || op == TAC_OP_OR || op == TAC_OP_XOR) &&
-      t->arg1_type == TAC_ARG_TYPE_CONSTANT && t->arg2_type != TAC_ARG_TYPE_CONSTANT) {
-    swapped = *t;
-    tac_swap_args(&swapped);
-    t = &swapped;
-  }
-
   /* result */
 
   if (_resolve_tac_location(t, TAC_USE_RESULT, function_node, &result_location) == FAILED)
@@ -3183,6 +3227,16 @@ static int _aaa_generate_asm_add_sub_or_xor_and_z80_16bit(struct tac *t, FILE *f
 
   if (_resolve_tac_location(t, TAC_USE_ARG2, function_node, &arg2_location) == FAILED)
     return FAILED;
+
+  if ((op == TAC_OP_AND || op == TAC_OP_OR || op == TAC_OP_XOR) &&
+      t->arg1_type == TAC_ARG_TYPE_CONSTANT && t->arg2_type != TAC_ARG_TYPE_CONSTANT) {
+    struct z80_location location = arg1_location;
+    arg1_location = arg2_location;
+    arg2_location = location;
+    swapped = *t;
+    tac_swap_args(&swapped);
+    t = &swapped;
+  }
 
   if (is_z80_register_allocator_byte_transparent_tac(t, Z80_PHY_BC) == YES) {
     if (arg2_location.kind != LOC_PHY_HL) {
@@ -6467,6 +6521,14 @@ static int _bbb_generate_asm_jump_eq_lt_gt_neq_lte_gte_z80_8bit(struct tac *t, F
   if (_resolve_tac_location(t, TAC_USE_ARG2, function_node, &arg2_location) == FAILED)
     return FAILED;
 
+  if (get_variable_type_size(t->arg1_var_type_promoted) == 16 &&
+      (op == TAC_OP_JUMP_GT || op == TAC_OP_JUMP_LTE)) {
+    struct z80_location swapped = arg1_location;
+    arg1_location = arg2_location;
+    arg2_location = swapped;
+    op = op == TAC_OP_JUMP_GT ? TAC_OP_JUMP_LT : TAC_OP_JUMP_GTE;
+  }
+
   arg1_in_a = arg1_location.kind == LOC_PHY_A ? YES : NO;
   arg1_in_register = arg1_location.kind == LOC_PHY_C || arg1_location.kind == LOC_PHY_HL ||
     arg1_location.kind == LOC_PHY_BC ? YES : NO;
@@ -6560,7 +6622,7 @@ static int _bbb_generate_asm_jump_eq_lt_gt_neq_lte_gte_z80_8bit(struct tac *t, F
   /******************************************************************************************************/
 
   if (arg2_in_a == YES || arg2_location.kind == LOC_PHY_B ||
-      (g_allocator_enabled == YES && g_allocator_force_all_spill == NO && arg2_location.kind == LOC_CONST)) {
+      (g_allocator_enabled == YES && g_allocator_force_all_spill == NO)) {
   }
   else if (arg2_location.kind == LOC_PHY_HL || arg2_location.kind == LOC_PHY_BC) {
     fprintf(file_out, "      LD  B,%s\n", arg2_location.kind == LOC_PHY_HL ? "L" : "C");
@@ -6580,6 +6642,12 @@ static int _bbb_generate_asm_jump_eq_lt_gt_neq_lte_gte_z80_8bit(struct tac *t, F
 
   if (g_allocator_enabled == YES && g_allocator_force_all_spill == NO && arg2_location.kind == LOC_CONST)
     _sub_value_from_a(arg2_location.value & 0xff, file_out);
+  else if (g_allocator_enabled == YES && g_allocator_force_all_spill == NO &&
+           (arg2_location.kind == LOC_PHY_HL || arg2_location.kind == LOC_PHY_BC))
+    fprintf(file_out, "      SUB A,%s\n", arg2_location.kind == LOC_PHY_HL ? "L" : "C");
+  else if (g_allocator_enabled == YES && g_allocator_force_all_spill == NO &&
+           arg2_location.kind != LOC_PHY_A && arg2_location.kind != LOC_PHY_B)
+    fprintf(file_out, "      SUB A,(IX%+d)\n", ix_offset);
   else
     _sub_b_from_a(file_out);
 
@@ -6618,7 +6686,6 @@ static int _bbb_generate_asm_jump_eq_lt_gt_neq_lte_gte_z80_8bit(struct tac *t, F
     _jump_c_to(t->result_s, file_out);
   }
   else if (op == TAC_OP_JUMP_GTE) {
-    _jump_z_to(t->result_s, file_out);
     _jump_nc_to(t->result_s, file_out);
   }
 
@@ -6627,6 +6694,15 @@ static int _bbb_generate_asm_jump_eq_lt_gt_neq_lte_gte_z80_8bit(struct tac *t, F
 
 
 static int _generate_asm_jump_eq_lt_gt_neq_lte_gte_z80(struct tac *t, FILE *file_out, struct tree_node *function_node, int op) {
+
+  if (g_allocator_enabled == YES && g_allocator_force_all_spill == NO &&
+      get_variable_type_size(t->arg1_var_type_promoted) == 16 &&
+      get_variable_type_size(t->arg2_var_type_promoted) == 16 &&
+      (_get_z80_known_zero_bits(t, TAC_USE_ARG1, 3, t) & 65280) == 65280 &&
+      (_get_z80_known_zero_bits(t, TAC_USE_ARG2, 3, t) & 65280) == 65280) {
+    fprintf(file_out, "      ; bounded word comparison using byte facts\n");
+    return _bbb_generate_asm_jump_eq_lt_gt_neq_lte_gte_z80_8bit(t, file_out, function_node, op);
+  }
 
   if (op == TAC_OP_JUMP_GTE && _is_z80_bounded_counter(t, function_node, 255) == YES) {
     struct z80_location counter;

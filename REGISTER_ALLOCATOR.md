@@ -159,7 +159,22 @@ compatible framed entries because of opaque assembly, so their ordinary/shared
 images save only 1/2 bytes, including allocator-off builds.
 See [step 2ai](Z80_CODEGEN_PLAN.md#2ai-dead-argument-homes-and-expanded-register-entry-leaves-completed)
 for exact scope, unchanged compatibility, caller-inclusive costs and qualification.
-Step 2aj records the next opportunity.
+
+Normal RA now reuses byte comparison and counter emitters when the existing
+bounded known-bit query proves word values are 0..255. The query also accepts
+nearby scalar definitions and addition with a proven byte-sized maximum.
+Dynamic word counters retain word storage/live-out high bytes; word bounds must
+be stable and unescaped, while actual unsigned-byte bounds may change. Existing
+control, effect, alias, signedness, width and zero/256 fallbacks remain
+conservative. Direct byte subtraction preserves BC, and removing a redundant
+unsigned `>=` branch also benefits allocator-off code. No new production
+functions, fields, ABI machinery or flags are added; production C grows by
+76 net lines. Path improves 1231 -> 1201 bytes and 3.90% in cycles;
+Stencil/unpack/PackedCrc also shrink, while Tile is unchanged. Complete
+ordinary/shared RA calculations-1/2 save 54/187 bytes, and allocator-off saves
+27/33 bytes, without measured runtime, traffic, frame or stack growth.
+See [step 2aj](Z80_CODEGEN_PLAN.md#2aj-byte-facts-for-comparisons-and-bounded-dynamic-loops-completed)
+for exact scope, whole-image costs, updated byte snapshots and qualification.
 
 ---
 

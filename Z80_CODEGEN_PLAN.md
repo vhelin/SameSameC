@@ -173,7 +173,7 @@ extraction.
   decoder writes into the existing pointer/counter loop machinery.
 - [x] **2ai. Dead argument homes and expanded register-entry leaves:** omit
   unused automatic-ABI homes before broadening profitable frameless schedules.
-- [ ] **2aj. Byte facts for comparisons and bounded dynamic loops:** reuse
+- [x] **2aj. Byte facts for comparisons and bounded dynamic loops:** reuse
   proven byte ranges without changing general word counts or source semantics.
 - [ ] **3. Initial SM83 backend:** establish correct Game Boy code generation,
   target-specific addressing/spills/calls and execution tests. Use actual
@@ -4106,15 +4106,115 @@ C89 and Python syntax pass. Existing numerical oracles, CPU guards, corpus,
 competitor inputs and native verifier controls are unchanged.
 Evidence: `C:\cygwin64\tmp\dead-argument-homes-20261023`.
 
-### 2aj. Byte Facts For Comparisons And Bounded Dynamic Loops
+### 2aj. Byte Facts For Comparisons And Bounded Dynamic Loops (Completed)
 
-**Status: planned.** Reuse the existing bounded facts for Tile control/length
-values masked by 0x7f, byte comparisons and eligible dynamic counters. Do not
-assume benchmark-only bounds for general counts or change signedness, widths,
-zero/256 behavior or observable wraparound. Keep calls, aliases, control and
-unsupported producers conservative. z88dk's character-compare selection and
-SDCC's width-sensitive arithmetic provide precedents; reuse current comparison
-and counter emitters instead of adding a global range-analysis pass.
+**Status: completed.** Extend the existing bounded known-zero-bit query,
+comparison dispatcher and counter proof. There is no global range-analysis
+pass, new production function, physical-register kind, frame slot, ABI change,
+flag or source annotation. The production C change is 108 additions and
+32 deletions, or **76 net lines**. z88dk's character-compare selection and SDCC's
+width-sensitive arithmetic remain precedents, not assumed benchmark bounds.
+
+Scope and conservative fallbacks:
+
+- The same six-TAC, depth-three query now accepts a dominating definition of a
+  plain local/argument word scalar. Keep globals, statics, pointers, arrays,
+  labels/branches, calls, source ASM and intervening memory effects conservative.
+  Reuse the existing type, constant, unsigned-byte-read and logical/shift facts.
+  Addition supplies a byte fact only when the sum of both operands' possible
+  maximum bit patterns is at most 255; `(value & 7) + 1` qualifies, while
+  `(value & 255) + 1` does not.
+- When both word-promoted comparison operands are proven 0..255, normal RA
+  reuses the byte comparator for all six relations. This is also valid for
+  nonnegative signed-word values; unproved signed/narrow values retain their
+  original comparison. Reverse `>`/`<=` locations to reuse carry-only `<`/`>=`
+  schedules without copying TACs or changing source evaluation order.
+- Reuse the byte comparator's existing address/materialization machinery.
+  Normal RA subtracts a retained low byte or addressed byte directly instead
+  of copying it to B, preserving a live BC counter's zero high lane. Remove
+  the redundant zero branch before unsigned `>=` in every allocator mode:
+  no carry already includes equality.
+- The existing canonical word-counter proof now accepts dynamic unsigned-byte
+  bounds and proven byte-valued word bounds, including single-definition
+  temporaries. Query the bound **before counter initialization**, not across
+  the loop header. Word scalar bounds must remain unmodified and unescaped;
+  actual unsigned-byte bounds remain bounded even when changed. Keep the
+  existing unit update, initial range, backedge, external-entry, counter-address,
+  call and ASM guards. Reuse existing low-byte increment/comparison emitters
+  while retaining full word storage and live-out high bytes.
+- Unknown/wide counts, signed counters/bounds, 256, possible carry into bit 8,
+  mutations/aliases and unsupported control/effects retain ordinary lowering.
+  No source word is narrowed. Tile's separated length definitions still cross
+  unsupported control/effect barriers; its already-lowered copy/fill loops and
+  the complete Tile profile are unchanged. Do not cross those barriers merely
+  to manufacture a benchmark gain.
+
+Measured costs versus 2ai, using the unchanged kernel corpus:
+
+| Normal-RA kernel and dependencies | Bytes before -> after | Aggregate T-states before -> after | Cycle change |
+|---|---:|---:|---:|
+| StencilWorkload | 1397 -> 1391 | 3713458 -> 3701458 | -0.32% |
+| PathWorkload | 1231 -> 1201 | 4648741 -> 4467377 | -3.90% |
+| unpackPackBits | 469 -> 466 | 99328 -> 99148 | -0.18% |
+| PackedCrc | 733 -> 730 | 4834860 -> 4834010 | -0.02% |
+
+The other nine kernels, including Tile, are unchanged. Shared RA saves the same
+bytes; Stencil's shared result is 1361 -> 1355 bytes and
+3743266 -> 3731266 T-states. Wrapper costs, frames and stack bounds are unchanged.
+The all-mode redundant-branch deletion also saves three bytes in allocator-off
+Path/unpack/PackedCrc, with cycles 9852837 -> 9826117,
+225089 -> 224909 and 24167130 -> 24166280 respectively.
+Competitor outputs are unchanged.
+
+Representative entry-to-return focused costs use 88 comparison inputs or
+18 loop inputs per row; these aggregate cycles are not whole-program promises:
+
+| Normal-RA primitive | Bytes before -> after | Aggregate T-states before -> after |
+|---|---:|---:|
+| `(a & 127) < (b & 255)` | 67 -> 66 | 24288 -> 23320 |
+| Nonnegative signed-word `<=` | 76 -> 66 | 25728 -> 23320 |
+| Word loop bounded by `a & 127` | 146 -> 132 | 293088 -> 238932 |
+| Word loop bounded by `(a & 7) + 1` | 147 -> 133 | 36264 -> 30546 |
+| Word loop bounded by unsigned byte | 139 -> 126 | 554946 -> 466470 |
+| Masked-bound loop with live multiply result | 188 -> 174 | 310872 -> 256716 |
+
+Focused ordinary/shared RA ROM is 10152 -> 9909 bytes; allocator-off ROM remains
+13981 bytes. All 1080 focused root configurations retain their frame and
+stack-high-water sizes. All 82440 individual parent/current execution pairs are
+non-growing in cycles, frame-byte reads/writes and stack high-water.
+
+Complete unchanged-source application ROM, including opaque/public entries,
+all banks, shared helpers and callers:
+
+| Application / mode | Ordinary before -> after | Shared before -> after |
+|---|---:|---:|
+| calculations-1 / normal RA | 17243 -> 17189 | 17235 -> 17181 |
+| calculations-1 / allocator off | 22404 -> 22377 | 22384 -> 22357 |
+| calculations-2 / normal RA | 26079 -> 25892 | 25849 -> 25662 |
+| calculations-2 / allocator off | 38273 -> 38240 | 38005 -> 37972 |
+
+Normal-RA complete calculations-2 bank-1/2/3 display calls save
+25957/10394/10541 T-states. All 384 complete-image sample pairs are non-growing;
+do not substitute isolated-kernel percentages for these complete display costs.
+No new shared-ROM or runtime trade-off is accepted.
+
+Qualification: release, traced and ASan each pass **64 normal + 24 optimized-policy
+tests**, with **577 byte-identical linked regression images per build**.
+The new focused test covers 90 comparison forms and 18 loop families, ordinary/
+shared linking and all five allocator modes: **164880 guarded parent/current
+executions**, including all relations/operand positions, signed/unsigned byte
+boundaries, zero/255/256/257, wider values, carries, live-out counters, mutable
+byte bounds, aliases, calls, control, ASM and pointer/word pressure.
+All **175 native fixtures** pass after updating **12 byte assertions in six
+fixtures** for direct memory subtraction, the removed branch and relocations;
+their source programs and trace/verifier expectations are unchanged. The six
+affected fixtures are rerun, including the native CFG/liveness verifiers.
+The full **156 profile configurations, 2784 calls, 80 independent timings and
+1392 SSC sample pairs**, **32 complete application builds / 384 pairs**, strict
+normal/traced C89 and Python syntax pass. The existing 57-byte/325-T-state word-copy
+controls remain intact. Exact parent tools, rejected fixture prototypes,
+snapshot-only checks, measurements and source/image/commit bindings are retained
+in `C:\cygwin64\tmp\byte-facts-comparisons-20261023`.
 
 The after-2ae comparison and private probes underlying 2af-2aj are retained in
 `C:\cygwin64\tmp\compiler-reprofile-20261022-after-2ae`.

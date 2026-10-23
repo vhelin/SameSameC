@@ -16,6 +16,142 @@ from ra_cpu import execute
 
 
 class BranchConditionsTests(unittest.TestCase):
+    def test_byte_fact_comparisons_and_dynamic_counters(self):
+        comparisons = {
+            "mask": ("", "a&127", "b&255", lambda a, b: (a&127, b&255), True),
+            "constant": ("", "a&255", "127", lambda a, b: (a&255, 127), True),
+            "reverse": ("", "127", "a&255", lambda a, b: (127, a&255), True),
+            "high": ("", "a>>8", "b&255", lambda a, b: (a>>8, b&255), True),
+            "scalar": ("u16 left=a&127; u16 right=b&255;", "left", "right",
+                       lambda a, b: (a&127, b&255), True),
+            "add": ("", "(a&7)+1", "b&255", lambda a, b: ((a&7)+1, b&255), True),
+            "signed": ("s16 left=a&127; s16 right=b&255;", "left", "right",
+                       lambda a, b: (a&127, b&255), True),
+            "byte": ("u8 left=a;", "left", "b&255", lambda a, b: (a&255, b&255), True),
+            "negative": ("s8 left=a;", "left", "b&255",
+                         lambda a, b: (((a&255)-(256 if a&128 else 0))&65535, b&255), False),
+            "wide": ("", "a&511", "b&255", lambda a, b: (a&511, b&255), False),
+            "carry": ("", "(a&255)+1", "b&255", lambda a, b: ((a&255)+1, b&255), False),
+            "call": ("u16 left=a&127; fact_tick(b);", "left", "b&255",
+                     lambda a, b: (a&127, b&255), False),
+            "branch": ("u16 left=a&127; if(b&256) { left=256; }", "left", "b&255",
+                       lambda a, b: (256 if b&256 else a&127, b&255), False),
+            "alias": ("u16 left=a&127; fact_change(&left);", "left", "b&255",
+                      lambda a, b: ((a&127)^256, b&255), False),
+            "owner": ("u8 *p=ra_buffer+(a&15);", "a&255", "b&255",
+                      lambda a, b: (a&255, b&255), True),
+        }
+        loops = {
+            "mask": ("u16 n=a&127;", "", "", True),
+            "add": ("u16 n=(a&7)+1;", "", "", True),
+            "byte": ("u8 n=a;", "", "", True),
+            "byte_mutate": ("u8 n=a;", "", "n=255;", True),
+            "wide": ("u16 n=a&511;", "", "", False),
+            "carry": ("u16 n=(a&255)+1;", "", "", False),
+            "unknown": ("u16 n=a;", "", "", False),
+            "mutate": ("u16 n=a&127;", "", "n=257;", False),
+            "bound_alias": ("u16 n=a&127; u16 *p=&n;", "", "p[0]|=256;", False),
+            "counter_alias": ("u16 n=a&127;", "u16 *p=&i;", "p[0]+=256;", False),
+            "branch": ("u16 n=a&127; if(b&256) { n=257; }", "", "", False),
+            "call": ("u16 n=a&127;", "", "fact_tick(b);", False),
+            "assembly": ("u16 n=a&127;", "", '__asm("NOP");', False),
+            "signed": ("s16 n=a&127;", "", "", False),
+            "constant255": ("", "", "", True),
+            "constant256": ("", "", "", False),
+            "pressure": ("u16 saved=a*b; u16 n=a&127;", "", "", True),
+            "dead": ("u16 n=a&127;", "", "", True),
+        }
+        programs = []
+        for family, (setup, left, right, _, _) in comparisons.items():
+            for op, token in enumerate(("==", "!=", "<", ">", "<=", ">=")):
+                value = "p[0]" if family == "owner" else "1"
+                programs.append(Program(
+                    f"fact_compare_{family}_{op}", family, 0, op, [2, 2], 2, [],
+                    f"u16 fact_compare_{family}_{op}(u16 a,u16 b) {{ {setup} "
+                    f"if(({left}){token}({right})) {{ return {value}; }} return 0; }}"))
+        for family, (setup, extra, body, _) in loops.items():
+            bound = family.removeprefix("constant") if family.startswith("constant") else "n"
+            counter_type = "s16" if family == "signed" else "u16"
+            returned = "sum" if family == "dead" else "sum+i*257"
+            if family == "pressure":
+                returned += "+saved"
+            if family in ("mutate", "byte_mutate"):
+                returned += "+n"
+            programs.append(Program(
+                f"fact_loop_{family}", family, 1, 0, [2, 2], 2, [],
+                f"u16 fact_loop_{family}(u16 a,u16 b) {{ {setup} {counter_type} i; u16 sum=0; {extra} "
+                f"for(i=0;i<{bound};i++) {{ sum+=i^b; {body} }} return {returned}; }}"))
+        source = ("u8 ra_buffer[128];\n"
+                  "u16 fact_tick(u16 value) { ra_buffer[0]^=value; return value; }\n"
+                  "void fact_change(u16 *value) { value[0]^=256; }\n" +
+                  "\n".join(program.source for program in programs)+"\nvoid main(void) {}\n")
+        directory = self.output / "byte-facts"
+        profiles = {policy: compile_generated(
+            directory / policy, os.environ.get("SAMESAMECC") or "samesamecc",
+            os.environ.get("SAMESAMECL") or "samesamecl", programs, source,
+            linker_flags=("-share-arithmetic",) if policy == "shared" else ())
+                    for policy in ("inline", "shared")}
+        calls = 0
+        for program in programs:
+            firsts = ((0, 1, 2, 127, 128, 255, 256, 257, 511, 0xff00, 65535)
+                      if program.variant == 0 else (0, 1, 2, 127, 128, 255, 256, 257, 511))
+            for a in firsts:
+                for b in ((0, 1, 127, 128, 255, 256, 257, 65535) if program.variant == 0 else (0, 257)):
+                    initial = bytes((index*37+a+b)&255 for index in range(128))
+                    expected_buffer = bytearray(initial)
+                    if program.variant == 0:
+                        left, right = comparisons[program.family][3](a, b)
+                        condition = (left == right, left != right, left < right, left > right,
+                                     left <= right, left >= right)[program.constant]
+                        expected = (initial[a&15] if program.family == "owner" else 1) if condition else 0
+                        if program.family == "call":
+                            expected_buffer[0] ^= b&255
+                    else:
+                        family = program.family
+                        n = (a&255 if family in ("byte", "byte_mutate") else
+                             (a&7)+1 if family == "add" else (a&255)+1 if family == "carry" else
+                             a if family in ("unknown", "wide") else
+                             int(family.removeprefix("constant")) if family.startswith("constant") else
+                             257 if family == "branch" and b&256 else a&127)
+                        i = total = 0
+                        while i < n:
+                            total = (total+(i^b))&65535
+                            if family in ("mutate", "byte_mutate"):
+                                n = 255 if family == "byte_mutate" else 257
+                            if family == "bound_alias":
+                                n |= 256
+                            if family == "counter_alias":
+                                i += 256
+                            if family == "call":
+                                expected_buffer[0] ^= b&255
+                            i += 1
+                        expected = (total+(0 if family == "dead" else i*257)+
+                                    (a*b if family == "pressure" else 0)+
+                                    (n if family in ("mutate", "byte_mutate") else 0))&65535
+                    for policy, images in profiles.items():
+                        for mode, image in images.items():
+                            with self.subTest(program=program.name, policy=policy, mode=mode, a=a, b=b):
+                                result = execute(image.rom, image.symbols[program.name], [a, b], [2, 2],
+                                                 initial, image.symbols["ra_buffer"], 2, image.transfers,
+                                                 instruction_limit=200000, frame_bytes=2048)
+                                self.assertEqual((result["value"], result["buffer"], result["port_writes"]),
+                                                 (expected, expected_buffer, []))
+                                self.assertEqual(result["unmapped_instructions"], 0)
+                                calls += 1
+        if os.environ.get("RA_BASELINE") != "1":
+            for policy, images in profiles.items():
+                for mode in ("ra", "ra_quiet"):
+                    assembly = (directory / policy / mode / "main.asm").read_text()
+                    for program in programs:
+                        section = assembly.split(f'.SECTION "{program.name}"')[1].split(".ENDS")[0]
+                        if program.variant == 0:
+                            self.assertEqual("bounded word comparison using byte facts" in section,
+                                             comparisons[program.family][4], (mode, program.name))
+                        else:
+                            self.assertEqual("bounded word counter increment; high byte preserved" in section,
+                                             loops[program.family][3], (mode, program.name))
+        self.assertEqual(calls, (90*88+18*18)*10)
+
     def test_dead_argument_homes_and_shift_leaves(self):
         cases = {
             "left": (3, "return a<<b;", lambda a, b, c: a<<b if b < 16 else 0, True),
