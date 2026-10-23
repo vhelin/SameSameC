@@ -9533,7 +9533,11 @@ Batch results (bounded implementations):
       JavaScript emulator, `RA_Z80_EMULATOR` path or vendored emulator is needed.
       `SAMESAMECC`, `SAMESAMECL`, and `CC` optionally select tools.
       `RA_VERIFIER` reuses a prebuilt harness,
-      including one built with native ASan. `RA_EXECUTION_DIR` selects retained
+      including one built with native ASan. Keep the generated
+      `frame-layout-quiet` and `frame-layout-traced` executables beside it
+      (with `.exe` on Windows); recursive cohorts reuse these native
+      frame-placement checks instead of rebuilding them.
+      `RA_EXECUTION_DIR` selects retained
       artifacts and `RA_CASES` selects 1..4096 seeds per generated function
       (default 64). For the local Cygwin tools in PowerShell:
 

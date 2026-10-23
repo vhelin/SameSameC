@@ -287,8 +287,9 @@ needed rerunning. Follow-up evidence is retained under
 `C:\cygwin64\tmp\maze-console-selfcontained-20261023`.
 
 Evidence, failed scouts and final reports are retained under
-`C:\cygwin64\tmp\maze-console-20261023`. Steps 2ak-2an remain pending; this
-batch expands and validates workloads, not the compiler implementation.
+`C:\cygwin64\tmp\maze-console-20261023`. That batch expanded and validated
+workloads without changing the compiler. Step 2ak is now completed below;
+steps 2al-2an remain pending.
 
 ## Implementation Order
 
@@ -384,7 +385,7 @@ extraction.
   unused automatic-ABI homes before broadening profitable frameless schedules.
 - [x] **2aj. Byte facts for comparisons and bounded dynamic loops:** reuse
   proven byte ranges without changing general word counts or source semantics.
-- [ ] **2ak. Hot scalar/spill placement before large local arrays:** reuse
+- [x] **2ak. Hot scalar/spill placement before large local arrays:** reuse
   existing frame assignment and packing to reduce distant-home window changes.
 - [ ] **2al. Direct call-argument register placement:** avoid redundant staging
   and reloads within the existing automatic register ABI.
@@ -4440,9 +4441,10 @@ Root scalar frame-memory/address cycle shares remain material (21.34% Array,
 these attributed shares are not wholly
 removable and the probes are not additive whole-program promises.
 
-### 2ak. Hot Scalar/Spill Placement Before Large Local Arrays (Pending)
+### 2ak. Hot Scalar/Spill Placement Before Large Local Arrays (Completed)
 
-The RA-only profile after 2aj (`17f4cd9`, 2026-10-23) leaves Path 39.0% larger
+Implemented and qualified on 2026-10-23. The RA-only profile after 2aj
+(`17f4cd9`) left Path 39.0% larger
 and 40.1% more kernel cycles than the independently best external size and
 speed results. Its scalar/frame accesses and frame-address construction account
 for 1861488 and 822092 of 4467377 kernel cycles, respectively; these costs are
@@ -4450,27 +4452,91 @@ not wholly removable. SDCC's emitted Path keeps hot counters at IX offsets
 -4/-2, whereas SameSameC's large arrays separate parameters from deep scalar
 and temporary homes.
 
-- Reuse `assign_local_variable_offsets`, spill packing, existing location
-  offsets and 2ag's biased IX windows. Start with scalar and movable spill
-  homes before large arrays; do not add another address cache or allocator.
-- Preserve argument/return and saved-frame offsets, word alignment/width,
-  address identity within objects, escaped storage, fixed owners and assembly
-  constraints. Keep node/slot identity independent of placement order.
-- Price actual accesses and complete rebases, including branch joins and calls,
-  not only displacement size or an inner-loop instruction count.
-- Qualify exact -129/-128/+126/+127 boundaries, large arrays, address-taking,
-  fixed/forced spills, pressure, legacy calls and target-policy fallbacks.
+Implementation:
 
-Evidence, not an implemented compiler result: moving only Path's uninitialized
-array declarations below its scalars in a private fixture changes 1201 -> 1117
-kernel/dependency bytes and 4467377 -> 4375157 cycles (-2.06%). Wrapper bytes
-111 and observed full call/frame span 182 are unchanged. The same experiment
-does not improve Array or Stencil; do not promise an additive or general win.
-The new navigation and sprite applications supply larger-frame controls.
+- Extend existing `assign_spill_slot_offsets` after its normal CFG/liveness
+  packing. Keep `assign_local_variable_offsets` and allocator decisions intact.
+  Place local objects larger than two bytes after the scalar homes and packed
+  movable spill region. Preserve their relative order and internal byte
+  offsets; shift every owner of a shared spill slot by the same amount.
+- Select only normal RA functions whose old lowest home needs a frame-address
+  materialization and whose entire compacted scalar/spill region fits the
+  existing target-policy IX displacement window. This includes its lowest
+  byte at -128 but rejects -129; the existing word-safe upper bound is +126,
+  not +127. No added padding, frame growth, storage copies or source changes.
+- Keep metadata/node/register identities, byte-granular Z80 object layout,
+  widths, escaped storage and argument/return/saved-frame offsets intact.
+  Functions with source assembly or any fixed-destination spill keep their
+  original layout. Forced spills, allocator-off correctness controls,
+  already-near frames, oversized hot regions and unsupported target policies
+  also keep the original layout.
+- Reuse the existing location resolvers, array-address lowering and 2ag IX
+  cache/windows. No new helper function, allocator, cache, metadata structure,
+  command-line option or cost framework was added. Final relocation traces
+  distinguish old and new offsets without changing identity.
 
-Acceptance: compiler-selected placement without source changes or additional
-flags; independent numerical/buffer checks; complete caller, frame and helper
-costs; no silent tradeoff or regression in other kernels or full applications.
+Cost guard and complete qualification:
+
+The selection is deliberately stronger than scalar-first or displacement-only
+ranking: **all scalar and packed spill homes must fit one window**. Aggregate
+addresses still use the existing fixed-width IY/HL materializations; their
+contents do not become IX scalar requests. Calls, returns, joins, invalidations
+and biased-window selection retain their existing emitter rules. This removes
+the distant spill/scalar alternation rather than merely moving its cost to
+another portion of the frame. Actual complete caller/helper costs and every
+input's kernel cycles, wrapper cycles and stack/frame extents were then checked
+against the immediate qualified parent, not just an inner loop.
+
+The original source-declaration-only scout is reproduced by a compiler
+scalar-only prototype: Path 1201 -> 1117 bytes and 4467377 -> 4375157 cycles
+(-2.06%). It regresses sprite, tracker, navigation, A* and quicksort because
+their spill homes remain distant; that prototype was rejected. Moving packed
+spills with the scalars produces the following final ordinary-RA results:
+
+| Workload | Kernel/dependency bytes, parent -> 2ak | Kernel cycles, parent -> 2ak | Cycle change |
+| --- | ---: | ---: | ---: |
+| Path | 1201 -> 1027 | 4467377 -> 4075529 | -8.77% |
+| Sprite scene | 3725 -> 3467 | 17331570 -> 16085498 | -7.19% |
+| Tracker | 3572 -> 3506 | 11518619 -> 11350303 | -1.46% |
+| Navigation | 3056 -> 2816 | 12019455 -> 11227030 | -6.59% |
+| A* | 2776 -> 2638 | 50039955 -> 49604781 | -0.87% |
+| Quicksort | 1906 -> 1792 | 26729902 -> 26253142 | -1.78% |
+
+Shared-helper mode saves the same bytes and cycles while retaining its existing
+mode-specific helper totals. Wrappers, helper contracts and complete frame footprints are
+unchanged. All twelve other kernels, including Array and Stencil, retain their
+previous size and timing. These are independent workload improvements, not
+additive whole-program promises.
+
+Validation:
+
+- Release, traced and AddressSanitizer builds: **108 RA/shared builds, 1668
+  guarded calls and 162 independent timing checks**. All 36 candidate ROMs
+  match across the three compiler builds. All eighteen immutable
+  source/oracle/layout fingerprints remain unchanged.
+- All 36 ordinary/shared complete code images are no larger, and every one of
+  the 556 input cases is no slower in complete/kernel cycles than its immediate
+  parent. Wrapper cycles and maximum frame/stack extents are unchanged;
+  per-input observed extents never increase (navigation case 0's accessed span
+  falls from 1010 to 242 bytes). No external
+  compiler results or historical baselines were rewritten, and no allocator-off
+  performance comparisons were run.
+- **54 focused unit tests**, including **43120** guarded frame/window/join
+  calls. The bias test now requires either its original biased window or
+  compact scalar homes with exclusively `IX=DE` setups; it still exercises
+  both paths and the 253/254-frame boundary.
+- Existing native allocator verifier plus ten new layout cases in both traced
+  and untraced builds: exact -129/-128/+126/+127 policy boundaries, odd-sized
+  interleaved arrays, word/byte spill aliases, poison homes, escaped scalar
+  identity, pressure at the compact-window limit, fixed/forced/assembly/target
+  fallbacks, unchanged TACs and nonoverlapping objects.
+- All six self-contained SMS/GG ROMs pass complete reset/display, CRC,
+  font/palette, mapper and RAM checks. Full boot savings are 638/25636/744372
+  cycles for SMS 1/2/3 and 319/25636/744372 for GG 1/2/3; all displayed values
+  and RAM footprints are unchanged. No calculation-project source was changed.
+
+Evidence and rejected scouts are retained under
+`C:\cygwin64\tmp\hot-frame-layout-20261023`.
 
 ### 2al. Direct Call-Argument Register Placement (Pending)
 

@@ -398,6 +398,8 @@ class BranchConditionsTests(unittest.TestCase):
                             calls += 1
         if os.environ.get("RA_BASELINE") != "1":
             boundary_frames = set()
+            compact_windows = 0
+            biased_windows = 0
             for (family, policy), images in profiles.items():
                 for mode in images:
                     assembly = (directory / family / policy / mode / "main.asm").read_text()
@@ -410,11 +412,22 @@ class BranchConditionsTests(unittest.TestCase):
                         if mode not in ("ra", "ra_quiet") or family == "assembly" or frame > 253:
                             self.assertFalse(selected, (program.name, policy, mode, frame))
                         elif family != "alias" and program.variant >= 128:
-                            self.assertTrue(selected, (program.name, policy, mode, frame))
+                            if selected:
+                                biased_windows += 1
+                            else:
+                                self.assertEqual(set(re.findall(r"^      LD  IX,(-?\d+)$", body, re.M)), {"0"},
+                                                 (program.name, policy, mode, frame))
+                                scalar_offsets = re.findall(
+                                    r'; TAC: variable "[^"]+" size [12] offset (-?\d+) type local', body)
+                                self.assertTrue(scalar_offsets)
+                                self.assertTrue(all(-128 <= int(offset) <= 126 for offset in scalar_offsets))
+                                compact_windows += 1
                         for displacement in re.findall(r"\(IX([+-]\d+)\)", body):
                             self.assertLessEqual(-128, int(displacement))
                             self.assertLessEqual(int(displacement), 127)
             self.assertTrue({253, 254}.issubset(boundary_frames), boundary_frames)
+            self.assertGreater(compact_windows, 0)
+            self.assertGreater(biased_windows, 0)
         self.assertEqual(calls, 42560)
 
     def test_biased_frame_join_fallback(self):

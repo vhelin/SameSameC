@@ -202,6 +202,17 @@ def verify_allocator(output):
                 or any(value not in text for value in required)
                 or any(not re.search(pattern, text) for pattern in patterns)):
             raise RuntimeError("Verifier coverage count mismatch")
+    for traced in (False, True):
+        label = "frame-layout-traced" if traced else "frame-layout-quiet"
+        executable = Path(harness).parent / (label + (".exe" if sys.platform == "win32" else ""))
+        if not os.environ.get("RA_VERIFIER"):
+            run(os.environ.get("CC", "gcc"), [
+                "-ansi", "-pedantic", "-Wall", "-DNDEBUG", *(["-DSAMESAMEC_TRACE"] if traced else []),
+                "-o", executable, fixture / "frame_layout_test.c", *sources, "-lm",
+            ], output, label + "-build.log")
+        run(executable, [], output, label + ".log")
+        if "identities=stable status=complete" not in read_output(output / (label + ".log")):
+            raise RuntimeError(f"Frame-layout verifier coverage missing: {label}")
     return harness, failures
 
 

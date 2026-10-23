@@ -11754,6 +11754,57 @@ static int assign_spill_slot_offsets(struct tree_node *function_node, int *offse
     }
   }
 
+  if (g_allocator_enabled == YES && g_allocator_force_all_spill == NO && fixed_limit == 0) {
+    struct local_variables *locals = function_node->local_variables;
+    int array_bytes = 0, hot_end, instruction_index;
+
+    for (j = locals->arguments_count; j < locals->local_variables_count; j++) {
+      if (locals->local_variables[j].size > 16)
+        array_bytes += locals->local_variables[j].size / 8;
+    }
+    hot_end = *offset + array_bytes;
+    if (array_bytes > 0 &&
+        get_register_allocator_address_materialization_mode(RA_LOCATION_STACK_SPILL, RA_ADDRESS_TARGET_IX,
+          *offset + 1) == RA_ADDRESS_MODE_FRAME_ADDRESS &&
+        get_register_allocator_address_materialization_mode(RA_LOCATION_STACK_SPILL, RA_ADDRESS_TARGET_IX,
+          hot_end + 1) == RA_ADDRESS_MODE_FRAME_DISPLACEMENT) {
+      for (instruction_index = 0; instruction_index < g_tacs_count; instruction_index++) {
+        if (g_tacs[instruction_index].function_node == function_node && g_tacs[instruction_index].op == TAC_OP_ASM)
+          break;
+      }
+      if (instruction_index == g_tacs_count) {
+        int array_end = hot_end, preceding_array_bytes = 0;
+
+        /* Keep every scalar and packed spill in one window; array addresses use IY/HL. */
+        for (j = locals->arguments_count; j < locals->local_variables_count; j++) {
+          struct local_variable *local = &locals->local_variables[j];
+          int previous = local->offset_to_fp;
+          if (local->size > 16) {
+            int bytes = local->size / 8;
+            local->offset_to_fp = array_end - (bytes - 1);
+            array_end -= bytes;
+            preceding_array_bytes += bytes;
+          }
+          else
+            local->offset_to_fp += preceding_array_bytes;
+          RA_TRACE((stderr, "register_allocator: hot_frame_local function=%s identity=%d previous=%d offset=%d size=%d\n",
+            function_node->children[1]->label, j, previous, local->offset_to_fp, local->size / 8));
+        }
+        for (j = 0; j < count; j++) {
+          struct temp_register *temp = &locals->temp_registers[j];
+          if (temp->spill_required == YES) {
+            int previous = temp->offset_to_fp;
+            temp->offset_to_fp += array_bytes;
+            RA_TRACE((stderr, "register_allocator: hot_frame_spill function=%s temp=r%d previous=%d offset=%d size=%d\n",
+              function_node->children[1]->label, temp->register_index, previous, temp->offset_to_fp, temp->size / 8));
+          }
+        }
+        RA_TRACE((stderr, "register_allocator: hot_frame_layout function=%s array_bytes=%d hot_end=%d frame_end=%d identities=preserved fixed_owners=none window=single\n",
+          function_node->children[1]->label, array_bytes, hot_end, *offset));
+      }
+    }
+  }
+
   status = SUCCEEDED;
 cleanup:
   free(order);
