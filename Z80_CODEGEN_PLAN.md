@@ -288,8 +288,8 @@ needed rerunning. Follow-up evidence is retained under
 
 Evidence, failed scouts and final reports are retained under
 `C:\cygwin64\tmp\maze-console-20261023`. That batch expanded and validated
-workloads without changing the compiler. Step 2ak is now completed below;
-steps 2al-2an remain pending.
+workloads without changing the compiler. Steps 2ak-2al are now completed below;
+steps 2am-2an remain pending.
 
 ## Implementation Order
 
@@ -387,8 +387,8 @@ extraction.
   proven byte ranges without changing general word counts or source semantics.
 - [x] **2ak. Hot scalar/spill placement before large local arrays:** reuse
   existing frame assignment and packing to reduce distant-home window changes.
-- [ ] **2al. Direct call-argument register placement:** avoid redundant staging
-  and reloads within the existing automatic register ABI.
+- [x] **2al. Direct call-argument register placement:** avoid redundant staging
+  and reloads within the existing register ABI and legacy push transport.
 - [ ] **2am. Costed nested-loop invariant hoisting:** move proven stable pure
   expressions to existing loop preheaders only when complete costs justify it.
 - [ ] **2an. Live-third-argument frameless multiply leaves:** reuse existing
@@ -4538,37 +4538,101 @@ Validation:
 Evidence and rejected scouts are retained under
 `C:\cygwin64\tmp\hot-frame-layout-20261023`.
 
-### 2al. Direct Call-Argument Register Placement (Pending)
+### 2al. Direct Call-Argument Register Placement (Completed)
 
-Automatic register calls still often load argument temporaries, store them in
-frame homes and reload them immediately into ABI registers. The after-2aj
-MultiplyAdd wrapper is 75 bytes / 7752 aggregate cycles versus stock SDCC's
-20-byte wrapper. The larger calculation wrappers remain 111 bytes versus 19.
-Array spends 312432 of 5417525 cycles in call transport, excluding some earlier
-argument-expression work.
+Implemented bounded producer/call fusion in the existing Z80 emitter. Up to
+three consecutive fixed-index global word loads or global array-address
+calculations can feed their existing ABI destinations directly, without
+storing and immediately reloading argument temporaries. Constants can occupy
+any argument position. This reuses call lowering, temporary use/definition and
+spill facts, constant loaders and constant-array-address validation; no new
+compiler functions, IR fields, allocation framework, options or ABI were added.
 
-- Reuse existing call lowering, location ownership, liveness, result packing
-  and transfer helpers. Prefer destination registers for safely placed argument
-  results rather than adding a second staging or parallel-copy framework.
-- Preserve evaluation order and value snapshots across subsequent arguments,
-  aliases, calls, volatile/effectful reads and byte/pair overlaps. A dead
-  argument's effects must still execute even when its transport can be omitted.
-- Resolve register conflicts using existing moves/saves; retain ordinary staging
-  and old-ABI fallbacks whenever direct placement is not proven profitable.
-- Cover mixed-width/sign arguments, nested calls, swapped pairs, escaping
-  addresses, assembly-facing and cross-unit/banked contracts. Do not create a
-  new convention or require source annotations/options.
+Register calls use the existing IY/HL/BC order. The same ordered-source proof
+also feeds the existing legacy word-argument push path directly through BC,
+preserving HL's saved new-frame address. This improves larger/nonleaf callers
+without broadening automatic callee eligibility. The linker still chooses
+the existing automatic entry or legacy entry; explicit register calls and
+cross-unit/banked contracts are unchanged. Unsupported push layouts emit the
+original staged producers instead.
 
-SDCC r17016's `genSend` chooses argument-register destinations while guarding
-still-needed operands and previously sent registers. This is implementation
-precedent, not copied compiler code. A private pure fixed-global-load caller
-using SameSameC's existing ABI reduces the wrapper 75 -> 25 bytes and
-7752 -> 2499 aggregate cycles, with the kernel unchanged and observed whole-call
-span 22 -> 16. This is not a general eligibility proof.
+Safety bounds:
 
-Acceptance: improve complete caller-plus-callee costs, not just transport
-listings. Include the new tracker mixer and existing call-heavy Array/Stencil;
-measure wrappers separately and count retained adapters and shared helpers.
+- Each producer must define a spilled word temporary exactly once, read only
+  by this call, with no physical-register or spill-transfer annotations.
+  Nonconstant arguments must consume every producer once in evaluation order.
+  Only dead TACs may intervene; no loads move across other operations, calls,
+  writes, labels or variable creation.
+- Reuse the existing frame-join gate to exclude allocator-off/forced-spill
+  modes and callers containing source assembly. Source arrays must have known
+  normal global/static storage and bounded constant indices. External or
+  fixed-origin storage and the special port arrays retain ordinary lowering.
+- Nested/effectful expressions, earlier snapshots, repeated values, dynamic
+  indices, local addresses and mixed-width contracts remain staged. Dead formal
+  parameters do not erase argument effects. Existing conversion and overlap
+  handling is unchanged.
+- Original temporary homes and frame sizes are intentionally retained.
+  This is emitter fusion, not an allocator/liveness rewrite or general
+  destination-passing/parallel-copy implementation.
+
+SDCC r17016's `genSend` was implementation precedent, not copied compiler code.
+The earlier private 25-byte/2499-cycle MultiplyAdd prototype also shrank its
+frame; the qualified implementation reaches 30 bytes/2958 cycles while keeping
+the existing frame and fallback contracts.
+
+Measured against immediate step-2ak parent `003944f`, ordinary `-ra`:
+
+| Workload(s) | Wrapper bytes, parent -> 2al | Aggregate wrapper cycles, parent -> 2al |
+| --- | ---: | ---: |
+| MultiplyAdd, Product, Shift, Partition | 75 -> 30 | 7752 -> 2958 |
+| Array, Stencil, Path | 111 -> 65 | 12980 -> 7420 |
+| Tile | 75 -> 29 | 9000 -> 3280 |
+| Sum, Copy, Fill | 75 -> 29 | 7650 -> 2788 |
+| Sprite, Navigation | 75 -> 29 | 5400 -> 1968 |
+| Tracker | 111 -> 65 | 7788 -> 4452 |
+| A* | 94 -> 59 | 1086 -> 674 |
+| Quicksort | 111 -> 65 | 5192 -> 2968 |
+| PackBits | 131 -> 131 | 12272 -> 12272 |
+| Packed CRC | 77 -> 77 | 7378 -> 7378 |
+
+Each grouped row gives the result for each named workload, not their sum.
+Cycles are summed over that workload's existing inputs. Shared-helper mode
+saves the same wrapper bytes/cycles and retains its mode-specific kernel
+costs. Sixteen wrappers improve; the other two remain outside the bounded
+shape. Across all eighteen wrappers, bytes fall **1607 -> 886** and transport
+cycles **146414 -> 77416 (-47.13%)**. These are independent workload totals,
+not an additive whole-program speedup. All kernel sizes and per-input kernel
+cycles/instructions are unchanged.
+
+Validation:
+
+- Release, traced and AddressSanitizer: **108 RA/shared builds, 1668 guarded
+  calls and 162 independent timing checks**. All 36 ROMs match across builds
+  (72 cross-build identity comparisons), with unchanged immutable
+  source/oracle/layout fingerprints.
+- All 556 immediate-parent input comparisons have nonincreasing complete
+  cycles/instructions and stack/frame extents. All complete linked section
+  totals shrink or remain unchanged; every nonwrapper section, including
+  retained adapters and arithmetic helpers, keeps its size. Shared-helper
+  inventories and call-site counts are unchanged.
+- **64 focused unit tests** pass. The two new methods execute **11440**
+  guarded calls over 27 expression cases and eight separate-object contracts.
+  They cover all three argument positions, constants, signs/widths, reversed
+  source order, global/local addresses, snapshots, aliases, effects on dead
+  arguments, unused results, nested/nonleaf calls, external storage, source
+  assembly, banked/legacy objects and the existing explicit convention.
+  Selection assertions require the actual entry symbol as well as the
+  direct-path marker, not just comments in an unselected conditional branch.
+- All six self-contained SMS/GG ROMs pass complete reset/display, CRC,
+  palette/font, mapper and RAM checks. Their full boot cycles and observed
+  results/footprints are unchanged. No calculation-project or comparison
+  source was changed, no external baselines were rewritten, and no
+  allocator-off performance comparisons were run.
+
+Evidence, earlier scouts and final `qualification.json` are retained under
+`C:\cygwin64\tmp\direct-call-arguments-20261023`; the final build cohorts are
+`qualify-release-qualified`, `qualify-traced-qualified` and
+`qualify-asan-qualified`.
 
 ### 2am. Costed Nested-Loop Invariant Hoisting (Pending)
 

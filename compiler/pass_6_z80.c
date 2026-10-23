@@ -7029,7 +7029,7 @@ static int _generate_asm_return_value_z80(struct tac *t, FILE *file_out, struct 
 }
 
 
-static int _generate_asm_function_call_z80(struct tac *t, FILE *file_out, struct tree_node *function_node, int op, int variant) {
+static int _generate_asm_function_call_z80(struct tac *t, FILE *file_out, struct tree_node *function_node, int op, int variant, struct tac **direct_sources) {
 
   int j, argument, reset_iy = YES, init_ix = NO;
   int frame_end, return_sp_offset, saved_fp_low_offset, saved_fp_high_offset;
@@ -7051,11 +7051,11 @@ static int _generate_asm_function_call_z80(struct tac *t, FILE *file_out, struct
               t->arg1_node->children[1]->label);
       fprintf(file_out, "  .IFDEF ssc.auto.v1.w%d.%s\n",
               t->arg1_node->local_variables->arguments_count, t->arg1_node->children[1]->label);
-      if (_generate_asm_function_call_z80(t, file_out, function_node, op, 1) == FAILED)
+      if (_generate_asm_function_call_z80(t, file_out, function_node, op, 1, direct_sources) == FAILED)
         return FAILED;
       fprintf(file_out, "  .ELSE\n");
       g_ix_frame_offset = frame_cache;
-      if (_generate_asm_function_call_z80(t, file_out, function_node, op, 2) == FAILED)
+      if (_generate_asm_function_call_z80(t, file_out, function_node, op, 2, direct_sources) == FAILED)
         return FAILED;
       fprintf(file_out, "  .ENDIF\n");
       g_ix_frame_offset = Z80_GLOBAL_OFFSET;
@@ -7087,6 +7087,21 @@ static int _generate_asm_function_call_z80(struct tac *t, FILE *file_out, struct
     if ((type != VARIABLE_TYPE_INT16 && type != VARIABLE_TYPE_UINT16) || local->offset_to_fp != argument_offset)
       push_arguments = NO;
     argument_offset -= 2;
+  }
+  if (direct_sources != NULL && register_call == NO && push_arguments == NO) {
+    for (j = 0; j < t->arguments_count; j++) {
+      struct tac *source = direct_sources[j];
+      if (source == NULL)
+        continue;
+      print_tac(source, YES, file_out);
+      if (source->op == TAC_OP_ARRAY_READ) {
+        if (_generate_asm_array_read_z80(source, file_out, function_node) == FAILED)
+          return FAILED;
+      }
+      else if (_generate_asm_get_address_z80(source, file_out, function_node, source->op) == FAILED)
+        return FAILED;
+    }
+    direct_sources = NULL;
   }
 
 #if defined(DEBUG_PASS_6_REGISTER_ALLOCATOR)
@@ -7204,9 +7219,39 @@ static int _generate_asm_function_call_z80(struct tac *t, FILE *file_out, struct
       }
 #endif
 
-      if (register_call == YES) {
-        int remaining = t->arg1_node->local_variables->arguments_count - argument;
+      if (register_call == YES || direct_sources != NULL) {
+        int remaining = register_call == YES ? t->arg1_node->local_variables->arguments_count - argument : 1;
         int ix_offset = 0;
+        if (direct_sources != NULL) {
+          struct tac *source = direct_sources[argument];
+          if (source != NULL) {
+            struct tac address = *source;
+            char label[MAX_NAME_LENGTH + 32];
+            int byte_offset;
+            int read = source->op == TAC_OP_ARRAY_READ;
+            if (read == YES)
+              address.op = TAC_OP_GET_ADDRESS_ARRAY;
+            if (get_z80_constant_array_address_offset(&address, &byte_offset) != YES) {
+              fprintf(stderr, "_generate_asm_function_call_z80(): Invalid direct argument address! Please submit a bug report!\n");
+              return FAILED;
+            }
+            snprintf(label, sizeof(label), "%s+%d&65535", source->arg1_node->children[1]->label, byte_offset);
+            fprintf(file_out, "      ; direct %sargument %d to %s\n", register_call == YES ? "" : "legacy ",
+              argument + 1, t->arg1_node->children[1]->label);
+            fprintf(file_out, "      LD  %s,%s%s%s\n", remaining == 3 ? "IY" : remaining == 2 ? "HL" : "BC",
+              read == YES ? "(" : "", label, read == YES ? ")" : "");
+          }
+          else if (remaining == 3)
+            _load_value_to_iy(source_location.value, file_out);
+          else if (remaining == 2)
+            _load_value_to_hl(source_location.value, file_out);
+          else
+            _load_value_to_bc(source_location.value, file_out);
+          if (register_call == NO)
+            _push_bc(file_out);
+          argument++;
+          continue;
+        }
         if (source_location.kind == LOC_GLOBAL || source_location.kind == LOC_STACK_LOCAL ||
             source_location.kind == LOC_STACK_SPILL) {
           if (_load_location_address_to_ix(&source_location, &ix_offset, file_out) == FAILED)
@@ -8938,6 +8983,68 @@ int generate_asm_z80(FILE *file_out) {
         print_tac(t, YES, file_out);
         fprintf(file_out, "      ; -----------------------------------------------------------------\n");
 
+        /* The join gate also excludes spill-only modes and opaque source ASM. */
+        if (frame_joins == YES &&
+            (op == TAC_OP_ARRAY_READ || op == TAC_OP_GET_ADDRESS || op == TAC_OP_GET_ADDRESS_ARRAY)) {
+          struct tac *loads[3], *sources[3] = { NULL, NULL, NULL };
+          int next = i, count = 0, argument, used = 0;
+          while (next < g_tacs_count && g_tacs[next].function_node == function_node) {
+            struct tac address = g_tacs[next];
+            struct temp_register *temporary;
+            int byte_offset;
+            if (address.op == TAC_OP_DEAD) {
+              next++;
+              continue;
+            }
+            if (count == 3 || (address.op != TAC_OP_ARRAY_READ &&
+                address.op != TAC_OP_GET_ADDRESS && address.op != TAC_OP_GET_ADDRESS_ARRAY) ||
+                address.result_type != TAC_ARG_TYPE_TEMP || address.result_physical_register != Z80_PHY_NONE ||
+                get_variable_type_size(address.result_var_type) != 16 ||
+                address.arg1_node == NULL ||
+                (address.arg1_node->flags & (TREE_NODE_FLAG_GLOBAL | TREE_NODE_FLAG_STATIC)) == 0 ||
+                (address.arg1_node->flags & (TREE_NODE_FLAG_EXTERN | TREE_NODE_FLAG_ORG_DEFINED | TREE_NODE_FLAG_ORGA_DEFINED)) != 0 ||
+                address.store_retained_to_spill_operand != -1 || address.reload_spill_to_physical_operand != -1)
+              break;
+            if (address.op == TAC_OP_ARRAY_READ) {
+              if (get_variable_type_size(get_array_item_variable_type(address.arg1_node)) != 16)
+                break;
+              address.op = TAC_OP_GET_ADDRESS_ARRAY;
+            }
+            if (get_z80_constant_array_address_offset(&address, &byte_offset) != YES)
+              break;
+            if (strcmp(address.arg1_node->children[1]->label, "__z80_in") == 0 ||
+                strcmp(address.arg1_node->children[1]->label, "__z80_out") == 0)
+              break;
+            temporary = _find_z80_temp_register(function_node, (int)address.result_d);
+            if (temporary == NULL || temporary->read_count != 1 || temporary->write_count != 1 ||
+                temporary->spill_required != YES || temporary->physical_register != Z80_PHY_NONE)
+              break;
+            loads[count++] = &g_tacs[next++];
+          }
+          if (count > 0 && next < g_tacs_count && g_tacs[next].function_node == function_node &&
+              (g_tacs[next].op == TAC_OP_FUNCTION_CALL || g_tacs[next].op == TAC_OP_FUNCTION_CALL_USE_RETURN_VALUE) &&
+              _is_z80_register_call(g_tacs[next].arg1_node, NO, NULL) == YES) {
+            struct tac *call = &g_tacs[next];
+            for (argument = 0; argument < call->arguments_count && argument < 3; argument++) {
+              struct function_argument *arg = &call->arguments[argument];
+              if (arg->type == TAC_ARG_TYPE_CONSTANT)
+                continue;
+              if (arg->type != TAC_ARG_TYPE_TEMP || used == count ||
+                  (int)arg->value != (int)loads[used]->result_d)
+                break;
+              sources[argument] = loads[used++];
+            }
+            if (argument == call->arguments_count && used == count) {
+              RA_TRACE((stderr, "register_allocator: direct_call_arguments function=%s callee=%s loads=%d snapshots=ordered fallback=staged_if_not_pushable\n",
+                function_node->children[1]->label, call->arg1_node->children[1]->label, count));
+              if (_generate_asm_function_call_z80(call, file_out, function_node, call->op, 0, sources) == FAILED)
+                return FAILED;
+              i = next;
+              continue;
+            }
+          }
+        }
+
         if (op == TAC_OP_ASSIGNMENT) {
           int previous_index = i;
           if (g_allocator_enabled == YES && g_allocator_force_all_spill == NO &&
@@ -9042,7 +9149,7 @@ int generate_asm_z80(FILE *file_out) {
             return FAILED;
         }
         else if (op == TAC_OP_FUNCTION_CALL || op == TAC_OP_FUNCTION_CALL_USE_RETURN_VALUE) {
-          if (_generate_asm_function_call_z80(t, file_out, function_node, op, 0) == FAILED)
+          if (_generate_asm_function_call_z80(t, file_out, function_node, op, 0, NULL) == FAILED)
             return FAILED;
         }
         else if (op == TAC_OP_CREATE_VARIABLE) {

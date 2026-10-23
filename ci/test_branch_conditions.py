@@ -1059,6 +1059,176 @@ void main(void) {}
                             self.assertIn(f"leaf_{name}", image.symbols)
         self.assertEqual(calls, len(programs)*32*5*3)
 
+    def test_direct_call_argument_placement(self):
+        signed = lambda value: (value ^ 0x8000)-0x8000
+        cases = {
+            "one": ("dc_one", 1, "return dc_one(direct_params[0]);", lambda a, b: a^0x9234, True),
+            "two": ("dc_two", 2, "return dc_two(direct_params[0],direct_params[1]);", lambda a, b: a+3*b, True),
+            "three": ("dc_three", 3, "return dc_three(direct_params[0],direct_params[1],direct_params[2]);",
+                      lambda a, b: a+3*b+5*(a^b), True),
+            "reverse": ("dc_three", 3, "return dc_three(direct_params[2],direct_params[1],direct_params[0]);",
+                        lambda a, b: (a^b)+3*b+5*a, True),
+            "constant_first": ("dc_three", 3, "return dc_three(32768,direct_params[0],direct_params[1]);",
+                               lambda a, b: 32768+3*a+5*b, True),
+            "constant_middle": ("dc_three", 3, "return dc_three(direct_params[0],32768,direct_params[1]);",
+                                lambda a, b: a+3*32768+5*b, True),
+            "constant_last": ("dc_three", 3, "return dc_three(direct_params[0],direct_params[1],32768);",
+                              lambda a, b: a+3*b+5*32768, True),
+            "address": ("dc_pointer", 2, "return dc_pointer(direct_params[0],&direct_params[1]);",
+                        lambda a, b: a+b, True),
+            "address_first": ("dc_pointer_first", 2, "return dc_pointer_first(&direct_params[2],direct_params[1]);",
+                              lambda a, b: (a^b)+b, True),
+            "signed": ("dc_signed", 3, "return dc_signed(direct_params[0],direct_params[1],direct_params[2]);",
+                       lambda a, b: min(signed(a), signed(b))+(a^b), True),
+            "dead": ("dc_dead", 3, "return dc_dead(direct_params[0],direct_params[1],direct_params[2]);",
+                     lambda a, b: a, True),
+            "snapshot": ("dc_three", 3, "u16 early=direct_params[0]; direct_params[0]=b; "
+                         "return dc_three(early,direct_params[1],direct_params[2]);",
+                         lambda a, b: a+3*b+5*(a^b), False),
+            "nested": ("dc_three", 3, "return dc_three(direct_params[0],dc_tick(direct_params[1]),direct_params[2]);",
+                       lambda a, b: a+3*(b^0x31)+5*(a^b), False),
+            "alias": ("dc_three", 3, "return dc_three(direct_params[0],dc_mutate(&direct_params[0],b),direct_params[2]);",
+                      lambda a, b: a+3*(b^0x55)+5*(a^b), False),
+            "byte": ("dc_three", 3, "u8 first=a; return dc_three(first,direct_params[1],direct_params[2]);",
+                     lambda a, b: (a&255)+3*b+5*(a^b), False),
+            "signed_byte": ("dc_three", 3, "s8 first=a; return dc_three(first,direct_params[1],direct_params[2]);",
+                            lambda a, b: (a&255)-(256 if a&128 else 0)+3*b+5*(a^b), False),
+            "mixed": ("dc_mixed", 2, "return dc_mixed(direct_params[0],direct_params[1]);",
+                      lambda a, b: (a&255)+3*b, False),
+            "nonleaf": ("dc_nonleaf", 3, "return dc_nonleaf(direct_params[0],direct_params[1],direct_params[2]);",
+                        lambda a, b: (a^0x31)+3*b+5*(a^b), False),
+            "nonleaf_constant_first": ("dc_nonleaf", 3, "return dc_nonleaf(32768,direct_params[0],direct_params[1]);",
+                                       lambda a, b: (32768^0x31)+3*a+5*b, False),
+            "nonleaf_constant_middle": ("dc_nonleaf", 3, "return dc_nonleaf(direct_params[0],32768,direct_params[1]);",
+                                        lambda a, b: (a^0x31)+3*32768+5*b, False),
+            "nonleaf_constant_last": ("dc_nonleaf", 3, "return dc_nonleaf(direct_params[0],direct_params[1],32768);",
+                                      lambda a, b: (a^0x31)+3*b+5*32768, False),
+            "ignored": ("dc_three", 3, "dc_three(direct_params[0],direct_params[1],direct_params[2]); return a^b;",
+                        lambda a, b: a^b, True),
+            "four": ("dc_four", 4, "return dc_four(direct_params[0],direct_params[1],direct_params[2],direct_params[3]);",
+                     lambda a, b: a+3*b+5*(a^b)+7*(a+b), False),
+            "dynamic": ("dc_three", 3, "return dc_three(direct_params[a&3],direct_params[1],direct_params[2]);",
+                        lambda a, b: (a, b, a^b, (a+b)&65535)[a&3]+3*b+5*(a^b), False),
+            "reuse": ("dc_three", 3, "u16 first=direct_params[0]; return dc_three(first,first,direct_params[2]);",
+                      lambda a, b: 4*a+5*(a^b), False),
+            "local_address": ("dc_pointer", 2, "u16 pair[2]; pair[0]=a; pair[1]=b; "
+                              "return dc_pointer(direct_params[0],pair);", lambda a, b: 2*a, False),
+            "effects_dead": ("dc_dead", 3, "return dc_dead(direct_params[0],dc_tick(direct_params[1]),direct_params[2]);",
+                             lambda a, b: a, False),
+        }
+        helpers = """u8 ra_buffer[128];
+u16 direct_params[4];
+u16 dc_one(u16 a) { return a^0x9234; }
+u16 dc_two(u16 a,u16 b) { return a+3*b; }
+u16 dc_three(u16 a,u16 b,u16 c) { return a+3*b+5*c; }
+u16 dc_pointer(u16 a,u16 *p) { return a+p[0]; }
+u16 dc_pointer_first(u16 *p,u16 b) { return p[0]+b; }
+u16 dc_signed(s16 a,s16 b,u16 c) { if(a<b) { return a+c; } return b+c; }
+u16 dc_dead(u16 a,u16 b,u16 c) { return a; }
+u16 dc_tick(u16 value) { ra_buffer[0]^=value; return value^0x31; }
+u16 dc_mutate(u16 *p,u16 value) { p[0]=value; return value^0x55; }
+u16 dc_mixed(u8 a,u16 b) { return a+3*b; }
+u16 dc_nonleaf(u16 a,u16 b,u16 c) { return dc_tick(a)+3*b+5*c; }
+u16 dc_four(u16 a,u16 b,u16 c,u16 d) { return a+3*b+5*c+7*d; }
+"""
+        setup = "direct_params[0]=a; direct_params[1]=b; direct_params[2]=a^b; direct_params[3]=a+b;"
+        programs = [Program(f"direct_{name}", name, 0, count, [2, 2], 2, [],
+                            f"u16 direct_{name}(u16 a,u16 b) {{ {setup} {body} }}")
+                    for name, (_, count, body, _, _) in cases.items()]
+        directory = self.output / "direct-call-arguments"
+        for policy in ("inline", "shared"):
+            images = compile_generated(
+                directory / policy, os.environ.get("SAMESAMECC") or "samesamecc",
+                os.environ.get("SAMESAMECL") or "samesamecl", programs,
+                helpers+"\n".join(program.source for program in programs)+"\nvoid main(void) {}\n",
+                linker_flags=("-share-arithmetic",) if policy == "shared" else ())
+            for mode, image in images.items():
+                self.assertEqual(image.symbols["direct_params"], image.symbols["ra_buffer"]+128)
+                assembly = (directory / policy / mode / "linked.sms.combined.asm").read_text()
+                for program in programs:
+                    callee, count, _, oracle, eligible = cases[program.family]
+                    body = assembly.split(f'.SECTION "{program.name}" FREE')[1].split(".ENDS")[0]
+                    selected = (bool(re.search(r"; direct argument \d+ to "+callee+r"\b", body)) and
+                                f"ssc.autocall.v1.w{count}.{callee}" in image.symbols)
+                    self.assertEqual(selected, eligible and mode in ("ra", "ra_quiet"), (program.name, policy, mode))
+                    legacy = (bool(re.search(r"; direct legacy argument \d+ to "+callee+r"\b", body)) and
+                              f"ssc.autocall.v1.w{count}.{callee}" not in image.symbols)
+                    self.assertEqual(legacy, program.family.startswith("nonleaf") and mode in ("ra", "ra_quiet"),
+                                     (program.name, policy, mode))
+                    for a in (0, 1, 127, 128, 255, 256, 0x8000, 65535):
+                        for b in (0, 7, 255, 0x9234, 65535):
+                            initial = bytes((index*37+a+b)&255 for index in range(136))
+                            expected = bytearray(initial)
+                            values = [b if program.family in ("snapshot", "alias") else a, b, a^b, (a+b)&65535]
+                            expected[128:] = b"".join(value.to_bytes(2, "little") for value in values)
+                            if program.family.startswith("nonleaf"):
+                                expected[0] ^= (32768 if program.family == "nonleaf_constant_first" else a)&255
+                            elif program.family in ("nested", "effects_dead"):
+                                expected[0] ^= b&255
+                            result = execute(image.rom, image.symbols[program.name], [a, b], [2, 2], initial,
+                                             image.symbols["ra_buffer"], 2, image.transfers, frame_bytes=2048)
+                            self.assertEqual((result["value"], result["buffer"], result["port_writes"]),
+                                             (oracle(a, b)&65535, expected, []), (program.name, policy, mode, a, b))
+                            self.assertEqual(result["unmapped_instructions"], 0)
+
+    def test_direct_call_argument_objects(self):
+        compiler = os.environ.get("SAMESAMECC") or "samesamecc"
+        linker = os.environ.get("SAMESAMECL") or "samesamecl"
+        for contract in ("leaf", "banked", "assembly", "caller_asm", "nonleaf", "legacy", "explicit", "external_data"):
+            for mode, flags in (("ra", ("-ra",)), ("forced", ("-ra-all-spill",))):
+                work = self.output / f"direct-objects-{contract}-{mode}"
+                work.mkdir()
+                annotation = " __z80_regcall" if contract == "explicit" else ""
+                barrier = '__asm("LD BC,4660");' if contract == "caller_asm" else ""
+                storage = "extern " if contract == "external_data" else ""
+                caller = (f"u8 ra_buffer[128]; {storage}u16 direct_params[3];\n"
+                          f"u16 dc_external(u16 a,u16 b,u16 c){annotation};\n"
+                          "u16 direct_object(u16 a,u16 b) { direct_params[0]=a; direct_params[1]=b; "
+                          f"direct_params[2]=a^b; {barrier} return dc_external(direct_params[0],direct_params[1],direct_params[2]); }}\n"
+                          "void main(void) {}\n")
+                body = ('__asm("NOP"); return a+3*b+5*c;' if contract == "assembly" else
+                        "return dc_inner(a)+3*b+5*c;" if contract == "nonleaf" else "return a+3*b+5*c;")
+                callee = ("u16 dc_inner(u16 a) { return a+1; }\n" if contract == "nonleaf" else "")
+                if contract == "external_data":
+                    callee += "u16 direct_params[3];\n"
+                callee += f"u16 dc_external(u16 a,u16 b,u16 c){annotation} {{ {body} }}\n"
+                for unit, source in (("caller", caller), ("callee", callee)):
+                    (work / f"{unit}.ssc").write_text(source)
+                    bank = ("-b", "3", "-s", "2") if contract == "banked" and unit == "callee" else ()
+                    run(compiler, ["-mz80", "-rs", "3", *bank, *flags, "-o", f"{unit}.asm", f"{unit}.ssc"],
+                        work, f"{unit}.compiler.log")
+                if contract == "legacy":
+                    path = work / "callee.asm"
+                    path.write_text(re.sub(r"^\s*; ssc_regcalls[^\n]*\n", "", path.read_text(), flags=re.M))
+                run(linker, ["-lsms", "-ro", "4", "-v", "-o", "linked.sms", "caller.asm", "callee.asm"],
+                    work, "linker.log")
+                image = read_image(work)
+                fast = contract in ("leaf", "banked", "explicit", "external_data")
+                entry = f"ssc.{'regcall' if contract == 'explicit' else 'autocall'}.v1.w3.dc_external"
+                if contract != "caller_asm":
+                    self.assertEqual(entry in image.symbols, fast, (contract, mode))
+                assembly = (work / "caller.asm").read_text()
+                candidate = "; direct argument" in assembly
+                self.assertEqual(candidate, mode == "ra" and contract not in ("caller_asm", "external_data"),
+                                 (contract, mode))
+                legacy = "; direct legacy argument" in assembly and entry not in image.symbols
+                self.assertEqual(legacy, mode == "ra" and contract in ("assembly", "nonleaf", "legacy"),
+                                 (contract, mode))
+                self.assertEqual(image.symbols["direct_params"], image.symbols["ra_buffer"]+128)
+                if contract == "banked":
+                    image = mapped_routine_image("direct", entry, mode, image)
+                for a in (0, 1, 127, 128, 255, 256, 0x8000, 65535):
+                    for b in (0, 7, 255, 0x9234, 65535):
+                        initial = bytes((index*37+a+b)&255 for index in range(134))
+                        expected = bytearray(initial)
+                        expected[128:] = b"".join(value.to_bytes(2, "little") for value in (a, b, a^b))
+                        result = execute(image.rom, image.symbols["direct_object"], [a, b], [2, 2], initial,
+                                         image.symbols["ra_buffer"], 2, image.transfers, frame_bytes=2048)
+                        value = (a+3*b+5*(a^b)+(contract == "nonleaf"))&65535
+                        self.assertEqual((result["value"], result["buffer"], result["port_writes"]),
+                                         (value, expected, []), (contract, mode, a, b))
+                        self.assertEqual(result["unmapped_instructions"], 0)
+
     def test_automatic_register_calls(self):
         cases = {
             "zero": ("return er_zero()+a+b;", lambda a, b: 0x9234+a+b),
