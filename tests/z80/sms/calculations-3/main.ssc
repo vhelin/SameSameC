@@ -1,0 +1,4 @@
+__asm(".smsheader", "regioncode 4", "romsize $e", ".endsms");
+
+const u8 g_calculationGameGear = 0;
+#include "calculations_3.ssc"

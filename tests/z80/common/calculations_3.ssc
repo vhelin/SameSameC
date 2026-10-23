@@ -1,0 +1,36 @@
+__asm(".sdsctag 1.0, \"TEST\", \"Calculations 3\", \"Ville Helin\"");
+
+#include "calculation_crc.ssc"
+#include "calculation_display.ssc"
+#include "calculation_arithmetic_1.ssc"
+
+u8 g_calculationBuffer[1024];
+
+void calculateAndPrintApplications(u8 *chars, u8 *bytes, u8 compact);
+void calculateAndPrintAlgorithms(u8 *chars, u8 *bytes, u8 compact);
+
+void printWorkloadResult(u8 *chars, u8 *bytes, u8 row, u8 *label, u16 expected,
+                         u16 actual, u16 expectedCrc, u16 length, u8 compact) {
+
+  printCalculationLabel(row, label);
+  printCalculationPair(chars, row + 1, expected, actual);
+  if (compact == 0)
+    printCalculationPair(chars, row + 2, expectedCrc, calculationCrc16(bytes, length));
+}
+
+void main(void) {
+
+  u8 chars[80];
+  u8 *mapper = 0xFFFF;
+
+  init();
+  __z80_out[0xBF] = 0xC0;
+  __z80_out[0xBF] = 0x81;
+  printCalculationHeading(3);
+  mapper[0] = 2;
+  calculateAndPrintApplications(chars, g_calculationBuffer, g_calculationGameGear);
+  mapper[0] = 1;
+  calculateAndPrintAlgorithms(chars, g_calculationBuffer, g_calculationGameGear);
+  while (1)
+    ;
+}

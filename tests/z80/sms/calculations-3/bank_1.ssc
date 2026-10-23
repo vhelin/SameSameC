@@ -1,0 +1,31 @@
+#include "z80_algorithm_workloads.ssc"
+
+void printWorkloadResult(u8 *chars, u8 *bytes, u8 row, u8 *label, u16 expected,
+                         u16 actual, u16 expectedCrc, u16 length, u8 compact);
+
+void calculateAndPrintAlgorithms(u8 *chars, u8 *bytes, u8 compact) {
+
+  const u8 maze1Label[] = { 65,42,32,77,65,90,69,32,49,32,54,52,88,54,52,0 };
+  const u8 maze2Label[] = { 65,42,32,77,65,90,69,32,50,32,54,52,88,54,52,0 };
+  const u8 byteLabel[] = { 81,85,73,67,75,83,79,82,84,32,54,52,32,66,89,84,69,83,0 };
+  const u8 wordLabel[] = { 81,85,73,67,75,83,79,82,84,32,53,49,50,32,87,79,82,68,83,0 };
+  u8 row = 11;
+  u8 step = 3;
+  u16 result;
+
+  if (compact != 0) {
+    row = 8;
+    step = 2;
+  }
+  result = calculationAStarWorkload(0, bytes);
+  printWorkloadResult(chars, bytes, row, maze1Label, 0xC8ED, result, 0xFA5A, 528, compact);
+  row += step;
+  result = calculationAStarWorkload(1, bytes);
+  printWorkloadResult(chars, bytes, row, maze2Label, 0xE6CD, result, 0xA776, 528, compact);
+  row += step;
+  result = calculationQuickSortWorkload(0x1234, 0, bytes);
+  printWorkloadResult(chars, bytes, row, byteLabel, 0xF478, result, 0xF478, 64, compact);
+  row += step;
+  result = calculationQuickSortWorkload(0xBEEF, 1, bytes);
+  printWorkloadResult(chars, bytes, row, wordLabel, 0x32D9, result, 0x32D9, 1024, compact);
+}

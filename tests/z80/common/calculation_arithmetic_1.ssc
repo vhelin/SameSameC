@@ -1,0 +1,24 @@
+u16 calculationAdd3(u16 first, u16 second, u16 third) {
+
+  u16 partial = first + second;
+  return partial + third;
+}
+
+u16 calculationMultiplyAdd(u16 value, u16 multiplier, u16 addend) {
+
+  u16 product = value * multiplier;
+  return product + addend;
+}
+
+u16 calculationXorRoundTrip(u16 value, u16 mask) {
+
+  u16 mixed = value ^ mask;
+  return mixed ^ mask;
+}
+
+u16 calculationQuotientRoundTrip(u16 value, u16 divisor) {
+
+  u16 quotient = value / divisor;
+  u16 remainder = value % divisor;
+  return quotient * divisor + remainder;
+}

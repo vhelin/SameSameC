@@ -1,0 +1,56 @@
+u16 calculationProductRestore(u16 value, u16 multiplier, u16 remainder) {
+
+  u16 encoded = value * multiplier + remainder;
+  u16 quotient = encoded / multiplier;
+  u16 residue = encoded % multiplier;
+  return quotient + residue - remainder;
+}
+
+u16 calculationShiftRestore(u16 value, u16 shift, u16 mask) {
+
+  u16 encoded = (value << shift) ^ mask;
+  encoded ^= mask;
+  return encoded >> shift;
+}
+
+u16 calculationPartitionRestore(u16 value, u16 divisor, u16 mask) {
+
+  u16 quotient = value / divisor;
+  u16 remainder = value % divisor;
+  u16 restored = quotient * divisor + remainder;
+  restored ^= mask;
+  return restored ^ mask;
+}
+
+u16 calculationArrayWorkload(u16 seed, u16 count, u8 *bytes) {
+
+  u16 values[16];
+  u16 i;
+  u16 j;
+  u16 pass;
+  u16 mixed;
+  u16 checksum = seed & 0x1FFF;
+
+  for (i = 0; i < count; i++) {
+    values[i] = (seed + i * 73) & 0x1FFF;
+    bytes[i] = (seed >> 3) + i * 11;
+  }
+
+  for (pass = 0; pass < 3; pass++) {
+    for (i = 0; i < count; i++) {
+      j = (i + pass + 1) % count;
+      mixed = calculationPartitionRestore(values[j] + bytes[i], 17 + pass, seed);
+      if ((mixed & 1) == 0)
+        mixed = (mixed >> 1) + values[i];
+      else
+        mixed = (mixed ^ seed) + i * 7;
+      values[i] = calculationProductRestore(mixed & 0x1FFF, 3, pass);
+      values[i] = calculationShiftRestore(values[i], 1, seed);
+      bytes[i] = values[i] ^ (values[i] >> 8) ^ bytes[j];
+    }
+  }
+
+  for (i = 0; i < count; i++)
+    checksum = (checksum + values[i] + bytes[i]) & 0x1FFF;
+  return checksum;
+}

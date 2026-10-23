@@ -48,9 +48,9 @@ class ComparisonTests(unittest.TestCase):
         self.assertEqual(len(original["results"]), 104)
         self.assertEqual(sum(row["cases"] for row in original["results"]), 1856)
         rows = [row for row in self.reference["results"] if row["mode"] in benchmark.DEFAULT_MODES]
-        self.assertEqual(len(rows), 112)
-        self.assertEqual(len({(row["routine"], row["mode"]) for row in rows}), 112)
-        self.assertEqual(sum(row["cases"] for row in rows), 1876)
+        self.assertEqual(len(rows), 126)
+        self.assertEqual(len({(row["routine"], row["mode"]) for row in rows}), 126)
+        self.assertEqual(sum(row["cases"] for row in rows), 1946)
         self.assertEqual(self.reference["flags"], benchmark.FLAGS)
 
     def test_application_baseline_rejects_incomplete_or_rewritten_history(self):

@@ -1,0 +1,38 @@
+__asm(".sdsctag 1.0, \"TEST\", \"GG Calculations 2\", \"Ville Helin\"",
+      ".smsheader", "regioncode 6", "romsize $e", ".endsms");
+
+const u8 g_calculationGameGear = 1;
+#include "calculation_display.ssc"
+#include "calculation_arithmetic_2.ssc"
+
+void calculateAndPrintComplexBank1(u8 *chars, u8 one, u8 zero);
+void calculateAndPrintComplexBank2(u8 *chars, u8 one, u8 zero);
+void calculateAndPrintComplexBank3(u8 *chars, u8 one, u8 zero);
+
+void calculateAndPrintGameGear(u8 one) {
+
+  u8 chars[80];
+  u8 *mapper = 0xFFFF;
+  u16 result;
+
+  g_calculationRow = 2;
+  result = calculationArrayWorkload(0x47C1, 16, chars);
+  printCalculationLine(chars, 0, 0, 0x1FE6, result, result, result);
+  mapper[0] = 2;
+  calculateAndPrintComplexBank2(chars, one, 1 - one);
+  mapper[0] = 3;
+  calculateAndPrintComplexBank3(chars, one, 1 - one);
+  mapper[0] = 1;
+  calculateAndPrintComplexBank1(chars, one, 1 - one);
+}
+
+void main(void) {
+
+  init();
+  __z80_out[0xBF] = 0xC0;
+  __z80_out[0xBF] = 0x81;
+  printCalculationHeading(2);
+  calculateAndPrintGameGear(1);
+  while (1)
+    ;
+}

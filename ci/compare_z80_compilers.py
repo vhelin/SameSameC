@@ -16,18 +16,21 @@ import time
 from check_register_allocator import PACK_BITS_VECTORS, calibrate_counters, real_oracle, write_json
 from ra_cpu import Z80Machine, step
 from z80_application_oracles import APPLICATION_CASES, application_inputs
+from z80_algorithm_oracles import ALGORITHM_CASES, BUFFER_SIZES, algorithm_inputs
 
 
 ROOT = Path(__file__).resolve().parent.parent
 BASELINE = Path(__file__).with_name("z80_compiler_baseline.json")
 APPLICATION_BASELINE = Path(__file__).with_name("z80_application_baseline_v2.json")
+ALGORITHM_BASELINE = Path(__file__).with_name("z80_algorithm_baseline_v3.json")
+INSTRUCTION_LIMITS = {"calculationAStarWorkload": 20000000, "calculationQuickSortWorkload": 5000000}
 CASES = 17
 ROUTINES = {
-    "calculationMultiplyAdd": ("tests", "z80", "sms", "calculations-1", "main.ssc"),
-    "calculationProductRestore": ("tests", "z80", "sms", "calculations-2", "main.ssc"),
-    "calculationShiftRestore": ("tests", "z80", "sms", "calculations-2", "main.ssc"),
-    "calculationPartitionRestore": ("tests", "z80", "sms", "calculations-2", "main.ssc"),
-    "calculationArrayWorkload": ("tests", "z80", "sms", "calculations-2", "main.ssc"),
+    "calculationMultiplyAdd": ("tests", "z80", "common", "calculation_arithmetic_1.ssc"),
+    "calculationProductRestore": ("tests", "z80", "common", "calculation_arithmetic_2.ssc"),
+    "calculationShiftRestore": ("tests", "z80", "common", "calculation_arithmetic_2.ssc"),
+    "calculationPartitionRestore": ("tests", "z80", "common", "calculation_arithmetic_2.ssc"),
+    "calculationArrayWorkload": ("tests", "z80", "common", "calculation_arithmetic_2.ssc"),
     "calculationStencilWorkload": ("tests", "z80", "sms", "calculations-2", "bank_2.ssc"),
     "calculationTileWorkload": ("tests", "z80", "sms", "calculations-2", "bank_3.ssc"),
     "calculationPathWorkload": ("tests", "z80", "sms", "calculations-2", "bank_3.ssc"),
@@ -37,6 +40,7 @@ ROUTINES = {
     "copyBytes": None,
     "fillBytes": None,
     **{name: ("ci", "z80_application_workloads.ssc") for name in APPLICATION_CASES},
+    **{name: ("ci", "z80_algorithm_workloads.ssc") for name in ALGORITHM_CASES},
 }
 DEPENDENCIES = {
     "calculationArrayWorkload": ["calculationPartitionRestore", "calculationProductRestore", "calculationShiftRestore"],
@@ -44,6 +48,7 @@ DEPENDENCIES = {
     "calculationPathWorkload": ["calculationPartitionRestore"],
     "calculationPackedCrc": ["unpackPackBits"],
     "calculationTrackerWorkload": ["calculationMultiplyAdd"],
+    **{name: ["calculationCrc16"] for name in ALGORITHM_CASES},
 }
 MODES = {
     "ssc-ra": ("ssc", ["-ra"]),
@@ -74,7 +79,9 @@ METRICS = ("code_bytes", "wrapper_bytes", "total_kernel_cycles", "total_wrapper_
 
 def sources():
     result = {}
-    for name, location in ROUTINES.items():
+    for name, location in {
+        **ROUTINES, "calculationCrc16": ("tests", "z80", "common", "calculation_crc.ssc"),
+    }.items():
         if location is None:
             result[name] = f"u16 {name}(u16 seed, u16 count, u8 *bytes) {{ {PORTABLE[name]} }}"
             continue
@@ -90,6 +97,7 @@ def sources():
         if depth:
             raise RuntimeError(f"Unbalanced benchmark function {name} in {path}")
         result[name] = text[match.start():end]
+    result["astarMaps"] = (ROOT / "ci" / "z80_maze_maps.ssc").read_text()
     return result
 
 
@@ -105,9 +113,11 @@ def source_for(name, kind, functions, packed):
             arguments.append("bench_buffer" if index == 0 else "bench_buffer + 160")
         else:
             arguments.append("bench_buffer + 1" if name == "calculationPackedCrc" else "bench_buffer")
-    text = "u8 bench_buffer[512];\nu16 bench_params[4];\nu16 bench_result;\n"
+    text = f"u8 bench_buffer[{BUFFER_SIZES.get(name, 512)}];\nu16 bench_params[4];\nu16 bench_result;\n"
     if name == "calculationPackedCrc":
         text += "const u8 packedTiles[104] = {" + ",".join(str(byte) for byte in packed) + "};\n"
+    if name == "calculationAStarWorkload":
+        text += functions["astarMaps"] + "\n"
     text += "\n".join(functions[item] for item in names) + "\n"
     text += f"void bench(void) {{ bench_result = {name}({', '.join(arguments)}); }}\n"
     if kind == "ssc":
@@ -115,10 +125,14 @@ def source_for(name, kind, functions, packed):
     else:
         text = re.sub(r"\b(bytes\[[^\]]+\]) << 8", r"(u16)\1 << 8", text)
         text = "typedef unsigned char u8;\ntypedef unsigned int u16;\n" + text
+        if name == "calculationQuickSortWorkload":
+            text = "typedef signed int s16;\n" + text
     return text
 
 
 def inputs(name, seed):
+    if name in ALGORITHM_CASES:
+        return algorithm_inputs(name, seed)
     if name in APPLICATION_CASES:
         return application_inputs(name, seed)
     if ROUTINES[name] is not None:
@@ -145,7 +159,8 @@ def inputs(name, seed):
 def corpus(functions, packed):
     result = {}
     for name in ROUTINES:
-        count = APPLICATION_CASES.get(name, len(PACK_BITS_VECTORS) if name == "unpackPackBits" else CASES + (3 if name.endswith("Workload") else 0))
+        count = {**APPLICATION_CASES, **ALGORITHM_CASES}.get(
+            name, len(PACK_BITS_VECTORS) if name == "unpackPackBits" else CASES + (3 if name.endswith("Workload") else 0))
         result[name] = {
             "ssc_sha256": hashlib.sha256(source_for(name, "ssc", functions, packed).encode()).hexdigest(),
             "c_sha256": hashlib.sha256(source_for(name, "sdcc", functions, packed).encode()).hexdigest(),
@@ -155,26 +170,39 @@ def corpus(functions, packed):
                 for parameters, buffer, expected_buffer, expected in (inputs(name, seed) for seed in range(count))
             ], separators=(",", ":")).encode()).hexdigest(),
         }
+        if name in ALGORITHM_CASES:
+            result[name].update(buffer_bytes=BUFFER_SIZES[name], frame_top=0xdff0,
+                                instruction_limit=INSTRUCTION_LIMITS[name],
+                                bss_origin=0xc000,
+                                rom_data_bytes=1024 if name == "calculationAStarWorkload" else 0)
     return result
 
 
 def baseline():
     original = BASELINE.read_text(encoding="utf-8")
     reference = json.loads(original)
-    application = json.loads(APPLICATION_BASELINE.read_text())
-    expected = {(name, mode) for name in APPLICATION_CASES for mode in DEFAULT_MODES}
-    pairs = [(row["routine"], row["mode"]) for row in application["results"]]
-    if (application["schema"] != 2
-            or application["parent_sha256"] != hashlib.sha256(original.encode("utf-8")).hexdigest()
-            or set(application["corpus"]) != set(APPLICATION_CASES)
-            or set(application["modes"]) != set(DEFAULT_MODES)
-            or set(pairs) != expected or len(pairs) != len(expected)
-            or set(reference["corpus"]) & set(application["corpus"])):
-        raise RuntimeError("Invalid versioned application baseline or historical parent fingerprint")
-    reference["corpus"].update(application["corpus"])
-    reference["results"].extend(application["results"])
+    parent, parent_path = original, BASELINE
+    for path, schema, cases, label in (
+        (APPLICATION_BASELINE, 2, APPLICATION_CASES, "application"),
+        (ALGORITHM_BASELINE, 3, ALGORITHM_CASES, "algorithm"),
+    ):
+        text = path.read_text(encoding="utf-8")
+        extension = json.loads(text)
+        expected = {(name, mode) for name in cases for mode in DEFAULT_MODES}
+        pairs = [(row["routine"], row["mode"]) for row in extension["results"]]
+        if (extension["schema"] != schema
+                or extension["parent_baseline"] != parent_path.name
+                or extension["parent_sha256"] != hashlib.sha256(parent.encode("utf-8")).hexdigest()
+                or set(extension["corpus"]) != set(cases)
+                or set(extension["modes"]) != set(DEFAULT_MODES)
+                or set(pairs) != expected or len(pairs) != len(expected)
+                or set(reference["corpus"]) & set(extension["corpus"])):
+            raise RuntimeError(f"Invalid versioned {label} baseline or historical parent fingerprint")
+        reference["corpus"].update(extension["corpus"])
+        reference["results"].extend(extension["results"])
+        reference[f"{label}_commit"] = extension["compiler_commit"]
+        parent, parent_path = text, path
     reference["modes"] = {mode: reference["modes"][mode] for mode in DEFAULT_MODES}
-    reference["application_commit"] = application["compiler_commit"]
     return reference
 
 
@@ -257,7 +285,8 @@ def load_image(name, mode, directory):
         relocatable = (directory / "linked.rel").read_text()
         module_bytes = int(re.search(r"^A _CODE size ([\da-f]+) ", relocatable, re.M | re.I)[1], 16)
         wrapper_bytes = module_bytes - (symbols["_bench"] - symbols["s__CODE"])
-        code_bytes = symbols["l__CODE"] - wrapper_bytes - (104 if name == "calculationPackedCrc" else 0)
+        data_bytes = 104 if name == "calculationPackedCrc" else 1024 if name == "calculationAStarWorkload" else 0
+        code_bytes = symbols["l__CODE"] - wrapper_bytes - data_bytes
         memory = intel_hex(directory / "linked.ihx")
         symbols = {key.removeprefix("_"): value for key, value in symbols.items()}
     else:
@@ -297,14 +326,44 @@ def compile_case(name, mode, output, tools, functions, packed):
     else:
         clib = "new" if kind == "sccz80" else "sdcc_ix"
         allocation_flags = [] if kind == "sccz80" else FLAGS["zsdcc"]
+        ram_source = []
+        if name in ALGORITHM_CASES:
+            (directory / "ram.asm").write_text(
+                'defc __crt_org_far = 0\ndefc __crt_org_graphics = 0\n'
+                'INCLUDE "crt/classic/crt_section_code.inc"\n'
+                'SECTION rodata_compiler\nSECTION bss_compiler\nORG $c000\n')
+            ram_source = ["ram.asm"]
         elapsed = run([tools["zcc"], "+embedded", f"-clib={clib}", *FLAGS["zcc"],
-                       *allocation_flags, *flags, "-m", "--list", "-o", "linked", "main.c"],
+                       *allocation_flags, *flags, "-m", "--list", "-o", "linked", *ram_source, "main.c"],
                       directory, "compile.log", commands)
     write_json(directory / "build.json", {"seconds": elapsed, "commands": commands})
     return directory, *load_image(name, mode, directory)
 
 
-def execute(memory_image, symbols, name, parameters, initial_buffer, seed, ticks=None, directory=None):
+def calibrate_independent_clock(ticks, directory):
+    # The pinned ticks build charges ADC A,H as a memory operand (7, not 4).
+    # Calibrate explicitly rather than accepting an arbitrary cycle mismatch.
+    probe = bytearray(65536)
+    probe[0x100:0x108] = bytes([0x26, 0, 0x3e, 0, 0x8c, 0xc3, 0xff, 0x7f])
+    path = directory / "independent-clock-probe.bin"
+    path.write_bytes(probe)
+    completed = subprocess.run([ticks, "-mz80", "-pc", "100", "-start", "100",
+                                "-end", "7fff", "-counter", "1000", str(path)],
+                               stdout=subprocess.PIPE, stderr=subprocess.STDOUT, check=True, timeout=10)
+    measured = int(completed.stdout.strip())
+    if measured not in (28, 31):
+        raise RuntimeError(f"Independent ADC A,H clock calibration failed: expected 28/31, got {measured}")
+    calibration = {"expected_probe_cycles": 28, "raw_probe_cycles": measured,
+                   "adc_h_extra_cycles": measured - 28}
+    write_json(directory / "independent-clock-calibration.json", calibration)
+    if measured != 28:
+        print("WARNING: independent ticks ADC A,H timing is 7 instead of 4; applying the calibrated "
+              "3-cycle correction per executed unprefixed opcode 8C.", flush=True)
+    return calibration
+
+
+def execute(memory_image, symbols, name, parameters, initial_buffer, seed, ticks=None, directory=None,
+            ticks_adc_h_extra_cycles=0):
     ordinary_entry = symbols.get(name)
     register_address = symbols.get(f"ssc.autocall.v1.w{len(parameters)}.{name}",
                                    symbols.get(f"ssc.regcall.v1.w{len(parameters)}.{name}",
@@ -316,7 +375,11 @@ def execute(memory_image, symbols, name, parameters, initial_buffer, seed, ticks
     memory = machine.memory
     memory[:] = memory_image
     buffer_address = symbols["bench_buffer"]
-    memory[buffer_address:buffer_address + 512] = b"\xa5" * 512
+    buffer_size = BUFFER_SIZES.get(name, 512)
+    if (len(initial_buffer) > buffer_size or not 0 <= buffer_address < buffer_address + buffer_size <= 0xc800
+            or (name in ALGORITHM_CASES and buffer_address < 0xc000)):
+        raise RuntimeError(f"Invalid benchmark buffer extent: {name}")
+    memory[buffer_address:buffer_address + buffer_size] = b"\xa5" * buffer_size
     memory[buffer_address:buffer_address + len(initial_buffer)] = initial_buffer
     for index, value in enumerate(parameters):
         address = symbols["bench_params"] + index * 2
@@ -325,14 +388,14 @@ def execute(memory_image, symbols, name, parameters, initial_buffer, seed, ticks
     memory[result_address:result_address + 2] = b"\xa5\xa5"
     if name == "calculationPackedCrc":
         memory[symbols["packedTiles"] + 103] ^= seed & 255
-    frame, sentinel = 0xd000, 0x7fff
+    frame, sentinel = 0xdff0 if name in ALGORITHM_CASES else 0xd000, 0x7fff
     memory[frame - 1:frame + 1] = sentinel.to_bytes(2, "little")
     entry_sp = frame - (3 if "mainmain" in symbols else 1)
     machine.de, machine.sp, machine.pc = frame, entry_sp, symbols["bench"]
     if ticks is not None:
         snapshot = bytearray(memory)
         boot = bytes([
-            0x11, 0, 0xd0, 0x31, entry_sp & 255, entry_sp >> 8, 0x01, 0, 0, 0xc5, 0xf1,
+            0x11, frame & 255, frame >> 8, 0x31, entry_sp & 255, entry_sp >> 8, 0x01, 0, 0, 0xc5, 0xf1,
             0x21, 0, 0, 0xdd, 0x21, 0, 0, 0xfd, 0x21, 0, 0,
             0xc3, symbols["bench"] & 255, symbols["bench"] >> 8,
         ])
@@ -340,6 +403,7 @@ def execute(memory_image, symbols, name, parameters, initial_buffer, seed, ticks
         (directory / "independent-timing.bin").write_bytes(snapshot)
     counters = {"cycles": 0, "instructions": 0, "kernel_cycles": 0, "kernel_instructions": 0,
                 "kernel_stack_reads": 0, "kernel_stack_writes": 0}
+    adc_h_instructions = 0
     kernel_active = kernel_done = False
     resume = kernel_sp = None
     lowest_sp = frame - 1
@@ -362,7 +426,7 @@ def execute(memory_image, symbols, name, parameters, initial_buffer, seed, ticks
             instruction_access = min(instruction_access, address)
             if kernel_active:
                 counters["kernel_stack_writes"] += 1
-        elif not (buffer_address <= address < buffer_address + 512 or result_address <= address < result_address + 2):
+        elif not (buffer_address <= address < buffer_address + buffer_size or result_address <= address < result_address + 2):
             raise RuntimeError(f"Out-of-bounds write {address:04x}, PC={machine.pc:04x}")
         memory[address] = value
 
@@ -376,7 +440,7 @@ def execute(memory_image, symbols, name, parameters, initial_buffer, seed, ticks
     machine.mark_addrs(0xc800, frame - 0xc800 - 1, machine.READ_MARK)
     machine.mark_addrs(0, 65536, machine.WRITE_MARK)
     while machine.pc != sentinel:
-        if counters["instructions"] >= 2000000:
+        if counters["instructions"] >= INSTRUCTION_LIMITS.get(name, 2000000):
             raise RuntimeError("Instruction limit exceeded")
         register_entry = machine.pc == register_address
         if (machine.pc == ordinary_entry or register_entry) and not kernel_done and not kernel_active:
@@ -384,6 +448,7 @@ def execute(memory_image, symbols, name, parameters, initial_buffer, seed, ticks
             kernel_sp = machine.de - 1 if "mainmain" in symbols and not register_entry else machine.sp
             resume = memory[kernel_sp] + 256 * memory[(kernel_sp + 1) & 65535]
         counters["instructions"] += 1
+        adc_h_instructions += memory[machine.pc] == 0x8c
         if kernel_active:
             counters["kernel_instructions"] += 1
         instruction_access = frame - 1
@@ -405,10 +470,14 @@ def execute(memory_image, symbols, name, parameters, initial_buffer, seed, ticks
     if ticks is not None:
         completed = subprocess.run([
             ticks, "-mz80", "-pc", "7f00", "-start", f"{symbols['bench']:x}", "-end", "7fff",
-            "-counter", "100000000", str(directory / "independent-timing.bin"),
-        ], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, check=True, timeout=60)
+            "-counter", "500000000" if name == "calculationAStarWorkload" else "100000000",
+            str(directory / "independent-timing.bin"),
+        ], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, check=True,
+            timeout=120 if name == "calculationAStarWorkload" else 60)
         (directory / "independent-timing.log").write_bytes(completed.stdout)
-        if int(completed.stdout.strip()) != counters["cycles"]:
+        counters["independent_raw_cycles"] = int(completed.stdout.strip())
+        counters["independent_adc_h_correction"] = adc_h_instructions * ticks_adc_h_extra_cycles
+        if counters["independent_raw_cycles"] - counters["independent_adc_h_correction"] != counters["cycles"]:
             raise RuntimeError(f"Independent emulator cycle mismatch: {name}")
     counters["stack_high_water"] = frame - 1 - lowest_sp
     counters["stack_access_extent"] = frame - 1 - lowest_access
@@ -416,7 +485,7 @@ def execute(memory_image, symbols, name, parameters, initial_buffer, seed, ticks
     # Include the entry return address, not only displacement below entry SP.
     counters["frame_footprint"] = frame + 1 - min(lowest_sp, lowest_access)
     value = memory[result_address] + 256 * memory[result_address + 1]
-    return value, bytes(memory[buffer_address:buffer_address + 512]), counters
+    return value, bytes(memory[buffer_address:buffer_address + buffer_size]), counters
 
 
 def compare_result(result, reference, allow_competitor_drift=False):
@@ -487,9 +556,10 @@ def main():
         if measured_corpus != reference["corpus"]:
             raise RuntimeError("Benchmark sources, asset or oracle changed; preserve/review the corpus before comparing baselines")
         report["corpus"] = measured_corpus
-        report["corpus_version"] = 2
+        report["corpus_version"] = 3
         report["baseline_commit"] = reference["commit"]
         report["application_baseline_commit"] = reference["application_commit"]
+        report["algorithm_baseline_commit"] = reference["algorithm_commit"]
         kinds = {MODES[mode][0] for mode in args.modes}
         tools = {}
         if "ssc" in kinds:
@@ -518,6 +588,9 @@ def main():
                 if issue["fatal"]:
                     raise RuntimeError(f"Unpinned {name} version; see --allow-competitor-drift")
         calibrate_counters()
+        clock_calibration = calibrate_independent_clock(tools["ticks"], output) if "ticks" in tools else None
+        if clock_calibration is not None:
+            report["independent_clock_calibration"] = clock_calibration
         baseline_rows = {(row["routine"], row["mode"]): row for row in reference["results"]}
         for name in args.names:
             for mode in args.modes:
@@ -531,12 +604,14 @@ def main():
                         (name == "fillBytes" and seed == 10)
                         or (seed == 0 and name in ("calculationMultiplyAdd", "calculationPackedCrc"))
                         or (seed == 0 and name in APPLICATION_CASES)
+                        or (name in ALGORITHM_CASES)
                         or (seed == 0 and shared_requested)
                     ) else None
                     value, buffer, counters = execute(
                         memory, symbols, name, parameters, initial_buffer, seed, independent, directory,
+                        clock_calibration["adc_h_extra_cycles"] if clock_calibration else 0,
                     )
-                    expected_full = bytearray([0xa5] * 512)
+                    expected_full = bytearray([0xa5] * BUFFER_SIZES.get(name, 512))
                     expected_full[:len(expected_buffer)] = expected_buffer
                     if value != expected or buffer != expected_full:
                         write_json(directory / "failure.json", {
@@ -555,6 +630,9 @@ def main():
                           "max_below_sp_bytes": max(item["below_sp_extent"] for item in samples),
                           "max_frame_footprint_bytes": max(item["frame_footprint"] for item in samples),
                           "mean_kernel_cycles": statistics.mean(item["kernel_cycles"] for item in samples)}
+                if name in ALGORITHM_CASES:
+                    result["buffer_bytes"] = BUFFER_SIZES[name]
+                    result["rom_data_bytes"] = measured_corpus[name]["rom_data_bytes"]
                 result["baseline_delta"] = {
                     metric: result[metric] - baseline_rows[
                         name, mode.removesuffix("-shared").removesuffix("-regcalls")

@@ -1,0 +1,19 @@
+void printCalculationLine(u8 *chars, u8 low, u8 high, u16 expected, u16 first, u16 second, u16 third);
+
+#include "calculation_workloads_2.ssc"
+
+void calculateAndPrintComplexBank1(u8 *chars, u8 one, u8 zero) {
+
+  u16 result;
+
+  result = calculationHeapWorkload(0x4219, 16, chars);
+  printCalculationLine(chars, 0, 0, 0x0DB1, result, result, result);
+  result = (0x43BE + calculationMoveWorkload(0x43BE, 16, chars)) & 0x1FFF;
+  printCalculationLine(chars, 0, 0, 0x14C5, result, result, result);
+  result = (0x2E91 + calculationHistogramWorkload(0x2E91, 16, chars)) & 0x1FFF;
+  printCalculationLine(chars, 0, 0, 0x1DBA, result, result, result);
+  result = (0x145C + calculationFletcherWorkload(0x145C, 16, chars)) & 0x1FFF;
+  printCalculationLine(chars, 0, 0, 0x027D, result, result, result);
+  result = calculationSortWorkload(0x253A, 16, chars);
+  printCalculationLine(chars, 0, 0, 0x09AD, result, result, result);
+}

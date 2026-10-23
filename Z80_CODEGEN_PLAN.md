@@ -81,7 +81,7 @@ Specific evidence worth retaining:
 - Compiler executable bytes and host `-O3`/`-Os` settings are separate from target
   code quality. Do not use host EXE size as a generated-code metric.
 
-### Current Comparison Corpus: Version 2
+### Application Comparison Corpus: Version 2
 
 The original 13-workload [baseline](ci/z80_compiler_baseline.json) remains
 immutable. The [versioned application extension](ci/z80_application_baseline_v2.json)
@@ -109,7 +109,7 @@ buffer and numerical checks. These are application kernels, not whole-game,
 hardware-I/O, startup, interrupt or library parity claims.
 
 All future SameSameC **performance comparisons use `-ra` only**. The default
-is sixteen workloads in seven configurations: SameSameC RA, stock SDCC
+at version 2 was sixteen workloads in seven configurations: SameSameC RA, stock SDCC
 size/speed, sccz80 size/speed and ZSDCC size/speed. This is 112 builds and 1876
 guarded calls. Optional shared arithmetic adds the paired RA configuration;
 allocator-off comparison modes are rejected. Historical allocator-off records
@@ -141,6 +141,140 @@ timings. All thirteen original corpus fingerprints, 26 original RA images and
 Compiler/linker implementation and unrelated working-tree changes are
 unchanged. Detailed evidence is retained under
 `C:\cygwin64\tmp\application-comparison-20261023`.
+
+### Current Comparison Corpus: Version 3
+
+The [algorithm extension](ci/z80_algorithm_baseline_v3.json) adds two
+[portable kernels](ci/z80_algorithm_workloads.ssc) and
+[independent models](ci/z80_algorithm_oracles.py), without rewriting either
+historical baseline or any of the sixteen existing corpus fingerprints:
+
+- **A\*:** search from `(0,0)` to `(63,63)` through two committed
+  [64x64 mazes](ci/z80_maze_maps.ssc). Walls occupy one bit per cell: 1024
+  shared ROM-data bytes for both maps. The first is a perfect maze with 2049
+  open cells; the second has 2113 open cells and 64 extra cycles. A consistent
+  Manhattan heuristic and ordering `(f, -g, cell)` give deterministic shortest
+  routes. Packed parents and closed bits, plus a bounded frontier, fit in
+  3584 bytes of local arrays. The Python heap search independently checks
+  the route against BFS, adjacency, walls and the reconstructed path bitset.
+- **Quicksort:** iterative Hoare partitioning sorts 64 unsigned byte values
+  or 512 unsigned words, i.e. 1024 payload bytes. A xorshift16 generator
+  supplies repeatable inputs; eight cases cover both widths, zero/duplicate
+  pivots and high-bit seeds. One shared word workspace and partition loop
+  handle both forms; byte results are serialized back to exactly 64 bytes.
+  Process the smaller partition first to bound the pending stack. Python's
+  built-in sort independently checks order, multiplicities and the complete
+  observed buffer, including the untouched byte-mode tail.
+
+CRC means CRC-16/CCITT-FALSE: initial `FFFF`, polynomial `1021`, no final XOR.
+For A*, include both endpoints, sum `x+y` over every path coordinate modulo
+65536, then CRC that single total as two little-endian bytes, not the stream
+of coordinates. For quicksort, CRC the entire sorted payload; words are
+serialized low byte first.
+
+| Displayed test | Shortest distance | Coordinate total | Required CRC |
+| --- | ---: | ---: | ---: |
+| A* maze 1 | 642 | 41165 | C8ED |
+| A* maze 2 | 198 | 12193 | E6CD |
+| 64-byte quicksort, seed 1234 | - | - | F478 |
+| 512-word quicksort, seed BEEF | - | - | 32D9 |
+
+The default is now **18 workloads / 126 builds / 1946 guarded calls**, with
+SameSameC RA and the six external size/speed modes. Optional paired shared
+arithmetic gives 144 builds and 2224 calls; allocator-off comparisons remain
+rejected. Version 3 pins its normalized version-2 parent and adds only fourteen
+new reference rows. The new routines observe 528/1024 buffer bytes and use
+frame top `DFF0` within physical 8KB RAM; old buffer sizes, frame anchor,
+source fingerprints and external settings are unchanged. The new z88dk
+routines reuse its standard code-section order and place BSS explicitly at
+`C000`. Reports distinguish the 1024 maze-data bytes from kernel code.
+
+Initial algorithm qualification passes all sixteen ordinary/shared builds,
+80 guarded calls and 80 independent whole-call timings. Measurements use the
+unchanged compiler at `17f4cd9`; aggregate kernel T-states cover two maze
+searches or eight sort cases, not a single invocation:
+
+| Configuration | A* code bytes | A* T-states | Quicksort code bytes | Quicksort T-states |
+| --- | ---: | ---: | ---: | ---: |
+| SameSameC RA | 2776 | 50039955 | 1906 | 26729902 |
+| SDCC size | 1747 | 36018966 | 1301 | 21865548 |
+| SDCC speed | 1852 | 32143184 | 1326 | 23972702 |
+| sccz80 size | 2436 | 69465347 | 1490 | 50613503 |
+| sccz80 speed | 2603 | 53811877 | 1582 | 40778791 |
+| ZSDCC size | 1711 | 39769315 | 1138 | 21374371 |
+| ZSDCC speed | 1766 | 31970714 | 1118 | 18702907 |
+
+Paired shared arithmetic has identical costs for these two routines. A* adds
+1024 ROM-data bytes in every mode. Ordinary RA caller wrappers are separately
+94/111 bytes; observed complete frame footprints are 3652/1120 bytes.
+
+The pinned z88dk-ticks binary incorrectly charges unprefixed `ADC A,H` seven
+instead of four T-states. An explicit 28-cycle calibration probe detects its
+31-cycle result. For that specific calibrated discrepancy, count executed
+unprefixed `8C` instructions and subtract three per occurrence from the raw
+independent clock; retain both raw timings and corrections in artifacts.
+Correct ticks builds need no correction, unknown probe results fail, and any
+other per-call mismatch still fails. No third-party sources/binaries or
+historical reference timings were changed.
+
+### SMS And Game Gear Calculation Applications
+
+[SMS calculations-3](tests/z80/sms/calculations-3) runs the sprite scene,
+tracker and warehouse-navigation applications, both A* mazes and both quicksort
+forms. It shows expected/actual primary results and complete-output CRCs.
+The application cases use seed `1234`, with three sprite frames, 24 tracker
+ticks and one route job; their primary/full-buffer CRC pairs are respectively
+`A9E7/18E0`, `84A0/EB88` and `CB02/934A`. A* complete-buffer CRCs are
+`FA5A/A776`. All seven tests are new to the calculation-ROM series.
+
+[GG calculations-1](tests/z80/gg/calculations-1),
+[GG calculations-2](tests/z80/gg/calculations-2) and
+[GG calculations-3](tests/z80/gg/calculations-3) target the actual 20x18-tile
+Game Gear viewport at SMS name-table origin `(6,3)`, not a cropped SMS image.
+They use export-GG cartridge headers, explicit 64KB size and 12-bit black/white
+palette entries. Display expected/actual pairs rather than four intermediate
+columns: GG1 retains nine substantial arithmetic/packed-data results; GG2
+retains twelve application/array results and omits restoration-only rows;
+GG3 retains all seven new tests but omits the additional full-buffer-CRC rows.
+Its last result is row 15 of 18. SMS3 occupies rows 0..22 of 24.
+
+The [common sources/build rules](tests/z80/common) share the original font,
+VDP setup, hex formatting, arithmetic and bank-1 workloads. Platform-specific
+drivers stay small; GG2 does not compile a renamed unused SMS display driver.
+Extracting its shared workloads instead saves 2245 ROM bytes.
+GG1's packed asset is copied by make from the canonical SMS1 asset, not stored
+as another source copy. Include the current project before fallback include
+directories: SameSameC searches those directories before the working directory
+even for its input source filename.
+
+Build with `make` in any of the six project directories; SMS projects produce
+`linked.sms` and GG projects produce `linked.gg`, always with `-ra`. For
+out-of-tree reset-to-display verification, with the compiler and WLA tools on
+PATH, run:
+
+```
+python ci/check_z80_calculations.py --output-dir <new-empty-directory>
+```
+
+Select a subset with `--platforms gg --projects 1 2 3`. The checker verifies
+cartridge region/size/checksum, native startup and bank switching, physical
+RAM/stack separation, palette bytes, legacy font/blank-VRAM CRC `6986`, complete
+displayed results and blank space outside the GG viewport. Legacy SMS1/2 keep
+their existing header/checksum range and all 23 four-column result rows.
+The new applications use 4789 observed bytes including global data, stack
+accesses and the reserved top 16 bytes, within the 8192-byte RAM budget.
+
+Final qualification passes **51 focused unit tests, 144 comparison builds,
+2224 guarded calls and 216 independent timings**. All sixteen previous corpus
+fingerprints, 32 previous ordinary/shared RA images and 96 external result
+rows reproduce the version-2 qualification unchanged. All six ROMs build with
+their real makefiles from clean source layouts, remain up-to-date on a second
+make, match the checker's CLI-built images byte for byte, and pass whole-reset
+display/mapper/RAM verification. No allocator-off comparisons were run.
+
+Evidence, failed scouts and final reports are retained under
+`C:\cygwin64\tmp\maze-console-20261023`. Steps 2ak-2an remain pending; this
+batch expands and validates workloads, not the compiler implementation.
 
 ## Implementation Order
 

@@ -1,0 +1,414 @@
+u16 calculationPartitionRestore(u16 value, u16 divisor, u16 mask);
+
+// Assembly kernels accept 0..16 elements in the shared buffer and preserve frame DE.
+// Move overlapping ranges in both directions, then sum all 32 initialized bytes.
+u16 calculationMoveWorkload(u16 seed, u16 count, u8 *bytes) {
+
+  u16 checksum;
+
+  __asm("LD BC,(@count)",
+        "LD HL,(@bytes)",
+        "PUSH DE",
+        "LD DE,(@seed)",
+        "PUSH DE",
+        "PUSH BC",
+        "PUSH HL",
+        "LD A,D",
+        "XOR E",
+        "LD B,32",
+        "calculationMoveWorkload_fill:",
+        "LD (HL),A",
+        "ADD A,13",
+        "INC HL",
+        "DJNZ calculationMoveWorkload_fill",
+        "POP HL",
+        "POP BC",
+        "LD A,B",
+        "OR C",
+        "JR Z,calculationMoveWorkload_sum",
+        "PUSH BC",
+        "PUSH HL",
+        "LD D,H",
+        "LD E,L",
+        "INC DE",
+        "INC DE",
+        "INC DE",
+        "ADD HL,BC",
+        "DEC HL",
+        "EX DE,HL",
+        "ADD HL,BC",
+        "DEC HL",
+        "EX DE,HL",
+        "LDDR",
+        "POP HL",
+        "POP BC",
+        "PUSH HL",
+        "LD D,H",
+        "LD E,L",
+        "INC HL",
+        "INC HL",
+        "INC HL",
+        "INC HL",
+        "INC HL",
+        "LDIR",
+        "POP HL",
+        "calculationMoveWorkload_sum:",
+        "POP DE",
+        "LD B,32",
+        "calculationMoveWorkload_add:",
+        "LD A,(HL)",
+        "ADD A,E",
+        "LD E,A",
+        "JR NC,calculationMoveWorkload_next",
+        "INC D",
+        "calculationMoveWorkload_next:",
+        "INC HL",
+        "DJNZ calculationMoveWorkload_add",
+        "EX DE,HL",
+        "POP DE",
+        "LD (@checksum),HL");
+
+  return checksum;
+}
+
+// Generate 16 samples, count their low nibbles at bytes[32..47], and weight bins.
+u16 calculationHistogramWorkload(u16 seed, u16 count, u8 *bytes) {
+
+  u16 checksum;
+
+  __asm("LD BC,(@count)",
+        "LD HL,(@bytes)",
+        "PUSH DE",
+        "LD DE,(@seed)",
+        "PUSH DE",
+        "PUSH BC",
+        "PUSH HL",
+        "LD A,D",
+        "XOR E",
+        "LD B,16",
+        "calculationHistogramWorkload_fill:",
+        "LD (HL),A",
+        "RLCA",
+        "ADD A,7",
+        "INC HL",
+        "DJNZ calculationHistogramWorkload_fill",
+        "LD DE,16",
+        "ADD HL,DE",
+        "PUSH HL",
+        "LD B,16",
+        "XOR A",
+        "calculationHistogramWorkload_clear:",
+        "LD (HL),A",
+        "INC HL",
+        "DJNZ calculationHistogramWorkload_clear",
+        "POP DE",
+        "POP HL",
+        "POP BC",
+        "LD A,B",
+        "OR C",
+        "JR Z,calculationHistogramWorkload_sum",
+        "calculationHistogramWorkload_count:",
+        "LD A,(HL)",
+        "INC HL",
+        "AND 15",
+        "PUSH HL",
+        "LD L,A",
+        "LD H,0",
+        "ADD HL,DE",
+        "INC (HL)",
+        "POP HL",
+        "DEC BC",
+        "LD A,B",
+        "OR C",
+        "JR NZ,calculationHistogramWorkload_count",
+        "calculationHistogramWorkload_sum:",
+        "EX DE,HL",
+        "POP DE",
+        "LD B,16",
+        "LD C,1",
+        "calculationHistogramWorkload_bin:",
+        "LD A,(HL)",
+        "OR A",
+        "JR Z,calculationHistogramWorkload_next",
+        "PUSH BC",
+        "LD B,A",
+        "calculationHistogramWorkload_add:",
+        "LD A,E",
+        "ADD A,C",
+        "LD E,A",
+        "JR NC,calculationHistogramWorkload_carry",
+        "INC D",
+        "calculationHistogramWorkload_carry:",
+        "DJNZ calculationHistogramWorkload_add",
+        "POP BC",
+        "calculationHistogramWorkload_next:",
+        "INC C",
+        "INC HL",
+        "DJNZ calculationHistogramWorkload_bin",
+        "EX DE,HL",
+        "POP DE",
+        "LD (@checksum),HL");
+
+  return checksum;
+}
+
+// Generate count packet bytes and return their Fletcher-16 checksum (modulo 255).
+u16 calculationFletcherWorkload(u16 seed, u16 count, u8 *bytes) {
+
+  u16 checksum;
+
+  __asm("LD BC,(@count)",
+        "LD HL,(@bytes)",
+        "PUSH DE",
+        "LD DE,(@seed)",
+        "LD A,B",
+        "OR C",
+        "JR Z,calculationFletcherWorkload_empty",
+        "LD A,D",
+        "XOR E",
+        "PUSH HL",
+        "LD B,C",
+        "calculationFletcherWorkload_fill:",
+        "LD (HL),A",
+        "ADD A,29",
+        "INC HL",
+        "DJNZ calculationFletcherWorkload_fill",
+        "POP HL",
+        "LD B,C",
+        "LD DE,0",
+        "calculationFletcherWorkload_sum:",
+        "LD A,(HL)",
+        "ADD A,E",
+        "ADC A,0",
+        "CP 255",
+        "JR NZ,calculationFletcherWorkload_first",
+        "XOR A",
+        "calculationFletcherWorkload_first:",
+        "LD E,A",
+        "LD A,D",
+        "ADD A,E",
+        "ADC A,0",
+        "CP 255",
+        "JR NZ,calculationFletcherWorkload_second",
+        "XOR A",
+        "calculationFletcherWorkload_second:",
+        "LD D,A",
+        "INC HL",
+        "DJNZ calculationFletcherWorkload_sum",
+        "EX DE,HL",
+        "JR calculationFletcherWorkload_done",
+        "calculationFletcherWorkload_empty:",
+        "LD HL,0",
+        "calculationFletcherWorkload_done:",
+        "POP DE",
+        "LD (@checksum),HL");
+
+  return checksum;
+}
+
+u16 calculationSortWorkload(u16 seed, u16 count, u8 *bytes) {
+
+  u16 values[16];
+  u8 heap[64];
+  u8 *histogram;
+  u16 handle;
+  u16 i;
+  u16 j;
+  u16 value;
+  u16 checksum = seed & 0x1FFF;
+
+  heap[0] = 64;
+  handle = gameRamAllocate(heap, 8);
+  if (handle == 0)
+    return 0xFFFF;
+  histogram = &heap[handle];
+  for (i = 0; i < 8; i++)
+    histogram[i] = 0;
+  for (i = 0; i < count; i++) {
+    values[i] = ((seed ^ (i * 131)) + count * 19) & 0x1FFF;
+    j = (values[i] >> 3) & 7;
+    histogram[j] = histogram[j] + 1;
+  }
+
+  for (i = 1; i < count; i++) {
+    value = values[i];
+    j = i;
+    while (j > 0) {
+      if (values[j - 1] <= value)
+        break;
+      values[j] = values[j - 1];
+      j--;
+    }
+    values[j] = calculationPartitionRestore(value, 31, seed);
+  }
+
+  for (i = 0; i < count; i++) {
+    bytes[i * 2] = values[i];
+    bytes[i * 2 + 1] = values[i] >> 8;
+    checksum = (checksum + values[i] * (i + 1)) & 0x1FFF;
+  }
+  for (i = 0; i < 8; i++) {
+    bytes[32 + i] = histogram[i];
+    checksum = (checksum + histogram[i] * (i + 1)) & 0x1FFF;
+  }
+  bytes[40] = gameRamRelease(heap, handle);
+  bytes[41] = heap[0];
+  if (bytes[40] != 1)
+    return 0xFFFF;
+  if (bytes[41] != 64)
+    return 0xFFFF;
+  return (checksum + bytes[40] * 9 + bytes[41] * 10) & 0x1FFF;
+}
+
+// A 64-byte arena uses one-byte headers: total block size, with bit 7 for in-use.
+// Handles are payload offsets; zero means allocation/free failure.
+u16 gameRamAllocate(u8 *heap, u16 requested) {
+
+  u16 offset = 0;
+  u16 length;
+  u16 used;
+
+  if (requested == 0)
+    return 0;
+  if (requested > 63)
+    return 0;
+  while (offset < 64) {
+    length = heap[offset] & 0x7F;
+    if (heap[offset] < 128) {
+      if (length >= requested + 1) {
+        used = requested + 1;
+        if (length - used > 1)
+          heap[offset + used] = length - used;
+        else
+          used = length;
+        heap[offset] = used | 0x80;
+        return offset + 1;
+      }
+    }
+    offset += length;
+  }
+  return 0;
+}
+
+u16 gameRamRelease(u8 *heap, u16 handle) {
+
+  u16 offset = 0;
+  u16 length;
+  u16 next;
+  u16 found = 0;
+
+  while (offset < 64) {
+    length = heap[offset] & 0x7F;
+    if (offset + 1 == handle) {
+      if (heap[offset] < 128)
+        return 0;
+      heap[offset] = length;
+      found = 1;
+      break;
+    }
+    offset += length;
+  }
+  if (found == 0)
+    return 0;
+  offset = 0;
+  while (offset < 64) {
+    length = heap[offset] & 0x7F;
+    next = offset + length;
+    if (heap[offset] < 128) {
+      if (next < 64) {
+        if (heap[next] < 128) {
+          heap[offset] = length + heap[next];
+          continue;
+        }
+      }
+    }
+    offset += length;
+  }
+  return 1;
+}
+
+u16 calculationHeapWorkload(u16 seed, u16 count, u8 *bytes) {
+
+  u16 handles[8];
+  u16 sizes[8];
+  u16 i;
+  u16 j;
+  u16 round;
+  u16 slot;
+  u16 handle;
+  u16 checksum = seed & 0x1FFF;
+
+  for (i = 0; i < 64; i++)
+    bytes[i] = seed + i * 13;
+  for (i = 64; i < 71; i++)
+    bytes[i] = 0;
+  bytes[0] = 64;
+
+  handle = gameRamAllocate(bytes, 63);
+  checksum += handle;
+  if (handle != 0) {
+    bytes[handle] = seed;
+    bytes[handle + 62] = seed >> 8;
+  }
+  checksum += gameRamAllocate(bytes, 1) * 3;
+  checksum += gameRamRelease(bytes, handle) * 5;
+  checksum += gameRamRelease(bytes, handle) * 7;
+  checksum += gameRamAllocate(bytes, 0) * 11;
+  checksum += gameRamAllocate(bytes, 64) * 13;
+  checksum += gameRamRelease(bytes, 2) * 17;
+  handles[0] = gameRamAllocate(bytes, 7);
+  handles[1] = gameRamAllocate(bytes, 7);
+  handles[2] = gameRamAllocate(bytes, 7);
+  checksum += handles[0] + handles[1] + handles[2];
+  checksum += gameRamRelease(bytes, handles[0]) * 19;
+  checksum += gameRamRelease(bytes, handles[2]) * 23;
+  handle = gameRamAllocate(bytes, 15);
+  checksum += handle * 29;
+  checksum += gameRamRelease(bytes, handles[1]) * 31;
+  checksum += gameRamRelease(bytes, handle) * 37;
+
+  for (i = 0; i < 8; i++) {
+    handles[i] = 0;
+    sizes[i] = 0;
+  }
+  for (round = 0; round < count; round++) {
+    slot = round & 7;
+    if (handles[slot] != 0) {
+      bytes[66] = bytes[66] + gameRamRelease(bytes, handles[slot]);
+      handles[slot] = 0;
+    }
+    sizes[slot] = 2 + (((seed >> (round & 7)) + round * 3) & 15);
+    handle = gameRamAllocate(bytes, sizes[slot]);
+    handles[slot] = handle;
+    if (handle == 0)
+      bytes[65] = bytes[65] + 1;
+    else {
+      bytes[64] = bytes[64] + 1;
+      for (j = 0; j < sizes[slot]; j++)
+        bytes[handle + j] = seed + round * 7 + j;
+    }
+    for (i = 0; i < 8; i++) {
+      if (handles[i] != 0)
+        checksum = (checksum + bytes[handles[i]] * (i + 1) + bytes[handles[i] + sizes[i] - 1]) & 0x1FFF;
+    }
+    if ((round & 1) != 0) {
+      slot = (slot + 3) & 7;
+      if (handles[slot] != 0) {
+        bytes[66] = bytes[66] + gameRamRelease(bytes, handles[slot]);
+        handles[slot] = 0;
+      }
+    }
+  }
+  for (i = 0; i < 8; i++) {
+    if (handles[i] != 0)
+      bytes[66] = bytes[66] + gameRamRelease(bytes, handles[i]);
+  }
+  bytes[67] = gameRamRelease(bytes, 0);
+  handle = gameRamAllocate(bytes, 63);
+  bytes[68] = handle;
+  bytes[69] = gameRamRelease(bytes, handle);
+  bytes[70] = bytes[0];
+  for (i = 0; i < 71; i++)
+    checksum = (checksum + bytes[i] * (i + 1)) & 0x1FFF;
+  return checksum;
+}

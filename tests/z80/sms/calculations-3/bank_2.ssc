@@ -1,0 +1,35 @@
+u16 calculationMultiplyAdd(u16 value, u16 multiplier, u16 addend);
+void printWorkloadResult(u8 *chars, u8 *bytes, u8 row, u8 *label, u16 expected,
+                         u16 actual, u16 expectedCrc, u16 length, u8 compact);
+
+#include "z80_application_workloads.ssc"
+
+void calculateAndPrintApplications(u8 *chars, u8 *bytes, u8 compact) {
+
+  const u8 spriteLabel[] = { 83,80,82,73,84,69,32,83,67,69,78,69,0 };
+  const u8 trackerLabel[] = { 84,82,65,67,75,69,82,32,77,73,88,69,82,0 };
+  const u8 routeLabel[] = { 87,65,82,69,72,79,85,83,69,32,82,79,85,84,69,83,0 };
+  u16 i;
+  u16 result;
+  u8 row = 2;
+  u8 step = 3;
+
+  if (compact != 0)
+    step = 2;
+  for (i = 0; i < 512; i++)
+    bytes[i] = i * 37 + 5 * 53 + ((i * i) >> 3);
+  result = calculationSpriteSceneWorkload(0x1234, 3, bytes);
+  printWorkloadResult(chars, bytes, row, spriteLabel, 0xA9E7, result, 0x18E0, 512, compact);
+  row += step;
+  for (i = 0; i < 512; i++)
+    bytes[i] = i * 37 + 5 * 53 + ((i * i) >> 3);
+  result = calculationTrackerWorkload(0x1234, 24, bytes);
+  printWorkloadResult(chars, bytes, row, trackerLabel, 0x84A0, result, 0xEB88, 512, compact);
+  row += step;
+  for (i = 0; i < 512; i++)
+    bytes[i] = i * 37 + 5 * 53 + ((i * i) >> 3);
+  for (i = 320; i < 512; i++)
+    bytes[i] = 1;
+  result = calculationNavigationWorkload(0x1234, 1, bytes);
+  printWorkloadResult(chars, bytes, row, routeLabel, 0xCB02, result, 0x934A, 512, compact);
+}
