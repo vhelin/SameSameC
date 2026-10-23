@@ -818,8 +818,7 @@ def generate_programs(comparison_forms):
     if any(program.family == "matrix_index_copy" and program.variant == 34 for program in programs):
         preamble += "s8 ra_signed[128];\n"
     if real_index or call_transport:
-        main = (read_text(ROOT / "tests/z80/common/calculation_display.ssc") + "\n" +
-                read_text(ROOT / "tests/z80/common/calculation_arithmetic_1.ssc"))
+        main = read_text(ROOT / "tests/z80/sms/calculations-1/main.ssc")
         if real_index:
             preamble += re.search(r"^void convertNumbersToChars16\([^;]+\) \{[\s\S]*?^\}", main, re.M)[0] + "\n"
         preamble += re.search(r"^u16 calculationAdd3\([^;]+\) \{[\s\S]*?^\}", main, re.M)[0] + "\n"
@@ -3108,9 +3107,7 @@ def execute_real_projects(output, compiler, linker, cases, quality_totals):
             for name in sources:
                 (directory / f"{name}.ssc").write_bytes((ROOT / "tests/z80/sms" / project / f"{name}.ssc").read_bytes())
                 bank = ["-b", name[-1], "-s", "2"] if name.startswith("bank_") else []
-                run(compiler, [*bank, "-I", str(ROOT / "tests/z80/sms" / project) + os.sep,
-                               "-mz80", "-rs", "3", *flags, "-o", f"{name}.asm", f"{name}.ssc"],
-                    directory, f"{name}.compiler.log")
+                run(compiler, [*bank, "-mz80", "-rs", "3", *flags, "-o", f"{name}.asm", f"{name}.ssc"], directory, f"{name}.compiler.log")
             run(linker, ["-lsms", "-ro", "4", "-v", "-o", "linked.sms", *[f"{name}.asm" for name in sources]], directory, "linker.log")
             image = read_image(directory)
             for name in routines:

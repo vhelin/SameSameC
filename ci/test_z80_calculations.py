@@ -35,7 +35,7 @@ def cartridge(palette=(0, 0, 255, 15), column=6, wrong_result=False, rom_write=F
     port(0xbf, 0x81)
     port(0xbf, 0 if bad_vdp else 0xff)
     port(0xbf, 0x82)
-    text = (console.ROOT / "tests" / "z80" / "common" / "calculation_display.ssc").read_text()
+    text = (console.ROOT / "tests" / "z80" / "gg" / "calculations-1" / "main.ssc").read_text()
     font_text = text.split("const u8 fontData[] = {", 1)[1].split("};", 1)[0]
     address(0, 0x40)
     for value in re.findall(r"0x([0-9a-fA-F]+)", font_text):
@@ -63,7 +63,7 @@ def cartridge(palette=(0, 0, 255, 15), column=6, wrong_result=False, rom_write=F
 
 
 class ConsoleTests(unittest.TestCase):
-    def test_allocator_cohorts_still_extract_the_shared_original_helpers(self):
+    def test_allocator_cohorts_still_extract_the_original_helpers(self):
         for flags, symbol in (
             ({"RA_MATRIX_CASES": "1", "RA_VALUE_CASES": "1", "RA_FAMILIES": "matrix_real_index"},
              "void convertNumbersToChars16("),
@@ -73,6 +73,21 @@ class ConsoleTests(unittest.TestCase):
                 programs, preamble, _ = allocator.generate_programs(0)
                 self.assertTrue(any(program.family == flags["RA_FAMILIES"] for program in programs))
                 self.assertIn(symbol, preamble)
+
+    def test_all_cartridge_sources_and_build_rules_are_project_local(self):
+        for platform in ("sms", "gg"):
+            for project in (1, 2, 3):
+                source = console.ROOT / "tests" / "z80" / platform / f"calculations-{project}"
+                with self.subTest(platform=platform, project=project):
+                    makefile = (source / "makefile").read_text()
+                    self.assertNotRegex(makefile, r"(?m)^\s*(?:-?include|sinclude)\s")
+                    self.assertNotIn("../", makefile)
+                    self.assertNotIn("..\\", makefile)
+                    for path in source.glob("*.ssc"):
+                        for name in re.findall(r'#include "([^"]+)"|__incbin\("([^"]+)"\)', path.read_text()):
+                            dependency = source / (name[0] or name[1])
+                            self.assertEqual(dependency.resolve().parent, source.resolve())
+                            self.assertTrue(dependency.is_file(), dependency)
 
     def test_display_oracles_bind_all_seven_new_tests(self):
         self.assertEqual(console.new_results(), [
@@ -132,17 +147,22 @@ class ConsoleTests(unittest.TestCase):
                             (directory / "linked.sym").write_text("00:c000 RAM_USAGE_SLOT_RAMSlot1_BANK_0_END\n")
 
                     with patch.object(console, "run", side_effect=fake_run):
-                        _, _, symbols = console.build(project, platform, output, "compiler", "linker")
+                        directory, _, symbols = console.build(project, platform, output, "compiler", "linker")
                     compiled = [command for command in commands if command[0] == "compiler"]
                     self.assertEqual(len(compiled), 4 if project == 3 else 5)
                     for command in compiled:
                         self.assertIn("-ra", command)
                         self.assertNotIn("-no-ra", command)
+                        self.assertNotIn("-I", command)
                         name = command[-1]
                         if name.startswith("bank_"):
                             self.assertEqual(command[command.index("-b") + 1], name[5])
                             self.assertEqual(command[command.index("-s") + 1], "2")
                     self.assertEqual(symbols["RAM_USAGE_SLOT_RAMSlot1_BANK_0_END"], 0xc000)
+                    if project == 1:
+                        self.assertTrue((directory / "tiles.packbits").is_file())
+                    if project == 3:
+                        self.assertTrue((directory / "z80_maze_maps.ssc").is_file())
 
     def test_nonempty_output_and_duplicate_selections_fail_before_tools(self):
         for duplicate in (False, True):

@@ -26,11 +26,11 @@ ALGORITHM_BASELINE = Path(__file__).with_name("z80_algorithm_baseline_v3.json")
 INSTRUCTION_LIMITS = {"calculationAStarWorkload": 20000000, "calculationQuickSortWorkload": 5000000}
 CASES = 17
 ROUTINES = {
-    "calculationMultiplyAdd": ("tests", "z80", "common", "calculation_arithmetic_1.ssc"),
-    "calculationProductRestore": ("tests", "z80", "common", "calculation_arithmetic_2.ssc"),
-    "calculationShiftRestore": ("tests", "z80", "common", "calculation_arithmetic_2.ssc"),
-    "calculationPartitionRestore": ("tests", "z80", "common", "calculation_arithmetic_2.ssc"),
-    "calculationArrayWorkload": ("tests", "z80", "common", "calculation_arithmetic_2.ssc"),
+    "calculationMultiplyAdd": ("tests", "z80", "sms", "calculations-1", "main.ssc"),
+    "calculationProductRestore": ("tests", "z80", "sms", "calculations-2", "main.ssc"),
+    "calculationShiftRestore": ("tests", "z80", "sms", "calculations-2", "main.ssc"),
+    "calculationPartitionRestore": ("tests", "z80", "sms", "calculations-2", "main.ssc"),
+    "calculationArrayWorkload": ("tests", "z80", "sms", "calculations-2", "main.ssc"),
     "calculationStencilWorkload": ("tests", "z80", "sms", "calculations-2", "bank_2.ssc"),
     "calculationTileWorkload": ("tests", "z80", "sms", "calculations-2", "bank_3.ssc"),
     "calculationPathWorkload": ("tests", "z80", "sms", "calculations-2", "bank_3.ssc"),
@@ -80,7 +80,7 @@ METRICS = ("code_bytes", "wrapper_bytes", "total_kernel_cycles", "total_wrapper_
 def sources():
     result = {}
     for name, location in {
-        **ROUTINES, "calculationCrc16": ("tests", "z80", "common", "calculation_crc.ssc"),
+        **ROUTINES, "calculationCrc16": ("ci", "z80_algorithm_workloads.ssc"),
     }.items():
         if location is None:
             result[name] = f"u16 {name}(u16 seed, u16 count, u8 *bytes) {{ {PORTABLE[name]} }}"

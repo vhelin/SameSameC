@@ -40,17 +40,13 @@ def build(project, platform, output, compiler, linker):
     directory = output / platform / f"calculations-{project}"
     directory.mkdir(parents=True)
     names = ["interrupts", "main", "bank_1", "bank_2"] + (["bank_3"] if project != 3 else [])
-    includes = [source, ROOT / "tests" / "z80" / "common", ROOT / "ci",
-                ROOT / "tests" / "z80" / "sms" / f"calculations-{project}"]
-    if project == 1:
-        shutil.copyfile(ROOT / "tests" / "z80" / "sms" / "calculations-1" / "tiles.packbits",
-                        directory / "tiles.packbits")
+    for path in source.iterdir():
+        if path.suffix == ".ssc" or path.name == "tiles.packbits":
+            shutil.copyfile(path, directory / path.name)
     commands = []
     for name in names:
-        shutil.copyfile(source / f"{name}.ssc", directory / f"{name}.ssc")
         bank = ["-b", name[-1], "-s", "2"] if name.startswith("bank_") else []
         run([compiler, "-ra", "-q", "-mz80", "-rs", "3", *bank,
-             *(argument for path in includes for argument in ("-I", str(path) + os.sep)),
              "-o", f"{name}.asm", f"{name}.ssc"], directory, f"{name}.compiler.log", commands)
     rom_name = "linked.gg" if platform == "gg" else "linked.sms"
     run([linker, "-lsms", "-ro", "4", "-v", "-o", rom_name,

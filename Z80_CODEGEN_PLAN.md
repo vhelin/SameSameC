@@ -18,6 +18,10 @@ Each implementation batch must show the source/TAC/assembly cause, measured
 before/after results, correctness evidence and a local commit. Do not push
 unless explicitly requested.
 
+Calculation test projects must be self-contained. Keep each project's code,
+assets and make rules inside its own directory, even when that duplicates
+another test. Do not use common test sources or cross-project includes.
+
 ## Measured Starting Point
 
 The committed [baseline](ci/z80_compiler_baseline.json) records 13 unsigned
@@ -238,14 +242,15 @@ retains twelve application/array results and omits restoration-only rows;
 GG3 retains all seven new tests but omits the additional full-buffer-CRC rows.
 Its last result is row 15 of 18. SMS3 occupies rows 0..22 of 24.
 
-The [common sources/build rules](tests/z80/common) share the original font,
-VDP setup, hex formatting, arithmetic and bank-1 workloads. Platform-specific
-drivers stay small; GG2 does not compile a renamed unused SMS display driver.
-Extracting its shared workloads instead saves 2245 ROM bytes.
-GG1's packed asset is copied by make from the canonical SMS1 asset, not stored
-as another source copy. Include the current project before fallback include
-directories: SameSameC searches those directories before the working directory
-even for its input source filename.
+All six projects are self-contained. Each owns its font, VDP setup, hex
+formatting, arithmetic, workload kernels, interrupts and complete makefile.
+GG1 owns its packed-data asset; SMS3 and GG3 each own their maze data.
+There are no cross-project/common includes, shared make rules, external asset
+copies during builds or include-path fallbacks into other tests or `ci`.
+The comparison harness keeps its own CRC helper and extracts the original
+arithmetic functions from their standalone SMS projects.
+GG2 still omits the unused SMS display driver, retaining the 2245-byte ROM
+saving. Code duplication between test projects is intentional.
 
 Build with `make` in any of the six project directories; SMS projects produce
 `linked.sms` and GG projects produce `linked.gg`, always with `-ra`. For
@@ -264,13 +269,22 @@ their existing header/checksum range and all 23 four-column result rows.
 The new applications use 4789 observed bytes including global data, stack
 accesses and the reserved top 16 bytes, within the 8192-byte RAM budget.
 
-Final qualification passes **51 focused unit tests, 144 comparison builds,
+Initial registration qualification passed **51 focused unit tests, 144 comparison builds,
 2224 guarded calls and 216 independent timings**. All sixteen previous corpus
 fingerprints, 32 previous ordinary/shared RA images and 96 external result
 rows reproduce the version-2 qualification unchanged. All six ROMs build with
 their real makefiles from clean source layouts, remain up-to-date on a second
 make, match the checker's CLI-built images byte for byte, and pass whole-reset
 display/mapper/RAM verification. No allocator-off comparisons were run.
+
+The self-containment follow-up passes **52 focused unit tests** and all six
+reset-to-display checks. Each project also builds using its own makefile in
+an isolated directory containing only that project's sources and assets, and
+is up-to-date on a second make. Both CLI and isolated-make ROMs reproduce the
+six previous cartridge images byte for byte. All eighteen comparison
+source/oracle/layout fingerprints are unchanged; no performance comparisons
+needed rerunning. Follow-up evidence is retained under
+`C:\cygwin64\tmp\maze-console-selfcontained-20261023`.
 
 Evidence, failed scouts and final reports are retained under
 `C:\cygwin64\tmp\maze-console-20261023`. Steps 2ak-2an remain pending; this

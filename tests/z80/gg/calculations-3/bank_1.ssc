@@ -1,1 +1,280 @@
-#include "../../sms/calculations-3/bank_1.ssc"
+#include "z80_maze_maps.ssc"
+
+u16 calculationCrc16(u8 *bytes, u16 length);
+
+// Manhattan A*, ordered by (f, -g, cell). Only frontier nodes need full g scores.
+// Output: 512 path bits, distance, coordinate total, expansions, peak frontier,
+// status and map number. Words are little-endian; unused metadata stays zero.
+u16 calculationAStarWorkload(u16 map, u8 *bytes) {
+
+  u8 closed[512];
+  u8 parent[1024];
+  u16 open_cell[512];
+  u16 open_g[512];
+  u16 used = 1;
+  u16 peak = 1;
+  u16 expanded = 0;
+  u16 i;
+  u16 best;
+  u16 best_f;
+  u16 best_g;
+  u16 best_cell;
+  u16 cell;
+  u16 cost;
+  u16 score;
+  u16 direction;
+  u16 next;
+  u16 mask;
+  u16 shift;
+  u16 total = 0;
+  u16 steps = 0;
+
+  for (i = 0; i < 528; i++)
+    bytes[i] = 0;
+  if (map > 1) {
+    bytes[520] = 2;
+    return 0xFFFF;
+  }
+  bytes[521] = map;
+  for (i = 0; i < 512; i++)
+    closed[i] = 0;
+  for (i = 0; i < 1024; i++)
+    parent[i] = 0;
+  open_cell[0] = 0;
+  open_g[0] = 0;
+
+  while (used != 0) {
+    best = 0;
+    for (i = 1; i < used; i++) {
+      cell = open_cell[i];
+      cost = open_g[i];
+      best_cell = open_cell[best];
+      best_g = open_g[best];
+      best_f = best_g + 126 - (best_cell & 63) - (best_cell >> 6);
+      score = cost + 126 - (cell & 63) - (cell >> 6);
+      if (score < best_f || (score == best_f &&
+          (cost > best_g || (cost == best_g && cell < best_cell)))) {
+        best = i;
+      }
+    }
+    cell = open_cell[best];
+    cost = open_g[best];
+    used--;
+    open_cell[best] = open_cell[used];
+    open_g[best] = open_g[used];
+    mask = 1 << (cell & 7);
+    closed[cell >> 3] = closed[cell >> 3] | mask;
+    expanded++;
+    if (cell == 4095)
+      break;
+
+    for (direction = 0; direction < 4; direction++) {
+      next = cell;
+      if (direction == 0) {
+        if ((cell & 63) == 63)
+          continue;
+        next++;
+      }
+      else if (direction == 1) {
+        if ((cell & 63) == 0)
+          continue;
+        next--;
+      }
+      else if (direction == 2) {
+        if (cell >= 4032)
+          continue;
+        next += 64;
+      }
+      else {
+        if (cell < 64)
+          continue;
+        next -= 64;
+      }
+      mask = 1 << (next & 7);
+      if ((astarMaps[map * 512 + (next >> 3)] & mask) != 0 ||
+          (closed[next >> 3] & mask) != 0)
+        continue;
+      for (i = 0; i < used; i++) {
+        if (open_cell[i] == next)
+          break;
+      }
+      if (i < used) {
+        if (open_g[i] <= cost + 1)
+          continue;
+      }
+      else {
+        if (used == 512) {
+          bytes[520] = 3;
+          return 0xFFFF;
+        }
+        used++;
+        if (used > peak)
+          peak = used;
+      }
+      open_cell[i] = next;
+      open_g[i] = cost + 1;
+      shift = (next & 3) * 2;
+      mask = 3 << shift;
+      parent[next >> 2] = (parent[next >> 2] & (0xFF ^ mask)) | (direction << shift);
+    }
+  }
+  if (cell != 4095) {
+    bytes[520] = 1;
+    return 0xFFFF;
+  }
+  bytes[512] = cost;
+  bytes[513] = cost >> 8;
+  while (1) {
+    mask = 1 << (cell & 7);
+    bytes[cell >> 3] = bytes[cell >> 3] | mask;
+    total += (cell & 63) + (cell >> 6);
+    if (cell == 0)
+      break;
+    if (steps >= cost) {
+      bytes[520] = 4;
+      return 0xFFFF;
+    }
+    shift = (cell & 3) * 2;
+    direction = parent[cell >> 2];
+    direction = (direction >> shift) & 3;
+    if (direction == 0)
+      cell--;
+    else if (direction == 1)
+      cell++;
+    else if (direction == 2)
+      cell -= 64;
+    else
+      cell += 64;
+    steps++;
+  }
+  bytes[514] = total;
+  bytes[515] = total >> 8;
+  bytes[516] = expanded;
+  bytes[517] = expanded >> 8;
+  bytes[518] = peak;
+  bytes[519] = peak >> 8;
+  return calculationCrc16(bytes + 514, 2);
+}
+
+// Iterative Hoare quicksort. Defer the larger partition to bound stack depth.
+// mode 0: 64 unsigned bytes; mode 1: 512 unsigned words (1024 bytes).
+u16 calculationQuickSortWorkload(u16 seed, u16 mode, u8 *bytes) {
+
+  u16 values[512];
+  s16 pending_low[10];
+  s16 pending_high[10];
+  s16 low;
+  s16 high;
+  s16 left;
+  s16 right;
+  u16 pivot;
+  u16 temporary;
+  u16 count = 64;
+  u16 depth = 1;
+  u16 i;
+  u16 length;
+
+  if (mode > 1)
+    return 0xFFFF;
+  if (mode == 1)
+    count = 512;
+  for (i = 0; i < count; i++) {
+    seed ^= seed << 7;
+    seed ^= seed >> 9;
+    seed ^= seed << 8;
+    temporary = seed;
+    if (mode == 0)
+      temporary >>= 8;
+    values[i] = temporary;
+  }
+  pending_low[0] = 0;
+  pending_high[0] = count - 1;
+  while (depth != 0) {
+    depth--;
+    low = pending_low[depth];
+    high = pending_high[depth];
+    if (low < high) {
+      left = low;
+      right = high;
+      pivot = values[(low + high) >> 1];
+      while (left <= right) {
+        while (values[left] < pivot)
+          left++;
+        while (values[right] > pivot)
+          right--;
+        if (left <= right) {
+          temporary = values[left];
+          values[left] = values[right];
+          values[right] = temporary;
+          left++;
+          right--;
+        }
+      }
+      i = depth;
+      if (low < right) {
+        if (depth == 10)
+          return 0xFFFF;
+        pending_low[depth] = low;
+        pending_high[depth] = right;
+        depth++;
+      }
+      if (left < high) {
+        if (depth == 10)
+          return 0xFFFF;
+        pending_low[depth] = left;
+        pending_high[depth] = high;
+        depth++;
+      }
+      if (depth == i + 2 && right - low < high - left) {
+        temporary = pending_low[i];
+        pending_low[i] = pending_low[i + 1];
+        pending_low[i + 1] = temporary;
+        temporary = pending_high[i];
+        pending_high[i] = pending_high[i + 1];
+        pending_high[i + 1] = temporary;
+      }
+    }
+  }
+  length = count;
+  if (mode == 1)
+    length *= 2;
+  for (i = 0; i < count; i++) {
+    if (mode == 0)
+      bytes[i] = values[i];
+    else {
+      bytes[i * 2] = values[i];
+      bytes[i * 2 + 1] = values[i] >> 8;
+    }
+  }
+  return calculationCrc16(bytes, length);
+}
+
+void printWorkloadResult(u8 *chars, u8 *bytes, u8 row, u8 *label, u16 expected,
+                         u16 actual, u16 expectedCrc, u16 length, u8 compact);
+
+void calculateAndPrintAlgorithms(u8 *chars, u8 *bytes, u8 compact) {
+
+  const u8 maze1Label[] = { 65,42,32,77,65,90,69,32,49,32,54,52,88,54,52,0 };
+  const u8 maze2Label[] = { 65,42,32,77,65,90,69,32,50,32,54,52,88,54,52,0 };
+  const u8 byteLabel[] = { 81,85,73,67,75,83,79,82,84,32,54,52,32,66,89,84,69,83,0 };
+  const u8 wordLabel[] = { 81,85,73,67,75,83,79,82,84,32,53,49,50,32,87,79,82,68,83,0 };
+  u8 row = 11;
+  u8 step = 3;
+  u16 result;
+
+  if (compact != 0) {
+    row = 8;
+    step = 2;
+  }
+  result = calculationAStarWorkload(0, bytes);
+  printWorkloadResult(chars, bytes, row, maze1Label, 0xC8ED, result, 0xFA5A, 528, compact);
+  row += step;
+  result = calculationAStarWorkload(1, bytes);
+  printWorkloadResult(chars, bytes, row, maze2Label, 0xE6CD, result, 0xA776, 528, compact);
+  row += step;
+  result = calculationQuickSortWorkload(0x1234, 0, bytes);
+  printWorkloadResult(chars, bytes, row, byteLabel, 0xF478, result, 0xF478, 64, compact);
+  row += step;
+  result = calculationQuickSortWorkload(0xBEEF, 1, bytes);
+  printWorkloadResult(chars, bytes, row, wordLabel, 0x32D9, result, 0x32D9, 1024, compact);
+}
