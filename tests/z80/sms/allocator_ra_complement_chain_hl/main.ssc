@@ -1,0 +1,19 @@
+// @BT linked.sms
+// @BT TEST-01 01 START
+// @BT DD 21 00 00 DD 19 DD 6E F9 DD 66 FA 7D EE FF 6F 7C EE FF 67
+// @BT DD 4E F7 DD 46 F8 09 DD 75 F5 DD 74 F6
+// @BT END
+
+u16 allocatorRaComplementChainHL(u16 a, u16 b) {
+
+  u16 c;
+
+  __asm(".DB \"01>\"");
+  c = (~a) + b;
+  __asm(".DB \"<01\"");
+
+  return c;
+}
+
+void main(void) {
+}

@@ -1,0 +1,4910 @@
+# Z80 Code-Generation Improvement Plan
+
+## Scope And Decision
+
+Keep the bounded Z80 allocator v1 complete as documented in
+[REGISTER_ALLOCATOR.md](REGISTER_ALLOCATOR.md). Optimize the generated program,
+not the number of allocator milestones. Do not replace the proven allocator or
+add another optimization framework without a measured need.
+
+The comparison at `d1e7db1` on 2026-10-19 shows substantial remaining opportunities
+in control-flow lowering, loop state, address calculation and the calling
+convention. Keep those reference results immutable; record implementation
+progress and new measurements separately below.
+
+Reuse the current TAC, CFG/liveness, target-policy, location-resolution and
+emission helpers. Prefer removing redundant work over adding new functions.
+Each implementation batch must show the source/TAC/assembly cause, measured
+before/after results, correctness evidence and a local commit. Do not push
+unless explicitly requested.
+
+Calculation test projects must be self-contained. Keep each project's code,
+assets and make rules inside its own directory, even when that duplicates
+another test. Do not use common test sources or cross-project includes.
+
+## Measured Starting Point
+
+The committed [baseline](ci/z80_compiler_baseline.json) records 13 unsigned
+8/16-bit workloads in eight configurations: SameSameC RA/no-RA, stock SDCC
+size/speed, z88dk/sccz80 size/speed and z88dk/SDCC size/speed. Ten workloads reuse
+actual calculation-test functions; three exercise byte sum, copy and fill.
+
+All 104 original builds passed 1,856 complete calls against independent expected
+values and complete buffer contents. Twelve whole-call timings matched a second
+Z80 emulator exactly. Source compatibility changes are limited to C type aliases
+and explicit unsigned promotion of byte values before left-shifting by eight.
+There are no handwritten assembly kernels in this comparison.
+
+Representative machine-code bytes, using competitors' size settings:
+
+| Workload | SameSameC RA | Stock SDCC | z88dk/SDCC | z88dk/sccz80 |
+| --- | ---: | ---: | ---: | ---: |
+| Multiply/add | 71 | 40 | 80 | 85 |
+| Byte fill | 161 | 38 | 42 | 80 |
+| Byte copy | 191 | 59 | 63 | 99 |
+| Byte sum | 182 | 47 | 52 | 94 |
+| Array | 2065 | 765 | 882 | 1129 |
+| Stencil | 2414 | 1064 | 1122 | 1363 |
+| Tile decoding/CRC | 1866 | 688 | 664 | 1029 |
+| Pathfinding | 2413 | 882 | 917 | 1180 |
+| PackBits decoder | 1090 | 418 | 380 | 473 |
+| PackBits plus CRC | 1677 | 538 | 491 | 670 |
+
+Per-workload geometric means put SameSameC RA at 2.44 times stock SDCC's size
+setting and 2.53 times its speed setting's execution cycles. These are different
+settings, not one claimed size/speed optimum. Enabling RA reduces the sums of
+standalone kernel code and execution cycles by 16.2% and 15.4%, respectively.
+
+Specific evidence worth retaining:
+
+- Filling 256 bytes takes 164108 kernel T-states in SameSameC RA, versus 29837
+  with stock SDCC's size setting. SameSameC performs 2054 kernel stack writes
+  versus four. A loop-condition Boolean is stored and reloaded before branching.
+- The multiply/add native caller wrapper is 172 bytes / 971 T-states in
+  SameSameC versus 20 / 114 in stock SDCC. Wrapper costs are separate from kernel
+  measurements; these wrappers also load inputs and store the result.
+- Mean PackBits-plus-CRC kernel cost is approximately 2.23 million T-states in
+  SameSameC versus 456000 in speed-oriented stock SDCC.
+- Whole calculation ROMs use 24066 and 39647 bytes with RA, versus 26862 and
+  48400 without it. Their padded file sizes are all 65536 bytes.
+
+### Measurement Boundaries
+
+- `code_bytes` includes the kernel, required user dependencies and compiler
+  arithmetic helpers. It excludes the external caller wrapper, CRT/startup,
+  packed data and BSS. Shared helpers count once per standalone workload.
+- `total_kernel_cycles` covers entry through return, including nested helpers
+  and the callee's native prologue/epilogue. Caller work is recorded separately.
+- Maximum SP displacement is a stack high-water observation, not a proof of
+  total RAM use: SameSameC also accesses frame storage below the current SP.
+- A sum of standalone sizes is not the size of one linked application: helper
+  sharing and startup costs differ in whole programs.
+- This is a selected unsigned-integer corpus, not C conformance, signed/floating
+  point, standard-library, bank-switching or whole-game qualification.
+- Emulator T-states omit hardware contention, wait states and interrupts.
+- Compiler executable bytes and host `-O3`/`-Os` settings are separate from target
+  code quality. Do not use host EXE size as a generated-code metric.
+
+### Application Comparison Corpus: Version 2
+
+The original 13-workload [baseline](ci/z80_compiler_baseline.json) remains
+immutable. The [versioned application extension](ci/z80_application_baseline_v2.json)
+adds three larger [portable application kernels](ci/z80_application_workloads.ssc),
+with [independent Python models](ci/z80_application_oracles.py):
+
+- **Sprite scene:** twelve actors on a 16x12 collision map, 8.8 tile positions,
+  replayed controls, wall response, pairwise collisions, animation and tile
+  composition across up to six frames. Publish positions, collision counters
+  and animation state as well as the rendered map.
+- **Tracker:** four channels of row-event decoding, period-table lookup,
+  envelopes, pitch slides, arpeggios and vibrato, followed by four PCM samples
+  per tick for up to 24 ticks. Reuse the existing multiply/add leaf for mixing;
+  observe PCM, decoded pattern and voice state.
+- **Navigation:** repeated warehouse-route jobs on a 16x12 map, with a word
+  distance field, BFS queue, predecessor reconstruction, run-length route
+  encoding and a distance heatmap. Exercise open, blocked and gated maps, up
+  to three jobs and a 960-byte local-array footprint.
+
+Each application has twelve deterministic input cases, including zero work,
+short/long runs and high-bit seeds. Models use actor records, voice records and
+a deque/dictionary BFS rather than executing the compiled source. Hand-checked
+PCM and route vectors and state/route invariants supplement full 512-byte
+buffer and numerical checks. These are application kernels, not whole-game,
+hardware-I/O, startup, interrupt or library parity claims.
+
+All future SameSameC **performance comparisons use `-ra` only**. The default
+at version 2 was sixteen workloads in seven configurations: SameSameC RA, stock SDCC
+size/speed, sccz80 size/speed and ZSDCC size/speed. This is 112 builds and 1876
+guarded calls. Optional shared arithmetic adds the paired RA configuration;
+allocator-off comparison modes are rejected. Historical allocator-off records
+remain readable in the original baseline but are not rerun. The extension
+pins its historical parent's UTF-8 text by SHA-256 after LF normalization and
+adds only new corpus/results, without
+duplicating or changing old sources, settings, oracle fingerprints or metrics.
+
+The extension's first measurements use the unchanged compiler at `17f4cd9`.
+All 24 application builds (including paired shared arithmetic) pass 288
+guarded calls and 48 independent timings. Ordinary RA kernel/dependency costs
+for the twelve inputs per application are:
+
+| Application | SameSameC bytes | Smallest external bytes | SameSameC aggregate T-states | Fewest external T-states |
+| --- | ---: | ---: | ---: | ---: |
+| Sprite scene | 3725 | 2024 | 17331570 | 9574871 |
+| Tracker | 3572 | 1873 | 11518619 | 6105673 |
+| Navigation | 3056 | 1866 | 12019455 | 6926438 |
+
+External minima are selected independently across the pinned size/speed modes,
+not claimed as a single optimum. These larger kernels deliberately expose
+remaining frame, argument-transport and loop costs; adding them does not
+improve or replace any original result.
+
+Expansion qualification passes 33 comparison/model unit tests and the full
+128-build ordinary/shared comparison: 2144 guarded calls and 136 independent
+timings. All thirteen original corpus fingerprints, 26 original RA images and
+78 original external result rows reproduce the after-2aj profile exactly.
+Compiler/linker implementation and unrelated working-tree changes are
+unchanged. Detailed evidence is retained under
+`C:\cygwin64\tmp\application-comparison-20261023`.
+
+### Current Comparison Corpus: Version 3
+
+The [algorithm extension](ci/z80_algorithm_baseline_v3.json) adds two
+[portable kernels](ci/z80_algorithm_workloads.ssc) and
+[independent models](ci/z80_algorithm_oracles.py), without rewriting either
+historical baseline or any of the sixteen existing corpus fingerprints:
+
+- **A\*:** search from `(0,0)` to `(63,63)` through two committed
+  [64x64 mazes](ci/z80_maze_maps.ssc). Walls occupy one bit per cell: 1024
+  shared ROM-data bytes for both maps. The first is a perfect maze with 2049
+  open cells; the second has 2113 open cells and 64 extra cycles. A consistent
+  Manhattan heuristic and ordering `(f, -g, cell)` give deterministic shortest
+  routes. Packed parents and closed bits, plus a bounded frontier, fit in
+  3584 bytes of local arrays. The Python heap search independently checks
+  the route against BFS, adjacency, walls and the reconstructed path bitset.
+- **Quicksort:** iterative Hoare partitioning sorts 64 unsigned byte values
+  or 512 unsigned words, i.e. 1024 payload bytes. A xorshift16 generator
+  supplies repeatable inputs; eight cases cover both widths, zero/duplicate
+  pivots and high-bit seeds. One shared word workspace and partition loop
+  handle both forms; byte results are serialized back to exactly 64 bytes.
+  Process the smaller partition first to bound the pending stack. Python's
+  built-in sort independently checks order, multiplicities and the complete
+  observed buffer, including the untouched byte-mode tail.
+
+CRC means CRC-16/CCITT-FALSE: initial `FFFF`, polynomial `1021`, no final XOR.
+For A*, include both endpoints, sum `x+y` over every path coordinate modulo
+65536, then CRC that single total as two little-endian bytes, not the stream
+of coordinates. For quicksort, CRC the entire sorted payload; words are
+serialized low byte first.
+
+| Displayed test | Shortest distance | Coordinate total | Required CRC |
+| --- | ---: | ---: | ---: |
+| A* maze 1 | 642 | 41165 | C8ED |
+| A* maze 2 | 198 | 12193 | E6CD |
+| 64-byte quicksort, seed 1234 | - | - | F478 |
+| 512-word quicksort, seed BEEF | - | - | 32D9 |
+
+The default is now **18 workloads / 126 builds / 1946 guarded calls**, with
+SameSameC RA and the six external size/speed modes. Optional paired shared
+arithmetic gives 144 builds and 2224 calls; allocator-off comparisons remain
+rejected. Version 3 pins its normalized version-2 parent and adds only fourteen
+new reference rows. The new routines observe 528/1024 buffer bytes and use
+frame top `DFF0` within physical 8KB RAM; old buffer sizes, frame anchor,
+source fingerprints and external settings are unchanged. The new z88dk
+routines reuse its standard code-section order and place BSS explicitly at
+`C000`. Reports distinguish the 1024 maze-data bytes from kernel code.
+
+Initial algorithm qualification passes all sixteen ordinary/shared builds,
+80 guarded calls and 80 independent whole-call timings. Measurements use the
+unchanged compiler at `17f4cd9`; aggregate kernel T-states cover two maze
+searches or eight sort cases, not a single invocation:
+
+| Configuration | A* code bytes | A* T-states | Quicksort code bytes | Quicksort T-states |
+| --- | ---: | ---: | ---: | ---: |
+| SameSameC RA | 2776 | 50039955 | 1906 | 26729902 |
+| SDCC size | 1747 | 36018966 | 1301 | 21865548 |
+| SDCC speed | 1852 | 32143184 | 1326 | 23972702 |
+| sccz80 size | 2436 | 69465347 | 1490 | 50613503 |
+| sccz80 speed | 2603 | 53811877 | 1582 | 40778791 |
+| ZSDCC size | 1711 | 39769315 | 1138 | 21374371 |
+| ZSDCC speed | 1766 | 31970714 | 1118 | 18702907 |
+
+Paired shared arithmetic has identical costs for these two routines. A* adds
+1024 ROM-data bytes in every mode. Ordinary RA caller wrappers are separately
+94/111 bytes; observed complete frame footprints are 3652/1120 bytes.
+
+The pinned z88dk-ticks binary incorrectly charges unprefixed `ADC A,H` seven
+instead of four T-states. An explicit 28-cycle calibration probe detects its
+31-cycle result. For that specific calibrated discrepancy, count executed
+unprefixed `8C` instructions and subtract three per occurrence from the raw
+independent clock; retain both raw timings and corrections in artifacts.
+Correct ticks builds need no correction, unknown probe results fail, and any
+other per-call mismatch still fails. No third-party sources/binaries or
+historical reference timings were changed.
+
+### SMS And Game Gear Calculation Applications
+
+[SMS calculations-3](tests/z80/sms/calculations-3) runs the sprite scene,
+tracker and warehouse-navigation applications, both A* mazes and both quicksort
+forms. It shows expected/actual primary results and complete-output CRCs.
+The application cases use seed `1234`, with three sprite frames, 24 tracker
+ticks and one route job; their primary/full-buffer CRC pairs are respectively
+`A9E7/18E0`, `84A0/EB88` and `CB02/934A`. A* complete-buffer CRCs are
+`FA5A/A776`. All seven tests are new to the calculation-ROM series.
+
+[GG calculations-1](tests/z80/gg/calculations-1),
+[GG calculations-2](tests/z80/gg/calculations-2) and
+[GG calculations-3](tests/z80/gg/calculations-3) target the actual 20x18-tile
+Game Gear viewport at SMS name-table origin `(6,3)`, not a cropped SMS image.
+They use export-GG cartridge headers, explicit 64KB size and 12-bit black/white
+palette entries. Display expected/actual pairs rather than four intermediate
+columns: GG1 retains nine substantial arithmetic/packed-data results; GG2
+retains twelve application/array results and omits restoration-only rows;
+GG3 retains all seven new tests but omits the additional full-buffer-CRC rows.
+Its last result is row 15 of 18. SMS3 occupies rows 0..22 of 24.
+
+All six projects are self-contained. Each owns its font, VDP setup, hex
+formatting, arithmetic, workload kernels, interrupts and complete makefile.
+GG1 owns its packed-data asset; SMS3 and GG3 each own their maze data.
+There are no cross-project/common includes, shared make rules, external asset
+copies during builds or include-path fallbacks into other tests or `ci`.
+The comparison harness keeps its own CRC helper and extracts the original
+arithmetic functions from their standalone SMS projects.
+GG2 still omits the unused SMS display driver, retaining the 2245-byte ROM
+saving. Code duplication between test projects is intentional.
+
+Build with `make` in any of the six project directories; SMS projects produce
+`linked.sms` and GG projects produce `linked.gg`, always with `-ra`. For
+out-of-tree reset-to-display verification, with the compiler and WLA tools on
+PATH, run:
+
+```
+python ci/check_z80_calculations.py --output-dir <new-empty-directory>
+```
+
+Select a subset with `--platforms gg --projects 1 2 3`. The checker verifies
+cartridge region/size/checksum, native startup and bank switching, physical
+RAM/stack separation, palette bytes, legacy font/blank-VRAM CRC `6986`, complete
+displayed results and blank space outside the GG viewport. Legacy SMS1/2 keep
+their existing header/checksum range and all 23 four-column result rows.
+The new applications use 4789 observed bytes including global data, stack
+accesses and the reserved top 16 bytes, within the 8192-byte RAM budget.
+
+Initial registration qualification passed **51 focused unit tests, 144 comparison builds,
+2224 guarded calls and 216 independent timings**. All sixteen previous corpus
+fingerprints, 32 previous ordinary/shared RA images and 96 external result
+rows reproduce the version-2 qualification unchanged. All six ROMs build with
+their real makefiles from clean source layouts, remain up-to-date on a second
+make, match the checker's CLI-built images byte for byte, and pass whole-reset
+display/mapper/RAM verification. No allocator-off comparisons were run.
+
+The self-containment follow-up passes **52 focused unit tests** and all six
+reset-to-display checks. Each project also builds using its own makefile in
+an isolated directory containing only that project's sources and assets, and
+is up-to-date on a second make. Both CLI and isolated-make ROMs reproduce the
+six previous cartridge images byte for byte. All eighteen comparison
+source/oracle/layout fingerprints are unchanged; no performance comparisons
+needed rerunning. Follow-up evidence is retained under
+`C:\cygwin64\tmp\maze-console-selfcontained-20261023`.
+
+Evidence, failed scouts and final reports are retained under
+`C:\cygwin64\tmp\maze-console-20261023`. That batch expanded and validated
+workloads without changing the compiler. Steps 2ak-2al are now completed below;
+steps 2am-2an remain pending.
+
+## Implementation Order
+
+### Progress Toward Game Boy Support
+
+Complete the shared improvements and the bounded follow-ups 2a-2s below before
+the initial SM83 backend (step 3). This does not require every Z80-specific
+optimization. The initial SM83 backend should still guide further shared-core
+extraction.
+
+- [x] **1. Direct branch-only conditions:** remove unnecessary Boolean
+  temporaries through shared TAC lowering, preserving value-producing Booleans.
+  - [x] Lower final relational comparisons, scalar tests and negation directly.
+  - [x] Qualify signedness, promotions, side effects and all loop forms.
+  - [x] Complete compound logical lowering with short-circuit evaluation tests.
+  - [x] Record first-batch gains and pass the full checkpoint gates.
+- [x] **2. Bounded loop-state improvements:** retain profitable counters,
+  accumulators and CRC state using existing analysis and legality checks; keep
+  register choices and costs target-specific. Stop before speculative expansion.
+- [x] **2a. Byte sum/copy and induction addressing:** reduce repeated address
+  reconstruction and loop overhead through existing pointer/array emission;
+  qualify target-local byte-loop instruction choices.
+- [x] **2b. Remaining frame traffic and accumulator retention:** remove proven
+  redundant loads/stores in byte loops and CRC without general CFG promotion
+  or weaker alias, clobber and fallback checks.
+- [x] **2c. Leaf and caller overhead:** reduce redundant argument/result copies
+  and frame setup within the existing ABI first; measure wrappers separately.
+- [x] **2d. Stack footprint and pre-SM83 qualification:** reduce proven
+  unnecessary frame slots, spills or saves, measure the complete frame footprint
+  as well as SP high-water, and pass all checkpoint gates.
+- [x] **2e. Constant addresses and direct loads (new step 1):** fold constant
+  array offsets and reuse direct byte/word loads instead of rebuilding addresses.
+- [x] **2f. Shared quotient/remainder computation (new step 2):** reuse both
+  division results for matching `/` and `%`; simplify redundant pure expressions.
+- [x] **2g. Masked-condition branch folding (new step 3):** avoid materializing
+  single-use masked values when a direct bit/flag test suffices.
+- [x] **2h. Further loop-state and address retention (new step 4):** retain
+  eligible accumulators/counters and advance addresses without weaker safety checks.
+- [x] **2i. Argument staging within the existing ABI (new step 5):** eliminate
+  proven redundant caller-temporary copies before considering a new convention.
+- [x] **2j. Advancing-pointer copy/fill loops:** replace repeated address
+  reconstruction, then select profitable target-local loop/block instructions.
+- [x] **2k. Constant byte arithmetic and multiplication setup:** specialize
+  byte shifts/multiplies and remove unused setup from existing constant word chains.
+- [x] **2l. Proven bounded-counter narrowing:** use byte execution for counters
+  whose ranges and observable uses permit it, without changing source semantics.
+- [x] **2m. Lowering-aware costs and local address reuse:** refine existing
+  profitability estimates and address caching rather than adding a framework.
+- [x] **2n. Leaf-frame and helper-contract audit:** remove only measured,
+  provably redundant frame work or preservation within the existing ABI.
+- [x] **2o. Arithmetic-produced locals and existing pure-expression folds:**
+  extend safe local promotion and make existing simplifications effective.
+- [x] **2p. Advancing-pointer reductions and scaled induction:** extend proven
+  loop/address retention beyond copy/fill to sums and complex calculation loops.
+- [x] **2q. Variable-count word shifts:** use size-neutral bounded shift loops
+  for proven small counts, preserving the original full-width fallback.
+- [x] **2r. Operand-aware word comparisons and branch selection:** avoid
+  unnecessary materialization and choose branches by legality and actual cost.
+- [x] **2s. Shared arithmetic bodies with an explicit size/speed policy:**
+  price bank-local helper sharing against inline code without hidden tradeoffs.
+- [x] **2w. Bounded loop-carried scalar register ownership:** start with the
+  measured call-free CRC bit loop, keeping its word state in HL and its existing
+  counter in BC, with proven entry, branch, back-edge and exit ownership.
+- [x] **2x. Allocation costs, assignment packing and rematerialization:**
+  consolidate existing result packing and share bounded stable-array address
+  proofs between lowering, reload rematerialization and the cost observer.
+- [x] **2y. Automatic compatible register calls:** select supported leaf
+  arguments/results across units by default, with complete caller/callee/adapter
+  costs and conservative assembly, escaped-address and old-object boundaries.
+- [x] **2z. Constant byte lanes and bounded pure-expression reuse:** simplify
+  zero/identity lanes and eliminate repeated pure calculations only when
+  accumulator/flags, aliases, evaluation order and register pressure permit it.
+- [x] **2aa. Frame-only crossings in bounded CRC loops:** extend the existing
+  matcher to accept proven memory-backed outer state without weakening physical
+  ownership, alias or control-flow checks.
+- [x] **2ab. Quotient result placement:** carry the existing divider's quotient
+  into its next useful register pair across the already-shared remainder store.
+- [x] **2ac. Register-live-in frameless microleaves:** reuse automatic ABI
+  metadata and location handling to avoid profitable leaf argument homes/frames.
+- [x] **2ad. Bounded nonliteral known-bit facts:** extend existing producer
+  queries beyond literal lanes without changing arithmetic widths or adding a
+  global range-analysis framework.
+- [x] **2ae. Costed complex scaled induction:** revisit the deferred multi-access
+  loops using existing counter/address proofs, including pressure and call costs.
+- [x] **2af. Proven byte factors in word-result multiplication:** reuse bounded
+  known-bit facts and the word multiplier for eight-bit factors without narrowing
+  the product; measure complete shared-helper costs as well as inline wins.
+- [x] **2ag. Costed biased frame windows:** reuse the IX address cache to cover
+  nearby arguments and distant locals with fewer complete window rebuilds.
+- [x] **2ah. Post-increment copy/fill induction:** normalize narrowly proven
+  decoder writes into the existing pointer/counter loop machinery.
+- [x] **2ai. Dead argument homes and expanded register-entry leaves:** omit
+  unused automatic-ABI homes before broadening profitable frameless schedules.
+- [x] **2aj. Byte facts for comparisons and bounded dynamic loops:** reuse
+  proven byte ranges without changing general word counts or source semantics.
+- [x] **2ak. Hot scalar/spill placement before large local arrays:** reuse
+  existing frame assignment and packing to reduce distant-home window changes.
+- [x] **2al. Direct call-argument register placement:** avoid redundant staging
+  and reloads within the existing register ABI and legacy push transport.
+- [ ] **2am. Costed nested-loop invariant hoisting:** move proven stable pure
+  expressions to existing loop preheaders only when complete costs justify it.
+- [ ] **2an. Live-third-argument frameless multiply leaves:** reuse existing
+  word multiplication and leaf lowering without new ABI contracts or flags.
+- [ ] **3. Initial SM83 backend:** establish correct Game Boy code generation,
+  target-specific addressing/spills/calls and execution tests. Use actual
+  requirements to identify reusable code; do not assume IX/IY, `DJNZ` or `LDIR`.
+  - [ ] Reuse shared loop proofs, but select SM83 auto-increment/decrement HL
+    accesses and `LDH` only with their target-specific legality checks.
+  - [ ] Qualify SM83 stack-relative addressing, spill/frame handling and calls
+    without carrying over Z80 block-instruction or register assumptions.
+- [ ] **4. Further target-specific improvements:** continue induction-address,
+  instruction-selection, call and arithmetic work beyond the bounded follow-ups
+  with both backends covered. These extensions are not prerequisites for initial
+  Game Boy support. Keep the separate 6502 backend/policy boundary described below.
+
+The numbered detail sections below describe optimization priorities, not a
+requirement to finish every Z80 optimization before implementing SM83. The
+explicit pre-SM83 scope is steps 1, 2 and 2a-2s; priorities 3-5 below supply
+additional implementation guidance for the loop, call and arithmetic follow-ups.
+Steps 2t-2v below record the completed residency, frame and call investigations.
+The 2w-2z follow-ups and new 2aa-2ae work are optional measured Z80 improvements,
+not additional prerequisites for initial SM83 support.
+
+Do one bounded, measured change at a time. The numeric observations below are
+baseline anchors, not promised results. Passing a focused test is not permission
+to skip the full checkpoint gates.
+
+### 0. Keep The Measurement Loop Working
+
+- [x] Preserve [the cross-compiler runner](ci/compare_z80_compilers.py), original
+  measurements, source/input fingerprints and external tool version pins.
+- [x] Reuse the existing mathematical/buffer oracles and pinned native emulator.
+  Share native instruction stepping with the allocator regression runner.
+- [x] Keep caller overhead separate, retain generated source/assembly/maps/logs,
+  reject stale output directories and fail loudly on wrong results or drift.
+- [ ] Add a provisioned CI job when the external toolchains can be cached with
+  verified versions. Until then, full local comparisons are a checkpoint
+  requirement, not a claim that the existing CI already runs these compilers.
+
+### 1. Lower Branch-Only Conditions Directly
+
+Start in [pass_4.c](compiler/pass_4.c), particularly the existing condition-test
+and `if`/`while`/`do`/`for` lowering. Reuse existing comparison and jump TAC forms.
+Use [pass_5.c](compiler/pass_5.c) only where an existing local rewrite is the
+clearer place to remove a redundant value/test chain.
+
+- Distinguish a Boolean used as a value from a condition consumed only by a
+  branch. Preserve 0/1 materialization where the program needs that value.
+- Emit the true/false jump directly for branch-only comparisons. Preserve
+  signedness, mixed-width promotion, side effects and short-circuit evaluation.
+- Handle negation and both branch orientations through existing lowering,
+  rather than duplicating six comparison emitters.
+- Test all relational operators on signed/unsigned byte/word boundaries,
+  nested logical expressions, calls in conditions, zero-iteration loops,
+  `continue`, `break` and `do`-loop conditions.
+
+Acceptance: targeted branch-only conditions have no Boolean spill/reload chain;
+byte fill/sum/copy code and cycles improve strictly from the measured baseline,
+with no unexplained regression elsewhere. Keep actual Boolean-value tests.
+This is the first implementation batch, before a new calling convention.
+
+#### First Batch: Direct Final Conditions
+
+Implemented against source commit `8052a49`, measured against the unchanged
+`d1e7db1` reference. The existing expression/postfix evaluator in
+[il.c](compiler/il.c) accepts a false-branch destination. Final comparisons
+invert their existing jump operation instead of materializing a Boolean,
+joining its 0/1 definitions and reloading it to test against zero. Scalar tests
+and trailing negation use the same path. Boolean values, including comparisons
+used as array indices, still materialize normally. The superseded pass-4 test
+helper was removed; no production functions were added.
+
+Qualification exposed two coupled correctness issues: the dead-store scan must
+stop at conditional jumps, and signed word comparisons must account for
+subtraction overflow. Both branch and value contexts are covered by the new
+boundary tests. The existing spill-layout helper packs its movable suffix
+widest-first, preserving fixed spill owners and avoiding a one-byte pathfinding
+stack regression. Its mixed-width regression now requires that saving rather
+than accepting the old narrower-slot-first layout. Production compiler source
+growth is 57 net lines across the five changed files.
+
+Full comparison results with RA enabled:
+
+| Kernel | Code bytes before -> after | Kernel T-states before -> after | Max stack bytes before -> after |
+| --- | ---: | ---: | ---: |
+| Multiply/add | 71 -> 71 | 20217 -> 20217 | 24 -> 24 |
+| Product restore | 197 -> 197 | 62117 -> 62117 | 28 -> 28 |
+| Shift restore | 84 -> 84 | 12161 -> 12161 | 22 -> 22 |
+| Partition restore | 193 -> 193 | 61545 -> 61545 | 28 -> 28 |
+| Array | 2065 -> 1847 | 8172676 -> 7857958 | 88 -> 88 |
+| Stencil | 2414 -> 1886 | 5989154 -> 4804082 | 122 -> 122 |
+| Tile decoding/CRC | 1866 -> 1427 | 4984256 -> 3183806 | 128 -> 128 |
+| Pathfinding | 2413 -> 1918 | 9977593 -> 7868925 | 187 -> 187 |
+| PackBits decoder | 1090 -> 926 | 280791 -> 218149 | 42 -> 42 |
+| PackBits plus CRC | 1677 -> 1335 | 37937604 -> 22097231 | 54 -> 54 |
+| Byte sum | 182 -> 139 | 627415 -> 435254 | 26 -> 24 |
+| Byte copy | 191 -> 148 | 791598 -> 599437 | 27 -> 27 |
+| Byte fill | 161 -> 118 | 611485 -> 419324 | 26 -> 24 |
+
+Cycles are totals over the unchanged per-kernel input sets, not single-call
+timings. Every caller-wrapper metric is unchanged. Neither SameSameC mode
+regresses in the reference gate; all 78 competitor rows reproduce exactly.
+All 104 builds / 1856 calls / 24 independent whole-call timing checks pass.
+The RA/stock-SDCC geometric code-size ratio improves from 2.44 to 2.08 using
+SDCC's size setting; the cycle ratio improves from 2.53 to 2.04 using its speed
+setting. These remain separate settings, not a joint optimum.
+
+Both full calculation projects rebuild with RA enabled. Used ROM drops from
+24066 to 23277 bytes in [calculations-1](tests/z80/sms/calculations-1), and from
+39647 to 35589 bytes in [calculations-2](tests/z80/sms/calculations-2). These are
+used-byte counts from linker summaries; padded files remain 65536 bytes.
+
+[The condition regression](ci/test_branch_conditions.py) reuses the allocator
+build and native CPU helpers. Per host configuration it executes 43200
+signed/unsigned/mixed-width relational and Boolean-value cases plus 420
+control-flow/call/index cases. Normal Release, traced Release and traced ASan
+builds pass and emit the same 35 ROMs byte for byte. MSVC Release uses
+`/MD /O2 /Ob2 /DNDEBUG /WX`; ASan adds `/fsanitize=address /Zi`. The changed C
+sources also pass GCC `-O3 -ansi -pedantic -Wall -Werror -DNDEBUG`.
+
+The full allocator corpus passes at 64 seeds across all six generated cohorts
+and 28 real calculation routines, including immutable verifier/fixed-prefix
+controls and default/no-RA and traced/quiet equivalence. The ASan compiler also
+passes that corpus at four seeds. The 17 comparison-tool tests pass normally
+and with `python -O`. All 175 existing compiler fixtures pass, including both
+full calculation builds. Boolean-specific assembly/trace fixtures now explicitly
+consume comparison values, retaining their original join-allocation coverage
+alongside the new direct-branch shape/execution tests.
+
+Run the new regression with the same compiler/linker/assembler PATH as the
+existing allocator tests:
+
+```sh
+python -m unittest discover -s ci -p test_branch_conditions.py
+```
+
+**First-batch boundary:** compound logical lowering and its short-circuit
+side-effect tests remained open. The completion batch below closes that work.
+
+#### Compound Logical Completion (2026-10-19)
+
+Step 1 is now complete. Compared with parent `f50ded7`, the existing shared
+expression evaluator splits compound conditions before emitting their operands.
+AND/OR and nested negation branch directly; calls, indexed reads, guarded
+division and increments on an unselected right-hand side are not evaluated.
+This intentionally corrects the previous eager evaluation of logical operands,
+including logical expressions used as values. Required 0/1 values in arithmetic,
+comparisons, array indices, arguments and returns remain materialized.
+
+The old eager postfix logical emitter is removed. No production functions are
+added, and the four changed compiler files contain 20 fewer lines overall.
+The existing expression APIs carry branch orientation rather than duplicating
+comparison emission. These changes use shared TAC only, not Z80 instructions
+or assumptions about a future SM83 register set.
+
+Qualification also exposed two coupled issues. Function-call argument lowering
+must restore the enclosing expression's promotion: a word-returning call with
+a final byte argument must not truncate a truth test. Compound joins also
+exercise conditional-false spill edges. All seven core validation stages now
+agree with the existing planner and target adapter: false/fallthrough stores
+belong after the anchor, true/jump stores before it.
+[The existing core regression](tests/z80/sms/allocator_ra_core_liveness_extraction/core_liveness_storage_test.c)
+covers the complete conditional-false spill pipeline and rejects before-anchor
+approval without invoking the target callback. Existing invalid-input,
+immutable-verifier, fixed-prefix and rollback controls remain intact.
+
+Changed RA measurements against `f50ded7`:
+
+| Kernel | Code bytes before -> after | Kernel T-states before -> after | Max stack bytes before -> after |
+| --- | ---: | ---: | ---: |
+| PackBits decoder | 926 -> 626 | 218149 -> 206881 | 42 -> 39 |
+| PackBits plus CRC | 1335 -> 1035 | 22097231 -> 22049036 | 54 -> 51 |
+
+The other eleven RA kernels and every caller-wrapper metric are unchanged.
+No metric regresses in either SameSameC mode against the immediate parent,
+not just the older historical baseline. All 78 pinned competitor rows still
+reproduce exactly; all 104 builds / 1856 calls / 24 independent timing checks
+pass. The RA/stock-SDCC geometric code-size ratio is now 1.98 using its size
+setting, and the cycle ratio is 2.03 using its speed setting. The historical
+baseline, fingerprints and external tool settings are unchanged.
+
+Full RA builds use 22977 bytes in
+[calculations-1](tests/z80/sms/calculations-1), down from 23277, and 35589 bytes
+in [calculations-2](tests/z80/sms/calculations-2), unchanged. Both padded ROMs
+remain 65536 bytes. The existing compressed asset and decompression/CRC
+workload are retained.
+
+[The condition regression](ci/test_branch_conditions.py) now executes 61530
+cases per host build: 43200 relational/Boolean boundary cases, 17640 compound
+logical/value/side-effect cases and 690 control-flow cases. Coverage includes
+all four condition/value forms, signed subconditions, high-byte truth values,
+operator precedence, short-circuit call order, guarded reads/division,
+for/while/do loops, continue/break and wrapping pre/post increments.
+Default, all-spill and RA results match independent oracles, including complete
+buffer contents; default/no-RA and traced/quiet ROM equivalence also pass.
+Normal Release, traced Release and traced ASan builds pass all cases and emit
+the same 70 ROMs byte for byte.
+
+All 175 compiler fixtures pass without byte-snapshot changes. The full
+64-seed allocator corpus and four-seed ASan corpus pass across all six
+generated cohorts and 28 real routines, retaining all 32 immutable rejection
+controls. The 17 comparison-tool tests pass normally and with `python -O`.
+Changed C sources pass strict GCC ANSI/O3 checks; all three MSVC builds retain
+the first batch's settings and warnings-as-errors gates.
+
+At this checkpoint, the next target was bounded loop-state work, not SM83 yet.
+
+### 2. Keep Profitable Loop State In Registers
+
+Inspect the remaining hot loops after step 1. Work through existing candidate,
+CFG/liveness and target-policy machinery in [pass_5.c](compiler/pass_5.c) and
+[register_allocator.c](compiler/register_allocator.c), and existing concrete
+location resolution in [pass_6_z80.c](compiler/pass_6_z80.c).
+
+- Profile named loop counters, accumulators and CRC state, not just TAC temps.
+- Promote only proven, profitable loop-carried definitions. Reuse current
+  legality, cost, alias/escape, pair-overlap and barrier checks.
+- Remove redundant frame-cache setup only where incoming state is proven.
+  Calls, inline assembly and conflicting paths must invalidate it correctly.
+- Do not turn unsupported aliasing or pressure cases into speculative retention.
+- Cover zero/one/255/256 iterations, wraparound, nested loops, joins, early exits,
+  pressure, calls, address-taking and inline assembly.
+
+Acceptance: demonstrate fewer executed frame accesses in byte loops and CRC,
+not merely fewer emitted spill comments. Record code, cycles and stack changes.
+Preserve immutable verifier rejection, transaction rollback and fallback tests.
+
+#### Bounded Loop-State Checkpoint (2026-10-19)
+
+Step 2 is complete within its bounded scope. Profiling showed that named word
+counters stayed in their frames even when the existing loop allocator could
+retain equivalent TAC temps. Byte fill repeatedly reloaded its counter for the
+comparison, array index and increment; CRC loops repeatedly loaded and stored
+their bit counters.
+
+The existing scalar-promotion pass now exposes canonical unsigned word
+counters: one initialization, one unit increment, a backward loop edge, stable
+word width, and no earlier counter reads. Existing loop-definition discovery
+filters non-loop-carried word live-ins before candidate selection. Shared path
+planning stops reverse traversal at the loop header rather than extending an
+inner counter's lifetime through its enclosing loop. Exit consumers still
+reserve the paths they actually need.
+
+Z80 legality and emission now support retained BC counters in comparisons and
+indices. Operand reversal reuses existing comparison/materialization helpers.
+Word equality/inequality against zero tests H/L directly; constant word bitwise
+operations use immediate bytes instead of clobbering BC. Constant single-bit
+shifts and retained-index array operations report their actual BC preservation.
+Existing cost ranking, pair-overlap checks, reservations, transactions and the
+immutable verifier remain authoritative. No production functions or new
+allocation framework are added. Existing frame-cache invalidation remains
+conservative across calls, assembly and joins; no incoming cache state is guessed.
+
+Measured RA kernel results against parent `8559b1e`, using the unchanged pinned
+comparison corpus:
+
+| Kernel | Code bytes | Total kernel cycles | Maximum stack bytes |
+| --- | ---: | ---: | ---: |
+| Byte fill | 118 -> 81 | 419324 -> 262114 | 24 -> 24 |
+| PackBits + CRC | 1035 -> 1004 | 22049036 -> 16272236 | 51 -> 49 |
+| Tile/CRC workload | 1427 -> 1380 | 3183806 -> 2594520 | 128 -> 126 |
+
+These are executed frame-region accesses summed over the same inputs, not
+static spill-comment counts or buffer accesses:
+
+| Kernel | Frame reads | Frame writes |
+| --- | ---: | ---: |
+| Byte fill | 13338 -> 7646 (-42.7%) | 3840 -> 1920 (-50.0%) |
+| PackBits + CRC | 420869 -> 272901 (-35.2%) | 200872 -> 122536 (-39.0%) |
+| Tile/CRC workload | 64770 -> 50014 (-22.8%) | 30014 -> 22202 (-26.0%) |
+
+All 104 builds / 1856 calls / 24 independent timing checks pass. All 78
+competitor rows reproduce exactly; neither SSC mode regresses in code, wrapper,
+kernel cycles or stack against the immediate parent. Array, path and stencil
+kernels also improve through BC-preserving emission. Byte sum/copy remain
+unchanged. Fresh full calculation builds use 22929 bytes in calculations-1
+(was 22977) and 35409 in calculations-2 (was 35589); padded ROMs remain 65536.
+
+The existing allocator runner adds ten counter shapes covering 0/1/255/256
+iterations, word wraparound, nesting, CRC updates, continue/break/early return,
+calls, address escape and reused definitions. Independent values, complete
+buffer checks and exact backedge counts are verified. Its positive word-counter
+case requires at least 30% fewer executed frame reads and writes than no-RA.
+The 64-seed six-cohort/real-project corpus and four-seed ASan corpus pass,
+including all 32 immutable rejection controls. All 175 fixtures pass, including
+new nested-path/exit-read controls; exact-byte expectations track the smaller
+zero tests, immediate bitwise operations, cheaper BC indices and relocations.
+All 61530 condition executions pass per Release/traced/ASan configuration, with
+70 linked ROMs byte-identical across configurations. Strict GCC/MSVC builds and
+the 17 comparison-tool tests, normally and under `python -O`, also pass.
+
+This is not general CFG scalar promotion: ambiguous reassignment, signed/byte
+multi-definitions, escaped values, unsupported consumers and pressure/call/asm
+conflicts keep their conservative fallbacks. CRC bit counters are retained;
+multi-definition CRC accumulators need not be. The measured follow-ups below
+are now required before initial SM83 work; general CFG promotion, unrestricted
+accumulator retention and cross-block frame-cache propagation are not.
+
+#### Required Pre-SM83 Follow-ups
+
+The fresh normal Release comparison at `cdacc98` passed all 104 builds, 1856
+calls and 24 independent timing checks; all 78 competitor rows reproduced
+exactly. Keep these starting anchors and the original `d1e7db1` baseline.
+Measure each follow-up against its immediate parent too, so an earlier step's
+gain cannot stand in for that step's own improvement.
+
+**2a. Byte sum/copy and induction addressing**
+
+- Starting point: sum/copy kernels are 139/148 bytes versus stock SDCC's size
+  profile at 47/59 bytes. Their cycles are 2.98/2.96 times its speed profile.
+- Reuse priority 3 below for advancing addresses, cheaper loop control and
+  legal Z80 loop selection. Do not duplicate address emitters or assume Z80
+  instructions exist on SM83.
+- Acceptance: strictly improve both sum and copy kernel bytes and cycles, plus
+  at least one real decoder/array workload. Preserve zero/one/255/256 counts,
+  wraparound, overlap/source order, aliases, guards and generic fallbacks.
+
+##### Step 2a Checkpoint (2026-10-19)
+
+Complete within the measured scope. Reuse the existing constant normalization,
+word arithmetic and comparison emitters; no production functions or allocation
+framework are added.
+
+- Retained word unit steps use `INC BC` / `DEC BC` directly instead of copying
+  through HL.
+- An in-place word increment in a local/spill frame slot increments its low
+  byte directly and updates the high byte only on carry. Both operands must
+  describe the same two-byte storage and have actual word types; byte
+  widening, different destinations and other locations retain existing paths.
+- Word address/index steps of plus/minus 256 increment/decrement H instead of
+  materializing a second word and adding/subtracting it. Constant-left addition
+  uses the existing operand swap before allocation.
+- Unsigned word greater-or-equal exits use one carry test; zero already implies
+  no borrow. Signed comparisons keep their separate overflow-aware path.
+
+These are bounded selections for existing counter/address TAC, not a new
+cross-iteration induction-pointer rewrite. Array access order, index widths,
+aliases and overlap behavior are unchanged. No `DJNZ`, `LDIR`, byte-counter
+narrowing or speculative pointer-range assumptions are introduced.
+
+RA results against immediate parent `ea10114` (compiler code `cdacc98`), with
+identical sources, inputs and pinned competitor settings:
+
+| Kernel | Code bytes | Total kernel cycles | Cycle reduction |
+| --- | ---: | ---: | ---: |
+| Byte sum | 139 -> 131 | 435254 -> 381521 | 12.3% |
+| Byte copy | 148 -> 137 | 599437 -> 529673 | 11.6% |
+| Byte fill | 81 -> 77 | 262114 -> 247026 | 5.8% |
+| PackBits decoder | 626 -> 582 | 206881 -> 171316 | 17.2% |
+| PackBits + CRC | 1004 -> 948 | 16272236 -> 14931174 | 8.2% |
+| Tile/CRC workload | 1380 -> 1283 | 2594520 -> 2400124 | 7.5% |
+
+All 104 builds / 1856 calls / 24 independent timing checks pass. All 78
+competitor rows reproduce exactly. Neither SSC mode regresses against the
+immediate parent in kernel/wrapper bytes, kernel/caller cycles or observed
+maximum SP displacement. Stack high-water is unchanged; further frame traffic,
+accumulator retention and footprint work remain in 2b and 2d.
+
+Fifteen new generated word-step cases cover carry/wrap boundaries, unsigned/
+signed byte extension before increment, non-in-place and wide-frame fallbacks,
+page steps in both operand orders, pointer steps and both directions of
+overlapping forward copies with complete buffer checks. The original generator
+limited this family to eight variants; 2b corrects that filter and qualifies all
+fifteen in a separate single-bank cohort. The 64-seed six-cohort
+allocator/28-real-routine corpus and four-seed ASan corpus pass, preserving all
+32 immutable verifier rejection controls. All 175 compiler fixtures pass after
+updating five byte snapshots and two frame-fallback emission assertions.
+The 61530 condition executions pass per Release/traced/ASan configuration; all
+140 intermediate/linked condition ROMs match across builds. Strict ANSI GCC
+normal/traced checks, MSVC builds and the 17 comparison-tool tests normally and
+under `python -O` pass.
+
+Fresh full calculation ROMs use 22457 bytes (was 22929) and 34886 bytes (was
+35409); padded images remain 65536 bytes. Normal Release and traced ROMs are
+identical. The next implementation target is follow-up 2b, not SM83 yet.
+
+**2b. Remaining frame traffic and accumulator retention**
+
+- Post-2a starting point: 256-byte fill takes 66067 kernel T-states and 514 kernel
+  stack writes versus stock SDCC's size profile at 29837 and four. SSC performs
+  2054 kernel stack reads versus 776; counter retention alone is not enough.
+- Profile remaining address, byte-value, accumulator and CRC reload/store
+  chains. Reuse existing promotion, liveness, legality, location resolution and
+  cache invalidation; retain only proven supported values.
+- Acceptance: strictly reduce executed fill frame reads/writes and cycles,
+  and frame traffic in a real CRC/decoder workload. Keep calls, joins, escapes,
+  inline assembly, pressure fallback and immutable verifier rejection covered.
+
+##### Step 2b Checkpoint (2026-10-19)
+
+Complete within the measured scope. Reuse the existing array-base, index and
+write-value materializers; no production functions or allocation rules are
+added. Supported RA byte stores keep their destination in HL and use A for
+the byte instead of moving the address through `PUSH HL` / `POP IY`. Existing
+retained A sources remain supported, including signed-index preservation.
+Frame/global pointer loads reuse the same folded-IX or IY fallback policy as
+array reads. Byte stores from memory no longer fetch an unused high source
+byte, in both RA and non-RA emission.
+
+Word destinations, BC bases and conflicting physical value sources retain
+their existing IY paths. Calls, joins, escapes, inline assembly and pressure
+retain the existing legality, clobber and verifier contracts. No incoming
+frame-cache propagation, speculative accumulator/CRC recurrence retention,
+ABI change or general CFG promotion is introduced. The CRC gain below comes
+from its real decoder's byte-store chain, not a claim of general CRC retention.
+
+RA results against immediate parent `016ed97`, using identical inputs and
+counting executed kernel stack/frame-region accesses across all calls:
+
+| Kernel | Code bytes | Total kernel T-states | Stack reads | Stack writes | Max SP bytes |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Byte fill | 77 -> 68 | 247026 -> 190446 | 7646 -> 4817 | 1920 -> 34 | 24 -> 22 |
+| Byte copy | 137 -> 131 | 529673 -> 491010 | 17111 -> 15225 | 5727 -> 3841 | 27 -> 25 |
+| PackBits decoder | 582 -> 570 | 171316 -> 160369 | 4990 -> 4456 | 1812 -> 1278 | 39 -> 37 |
+| PackBits + CRC | 948 -> 936 | 14931174 -> 14752742 | 258111 -> 249407 | 107746 -> 99042 | 49 -> 47 |
+
+The 256-byte fill call specifically drops from 66067 to 50707 kernel T-states,
+2054 to 1286 executed stack reads and 514 to two stack writes. Sum is unchanged.
+The smaller SP high-water removes temporary pointer-transfer pushes; it is not
+a claim that below-SP frame storage or complete RAM usage has shrunk.
+
+All 104 builds / 1856 calls / 24 independent timing checks pass; all 78 pinned
+competitor rows reproduce exactly. Both SSC modes are non-regressing against
+the immediate parent in kernel/wrapper bytes, kernel/caller cycles and observed
+maximum SP displacement. Wrapper costs are unchanged and remain the 2c target.
+
+Sixteen new generated byte-store cases cover constants, retained A and frame
+values, word truncation, signed indices, zero indices, global pointers, wide
+frames, branch joins, escaped values, calls, physical-value/word-store fallback,
+overlap and ordered aliasing with complete buffer oracles. Separate word-step
+and byte-store cohorts keep all-spill ROMs within the existing single-bank
+harness limit; all fifteen intended word-step variants now actually execute.
+The eight-cohort 64-seed allocator corpus, 28 real routines and four-seed ASan
+corpus pass, preserving all 32 immutable verifier rejection controls.
+
+All 175 compiler fixtures pass after updating fifteen byte snapshots and two
+exact address-policy assertions. The 61530 condition executions pass per
+Release/traced/ASan configuration, with all 140 intermediate/linked condition
+ROMs identical across builds. Strict ANSI GCC normal/traced checks, MSVC builds
+and the 17 comparison-tool tests normally and under `python -O` pass.
+
+Fresh full calculation ROMs use 21185 bytes (was 22457) and 33937 bytes (was
+34886). Padded images remain 65536 bytes and normal/traced images are identical.
+The next implementation target is follow-up 2c, not SM83 yet.
+
+**2c. Leaf and caller overhead**
+
+- Starting point: the multiply/add native-call test wrapper remains 172 bytes
+  and 971 T-states versus stock SDCC's 20 bytes and 114 T-states.
+- Reuse priority 4 below. Remove redundant copies/setup within the current ABI
+  before considering an explicit, gated convention change.
+- Acceptance: strictly reduce that wrapper's bytes and cycles and demonstrate
+  a whole-call win in a call-heavy workload. Report wrapper/kernel costs
+  separately and preserve all existing caller/callee compatibility contracts.
+
+##### Step 2c Checkpoint (2026-10-19)
+
+Complete within the existing ABI. Reuse the current call transport, frame-prefix
+descriptors, location resolution and IX=DE cache; no allocator rules, register
+convention or frame layout change. The production change removes two superseded
+helpers and is four lines smaller overall.
+
+- Form the caller's new frame directly as SP-1, initialize IX from SP using the
+  existing saved-frame offset, and hand the frame to the callee with `EX DE,HL`
+  instead of two byte copies. Pure-assembly calls keep their direct-call path.
+- Skip the unused high-byte read when truncating a memory word argument to a
+  byte. Word transport and signed/unsigned widening retain their existing paths.
+- Store global word call results directly from HL, after existing returned-byte
+  extension and retained-result dispatch. Byte, local, far and retained result
+  paths keep their existing contracts.
+- Reuse IX for return-SP restoration only when the existing cache already
+  proves IX=DE. Invalidate it after decrementing IX; otherwise retain the
+  generic epilogue. No cache propagation across calls or joins is added.
+
+RA results against immediate parent `e6e5c7c`, using identical inputs. T-states
+are totals across all calls; the whole-call column includes kernel and wrapper:
+
+| Routine (calls) | Kernel bytes | Wrapper bytes | Kernel T-states | Wrapper T-states | Whole-call T-states |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Multiply/add (17) | 71 -> 70 | 172 -> 161 | 20217 -> 20098 | 16507 -> 15589 | 36724 -> 35687 |
+| Array workload (20) | 1806 -> 1790 | 158 -> 147 | 7784538 -> 7742998 | 17780 -> 16700 | 7802318 -> 7759698 |
+| Path workload (20) | 1738 -> 1732 | 158 -> 147 | 7198647 -> 7198007 | 17780 -> 16700 | 7216427 -> 7214707 |
+| PackBits + CRC (17) | 936 -> 927 | 96 -> 85 | 14752742 -> 14752198 | 8891 -> 7973 | 14761633 -> 14760171 |
+
+The multiply/add wrapper specifically improves from 172 to 161 bytes and 971
+to 917 T-states per call. Its kernel separately saves one byte and seven
+T-states per call. The call-heavy array workload saves 42620 whole-call
+T-states, about 0.55%; this is a bounded improvement, not competitor parity.
+Stock SDCC's size-profile wrapper remains 20 bytes / 114 T-states.
+
+All 104 builds / 1856 calls / 24 independent timing checks pass; all 78 pinned
+competitor rows reproduce exactly. Both SSC modes are non-regressing against
+the parent in kernel/wrapper bytes, kernel/caller cycles and maximum SP
+displacement. SP high-water is unchanged throughout: these are instruction
+and transport savings, not a frame-footprint improvement. Step 2d remains.
+
+Eight new generated call cases cover word/global results, byte truncation,
+signed and unsigned byte results widened into global words, nested calls, wide
+frames, recursion and escaping pointers. Independent boundary-value oracles
+check the complete buffer and adjacent globals. The full eight-cohort 64-seed
+allocator corpus, 28 real routines and four-seed ASan corpus pass. Final
+strengthened cases also pass focused 64-seed traced/ASan checks and complete
+scalar-cohort rechecks, preserving all 32 immutable verifier rejection controls.
+
+All 175 fixtures pass, including 35 rechecks after updating 83 exact-byte marker
+ranges and one direct-global-store policy assertion. Old/new callers and
+callees interoperate in both directions: 12 mixed-version builds / 228 guarded
+calls pass with exact SP/DE restoration. The 61530 condition executions pass per
+Release/traced/ASan configuration, with all 140 intermediate/linked condition
+ROMs identical across builds. Strict ANSI GCC normal/traced checks, MSVC builds
+and the 17 comparison-tool tests normally and under `python -O` pass.
+
+Fresh full calculation ROMs use 20764 bytes (was 21185) and 33421 bytes (was
+33937). Padded images remain 65536 bytes and normal/traced images are identical.
+The next implementation target is follow-up 2d, not SM83 yet.
+
+**2d. Stack footprint and pre-SM83 qualification**
+
+- Post-2c starting point: observed SP high-water is 22 bytes for fill (stock
+  SDCC: eight), 47 for PackBits/CRC and 126 for tile/CRC. This is not total RAM use:
+  SSC also accesses frame storage below SP.
+- Remove only proven unnecessary frame slots, spills or saves through existing
+  frame layout and lifetime handling. Record below-SP frame extent as well as
+  SP high-water; moving storage below SP is not a footprint improvement.
+- Acceptance: demonstrate a smaller verified frame/stack footprint in at least
+  one representative workload, with nested-call, frame-safety and pressure
+  controls intact. Pass all implementation-batch gates and rebuild both full
+  calculation ROMs before starting step 3; mark 2a-2d complete with actual
+  measurements, not parity claims.
+
+##### Step 2d Checkpoint (2026-10-19)
+
+Complete within the bounded footprint goal. Existing loop/interval retention
+can leave a spill slot reserved even when every operand already uses the same
+physical register. The existing spill-layout pass now omits that unused backing
+only after scanning all active uses in the function. Missing or inconsistent
+physical annotations, call arguments, explicit spills, reload/store transfers
+and inline assembly retain memory backing. Fixed spill owners and the entire
+prefix through their lowest destination remain unchanged; only the suffix can
+shrink. Default and forced-all-spill layouts are unchanged.
+
+No new retention, clobber or slot-sharing policy is introduced. The existing
+poison-offset path prevents an omitted slot from silently becoming a memory
+fallback. No production helper is added; the coverage proof adds 36 lines to
+the existing layout function.
+
+The comparison runner now measures the deepest frame access below entry SP,
+the largest access below the instruction's SP, and the full observed call span.
+The full span includes reserved stack space, below-SP frame accesses and the
+two-byte entry return address. Ordinary PUSH/POP accesses are not misclassified
+as below-SP storage when emulator callbacks precede the SP update.
+
+RA results against immediate parent `cddbdf1`, in bytes across identical calls:
+
+| Routine | SP high-water | Deepest access below entry SP | Full call span |
+| --- | ---: | ---: | ---: |
+| Byte fill | 22 -> 20 | 20 -> 20 | 24 -> 22 |
+| Shift/restore | 22 -> 20 | 20 -> 20 | 24 -> 22 |
+| Partition/restore | 28 -> 26 | 28 -> 26 | 30 -> 28 |
+| Stencil workload | 120 -> 118 | 120 -> 118 | 122 -> 120 |
+| Path workload | 187 -> 185 | 187 -> 185 | 189 -> 187 |
+| PackBits + CRC | 47 -> 45 | 47 -> 45 | 49 -> 47 |
+| Tile + CRC | 126 -> 126 | 126 -> 126 | 128 -> 128 |
+
+The below-SP access extent does not increase: fill remains eight bytes and
+PackBits/CRC ten. These are actual two-byte footprint reductions, not storage
+moved below SP. Kernel/wrapper code bytes and T-states are unchanged throughout
+both SSC modes. The stock SDCC size-profile fill still needs only eight bytes
+of SP displacement / ten bytes of full call span; parity is not claimed.
+
+All 104 builds / 1856 calls / 24 independent timing checks pass, with all 78
+pinned competitor controls exact. Final footprint accounting re-executes all
+104 images and all 26 immediate-parent SSC images, reproducing their original
+five metrics exactly. All 26 SSC rows are non-regressing against the parent in
+those metrics and the three new footprint observations. The historical
+baseline is unchanged.
+
+Fourteen native backing-slot cases cover all five retained registers,
+incomplete/mixed coverage, real call arguments, explicit memory transfers and
+disabled/all-spill modes. Existing fixed-owner controls also pin an otherwise
+unused retained slot in the protected prefix. All 32 immutable verifier
+rejections remain intact. The eight-cohort 64-seed allocator corpus, 28 real
+routines and four-seed ASan corpus pass, including nested calls, recursion,
+escapes, wide frames, aliasing and pressure fallback.
+
+All 175 fixtures pass, including seven rechecks after updating four byte-marker
+ranges and three exact-policy fixtures. All 174 available fixture assemblies
+differ only in qualified frame offsets. The 61530 condition executions pass per
+Release/traced/ASan configuration; all 140 intermediate/linked condition ROMs
+are identical across builds. Strict ANSI GCC normal/traced checks, MSVC builds
+and all 18 comparison-tool tests normally and under `python -O` pass. Measurement
+probes separately cover below-SP storage, ordinary calls and untouched reserved
+stack space.
+
+Both full calculation projects rebuild successfully. Used ROM remains 20764
+and 33421 bytes; padded images remain 65536 bytes and normal/traced images are
+identical. Steps 1, 2 and 2a-2d are qualified. Further frame optimization remains
+optional, not a claim that these finite tests establish every program's maximum
+RAM use.
+
+### Measured Follow-ups After Step 2d
+
+The post-2d profile at `dc828c8` passes 104 builds, 1856 calls and 24 independent
+timing checks, with all 78 pinned competitor controls unchanged. Against the
+previous profile at `cdacc98`, geometric mean kernel size falls 6.3% and kernel
+T-states 9.1%. Current size/cycle ratios are 1.788/1.714 against stock SDCC,
+1.508/1.605 against z88dk/SDCC and 1.120/1.010 against sccz80. Size uses competitor
+size settings; cycles use speed settings. These are corpus results, not general
+C or whole-game parity.
+
+The next five steps are 2e-2i above, in this order. Reuse existing TAC passes,
+location materializers, transport and emitters; avoid another allocator framework.
+Keep semantic proofs CPU-neutral and instruction selection target-specific.
+Each step must pass the implementation-batch gates below before being checked.
+
+#### 2e. Constant Addresses And Direct Loads
+
+- Fold constant array indices into known object addresses with the correct
+  element stride and target address arithmetic. Distinguish an array object
+  from a pointer variable whose stored address must still be loaded.
+- Reuse existing load/result transport for direct word and byte reads, preserving
+  byte signedness, widening/truncation and physical-register contracts.
+- Keep dynamic indices, pointer bases, port operations and unsupported address
+  forms on their existing safe paths. Cover zero/nonzero indices, signed offsets,
+  byte/word arrays, aliases, retained operands and wide frames.
+- Measure wrappers separately: the multiply/add caller still builds the address
+  of `bench_params[1]` using two index additions instead of a direct word load.
+
+Acceptance: exact assembly controls and independent value/buffer oracles prove
+the new selections and conservative fallbacks. Reduce constant-address setup
+and the 161-byte/917-T-state caller without changing the ABI or regressing any
+reference workload. Record compiler source growth and remove superseded logic.
+
+##### Step 2e Checkpoint (2026-10-19)
+
+Complete within the constant array-object read scope. The existing array-read
+emitter folds byte/word constant indices into global or local object addresses,
+with 16-bit address wrap. Global word reads use `LD HL,(address)`; global byte
+reads reuse the existing HL address materializer and `LD L,(HL)`, without adding
+an A clobber. Local reads reuse the existing IY materializer at the folded frame
+offset. Existing signed/unsigned extension and result transport remain shared.
+No TAC, ABI, allocator legality or arithmetic policy changes are required.
+
+Pointer variables still load their stored addresses. Retained bases, dynamic
+indices and port operations retain their existing paths; array writes are not
+changed. No production helper is added: the existing emitter grows by 37 net
+lines. Five new cases extend the existing index-copy family rather than adding
+another harness or execution cohort.
+
+RA wrapper measurements against immediate parent `dc828c8`:
+
+| Caller | Wrapper bytes | Wrapper T-states per call |
+| --- | ---: | ---: |
+| Multiply/add | 161 -> 126 | 917 -> 729 |
+| Product, shift and partition/restore | 161 -> 126 | 917 -> 729 |
+| Array, stencil, tile and path workloads | 147 -> 126 | 835 -> 723 |
+| Byte sum, copy and fill | 147 -> 126 | 835 -> 723 |
+| PackBits decoder | 179 -> 151 | 1020 -> 868 |
+| PackBits + CRC | 85 -> 85 | 469 -> 469 |
+
+Kernel bytes/T-states and all stack/frame observations are unchanged in both
+SSC modes. All 26 SSC rows are non-regressing in all eight measured fields.
+The full 104-build/1856-call comparison and 24 independent timing checks pass;
+all 78 pinned competitor controls remain exact. Kernel-only competitor ratios
+therefore remain at the post-2d values above; these gains are caller overhead.
+All 26 SSC benchmark assemblies and ROMs are identical between normal and traced
+builds, with identical measurements.
+
+The focused 64-seed index-copy corpus passes value/full-buffer oracles in
+default, all-spill and RA modes, and passes against the pre-optimization compiler
+at `cddbdf1` as a separate baseline control. New cases cover global word indices
+0/1/63, signed byte indices 0/1/127 with explicit widening, word-to-byte
+truncation, and byte/word local arrays spanning a wide frame. Existing pointer,
+alias, signed-index and port controls remain intact. Raw assembler probes pin
+immediate versus indirect addressing and positive/negative 16-bit address wrap.
+
+All 175 fixtures pass, including three rechecks after updating ten byte-marker
+ranges and one exact-policy assertion. Before updating snapshots, all 174
+available fixture assemblies are proved identical outside the qualified
+constant-read replacements; unchanged instruction sequences and frame layouts
+are not normalized away. The new policy assertions pin both byte and word
+folded frame offsets.
+
+The full eight-cohort 64-seed allocator corpus, 28 real routines, four-seed ASan
+corpus and all 32 immutable verifier rejection controls pass. All 50 traced/ASan
+allocator and real-project ROMs match. The existing condition corpus and 18
+comparison-tool tests pass under normal/traced/ASan builds; all 140 condition
+ROMs match, and the comparison tests also pass under `python -O`. MSVC builds,
+Pylance syntax validation and strict ANSI GCC normal/traced checks pass.
+
+Both complete calculation projects rebuild. Used ROM is 20764 bytes (unchanged)
+and 33393 bytes (28 fewer than 33421); padded images remain 65536 bytes and
+normal/traced images match. No whole-program competitor parity is claimed.
+
+#### 2f. Shared Quotient/Remainder Computation
+
+- Reuse the existing divider's quotient and remainder for matching operand pairs
+  when no intervening mutation, alias, clobber or observable effect invalidates it.
+- Start with the duplicate divisions in partition/restore; preserve the compiler's
+  defined zero-divisor behavior and all result lifetimes/widths.
+- Simplify redundant pure arithmetic, including consecutive XORs with the same
+  unchanged mask, through existing TAC optimization rather than new runtime helpers.
+
+Acceptance: independently check both results, zero and word boundaries, changed
+operands and fallback cases; measure standalone and shared-dependency bytes/cycles.
+Do not replace division identities without proving their exceptional cases.
+
+##### Step 2f Implementation Checkpoint
+
+The existing Z80 arithmetic dispatcher now reuses the remainder from a preceding
+division of the same local scalar/argument operands. Operand identities, actual
+types and promotions must match, and the quotient must be stored in a local or
+spill slot without overwriting either input. Only dead TACs and non-emitting
+scalar declarations may intervene. Array initializers, calls, writes, labels and
+other operations remain barriers. Global/temporary operands, physical quotient
+destinations and reverse-order pairs conservatively use the original path.
+
+Both byte and word emitters reuse their existing result transport, including
+truncation and sign/zero extension. The divider itself and its zero-divisor
+behavior are unchanged. There is no new runtime helper, DIVMOD TAC or speculative
+division-identity replacement. Superseded commented copies of both divider
+algorithms were removed instead of duplicating their result-storage code.
+
+The existing adjacent-expression TAC optimizer also cancels matching XOR pairs
+when promotions agree and the intermediate has no other observable use. It
+handles single-use temporaries and unescaped local scalars without explicit calls,
+checking later uses and rejecting relevant control-flow/assembly barriers.
+Changed masks, narrowed intermediates and retained masked values keep their
+existing behavior. Net production growth across the two compiler files is
+**43 lines, with no new functions**.
+
+The full pinned comparison passes: **104 builds, 1856 calls and 24 independent
+timing checks**, with all **78 external controls exact**. Against immediate
+parent `6546a16`, the RA-mode results are:
+
+| Workload | Kernel bytes before / after | Kernel T-states before / after | Calls |
+| --- | ---: | ---: | ---: |
+| Product/restore | 196 / 147 | 61998 / 42415 | 17 |
+| Partition/restore | 192 / 119 | 61426 / 39321 | 17 |
+| Array workload | 1790 / 1668 | 7742998 / 6403660 | 20 |
+| Stencil workload | 1813 / 1740 | 4641994 / 4405850 | 20 |
+| Path workload | 1732 / 1659 | 7198007 / 7172413 | 20 |
+
+Kernel bytes include required dependencies, so the workload rows also measure
+the benefit of shared calculation routines. Both RA and non-RA improve in these
+five workloads; the other eight workloads are unchanged. Geometric RA kernel
+size falls **6.8%**, and kernel T-states **7.9%**. All 26 SSC rows are
+non-regressing in all eight measured fields; wrappers and every stack/frame
+footprint field are unchanged. The immutable original baseline is retained.
+Normal/traced assembly, ROMs and metrics match for all 26 SSC benchmark rows.
+
+The existing execution runner gains one dedicated divmod cohort, not another
+harness. Its 38 new variants separately check quotient snapshots and remainder
+returns, byte/word and signed-extension boundaries, runtime zero divisors,
+changed operands, overwritten inputs, reverse/repeated pairs, calls, aliases,
+bulk initialization and XOR cancellation/fallbacks. The 64-seed focused run
+checks 2944 calls per executed mode. The same independent value/full-buffer
+oracles pass against the saved parent compiler, while the new assembly assertion
+rejects that parent as intended. All five normal/traced focused ROMs match.
+
+All **175 fixtures pass without snapshot updates**. The full nine-cohort
+64-seed allocator corpus, 28 real routines, four-seed ASan corpus and all 32
+immutable verifier rejection controls pass; all 55 traced/ASan allocator and
+real-project ROMs match. The condition corpus and 18 comparison-tool tests pass
+in normal/traced/ASan builds, all 140 condition ROMs match, and the comparison
+tests also pass under `python -O`. MSVC builds, strict ANSI GCC normal/traced
+checks for both changed compiler files and Pylance syntax validation pass.
+
+Both complete calculation projects rebuild with identical normal/traced ROMs.
+Used ROM falls **20764 -> 20691** and **33393 -> 33207** bytes; padded images
+remain 65536 bytes. Evidence is retained privately under
+`C:\cygwin64\tmp\shared-divmod-20261019`, including the full comparison and
+aggregate qualification record. No whole-program competitor parity is claimed.
+
+#### 2g. Masked-Condition Branch Folding
+
+- Fold single-use mask/zero-test conditions into direct bit or flag tests.
+  The CRC high-bit condition currently materializes an entire masked word first.
+- Preserve value-producing masks, other live uses, widths, side effects and
+  short-circuit behavior. Keep target instruction legality in the backend.
+
+Acceptance: qualify taken/not-taken branches, byte/word masks and boundary bits,
+plus shared/value-use fallbacks. Reduce CRC condition work and rerun the existing
+condition execution corpus; do not infer correctness from a smaller listing.
+
+##### Step 2g Implementation Checkpoint
+
+The existing Z80 ALU dispatcher now folds a constant AND followed by a zero
+equality/inequality branch when verified temporary metadata proves exactly one
+definition and use. The nonzero mask must fit entirely in one byte of the actual
+source, promoted source and result. Single-bit masks use `BIT` directly on the
+existing physical register byte or indexed frame byte; other one-byte masks
+reuse accumulator materialization and the existing immediate AND flags.
+
+Location/address resolution, branch emission and instruction attribution reuse
+existing machinery. Only dead TACs may intervene; the emitter consumes the
+adjacent branch without changing verified TAC. Global sources, shared/coalesced
+temporaries, raw masked values, dynamic/multi-byte masks, nonzero comparisons,
+extension/truncation hazards and intervening operations retain the original
+path. Calls and short-circuit effects are not skipped. All instruction selection
+stays Z80-local. Net production growth is **67 lines in one existing function's
+path, with no new functions, runtime helpers or TAC opcodes**.
+
+The full pinned comparison passes: **104 builds, 1856 calls and 24 independent
+timing checks**, with all **78 external controls exact**. Against immediate
+parent `5474336`, these four RA-mode workloads improve:
+
+| Workload | Kernel bytes before / after | Kernel T-states before / after | Calls |
+| --- | ---: | ---: | ---: |
+| Packed CRC | 927 / 915 | 14752198 / 12802502 | 17 |
+| Tile workload | 1264 / 1232 | 2375502 / 2165246 | 20 |
+| Array workload | 1668 / 1656 | 6403660 / 6372748 | 20 |
+| Path workload | 1659 / 1648 | 7172413 / 7139013 | 20 |
+
+The CRC high-bit test now uses `BIT 7,(IX-10)` and the original zero branch,
+without constructing a masked word. CRC kernel T-states fall **13.2%**, and
+tile T-states **8.9%**. Across all 13 RA workloads, geometric kernel size falls
+**0.4%** and kernel T-states **1.9%**. The other nine RA rows and all 13 non-RA
+rows are unchanged. All 26 SSC rows are non-regressing in all eight fields;
+wrappers and every stack/frame footprint field are unchanged. Normal/traced
+benchmark assembly, ROMs and metrics match. The immutable baseline is retained.
+
+The existing condition runner now covers **772 typed mask/form combinations**
+and **64848 additional value/branch/width/side-effect executions per build**.
+These include byte/word and signed boundaries, both operand orders, taken and
+not-taken branches, raw/shared values, narrowing, source mutation, dynamic masks,
+physical sum results, wide frames and effectful calls/short-circuit evaluation.
+The same generated sources and independent value/full-buffer oracles pass
+against the saved parent compiler; only the new instruction-selection test
+rejects that parent as intended. All 25 condition/comparison tests pass in
+normal/traced/ASan builds. Their 150 program ROMs and 150 independently assembled
+counter images match across all three builds. The 18 comparison-tool tests also
+pass under `python -O`.
+
+All **175 fixtures qualify**, including one intentional low-byte mask snapshot
+and trace-assertion update: `LD A,(IX-6); AND A,1; SUB A,0` becomes
+`BIT 0,(IX-6)`, reducing that marked sequence from 24 to 21 bytes. The unchanged
+parent snapshots were checked first; the updated fixture passes on recheck.
+The full nine-cohort 64-seed allocator corpus, 28 real routines, four-seed ASan
+corpus and all 32 immutable verifier rejection controls pass. All 55 traced/ASan
+allocator and real-project ROMs match. MSVC builds, strict ANSI GCC normal/traced
+checks and Pylance syntax validation of the condition tests pass.
+
+Both complete calculation projects rebuild with identical normal/traced ROMs.
+Used ROM falls **20691 -> 20679** and **33207 -> 33134** bytes; padded images
+remain 65536 bytes. Evidence is retained privately under
+`C:\cygwin64\tmp\masked-branches-20261020`, including the full comparison and
+aggregate qualification record. No whole-program competitor parity is claimed.
+
+#### 2h. Further Loop-State And Address Retention
+
+- Reuse bounded loop analysis to retain eligible counters/accumulators and replace
+  repeated base-plus-index reconstruction with advancing addresses.
+- Prioritize sum/copy and CRC. A 256-byte copy still performs 4105 kernel stack
+  reads and 1029 writes, versus stock SDCC speed mode's 1548 reads and eight writes.
+- Preserve alias, escape, clobber, overflow, boundary and fallback contracts.
+  Consider block instructions only after proving zero-count and overlap semantics;
+  do not generalize Z80 register/instruction assumptions into the shared core.
+
+Acceptance: reduce measured frame traffic and kernel cycles in byte loops and
+at least one realistic workload. Check full buffers, wraps, overlap direction,
+calls/pressure fallbacks and complete frame footprint, not just SP displacement.
+
+#### 2i. Argument Staging Within The Existing ABI
+
+- Coalesce single-use argument staging only when source evaluation order,
+  intervening effects, aliases, widths and final argument slots are proved safe.
+- Avoid loading a value into a caller-frame temporary only to copy it into the
+  callee frame immediately afterwards. Reuse existing call transport descriptors.
+- Preserve banked, cross-file, recursive, nested, indirect and assembly-facing
+  contracts. Any register-argument ABI remains a separate explicit, gated change.
+
+Acceptance: reduce caller bytes/cycles without altering the convention; cover
+mixed-width arguments, side-effect/alias fallbacks, nested calls and exact SP/DE
+restoration. Keep kernel and wrapper measurements separate.
+
+Checkpoint (2h/2i combined): reuse the existing local optimizer, allocation
+metadata, target-transparency predicate and emitters. The production change is
+**174 net C lines, with no new production functions**, against parent `678a93e`.
+No new IR operation, register-argument convention or shared-core Z80 assumption
+is introduced.
+
+For 2h, retain the bounded unsigned word index in BC across an in-place word
+accumulation when its single-use source is proved to be an unsigned byte array
+read. Add the low byte and increment the accumulator's high byte only on carry;
+keep the backing accumulator current, including when its address escapes.
+The existing target predicate and emitter use the same proof. Signed-byte and
+word-array sources keep the old full-width path; calls and pressure retain
+their existing allocation fallbacks.
+
+Also reuse the array reader's byte in L for an immediately following local-byte
+comparison against a constant. Keep the original backing store for later reads
+and aliases. Skip only dead TACs: labels, calls and other instructions are
+barriers. Word comparisons retain their old path. This removes a real decoder
+frame reload without adding a register cache, CFG promotion or speculative
+incoming-path state.
+
+Immediate-parent RA kernel measurements from the unchanged comparison corpus:
+
+| Workload | Kernel bytes | Kernel T-states | Kernel stack reads | Kernel stack writes |
+| --- | ---: | ---: | ---: | ---: |
+| Sum, 17 calls | 130 -> 102 | 381402 -> 240653 | 10544 -> 5320 | 2932 -> 1480 |
+| PackBits decoder, 16 calls | 567 -> 565 | 160257 -> 159912 | 4456 -> 4433 | 1278 -> 1278 |
+| Packed CRC, 17 calls | 915 -> 913 | 12802502 -> 12801227 | 214591 -> 214506 | 99042 -> 99042 |
+
+For a single 256-byte sum, kernel T-states fall **101862 -> 63872**, stack
+reads **2827 -> 1415** and writes **775 -> 387**. Maximum SP/access extent
+falls **24 -> 22** bytes and complete frame footprint **26 -> 24** bytes.
+The realistic 64-call CRC run separately falls **48197696 -> 48192896**
+T-states and **807744 -> 807424** frame reads. These decoder/CRC gains are
+small, not competitor parity. Copy/fill and all other comparison rows remain
+unchanged; general advancing-address and block-instruction selection remains
+further target-specific work, not an unqualified rewrite in this checkpoint.
+
+For 2i, extend the existing single-use copy optimizer rather than creating a
+second call transport path. Coalesce staging only with one write/read,
+conversion identity and a stable constant, immutable temporary or proven
+unescaped caller local. Named word constants additionally require one reaching
+call use, no escape/control/assembly ambiguity and no later read before
+redefinition or end. Preserve ordinary non-call/switch substitutions and all
+existing banked, cross-file, recursive and assembly-facing conventions.
+
+Focused RA caller sections and total T-states over 64 seeds:
+
+| Scenario | Caller bytes | T-states |
+| --- | ---: | ---: |
+| Local word across nested call | 180 -> 156 | 88704 -> 80128 |
+| Constant across multiple nested calls | 267 -> 231 | 133376 -> 119936 |
+| Mixed-width transport | 295 -> 259 | 142208 -> 129344 |
+| Recursive nested calls | 206 -> 188 | 215840 -> 200720 |
+| Large-frame pressure/named word constant | 590 -> 548 | 275840 -> 261120 |
+
+Escaped-local writes, direct argument updates and mutable-global snapshots are
+three exact byte/cycle/traffic fallbacks. The conservative-mode ROMs remain
+identical to the parent. A named-constant guard was tightened after detecting
+four extra frame reads/writes in `calculateAndPrint5`; final qualification has
+no such regression. With decoder forwarding, that real routine improves
+**1803691 -> 1803541** T-states and **31984 -> 31974** frame reads.
+
+Qualification: all **175 fixtures pass without snapshot changes**. The full
+**104-build / 1856-call** pinned comparison and 24 independent timing checks
+pass; all **26 SSC rows are non-regressing in all eight recorded metrics** and
+all 78 external controls remain exact. Wrappers are unchanged. Normal/traced
+assembly and ROMs match for all 26 SSC builds.
+
+The existing execution harness covers 17 loop/read-forwarding variants and
+eight staging variants, with independent values/full-buffer oracles, boundary
+bytes, zero/one/127/128 counts, word wraps, forward overlap, signed/word-source
+fallbacks, wide frames, aliases, calls and label barriers. Saved-parent oracles
+pass and the parent rejects each new selection assertion. The full 11-cohort
+64-seed allocator corpus, all 28 real routines, four-seed ASan corpus and all
+32 immutable verifier rejection controls pass. All 65 traced/ASan program ROMs
+match; no real routine regresses in cycles, frame reads or writes.
+
+MSVC builds and strict ANSI GCC normal/traced checks pass for both changed C
+files; Pylance reports no harness syntax errors. Condition/comparison suites
+pass all 25 tests in release, traced and ASan configurations, with 300 identical
+program/counter images; all 18 comparison tests also pass under `python -O`.
+Both complete calculation projects rebuild with identical normal/traced ROMs:
+used ROM **20679 -> 20677** and **33134 -> 33134** bytes, still padded to 65536.
+Evidence is retained privately under
+`C:\cygwin64\tmp\loop-call-qualified-20261020`.
+
+### Source-Guided Follow-ups After Step 2i (2026-10-20)
+
+Complete these five bounded steps in order before initial SM83 work. The source
+study examined [stock SDCC r17016](https://svn.code.sf.net/p/sdcc/code/!svn/bc/17016/trunk/sdcc/src/z80/gen.c),
+its allocator and SM83 rules, and sccz80 plus the SDCC patches shipped with
+[z88dk 2.4](https://github.com/z88dk/z88dk/releases/tag/v2.4). The shipped patch
+targets SDCC r15248, not the measured z88dk/SDCC binary's r15242; treat it as
+algorithmic guidance, not exact binary provenance.
+
+Reuse existing TAC/loop analysis, target costs, location resolution and emitters.
+Do not replace the allocator, import a large peephole rule engine or duplicate
+completed constant word shifts/multiplies, quotient/remainder reuse and masked
+branches. These are prospective improvements, not measured gains or completed
+implementation claims. Existing checkpoint gates apply to every code change.
+
+#### 2j. Advancing-Pointer Copy/Fill Loops
+
+- [x] Recognize bounded simple loops using existing analysis; maintain advancing
+  addresses instead of reconstructing `base + index` on every iteration.
+- [x] Compare scalar pointer loops, tiny straight-line sequences, `DJNZ`,
+  unrolled `LDI` and `LDIR` using full setup/preservation costs. Keep a generic
+  word-count fallback; competitor builtin lowering does not prove arbitrary
+  source loops are recognized or eligible.
+- [x] Preserve DE's frame-pointer contract, source-order overlap behavior,
+  zero/256 counts, address wrap, clobbers and observable memory effects.
+  Seed-plus-`LDIR` fills introduce reads and must not replace store-only loops
+  where those reads are observable. Keep instruction selection target-local.
+
+Acceptance: reduce byte-copy/fill bytes and cycles without regression, and
+measure a real decoder/array workload. Check complete buffers and guards,
+zero/one/255/256 counts, word wraps, overlapping source/destination in both
+directions, calls, aliases, register pressure and complete frame footprint.
+
+Step 2j checkpoint (2026-10-20):
+
+- Added one bounded Z80-emission helper using existing verified TAC, allocator
+  intervals, location/address resolution and assignment emitters. It recognizes
+  canonical zero-based, unit-stride unsigned word-counter loops with a stable
+  word bound or positive constant, one byte store and at most one byte read.
+  Eligible affine offsets wrap at 16 bits. Verified TAC, allocator assignments,
+  frame layout and calling conventions remain unchanged; there is no new IR,
+  analysis framework or cross-block register/address cache.
+- Copies advance HL/DE directly: one byte uses a load/store, two bytes use `LDI`
+  and a final load/store, and larger/dynamic counts use `LDIR`. The original
+  forward load-then-store order is preserved, including overlapping copies;
+  this is not a `memmove` transformation. DE is saved only in an already
+  allocated private word slot that is dead during the fused loop. If none is
+  available, retain the original emission rather than adding stack usage.
+- Fills remain store-only: 1-3 constant bytes use straight-line stores,
+  4-256 use `DJNZ`, and dynamic/larger word counts use a guarded two-level
+  byte-count loop. Do not seed an `LDIR` fill and introduce extra memory reads.
+  Zero counts skip the body; observed exit-counter values are reconstructed
+  through the existing assignment emitter. Both incoming paths establish the
+  existing IX=DE fact before it is reused.
+- Unsupported forms keep existing emission: signed/nonzero/strided counters,
+  byte-width dynamic bounds, word arrays, internal branches, calls or changing
+  pointers in the body, escaped or mutable scalar inputs, live extra
+  temporaries, external control-flow entries, inline assembly and pure-assembly
+  functions. Fixed global/local byte arrays and stable pointer arguments are
+  supported; mutable global pointer/bound/fill scalars are not.
+
+Against immediate parent `66ab52f` (the compiler from the step 2h/2i checkpoint):
+
+| Workload | Kernel bytes, before -> after | Kernel T-states / 17 calls | Kernel T-states / 256-byte call |
+|---|---:|---:|---:|
+| `copyBytes` | 130 -> 76 | 490,891 -> 26,659 | 131,965 -> 5,804 |
+| `fillBytes` | 67 -> 60 | 190,327 -> 32,239 | 50,700 -> 7,722 |
+
+- Copy is 41.5% smaller with 94.6% fewer aggregate kernel T-states; fill is
+  10.4% smaller with 83.1% fewer. On the 256-byte call, benchmark kernel stack
+  reads/writes fall from 4,105/1,029 to 14/4 for copy and from 1,286/2 to 9/2
+  for fill. These counters are not the allocator harness's frame-traffic metric.
+- Wrapper bytes/cycles are unchanged. Copy's SP high-water remains 25 bytes,
+  stack-access extent improves 25 -> 24 and complete frame footprint stays 27.
+  Fill remains 20/20/22 respectively; maximum below-SP access stays 8 for both.
+- Measured real decoder/array controls are unchanged: `unpackPackBits` is
+  565 bytes / 159,912 T-states, `calculationArrayWorkload` is 1,656 / 6,372,748,
+  and `calculationPackedCrc` is 913 / 12,801,227. The other benchmark workloads
+  and all 28 separately executed real routines' cycles/frame traffic are also
+  unchanged. This batch does not claim a decoder/array/CRC improvement.
+- The full eight-configuration comparison passes 104 builds / 1,856 calls:
+  all eight tracked metrics are non-regressing in every row, all 78 external
+  controls and all 13 no-RA rows are exact, and all 26 normal/traced SSC
+  assemblies, ROMs and measurements match. The existing 24 independent timing
+  checks pass, plus eight separate 256-byte copy checks against z88dk-ticks
+  with exact whole-call cycle, value and complete-buffer agreement.
+- Added 38 generated loop variants (22 selected, 16 conservative fallbacks)
+  plus eight arithmetic controls: 2,944 independent value/full-buffer executions
+  per mode at 64 seeds. Covers zero through 512, 255/256/257 transitions,
+  16-bit affine-offset wrap, overlap in both directions, wide/local-array
+  frames, post-loop counter reads, calls, escapes, byte bounds and pressure.
+  All 456 individual variant/boundary cases are non-regressing in cycles and
+  frame reads/writes against the saved parent; fallback cases remain exact.
+  Parent/current default and all-spill ROMs match, normal/traced ROMs match,
+  and the saved parent fails the new selection assertion as intended.
+- Qualification passes all 175 fixtures without snapshot changes; 12 allocator
+  cohorts with 32 immutable verifier-rejection controls each; 28 real routines;
+  traced/ASan identity for 70 ROMs; and a separate 12-seed ASan byte-loop run
+  through 512. All 25 condition/comparison unit tests pass in release, traced
+  and ASan builds, with 300 identical ROM/counter images; 18 comparison tests
+  also pass under Python `-O`. MSVC builds, Python syntax/diagnostics and strict
+  ANSI C normal/traced compilation pass; the latter excludes only existing
+  unused-parameter warnings.
+- Both complete calculation ROMs rebuild identically in normal/traced mode:
+  used bytes remain 20,677 and 33,134, not their 65,536-byte padded sizes.
+  Production growth is **322 net C lines and one helper**, confined to the
+  Z80 emitter; the allocator core and pass 5 are unchanged. The helper reuses
+  existing lowering/address machinery instead of adding a parallel optimizer.
+- Retained qualification, saved-parent controls and independent timing evidence:
+  `C:\cygwin64\tmp\advancing-loops-20261020\final`.
+
+#### 2k. Constant Byte Arithmetic And Multiplication Setup
+
+- [x] Specialize constant byte shifts in the existing emitter; compare unrolled
+  shifts with accumulator rotate-and-mask sequences for unsigned values,
+  including transfers, result width and flag/register clobbers.
+- [x] Add only profitable constant byte multiplication sequences within the
+  existing arithmetic path. Cost additions and subtractions for the actual
+  operand width; do not assume byte signed-digit choices also suit word results.
+- [x] Select existing constant word multiply chains before unnecessary generic
+  operand setup, DE saves/loads and restoration. Preserve the established word
+  shift/multiply paths, budgets and conservative fallbacks.
+
+Acceptance: exhaustively check byte operands for selected constants and shift
+counts, plus signed/promoted results, word boundaries, aliases and pressure.
+Show exact instruction-selection changes and measured bytes/cycles; preserve
+the compiler's existing shift semantics and default size/speed contract.
+
+Step-2k checkpoint (2026-10-20):
+
+- Merged the two byte-shift helpers. Constant counts select unrolled byte
+  shifts, accumulator doubling, or shorter rotate-and-mask sequences, including
+  transfers and masks in the cost. Zero and oversized counts avoid runtime
+  loops; dynamic counts retain the existing implementation.
+- Promoted operations enter the byte path only for an actual byte source and
+  byte result: left shifts, or unsigned right shifts. Signed promoted right
+  shifts and genuine word operations keep their existing word behavior.
+  Constant counts retain their original byte/word width, including propagated
+  256 and negative counts; they are not blindly truncated to eight bits.
+- Shared constant-multiply selection runs before generic operand setup and
+  reuses existing result stores and BC materialization. Byte results compare
+  addition, subtraction and modulo-byte negation sequences within a 15-byte
+  budget, including source preservation and result transfer. Word chains retain
+  their 18-byte budget; byte operands widened to a word use a stricter 13-byte
+  budget against the smaller byte runtime multiply. Full-word products never
+  use byte-only modulo shortcuts, and unprofitable constants retain the
+  generic implementation. Selected chains omit unused DE saves/loads/restores.
+- Representative RA function measurements against the saved immediate parent
+  (`60c1006`); cycles below cover 256 exhaustive byte-input calls, not a single
+  operation:
+
+  | Case | Function bytes before -> after | T-states before -> after |
+  |---|---:|---:|
+  | Byte result `*3` | 56 -> 45 | 152,320 -> 66,048 |
+  | Byte result `*15` | 56 -> 48 | 152,320 -> 69,120 |
+  | Byte result `*255` | 56 -> 44 | 152,320 -> 65,024 |
+  | Widened `*255` plus `*7` | 98 -> 91 | 288,256 -> 212,992 |
+  | Byte result `<<4` | 47 -> 47 | 75,008 -> 68,096 |
+  | Byte result `<<7` | 52 -> 46 | 85,760 -> 66,816 |
+
+- All 104 comparison builds / 1,856 calls are non-regressing in size, cycles
+  and stack measurements; all 78 external-compiler rows remain exact. RA array,
+  stencil, tile and path kernels shrink respectively 1,656 -> 1,641,
+  1,740 -> 1,735, 1,232 -> 1,212 and 1,648 -> 1,643 bytes. Their aggregate
+  kernel T-states fall 6,372,748 -> 6,351,978; 4,405,850 -> 4,400,146;
+  2,165,246 -> 2,150,676; and 7,139,013 -> 7,099,333. No-RA improves too;
+  caller overhead stays exact. All 26 normal/traced comparison images match.
+- Added 76 arithmetic variants to the existing generator, plus eight controls:
+  84 functions / 21,504 executions per mode with all 256 byte inputs. Cover
+  signed/unsigned values, both constant operand orders, assignment aliases,
+  count boundaries, widened products and dynamic fallbacks. Saved-parent,
+  release, traced and ASan runs pass the independent oracles; every function's
+  size, cycles and frame traffic are non-regressing. Current images match in
+  all five build modes across release/traced/ASan, default/no-RA stay identical,
+  and the saved parent fails the new instruction-selection assertion.
+- All 175 fixtures pass: refreshed 37 exact opcode regions in 16 fixtures
+  against saved-parent bytes (34 smaller, three same-size), plus the byte
+  shift-result register assertions, retaining lifecycle/alias/spill checks.
+  All 14 allocator cohorts pass 32 immutable verifier-rejection controls each;
+  28 real routines have non-regressing cycles/frame traffic; 80 traced/ASan
+  ROMs match. The 24 standard independent timing checks pass, plus 80 additional
+  selected-arithmetic checks using `z88dk-ticks`, exact values and full buffers.
+- All 25 condition/comparison tests pass in release, traced and ASan builds,
+  with 300 identical ROM/counter images; 18 comparison tests also pass under
+  Python `-O`. MSVC, Python syntax/diagnostics and strict ANSI C normal/traced
+  builds pass; the latter excludes only pre-existing unused-parameter warnings.
+  Complete calculation ROM used sizes are 20,677 -> 20,677 and
+  33,134 -> 32,819 bytes, with identical normal/traced 65,536-byte padded images.
+- Production growth is **31 net C lines and zero net functions**. Reused the
+  existing address/result machinery, removed duplicated word materialization
+  and obsolete assembly comments, and left pass 5 and allocator contracts
+  unchanged. Retained qualification and saved-parent evidence:
+  `C:\cygwin64\tmp\byte-arithmetic-20261020\final`.
+
+#### 2l. Proven Bounded-Counter Narrowing
+
+- [x] Reuse bounded-loop analysis to prove initialization, bounds and updates
+  before selecting byte execution for a source word counter.
+- [x] Check all counter uses, values observed after exit, conversions, escapes
+  and wrap behavior. Reject unknown ranges or interfering updates; do not infer
+  safety from array undefined-behavior assumptions borrowed from another compiler.
+- [x] Start with the CRC's proven 0-7 bit counter, which SDCC executes in one
+  byte while SameSameC retains BC. Measure register availability and compare/
+  increment costs before considering a separate countdown/`DJNZ` selection.
+
+Acceptance: reduce a measured hot-loop cost without changing language-level
+types or observable values. Cover zero-trip loops, nested loops, early exits,
+post-loop reads, 255/256 boundaries, wrapping/escaped counters and unchanged
+fallbacks. Keep any byte-counter instruction choice target-specific.
+
+Step-2l checkpoint (2026-10-20):
+
+- Extracted the existing copy/fill loop's initialization, guard and latch checks
+  into one shared target-local counter proof. Byte selection requires a source
+  `u16` temporary, an initialization and constant upper bound in 0-255, exactly
+  two definitions, a guarded unit increment and one canonical backedge. Reject
+  side entries, extra writes, address-taking, inline assembly and calls inside
+  the loop; unknown bounds, signed counters and 256/wrapping cases keep the
+  existing word paths. This does not infer ranges from array undefined behavior.
+- Reused the existing unsigned byte comparison emitter and direct increment
+  paths. A retained BC counter compares C and uses `INC C`; a spilled word
+  counter compares/increments its low byte without carry handling. Original
+  word initialization keeps the high byte zero, including on zero-trip and
+  early-exit paths. Source types, word-sized backing slots and full-word reads
+  after the loop remain unchanged, including subsequent signed narrowing.
+- BC remains reserved as a word pair: B is not opportunistically allocated to
+  another value. No allocator metadata, frame packing, ABI or pass-5 changes,
+  and no countdown/`DJNZ` rewrite or value reconstruction. The CRC's existing
+  BC reservation is sufficient: its guard is three bytes shorter, and its
+  increment drops from six to four T-states.
+- Immediate-parent (`7ac07df`) RA workload measurements; kernel bytes include
+  the same required helpers, and cycles cover the existing benchmark inputs:
+
+  | Kernel | Bytes before -> after | T-states before -> after |
+  |---|---:|---:|
+  | Packed CRC | 913 -> 910 | 12,801,227 -> 12,026,571 |
+  | Stencil | 1,735 -> 1,717 | 4,400,146 -> 4,336,246 |
+  | Tile | 1,212 -> 1,209 | 2,150,676 -> 2,073,424 |
+
+  CRC is 6.1% faster, stencil 1.5% and tile 3.6%. All 104 comparison builds /
+  1,856 calls are non-regressing in size, cycles and stack measurements.
+  All 78 external rows, 13 no-RA rows and caller costs stay exact; all 26
+  normal/traced comparison images match.
+- Extended the existing word-counter family by 30 variants and moved it into a
+  dedicated cohort rather than adding a parallel generator. Its 38 variants
+  plus eight controls run 2,944 cases per mode with 64 seeds. Cover zero trips,
+  nonzero starts, nested loops, break/continue, post-loop word reads, signed
+  conversions, 255/256 boundaries, escaped reads, interfering updates, calls,
+  reused counters and pressure. Nineteen variants select byte execution; the
+  other nineteen retain exact sizes, cycles and frame traffic.
+- Every focused function is non-regressing against the saved parent. Parent,
+  release, traced and ASan executions pass independent value/full-buffer oracles;
+  current images match across all five build modes in release/traced/ASan.
+  Parent/current default and all-spill images stay identical, and the saved
+  parent fails the new selection assertion. All 24 standard independent timing
+  checks pass, plus 34 additional counter/fallback/workload checks using
+  `z88dk-ticks`, exact values and complete buffers.
+- All 175 fixtures pass without snapshot updates; 15 allocator cohorts pass
+  32 immutable verifier-rejection controls each; all 28 real routines have
+  non-regressing cycles/frame traffic; and 85 traced/ASan ROMs match. All
+  25 condition/comparison tests pass in release, traced and ASan, with 300
+  identical ROM/counter images; 18 comparison tests also pass under Python
+  `-O`. MSVC, Python syntax/diagnostics and strict ANSI C normal/traced builds
+  pass; the latter excludes only pre-existing unused-parameter warnings.
+- Complete calculation ROM used sizes fall 20,677 -> 20,674 and
+  32,819 -> 32,798 bytes, with identical normal/traced padded images.
+  Production growth is **99 net C lines and one shared helper**, including the
+  removed duplicate copy/fill checks. No new allocator state or test helpers.
+  Qualification, source/binary hashes and saved-parent evidence:
+  `C:\cygwin64\tmp\bounded-counter-20261020\final`.
+- A separate alias-written counter already fails in the saved parent and
+  remains unchanged in the final compiler. Its reproduction is retained as
+  `known-parent-escape-before-init.json` in that evidence directory, not counted
+  as a passing control or silently fixed here. The escaped-read fallback above
+  passes independently; the unrelated alias-write optimizer issue remains open.
+
+#### 2m. Lowering-Aware Costs And Local Address Reuse
+
+- [x] Extend current profitability hooks to account for actual address setup,
+  transfers, width extension and saves/restores where estimates currently omit
+  them. Keep frequency and size/cycle policy explicit.
+- [x] Reuse existing address helpers/cache for proven nearby addresses within
+  basic blocks rather than introducing parallel state or a new optimizer.
+- [x] Invalidate facts on relevant register writes, calls, assembly and control
+  boundaries. Do not retain cached addresses across joins without proving every
+  incoming path establishes the same value.
+
+Acceptance: correlate changed decisions with emitted sequences and measured
+bytes/cycles/frame traffic. Exercise cache hits and invalidation, wide offsets,
+pressure and unknown-cost fallbacks. Preserve immutable verification and
+normal/traced equivalence; do not add a dry-run framework without measured need.
+
+Step-2m checkpoint (2026-10-20):
+
+- Replaced the existing IX=DE Boolean with one known IX=DE+offset fact, not a
+  second cache. The shared address helper reuses signed displacements in
+  `[-128,126]`, reserving displacement 127 for a word's high byte. Nearby rebases
+  use one or two INC/DEC IX instructions only: 2/4 bytes and 10/20 T-states beat
+  the full 6-byte/29-T-state setup. Three adjustments cost 30 T-states and are
+  rejected. The same fact supports existing pointer-base reads and arithmetic
+  save/restore paths; removed the duplicate uncached address emitter and its
+  now-unused ADD IX helper, retaining the byte helper's existing forced-cold
+  operand contract through the shared emitter.
+- Corrected the existing profitability callback's byte array-index transfer
+  charge: A/B require a 4-T-state/1-byte move into C; C requires none. The focused
+  A candidate's estimated saving changes from 38 T-states/6 bytes to 34/5.
+  Audited the existing signed-index extension delta against its actual
+  preserving/non-preserving sequences: worst-case 27 versus 16 T-states, seven
+  versus four bytes, and no extra saves/restores. Keep the existing explicit
+  frequency estimate, 256-instruction bound, cycles-without-byte-growth policy
+  and unknown-cost fallback. Early allocation cannot assume an emitter cache
+  fact or a not-yet-assigned temporary spill offset; late address choices use
+  the actual proven fact instead of adding a dry-run framework.
+- IX/DE writes, calls, unknown raw assembly and ordinary labels invalidate the
+  fact. Compiler-generated assembly variable accesses retain it only while
+  their actual register writes permit it. No new facts cross joins. Existing
+  arithmetic frame saves restore the matching fact; the linker copy helper
+  demonstrably preserves IX and POP DE restores its original frame relation.
+  TAC, allocation metadata, frame layout and ABI contracts are unchanged.
+- Added 24 address/pressure/boundary/barrier probes through the existing
+  generator and independent oracle, plus its eight arithmetic controls:
+  32 functions and 2048 executions per mode. Cover 2..384-byte arrays, both
+  profitable adjustment thresholds, the three-step fallback, bounded high-byte
+  displacements, globals, calls, raw IX-clobbering assembly, joins, multiply/
+  divide, unknown shift costs and signed/unsigned byte indexes. Parent/current
+  sources are identical; the saved parent fails the new selection assertions.
+  A representative wide-frame probe drops from 264 to 200 bytes and from
+  94784 to 75008 T-states over 64 calls. Frame reads/writes remain unchanged;
+  these are address-setup savings, not a claimed frame-traffic reduction.
+- The full 104-row/1856-call comparison passes, with all 78 external and 13
+  no-RA C controls exact. Pathfinding drops from 1643 to 1439 kernel bytes and
+  from 7099333 to 6235713 aggregate kernel T-states; caller costs and complete
+  frame-footprint observations are unchanged. In the separate real-project
+  corpus, actor and path workloads improve from 33003283 to 26504847 and from
+  25373751 to 22229194 T-states, respectively.
+- Explicit safety tradeoff: three hand-written assembly helpers previously
+  carried an unproved IX fact through raw assembly. Invalidating it adds two
+  cold setups, 12 bytes/58 T-states per call, in RA and no-RA modes.
+  Their three-call bank wrapper adds 174 T-states. These are recorded
+  exceptions, not hidden non-regression claims; all results, buffers and frame
+  accesses remain correct. The unrelated alias-written counter failure recorded
+  in 2l still returns 42740 rather than 50814 and remains open.
+- Used whole-ROM bytes change from 20674 to 20650 and from 32798 to 31604.
+  Padded sizes remain 65536 and normal/traced images match. All 175 fixtures,
+  16 immutable-verifier cohorts, 28 real routines, 90 traced/ASan allocator ROM
+  identities, 300 three-build condition ROM identities, strict normal/traced
+  C89 builds, three MSVC builds and 105 independent timing checks pass.
+  Strict pass-5 compilation excludes its existing transposed-calloc warning,
+  independently reproduced in the saved parent, as well as unused parameters.
+- Updated 40 exact opcode regions in 16 fixtures from passing-parent/current
+  ROMs, preserving all non-opcode SSC source. Growing regions explicitly
+  include the required raw-assembly barriers. Net production change:
+  **16 fewer C lines and two fewer functions**. Evidence, saved 392790f sources/
+  binaries and the commit-bound qualification summary are retained in
+  `C:\cygwin64\tmp\lowering-costs-20261020\final`. No push.
+
+#### 2n. Leaf-Frame And Helper-Contract Audit
+
+- [x] Measure leaf prologue/epilogue and call-heavy costs after the preceding
+  improvements; identify redundant work in existing frame/call lowering.
+- [x] Audit existing helper input, result and preserved-register metadata.
+  Tighten only demonstrably over-conservative clobbers; qualify actual helper
+  effects before removing saves or retaining values across them.
+- [x] Keep the existing DE/frame and caller/callee ABI contracts. Frame-pointer
+  omission or register arguments require a separate explicit, gated proposal,
+  not a silent convention change to force an optimization.
+
+Acceptance: record measured safe removals, or explicitly close the audit with
+no profitable supported case. For changes, verify mixed widths, nested,
+recursive, banked, cross-file and assembly-facing calls, exact SP/DE restoration
+and complete frame footprint. Report caller and kernel costs separately.
+
+##### Step 2n Checkpoint (2026-10-20)
+
+Complete within the existing ABI, against immediate parent `708bbaf`. Reuse
+the existing frame-prefix policy, final frame size and generic setup emitters;
+no new production functions, allocator rules, convention or helper entry points.
+Net production change: **10 additional C lines**, confined to the Z80 prologue.
+
+- Normal callers already enter with SP at the saved DE's low byte, `DE-3`.
+  When the final frame needs zero to four further bytes, use that many `DEC SP`
+  instructions instead of `LD HL,offset; ADD HL,DE; LD SP,HL`. The zero-byte
+  case needs no setup. Keep the generic path for five or more bytes.
+- The full setup costs 5 bytes/27 T-states; each `DEC SP` costs 1 byte/6
+  T-states. Entries save 1-5 bytes and 3-27 T-states. Do not substitute PUSH:
+  arguments already occupy the incoming frame and must not be overwritten.
+  DE, all argument/result offsets, the final SP and complete frame footprint
+  remain unchanged. Pure-assembly functions and special `mainmain` handling
+  keep their existing paths; no frame-pointer omission is introduced.
+- Keep the existing IX-proven return shortcut and generic epilogue. The audit
+  found no further measured, supported epilogue or helper-save removal.
+  The setup cost gate is Z80-local, not an assumed SM83 instruction policy.
+
+The helper audit distinguishes the inner arithmetic body from the complete
+TAC's operand setup, extension and result storage:
+
+| Existing helper | Inputs and results | Why frame preservation remains necessary |
+| --- | --- | --- |
+| Byte multiply | H * E -> HL | Loading E replaces part of the frame pointer; the helper also writes D and B. |
+| Word multiply/divide/modulo | BC and DE -> HL, or CA quotient/HL remainder | The inner helpers preserve their DE operand, not the original frame pointer that operand setup replaced. |
+| Byte divide/modulo | H / E -> A quotient/B remainder | The inner helper preserves DE, but loading its E operand already changed the frame pointer. |
+| Bank-local initializer copy | DE source, HL target, BC byte count | The copy advances DE/HL and consumes BC; IX/IY preservation already supports the existing address-cache restoration. |
+
+All these helper/emitter bodies and the TAC clobber descriptors remain
+unchanged. Helper-only preservation is not permission to weaken masks that
+also cover address materialization, signed extension and result moves. Keep
+DE saves and the full ordinary-call/raw-assembly barriers.
+
+Measured focused leaf code bytes, including existing epilogues:
+
+| Further frame bytes | Parent -> current bytes | Entry T-states saved |
+| ---: | ---: | ---: |
+| 0 | 11 -> 6 | 27 |
+| 1 | 26 -> 22 | 21 |
+| 2 | 32 -> 29 | 15 |
+| 3 | 42 -> 40 | 9 |
+| 4 | 55 -> 54 | 3 |
+| 5, generic fallback | 65 -> 65 | 0 |
+
+The full 104-row/1856-call comparison passes. All kernel bytes/cycles, all
+complete frame observations and all 78 external controls remain exact.
+The packed-CRC RA caller wrapper improves **85 -> 82 bytes**, **469 -> 454
+T-states/call** (7973 -> 7718 over 17 calls); its kernel remains 910 bytes/
+12026571 aggregate T-states. The no-RA wrapper improves 97 -> 96 bytes and
+545 -> 542 T-states/call. Other comparison rows, including the 126-byte/
+729-T-state multiply/add caller, remain unchanged. All 28 real-project
+routines retain exact cycles and frame reads/writes. Used ROM decreases
+**20650 -> 20637** bytes for calculations-1 and **31604 -> 31591** for
+calculations-2, with normal/traced image identity. These are bounded small-frame
+wins, not a claim that general call-heavy overhead or competitor parity is solved.
+
+Eight new cases extend the existing call-staging cohort rather than adding
+another generator/cohort. They cover zero through five bytes, byte/word and
+signed arguments, word returns, argument integrity and fallback. Existing
+cases retain nested calls, recursion, wide frames, escaping arguments and
+mixed-width staging; the complete projects cover cross-file/banked and
+assembly-facing calls.
+
+Qualification also exposed a synthetic-entry error: the native execution
+harnesses initialized SSC callees/wrappers at `DE-1`, not the existing saved-DE
+entry position `DE-3`. Absolute prologue setup had hidden it. Correct both
+harnesses and the independent timing bootstrap; raw RET instruction probes
+explicitly retain their `DE-1` entry. Add exact entry-SP regression checks and
+keep external compiler conventions unchanged. Saved-parent focused execution
+and mixed-version tests use the same corrected entry, not a relaxed oracle.
+Explicit frame-size comments preserve static frame accounting for both old
+absolute and new zero/relative prologues.
+
+Release/traced/ASan qualification passes: 175-fixture coverage, including 26
+final affected-fixture rechecks; 16 immutable allocator cohorts and 28 real
+routines; 90 allocator and 300 condition ROM identities; 26 combined condition/
+comparison unit tests plus 19 optimized comparison units per build; strict C89
+normal/traced compilation. The 24-function focused cohort executes 1536 calls
+per mode/build with complete buffer and SP/DE checks. There are **192 independent
+timing checks**, including every setup threshold, and **40 mixed-version
+builds/340 guarded calls** covering both old/new directions. All 55 updated
+opcode regions in 26 fixtures retain their lengths and all non-opcode source;
+only relocated addresses change. The previously documented escaped-counter
+alias defect still returns 42740 rather than 50814; it is not counted as passing.
+
+Saved-parent binaries/source, raw reports and commit-bound qualification are
+retained in `C:\cygwin64\tmp\leaf-helper-20261020\final`. No push. At this
+checkpoint, steps 2a-2n were complete; the newly planned follow-ups 2o-2s below
+now precede initial SM83 work.
+
+### Profile-Guided Follow-ups After Step 2n (2026-10-20)
+
+Complete these five bounded steps in order before the initial SM83 backend.
+The fresh comparison at `141338d` passes 104 builds/1856 calls and 24 independent
+timing checks. Workload fingerprints and all 78 external control rows match the
+earlier profiles; results exactly reproduce the step 2n qualification.
+Reports and historical analysis are retained in
+`C:\cygwin64\tmp\z80-profile-141338d-20261020`.
+
+Against the profile after 2d, RA kernels are geometrically 14.6% smaller and
+use 40.4% fewer cycles. Remaining gaps include multiply/add at 70 bytes versus
+stock SDCC's 40, shift/restore at 83 versus 51, and byte sum at 102 versus 47.
+These competitor sizes use its size profile. Kernel-cycle parity across the
+whole corpus is not general parity: excluding copy/fill, RA still uses 1.38
+times stock SDCC's speed-profile cycles; the five large array/stencil/tile/
+pathfinding/CRC workloads use 1.55 times. Keep caller work separate: the
+multiply/add wrapper is 126 bytes/729 T-states versus stock SDCC's 20/114.
+The older 161/917 caller figures belong to the checkpoint before step 2e.
+
+Source guidance comes from SDCC r17016's operand-aware
+[Z80 generator](https://svn.code.sf.net/p/sdcc/code/!svn/bc/17016/trunk/sdcc/src/z80/gen.c),
+[loop induction](https://svn.code.sf.net/p/sdcc/code/!svn/bc/17016/trunk/sdcc/src/SDCCloop.c)
+and [branch rules](https://svn.code.sf.net/p/sdcc/code/!svn/bc/17016/trunk/sdcc/src/z80/peeph.def),
+plus runtime selection in sccz80 shipped with z88dk 2.4. Reuse the existing
+[TAC optimizers and local promotion](compiler/pass_5.c) and
+[Z80 emitters](compiler/pass_6_z80.c), not another optimizer or rule engine.
+Do not repeat completed 2j-2n work or treat these candidates as measured gains.
+The existing checkpoint gates apply to each implementation batch.
+
+#### 2o. Arithmetic-Produced Locals And Existing Pure-Expression Folds
+
+- [x] Extend the existing local-promotion eligibility where proven safe for
+  multiply/divide/modulo-produced named scalars. The multiply/add kernel previously
+  stored its product to the frame and immediately reloaded it; prefer existing
+  temporary retention and location resolution over another forwarding helper.
+- [x] Diagnose why the existing XOR-cancellation rule does not remove the two
+  XORs in shift/restore. Correct eligibility or pass ordering where justified;
+  do not add a duplicate rule or assume SDCC already cancels this example.
+- [x] Preserve matching types, promotions, operand stability, observable reads,
+  escapes, aliases and call/assembly barriers. Keep the full arithmetic TAC
+  clobber contracts and necessary DE saves audited in 2n.
+
+Acceptance: show the source/TAC/assembly cause and remove proven product frame
+traffic or redundant pure work with measured byte/cycle gains. Check mixed
+widths, signed boundaries, narrowing, multiple definitions/uses, escaping
+locals and intervening calls/writes. Measure caller, kernel and complete frame
+footprint separately; retain conservative fallbacks.
+
+#### Step 2o Checkpoint (2026-10-20)
+
+Reuse the existing local-promotion pass and three existing producer/consumer
+predicates rather than adding another forwarding helper or optimizer pass.
+Eligible word multiply/divide/modulo results now reach existing temporary
+retention. Reuse the same producer predicate for word shifts: after cancellation,
+shift/restore's initial shift otherwise becomes a named destination that cannot
+share temporary storage, increasing its frame footprint by two bytes.
+No production function is added; production C grows by **six net lines**.
+
+The existing XOR rule rejected later reads of the first named destination even
+when the second XOR overwrote that same destination with the restored value.
+Skip that later-read rejection only for this same-destination case. Keep the
+matching-type, stable-mask, escape, call and assembly guards; different
+destinations and changed masks retain their original behavior.
+
+Keep byte arithmetic-produced locals conservative. Reuse the existing
+`word_definitions` proof before promoting a new arithmetic producer: a named
+word product of two byte operands otherwise becomes a byte temporary and loses
+its high byte. Proven word-width mixed operands and shifts still qualify.
+Also keep **DIV/MOD consumers** on the original named-input path. Unrestricted
+promotion broke the existing shared quotient/remainder computation in product/
+restore and array workloads; reject that version and add a sharing regression.
+Arithmetic helper bodies, full TAC clobber masks, necessary DE saves and the
+public ABI remain unchanged.
+
+Against parent `b39815e` (the qualified `141338d` compiler), RA measurements are:
+
+| Workload | Kernel bytes before/after | Kernel T-states before/after | Observed whole-call frame bytes before/after |
+| --- | ---: | ---: | ---: |
+| Multiply/add | 70 / 58 | 20098 / 18806 | 26 / 24 |
+| Product/restore | 147 / 135 | 42415 / 41123 | 30 / 28 |
+| Shift/restore | 83 / 59 | 12042 / 9934 | 22 / 22 |
+| Array | 1641 / 1605 | 6351978 / 6241578 | 90 / 88 |
+| Stencil | 1717 / 1693 | 4336246 / 4267798 | 120 / 120 |
+
+Cycles aggregate 17 calls for the three small kernels and 20 for each workload;
+frame observations are maxima, not global RAM or unexecuted-path bounds.
+Multiply/add removes two product frame reads and two writes per call, saving
+76 T-states. Shift/restore removes both redundant XORs without enlarging its
+frame. Caller costs are unchanged, including multiply/add's 126 bytes/729
+T-states per call. All 26 RA/no-RA rows are non-regressing in bytes, cycles,
+caller costs and observed stack/frame metrics against the immediate parent.
+No-RA also benefits from XOR cancellation: shift/restore shrinks 131 to 83 bytes.
+Whole used calculation ROMs shrink **20637 to 20625** and **31591 to 31555**
+bytes; padded files remain 65536 bytes.
+
+Add 31 cases to the existing scalar-word generator/oracle and reuse the existing
+call-staging cohort to stay within one ROM bank; add no generator or cohort.
+The focused 41-function cohort passes **10496 calls per reported mode/build**
+with independent results, complete buffers and SP/DE checks. Cover signed and
+mixed-width products, byte-to-word widening, narrowing, redefinitions, multiple
+uses, escaping aliases, calls/writes, shifts, XOR guards and quotient/remainder
+sharing. The saved parent fails the new promotion selection; the rejected
+unrestricted version fails the division-input fallback.
+
+Final release/traced/ASan qualification passes: all **175 fixtures without
+snapshot updates**, 16 immutable allocator cohorts and 28 real routines,
+90 allocator and 300 condition ROM identities, 26 combined condition/comparison
+unit tests plus 19 optimized comparison units per build, and strict normal/
+traced C89 compilation. The full comparison passes **104 builds/1856 calls**,
+unchanged corpus fingerprints and all **78 external controls**. There are
+**36 independent timing checks** and **12 mixed-version builds/228 guarded
+calls** in both old/new directions. The separately documented escaped-counter
+alias defect remains 42740 rather than 50814 and is not counted as passing.
+
+Saved parent binaries, source hashes, rejected-version controls and final
+qualification are retained in `C:\cygwin64\tmp\arithmetic-locals-20261020`.
+No push. Step 2p is next; 2q-2s remain pending before the initial SM83 backend.
+
+#### 2p. Advancing-Pointer Reductions And Scaled Induction
+
+- [x] Extend the existing bounded loop proofs and byte-loop emission beyond
+  copy/fill, starting with byte sums. Retain a profitable accumulator and
+  advance a proven pointer instead of rebuilding `base + index` each iteration.
+- [x] Then consider row pointers and constant-stride/scaled induction in
+  array, tile and stencil loops. Reuse existing address scheduling and target
+  costs rather than introducing general loop promotion or a new IR.
+- [x] Prove invariant bases, bounds, stride, alias behavior and address/value
+  wrap. Preserve source-order memory effects, observable final counters,
+  zero/256 and full word counts, DE restoration and call/assembly barriers.
+
+Acceptance: reduce repeated address/frame work in byte sum and demonstrate a
+measured win in at least one complex calculation workload. Check complete
+buffers/guards, zero/one/255/256/65535 counts, pointer and arithmetic wraps,
+aliases, calls, exits and register-pressure fallbacks. Keep memory accesses
+valid; use bounded-exit or lowering probes for wide-count fallbacks rather
+than invalid buffer ranges. Price full setup, preservation and frame footprint,
+not only the inner loop.
+
+#### Step 2p Checkpoint (2026-10-20)
+
+Extend the existing copy/fill emitter (now `_generate_asm_bounded_loop_z80`) for two
+bounded unsigned-byte reductions. For a signed or unsigned word-local sum,
+retain the accumulator in HL and advance the source pointer in IY. For a
+fixed-address byte-memory sum, retain the source pointer in HL and the target
+address in IY, but **read and write the target every iteration**, in original
+TAC order. This preserves aliases where a target write changes a later source
+read; do not hoist an aliased target value out of the loop.
+
+Reuse `_is_z80_bounded_counter` for an isolated named-counter loop as well as
+its existing temporary-counter case. Prove the initialization, one `+1` update,
+matching bound/backedge/exit and absence of escaped counter addresses or
+unsupported incoming branches. This enables pathfinding's reused named `i`
+without changing whole-function local promotion. Named support is restricted
+to the whole-loop assignment entry; standalone counter narrowing retains its
+temporary-only guards. Publish the final named counter after the loop.
+
+Reuse existing location/address helpers, displacement/count reloads and escape/
+liveness checks. Dynamic zero counts skip setup; full-width counts use BC;
+constant counts 1-256 use B/`DJNZ`, including B=0 for 256. The new reductions
+need no pushes, scratch slots or additional SP displacement, and leave DE as
+the frame pointer. Reject escaped/changing invariants, calls/assembly, early
+exits, extra live temporaries and unsupported operations. Signed-byte widening,
+word-array and stride-two cases remain on their original paths.
+
+Considered row/scaled induction in array, tile and stencil routines. Their
+multiple dependent accesses, changing cursors and calls do not fit this bounded
+straight-line emitter. Keep those cases conservative rather than adding another
+loop optimizer; the fixed-target pathfinding reduction supplies the required
+complex-workload win. No production function is added and no new pass or cohort
+is introduced. Production C grows by **103 net lines**, replacing 49 old lines.
+Allocator/clobber policy, arithmetic helper bodies and the public ABI are
+unchanged.
+
+Against qualified parent `bb003e3`, RA measurements are:
+
+| Workload | Kernel bytes before/after | Kernel T-states before/after | Observed whole-call frame bytes before/after |
+| --- | ---: | ---: | ---: |
+| Byte sum | 102 / 99 | 240653 / 76126 | 24 / 24 |
+| Pathfinding | 1439 / 1385 | 6235713 / 5661993 | 187 / 187 |
+
+Cycles aggregate 17 byte-sum and 20 pathfinding calls. Byte sum uses 68.4% fewer
+kernel T-states and pathfinding 9.2% fewer. Caller costs are unchanged: 126
+bytes, with 12291/14460 aggregate caller T-states respectively. All 26 SSC
+RA/no-RA rows are non-regressing in all eight size/cycle/stack/frame metrics;
+all no-RA rows are unchanged. Reject the first DE-accumulator prototype's
+103-byte byte sum despite its speed win; the final IY-source form satisfies
+both size and speed gates. Whole used calculation ROMs are **20625 / 20625**
+and **31555 / 31455** bytes; padded files remain 65536 bytes. The separate
+67-case real sorting check also improves from 6333013 to 6190437 T-states
+with less frame traffic.
+
+Add 21 variants to the existing `scalar_loop_memory` generator/oracle, not a
+new generator or cohort. The focused 46 functions pass **11776 calls per
+reported mode/build**, including complete buffers/guards and SP/DE restoration.
+Cover zero/one/255/256/257/512 counts, valid pointer/arithmetic wraps, signed
+word accumulators, mutable target aliases, reused/final counters, escaped
+counter/accumulator/bound, calls, exits and pressure fallbacks. Check 65534/
+65535 through bounded early-exit fallbacks rather than invalid huge buffers.
+The saved parent passes the same numerical oracles but fails the new
+advancing-sum selection.
+
+The existing copy/fill case with a final counter stored after the loop now
+qualifies too: 114 to 92 bytes. Update its selection expectation, not its
+numerical oracle. All 46 copy/fill-cohort functions are non-regressing against
+the parent over 2944 calls per reported mode; 384 additional parent/current
+calls confirm that this fill's observed whole-frame footprint stays 14 bytes
+with RA, with no SP/access-extent regression.
+
+Final release/traced/ASan qualification passes all **175 fixtures without
+snapshot updates**, 16 immutable allocator cohorts and 28 real routines,
+90 allocator and 300 condition ROM identities, 26 combined condition/comparison
+units plus 19 optimized comparison units per build, and strict normal/traced
+C89 compilation. The full comparison passes **104 builds/1856 calls** with
+unchanged corpus fingerprints and all **78 external controls**. There are
+**88 independent timing checks** and **12 mixed-version builds/240 guarded
+calls**, covering both old/new directions and additional 257/511/512-byte sums.
+The separately documented escaped-before-initialization counter defect remains
+42740 rather than 50814 and is not counted as passing.
+
+Saved parent binaries, frozen source hashes, the rejected size-regression
+control and final qualification are retained in
+`C:\cygwin64\tmp\pointer-reductions-20261020`. No push. Step 2q is next;
+2r-2s remain pending before the initial SM83 backend.
+
+#### 2q. Variable-Count Word Shifts
+
+- [x] Extend the existing word-shift helper's variable path; do not duplicate
+  the constant-count lowering completed in 2k. The current path repeatedly
+  tests and decrements a 16-bit BC count.
+- [x] Under the selected no-code-growth policy, prove the complete count is
+  below 16 and handle zero before using a bounded byte-count loop such as
+  `DJNZ`. Unknown full-width counts retain the original loop. Preserve the
+  existing result for every 16-bit count; never merely truncate the count,
+  mask it to 15 or borrow a competitor's undefined-count behavior.
+- [x] Select using complete setup and clobber costs, preserving live operand
+  locations and flags. Keep instruction selection Z80-local; do not assume
+  `DJNZ` exists on SM83.
+
+Acceptance: measure shift/restore and a shift-heavy CRC/calculation workload,
+including setup, bytes and cycles. Use independent numerical oracles for both
+directions, word edge values and counts 0, 1, 7, 8, 15, 16, 17, 255, 256 and
+65535 plus seeded full-width cases. Cover byte/word count operands, retained
+registers, spills and unchanged constant/signed paths.
+
+#### 2q checkpoint (2026-10-20)
+
+Complete the **user-selected size-neutral-only policy**, not a generic
+full-width guard. The guarded prototype reduced shift/restore cycles but grew
+its kernel from 59 to 79 bytes; reject it and retain its measurements as a
+negative control. Unknown counts, including 16 through 65535, keep the original
+full BC test/decrement loop with no truncation or implicit mask.
+
+Reuse the existing word-shift helper's instruction body for constant, bounded
+variable and fallback paths. Select the bounded path only with RA enabled,
+without force-all-spill, for an unsigned word value and unsigned byte/word
+temporary count. Reuse existing temporary metadata to recognize a single-write
+AND with a nonnegative constant below 16, or the existing bounded-counter proof
+with maximum 15. Reject changed count definitions and unsupported producers;
+signed and widened-byte value paths remain unchanged.
+
+For proven counts, retain the full BC zero test, copy C to B and use `DJNZ`.
+The complete helper remains **8 bytes left / 11 bytes right**, matching the old
+variable loops. Zero costs the same; counts 1-15 save **20*n+6 T-states** inside
+the helper. Setup, the full AF/BC/HL clobber contract, DE/frame preservation,
+the public ABI and byte-shift lowering are unchanged. No production function,
+pass or cohort is added. Production C grows by **13 net lines**, replacing 34
+old lines rather than duplicating the shift body.
+
+Against qualified parent `4a8b776`, RA measurements are:
+
+| Workload | Kernel bytes before/after | Kernel T-states before/after | Observed whole-call frame bytes before/after |
+| --- | ---: | ---: | ---: |
+| Shift/restore | 59 / 59 | 9934 / 9934 | 22 / 22 |
+| Tile/CRC calculation | 1209 / 1209 | 2073424 / 2049176 | 128 / 128 |
+
+Cycles aggregate 17 shift/restore and 20 tile calls. Tile uses **1.17% fewer
+kernel T-states**. Caller costs remain 126 bytes and 12393/14460 aggregate
+T-states respectively. All 26 SSC RA/no-RA rows keep exactly the same kernel
+bytes and are non-regressing in all eight size/cycle/stack/frame metrics;
+all no-RA rows are unchanged. Whole used calculation ROMs remain **20625**
+and **31455** bytes; padded files remain 65536 bytes. In the real-routine
+corpus, heap cycles improve 28405701 to 28372061 and tile cycles 6072556 to
+6005276, without additional frame traffic.
+
+Expand the existing `matrix_shift` family from 2 to 32 variants and place it
+in the existing divmod cohort. Reuse the generator/oracle: cover byte/word
+counts, full-width edge/seeded counts, both directions, live-value pressure,
+narrowing, aliases, far frames, signed/widened controls, masks 31/255/65535
+and a count changed after masking. The focused 40 functions pass **2560 calls
+per reported mode** on the saved parent and final traced compiler, plus 640
+per release/ASan mode. Eight proven-shift functions additionally pass **2048
+calls per mode/version** over 256 cases each, with no cycle/frame regressions.
+Every focused function keeps its size. Unsupported shift-function bytes and
+the entire constant/signed-literal cohort match the parent; default, all-spill
+and no-RA focused ROMs are also byte-identical. The parent passes the numerical
+oracles but fails the new bounded-loop selection assertion.
+
+Final release/traced/ASan qualification passes all **175 fixtures without
+snapshot updates**, 16 immutable allocator cohorts and 28 real routines,
+90 matching traced/ASan allocator images and 300 condition images across the
+three builds, plus strict normal/traced C89 compilation. The full comparison
+passes **104 builds/1856 calls**, unchanged corpus fingerprints and all
+**78 external controls**, with **76 independent timing checks** and
+**12 mixed-version builds/268 guarded calls**. The separately documented
+escaped-before-initialization counter defect remains 42740 rather than 50814
+and is not counted as passing.
+
+Saved parent binaries, frozen source hashes, rejected prototypes and final
+qualification are retained in
+`C:\cygwin64\tmp\variable-word-shifts-20261020`. No push. Step 2r is next;
+2s remains pending before the initial SM83 backend.
+
+#### 2r. Operand-Aware Word Comparisons And Branch Selection
+
+- [x] Extend the existing comparison emitter for profitable operand layouts.
+  Compare retained unsigned words against indexed frame bytes or constants
+  with a subtract/borrow chain and one carry decision where legal, rather
+  than materializing a word subtraction or issuing two conditional jumps.
+- [x] Preserve complete-word equality and the signed/unsigned distinction,
+  live operands, flags and fallback paths. A high-byte zero flag alone does
+  not prove word equality; keep signed overflow handling correct.
+- [x] Select `JP` versus `JR` only with a proven displacement/target and an
+  explicit cost decision. Do not blindly shorten all jumps: on ordinary Z80,
+  an unconditional or taken `JR` can be slower than `JP`. Keep the existing
+  default's speed behavior unless a tradeoff is explicitly selected.
+
+Acceptance: show the eliminated materialization/branches and measured bytes/
+cycles in byte sum and a complex loop. Check all relations, signed boundaries,
+equal high bytes with unequal low bytes, carry/borrow edges and retained/spilled
+operands. Test forward/backward and near/out-of-range branches, including the
+relative displacement limits; unknown ranges keep the safe absolute form.
+
+#### Step 2r Checkpoint: Operand-Aware Unsigned Word Comparisons
+
+Extend the existing word-comparison emitter, reusing its location resolution,
+byte materialization, IX address/load helpers and unsigned jump tail. With RA
+enabled and force-all-spill disabled, compare a retained HL/BC unsigned word
+against a frame/global word or representable constant using low-byte `SUB`,
+high-byte `SBC` and one carry decision. Reverse subtraction for `>` and `<=`
+instead of testing equality separately. Two retained word registers use this
+chain only when removing the extra branch makes the complete sequence smaller;
+otherwise retain the smaller original `SBC HL,BC`.
+
+An indexed operand's load/subtract setup falls from **9 bytes / 57 T-states**
+to **8 bytes / 46 T-states**, before the branch. Equality still uses full-word
+Z, and signed comparisons retain full-word overflow/sign handling. Signed or
+widened operands and unsupported locations keep their original paths. Constant
+eligibility is limited to **-32768 through 65535**: an initially overbroad
+prototype silently truncated invalid literals, so reject that prototype and
+preserve the parent's linker diagnostic for out-of-range operands. All valid
+qualification images and metrics are identical before and after this guard.
+The existing full clobber contract, DE/frame handling and public ABI remain
+unchanged. No production function, pass or cohort is added; production C grows
+by **47 net lines** within the existing comparison function.
+
+Keep the existing absolute `JP` helpers. No proven-range shortening pass or
+unselected size/speed tradeoff is introduced: `JP` takes 10 T-states, whereas
+unconditional/taken `JR` takes 12. Existing control tests now execute mapped
+NOP padding and verify forward/backward hypothetical relative displacements
+**-129, -128, 127 and 128**, retaining safe absolute branches at every boundary.
+
+Against qualified parent `0c8b224`, the official RA comparison improves:
+
+| Workload | Kernel bytes before/after | Kernel T-states before/after | Observed whole-call frame bytes before/after |
+| --- | ---: | ---: | ---: |
+| Stencil calculation | 1693 / 1691 | 4267798 / 4256974 | 120 / 120 |
+| Pathfinding calculation | 1385 / 1384 | 5661993 / 5647913 | 187 / 187 |
+| PackBits | 565 / 547 | 159912 / 159268 | 39 / 39 |
+| Packed CRC | 910 / 892 | 12026571 / 12023460 | 47 / 47 |
+
+Cycles aggregate the unchanged per-workload comparison cases. Caller costs
+remain **126 bytes / 14460 T-states** for each calculation, **151 / 13888** for
+PackBits and **82 / 7718** for packed CRC. All 26 SSC RA/no-RA rows are
+non-regressing in all eight size/cycle/stack/frame metrics; all no-RA rows
+remain unchanged. Whole used calculation ROMs fall **20625 to 20607** and
+**31455 to 31439** bytes; padded images remain 65536 bytes.
+
+The stock byte sum already uses step 2p's fused countdown and stays at
+**99 bytes / 76126 kernel T-states**, with a 24-byte observed frame footprint.
+Do not undo that fusion to manufacture a comparison win. A separate paired-byte
+sum, outside the legal straight-line fusion shape, improves **167 to 166 bytes**
+and **1845042 to 1811690 aggregate kernel T-states** over 32 independent cases.
+It sums complete pairs and ignores an unmatched last byte, so its totals are
+not directly comparable with the stock sum. All five modes pass full-buffer,
+guard and SP/DE checks; frame reads/writes stay **51249 / 15185**.
+
+Reuse the existing comparison families and condition-test methods rather than
+adding a generator or oracle. Cover all relations and operand orders, computed
+retained words, two-register comparisons, pressure, far frames, signed/equality
+fallbacks and carry/borrow edges. Each full condition run executes **57600
+relational/Boolean cases**. Three existing 44-function comparison matrices pass
+**11264 calls per reported mode/matrix** on the saved parent and final traced
+build, plus **704** on release/ASan. Every focused function is size/cycle/frame
+non-regressing; byte, signed and equality fallback assembly is unchanged.
+Default, all-spill and no-RA focused ROMs match the parent. A separate 12-function
+two-register probe passes **768 edge calls per mode/version**, with four
+profitable selections. Four invalid-literal cases require the standard
+`Out of 16-bit range.` linker rejection on both operand sides, not truncation.
+
+Final release/traced/ASan qualification passes all **175 fixtures without
+snapshot updates**, 16 immutable allocator cohorts, 28 real routines,
+90 traced/ASan allocator image identities, 300 condition image identities
+across all three builds and strict normal/traced C89 compilation. The full
+comparison passes **104 builds/1856 calls** with unchanged corpus fingerprints
+and all **78 external controls**. There are **40 independent timing checks**,
+including **16 mixed-version builds/292 guarded calls** in both caller/callee
+directions. All 52 frozen source hashes match the qualified sources.
+The separately documented escaped-before-initialization counter defect still
+returns 42740 rather than 50814 on both parent and current compiler; it is not
+counted as passing.
+
+Saved parent binaries, frozen sources, rejected prototypes and final guarded
+qualification are retained in `C:\cygwin64\tmp\word-comparisons-20261020`.
+Commit locally without pushing. Step 2s is next before the initial SM83 backend.
+
+#### 2s. Shared Arithmetic Bodies With An Explicit Size/Speed Policy
+
+- [x] Measure repeated inline multiply/divide/modulo bodies in standalone and
+  combined programs; the array workload currently contains five such bodies.
+  Reuse the existing arithmetic-body emitters and linker helper-generation
+  patterns before adding runtime entry points or another abstraction.
+- [x] Emit shared bank-local helpers only where their complete cost is
+  justified. Include setup, `CALL`/`RET`, result moves, DE preservation,
+  clobbers, stack footprint and bank placement; count shared code once.
+- [x] Define and document the size/speed choice before changing behavior.
+  Keep inlining where faster or sharing does not pay. Do not silently slow the
+  existing default, replace the immutable comparison modes, or change the
+  public C ABI. Add distinct benchmark modes if a new profile is introduced.
+
+Acceptance: report per-workload and combined-ROM bytes/cycles, helper counts,
+call frequency, break-even points and any explicitly accepted slowdown. Check
+single/repeated uses, byte/word and signed boundaries, quotient/remainder reuse,
+defined zero-divisor behavior, nested/banked calls and full SP/DE restoration.
+Retain the existing good constant arithmetic paths and full TAC contracts.
+
+**Step 2s checkpoint: approved opt-in arithmetic sharing**
+
+The measured prototype saved 68 bytes in the array kernel but added 74,520
+T-states and two stack bytes. The user explicitly selected a separate opt-in
+size profile rather than slowing the existing default. The linker now accepts
+`-share-arithmetic`, which must precede `-o`:
+
+```text
+samesamecl -lsms -share-arithmetic -o game.sms main.asm
+```
+
+Ordinary linking remains inline. The compiler only adds begin/end comments to
+the four existing generic arithmetic emitters; removing those comments restores
+the parent emitter source exactly. The existing combined-assembly writer groups
+byte-identical marked bodies by kind, ROM bank and slot, leaving single uses,
+RAM bodies and unmarked/unsupported code inline. It emits one leaf helper per
+repeated group and replaces each body with `CALL`, retaining all operand setup,
+result moves and outer DE preservation. No new production function or second
+arithmetic implementation was added: production C grows by **121 net lines**.
+
+For a body of B bytes used N times, complete body/helper storage changes from
+`N*B` to `3*N+B+1`, including every CALL and the helper RET. The four bodies are
+11/15/35/16 bytes (byte multiply, word multiply, word divide/modulo, byte
+divide/modulo); their helpers are 12/16/36/17 bytes. **Two uses break even
+profitably for all four**, so single uses remain inline. Every actual helper
+invocation costs exactly **27 additional T-states** and **two stack bytes**;
+there is no hidden setup saving or new register-argument ABI.
+
+Helpers are emitted in the caller's existing bank/slot, without bank switching.
+Their dotted private names cannot collide with C identifiers. Leading
+underscores were rejected during qualification because WLA makes such labels
+section-local. Existing constant-specialized paths, adjacent DIV/MOD remainder
+reuse, TAC clobbers, aliases and DE/IX/IY/frame contracts remain unchanged.
+Signed boundary controls preserve the parent's existing divider bit-pattern
+semantics, including its defined zero-divisor behavior; this is not a new
+signed-division implementation.
+
+The benchmark retains its original eight default modes and immutable gates.
+Opt-in comparisons require their ordinary partner in the same invocation:
+
+```text
+--modes ssc-ra ssc-no-ra ssc-ra-shared ssc-no-ra-shared
+```
+
+Shared-mode gates require non-growing kernel/dependency bytes, identical caller
+bytes/cycles, nonnegative cycle deltas divisible by 27, and at most two extra
+stack/frame bytes. The report includes helper bytes, static call sites and
+dynamic calls. No ordinary regression allowance was relaxed.
+
+Qualified standalone RA results over the unchanged guarded corpus:
+
+| Kernel | Inline/shared bytes | Inline/shared kernel T-states | Inline/shared frame bytes | Helpers / static sites / actual calls |
+| --- | ---: | ---: | ---: | ---: |
+| Array | 1605 / 1537 | 6241578 / 6316098 | 88 / 90 | 2 / 5 / 2760 |
+| Stencil | 1691 / 1655 | 4256974 / 4286782 | 120 / 122 | 2 / 4 / 1104 |
+| Pathfinding | 1384 / 1376 | 5647913 / 5685713 | 187 / 189 | 1 / 2 / 1400 |
+
+Other RA rows and all caller costs are unchanged. All **104 ordinary comparison
+builds/1856 calls**, their eight cost metrics and the **78 external controls**
+remain identical to parent `4211174`.
+
+The combined finite 13-kernel program reuses the existing functions, wrappers
+and 232-case corpus in one bank. Complete used ROM counts helpers, callers,
+data and system overhead once:
+
+| Mode | Inline/shared used ROM | Inline/shared kernel T-states | Inline/shared peak frame |
+| --- | ---: | ---: | ---: |
+| RA | 8579 / 8443 | 30622577 / 30767540 | 187 / 189 |
+| No RA | 11099 / 10963 | 52004913 / 52149876 | 193 / 195 |
+
+Each mode saves **136 bytes**, with two helpers and nine static sites.
+Instrumented execution observes **5369 actual calls**, accounting exactly for
+the **144963 extra T-states** and two additional stack reads/writes per call.
+Caller totals remain 165891 T-states (RA) and 168603 (no RA). This is a bounded
+calculation corpus, not a cycle measurement of the projects' infinite UI loops.
+
+Complete real-project ROM builds also improve:
+
+| Project | Inline/shared used ROM | Saving | Helpers / static sites |
+| --- | ---: | ---: | ---: |
+| calculations-1 | 20607 / 20587 | 20 bytes | 1 / 3 |
+| calculations-2 | 31439 / 31171 | 268 bytes | 6 / 22 |
+
+The latter helpers are bank-local across banks 0, 1, 2 and 3; both default and
+shared full-project images agree between release and traced builds.
+
+Release, traced and ASan condition/policy and paired-profile suites pass.
+New persistent arithmetic tests reuse existing generators/oracles for **64000
+numerical executions per build**; banked cross-file, nested and recursive
+controls add **672 guarded calls**. Five allocator modes retain single-use ROM
+identity, and six malformed-marker cases must fail explicitly. The isolated
+fixture suite passes **175/175**, normal/traced strict C89 checks pass, and
+**372 condition images** agree across builds, with the original 300 still
+parent-identical. Traced/ASan agree on **90 allocator images**, including the
+16 immutable-verifier cohorts and 28 real-routine controls.
+
+Additional qualification covers **32 mixed-version builds/592 guarded calls**
+in both caller/callee directions, **15 signed-word builds/15210 calls**, and
+the combined program's **4 builds/928 calls**. There are **276 final independent
+timing checks**, not just emulator cycle estimates. All **62 frozen source
+hashes** match the qualified files. The known escaped-before-initialization
+counter defect remains 42740 rather than 50814 on parent and current compiler;
+it is not counted as passing.
+
+Qualification crossed midnight. Ten allocator project images and two whole-ROM
+controls differed from the preserved parent only at SDSC build-day byte
+`0x7fe6` and derived SMS checksum byte `0x7ffa`. Reassembling the parent's
+unchanged combined assembly with the pinned tools on the same day reproduced
+each complete default ROM exactly. Original parent artifacts remain untouched;
+no bytes were masked and no parent baseline was refreshed.
+
+Sources, parent binaries, rejected prototypes, same-day controls, guarded
+results and the consolidated qualification are retained in
+`C:\cygwin64\tmp\arithmetic-sharing-20261020`.
+Commit locally without pushing. The finite Z80 sequence through 2s is complete;
+the next implementation target is the initial SM83 backend.
+
+Register arguments/results remain a separate explicit, versioned or opt-in ABI
+investigation under priority 4 below, not a sixth mandatory pre-SM83 step.
+The measured 126/729 versus 20/114 wrapper gap justifies further study, not
+silent caller/callee changes or removing necessary frame saves. Address the
+existing-ABI opportunities in 2o-2r first; any later ABI proposal needs dedicated
+mixed-version, cross-file, banked, recursive and assembly-facing compatibility
+tests and documentation.
+
+#### Post-2s checkpoint: unsigned power-of-two arithmetic [DONE]
+
+Complete the previously measured unsigned division/remainder improvement
+without adding another mandatory pre-SM83 step. Reuse
+`turn_some_muls_and_divs_into_shifts()` in `compiler/pass_5.c`: exact positive
+integer divisors **1 through 32768** become logical shifts for division and
+`divisor - 1` masks for remainder when both existing promoted operand types
+prove unsigned. This includes `/1` and `%1`; evaluating an operand's call or
+increment must still happen exactly once.
+
+The existing small multiply/divide shifts remain in their early position.
+Only the new unsigned folds run after `optimize_il()`, through the same
+function and its updated internal declaration. A rejected early placement
+interacted with negative unsigned constant propagation. Parent/current
+diagnostic controls now preserve that existing constant-expression handling;
+the pre-existing negative constant-conversion defects are not numerical
+oracle passes. No new type pass, AST resolver, emitter, production function,
+ABI or arithmetic-helper protocol was added: **11 net production C lines**,
+plus a one-line internal header signature change.
+
+Signed-promoted operands, negative/non-power divisors and fractional literals
+retain their arithmetic fallback. In particular, directly dividing a byte
+by a large signed-promoting literal is not treated as proof of unsigned word
+arithmetic; an explicitly widened unsigned word is covered. Exact literal
+matching avoids the old cast-based classification of fractions as powers.
+Existing accepted fractional-literal fallback behavior remains accepted.
+Literal zero still fails compilation; `65536` and `-65536` still reach the
+assembler and fail there, rather than becoming a valid-looking shift/mask.
+
+Measured complete kernel/dependency code and kernel T-state totals over the
+same **77 edge/pseudorandom inputs**, with allocation enabled:
+
+| Expression | Parent/current code bytes | Parent/current kernel T-states | Parent/current frame footprint |
+| --- | ---: | ---: | ---: |
+| `u16 % 16` | 68 / 36 | 95891 / 14784 | 24 / 22 |
+| `u16 / 256` | 70 / 31 | 97443 / 13321 | 24 / 22 |
+| `u16 % 256` | 68 / 36 | 96827 / 14784 | 24 / 22 |
+
+Allocation-disabled results also improve: current code is **48 / 43 / 48
+bytes**, respectively, versus **80 / 80 / 80**. Current kernel totals are
+**20636 / 19173 / 20636 T-states**, versus **101743 / 102679 / 102679**;
+frame footprint decreases from 26 to 24 bytes. All callers remain exactly
+**126 bytes / 729 T-states per call**. These measurements cover 12
+parent/current builds, 924 guarded calls and 12 independent timing checks.
+
+The two added persistent tests reuse the existing branch-condition test class,
+five-mode generator and guarded executor. Each release/traced/ASan run checks
+**110190 unsigned arithmetic executions** over byte/word/widened/truncated
+contexts, all 16 divisor powers, reconstruction and sequenced side effects.
+Another **660 executions** check signed, negative, non-power and fractional
+fallbacks, with six explicit compiler/linker rejection controls. Seven
+supported fallback routines retain parent-identical complete ROMs and assembly
+in all five allocator modes.
+
+All three configurations pass **33 condition tests** and **21 optimized-policy
+tests**. The isolated fixture suite passes **175/175** without snapshot
+updates; normal/traced strict C89 checks pass. All **392 condition images**
+agree across builds, with the original 372 parent-identical. Traced/ASan agree
+on **90 allocator images**, including the existing immutable-verifier cohorts
+and real-routine controls. The known escaped-before-initialization counter
+defect remains unchanged and is not counted as passing.
+
+The original 13-kernel corpus does not exercise these new constant forms:
+all **104 ordinary comparison rows / 1856 calls**, including the 78 external
+compiler controls, remain exactly unchanged. Traced and ASan each reproduce
+the prior **52 paired sharing rows / 928 calls**. There are **148 independent
+timing checks** across the final comparison and focused measurement runs.
+All 62 frozen source hashes match; no benchmark baseline was refreshed.
+
+Complete default/shared project ROMs remain parent-identical in all three
+configurations: **20607 / 20587** used bytes for calculations-1 and
+**31439 / 31171** for calculations-2. Do not claim these focused arithmetic
+gains as an improvement in those unchanged whole-project figures.
+
+Sources, parent binaries, rejected early placement, constant/literal controls,
+full images, numerical results and consolidated qualification are retained in
+`C:\cygwin64\tmp\unsigned-powers-20261021`.
+Commit this qualified batch locally without pushing. The next finite-roadmap
+implementation target remains the initial SM83 backend; further Z80
+architecture investigations are separate user-requested work.
+
+#### 2t. Improve Scalar/Address Residency Within The Existing ABI [DONE]
+
+User-requested extension after the unsigned power-of-two checkpoint. Prioritize
+the remaining frame traffic rather than accumulating arithmetic peepholes.
+The qualified research at `fcd36fc` attributes these own-function costs:
+
+| Workload | SameSameC / stock SDCC own bytes | SameSameC frame setup + indexed accesses |
+| --- | ---: | ---: |
+| Array | 1292 / 516 | 762 |
+| Stencil | 1513 / 868 | 966 |
+| Tile | 1209 / 688 | 867 |
+| Path | 1265 / 737 | 840 |
+| Packed CRC | 345 / 120 | 140 |
+
+These exclude wrappers, callees and runtime libraries. Indexed accesses include
+necessary array work, so the columns are budgets, not removable-byte promises.
+Dynamic tracing separates local-array data from scalar/frame accesses: Tile
+spends 66.0% of its kernel cycles in frame-address setup and scalar-frame-access
+instructions despite having no internal calls.
+
+- Reuse existing copy propagation, local promotion, CFG/join reconciliation,
+  location resolution and address emitters. Do not introduce another allocator
+  or a parallel expression/address framework.
+- Fold stable single-use pointer/address copy chains into their consumers and
+  rematerialize cheap addresses instead of spilling them where proven cheaper.
+- Extend scalar/address residency through loops and CFG joins only when every
+  incoming path proves the same value/base; retain conservative call, alias,
+  inline-assembly and frame/register-clobber barriers.
+- Preserve evaluation order, declared-width conversions, signed extension,
+  pointer wraparound and byte/pair overlap. Do not blindly narrow locals:
+  the private byte-counter probe made CRC 15 bytes larger and 25.7% slower,
+  while Tile shrank 66 bytes but became 11.0% slower.
+
+Acceptance: regressions covering the folded chain and rejected aliases,
+conversions, side effects and control-flow cases; non-growing complete
+kernel/caller/frame costs and a measured real-workload size/speed improvement.
+Run all allocator modes, immutable verification, pinned compiler controls and
+full calculation ROMs. Keep source growth visible and reuse or remove existing
+logic rather than adding overlapping special cases.
+
+**First implementation checkpoint: spilled pointer-store copies.** Reuse the
+existing final allocation metadata and array-write emitter to fold an adjacent,
+single-definition/single-use, actually spilled word-pointer snapshot into its
+store. Skip only dead TACs; require the same function and original pointer node,
+and reject retained bases, spill-transfer boundaries and special I/O labels.
+Keep useful BC/HL pointer retention, no-RA/all-spill lowering, the allocated TAC
+and its frame slots unchanged. This adds 32 production C lines and no functions;
+it is not a second copy-propagation or address-emission framework.
+
+Against `fcd36fc`, complete isolated bodies including their live dependencies:
+
+| Workload | Bytes before -> after | Kernel T-states before -> after (20 calls) |
+| --- | ---: | ---: |
+| Array | 1605 -> 1569 | 6241578 -> 6164298 (1.24% less) |
+| Stencil | 1691 -> 1655 | 4256974 -> 4218334 (0.91% less) |
+| Tile | 1209 -> 1191 | 2049176 -> 2003606 (2.22% less) |
+
+Their callers remain 126 bytes / 14460 T-states over those 20 calls, and frame
+footprints remain 88/120/128 bytes respectively. The other ten measured
+workloads, all 13 no-RA rows and all 78 pinned external controls are unchanged.
+Do not sum isolated reductions and present them as whole-program savings:
+
+| Complete project | Default used ROM before -> after | Shared used ROM before -> after |
+| --- | ---: | ---: |
+| calculations-1 | 20607 -> 20607 | 20587 -> 20587 |
+| calculations-2 | 31439 -> 31115 | 31171 -> 30847 |
+
+Release/traced/ASan qualification covers 34 condition/policy tests plus 21
+optimized-policy tests per build, including 2925 pointer executions per build
+with signed/unsigned byte/word elements, negative indices, local/global pointer
+objects, aliases, calls and sequenced side effects. Check both positive folding
+and retained-base/no-RA/all-spill rejection. Run immutable allocation and real
+cohorts, 175 isolated fixtures without snapshot updates, the original 104-row /
+1856-call comparison and paired shared profiles. All pass, including 136
+independent timing checks; 402 condition images and 90 allocator images match
+across builds, and all 392 pre-existing condition images match the parent.
+Evidence is retained in
+`C:\cygwin64\tmp\residency-2t-20261021`.
+
+**Second implementation checkpoint: word-sized load locals.** Extend the
+existing named-local promotion to scalar word locals initialized by array
+reads. Preserve the declared local width and signedness rather than inheriting
+the element type; retain conservative byte-local narrowing, escape, alias,
+call and multiple-definition checks. Reuse existing BC candidate selection and
+word-read result emission. Recognize the existing in-place frame-word increment
+as preserving general registers only for the exact local/argument, width and
+unallocated-operand shape; globals, statics and other arithmetic keep their
+existing clobbers. No new emitter or production functions are needed: this
+checkpoint adds 22 net production C lines.
+
+The existing frame-boundary index-copy cohort exposed a speculative eviction
+assumption: a nearer word candidate can choose the other register pair instead
+of displacing the live value. Reuse endpoint legality to keep checking the
+remaining path when either pair is possible. The immutable verifier initially
+rejected this case and remains unchanged; do not bypass its rejection.
+
+Against the first checkpoint at `c488078`, complete isolated bodies and live
+dependencies, with kernel timings over the same 20 calls:
+
+| Workload | Bytes before -> after | Kernel T-states before -> after | Maximum frame footprint |
+| --- | ---: | ---: | ---: |
+| Array | 1569 -> 1559 | 6164298 -> 6147298 (0.28% less) | 88 -> 88 |
+| Tile | 1191 -> 1181 | 2003606 -> 1990358 (0.66% less) | 128 -> 126 |
+| Path | 1384 -> 1384 | 5647913 -> 5647913 | 187 -> 186 |
+
+All three callers remain 126 bytes / 14460 T-states. The other ten workloads
+and all 91 no-RA/pinned external control rows are unchanged. Shared profiles
+retain the same size/cycle reductions and reduce Path's frame from 189 to 188.
+Measure full projects separately rather than summing isolated improvements:
+
+| Complete project | Default used ROM before -> after | Shared used ROM before -> after |
+| --- | ---: | ---: |
+| calculations-1 | 20607 -> 20607 | 20587 -> 20587 |
+| calculations-2 | 31115 -> 31091 | 30847 -> 30823 |
+
+Release/traced/ASan qualification covers 35 condition/policy tests and 21
+optimized-policy tests per build. The new 88-function load regression executes
+19800 independent return/memory/port oracles per build across all five modes:
+signed/unsigned byte/word elements, word-local conversions, negative indices,
+increments, aliases, calls, loops, escapes, redefinitions and byte narrowing.
+Assert actual spill-free BC selection as well as conservative fallbacks.
+Expand the independent BC endpoint expectations for the newly supported loads;
+10200 endpoint checks, 65 frame-increment controls and all existing 32 immutable
+rejections / seven accepts pass in normal and quiet modes.
+
+Rerun all qualification after fixing the speculative eviction: 175 isolated
+fixtures without snapshot updates, the 104-row / 1856-call comparison, paired
+shared profiles, 136 independent timing checks and 2320 non-growing individual
+SSC samples. All 412 condition images and 90 allocator images match across
+builds, as do the complete default/shared ROMs. Evidence, including the rejected
+prototypes and verifier diagnostics, is retained in
+`C:\cygwin64\tmp\scalar-loads-2t-20261021`.
+
+**Third investigation checkpoint: loop-carried word locals [NO-GO].** Test
+broader reuse of the existing scalar promotion and CFG/loop allocator against
+the qualified parent at `54a0230`; do not enable a change merely because it
+removes a named local. All trial production changes were reverted.
+
+- Unrestricted promotion of repeated definitions admits locals reused across
+  independent loops. The existing loop reservation planner correctly rejects
+  consumers outside its reachable region: Array's reused index and Tile's
+  reused inner-loop counter expose this limitation. Keep those checks intact;
+  function-wide renaming is not a substitute for loop-scoped value ownership.
+- Restricting promotion to two definitions avoids those compile failures but
+  still disables existing advancing-loop lowering. A promoted checksum live
+  across an unrelated loop is enough to trigger the emitter's conservative
+  live-temp barrier. Stencil's frame shrinks by two bytes without a code or
+  timing improvement; that does not justify the other regressions.
+- Requiring one enclosing backedge, retaining the existing unit-counter
+  policy, and allowing arithmetic/shift definitions promotes Tile's CRC, but
+  does not reduce its bytes or cycles. A private final-metadata check can
+  preserve unrelated advancing loops when a spanning temp is fully spilled
+  and untouched. Even then, promoting the word accumulator itself defeats
+  the existing advancing word-sum emitter.
+
+Each of the three completed restricted variants ran the same 26 SSC/no-RA
+rows and 464 oracle calls. The important rejected changes are:
+
+| Rejected case | Bytes before -> after | Kernel T-states before -> after |
+| --- | ---: | ---: |
+| Path, without preserving its unrelated advancing loop | 1384 -> 1438 | 5647913 -> 6221633 (10.16% more) |
+| sumBytes, even after preserving unrelated loops | 99 -> 98 | 76126 -> 220663 (189.87% more) |
+
+These are isolated-kernel results, not whole-ROM measurements. Do not accept
+the one-byte sum reduction, the frame-only improvement, or unqualified
+promotion in exchange for those losses. No new production code, functions,
+verifier relaxation or snapshot updates are retained from this investigation.
+Trial sources, reports and rejection diagnostics are retained in
+`C:\cygwin64\tmp\loop-values-2t-20261021`.
+
+Before extending promotion again, reuse the existing loop/join ownership
+analysis to separate values belonging to independent loops, preserve the
+existing advancing sum/copy/fill lowering, and prove that arithmetic locals
+actually stay in registers across the relevant clobbers. Cost promotion
+against the complete specialized loop, not just the removed frame store.
+Keep these as 2t prerequisites rather than moving the unresolved traffic into
+an ungated ABI or frame-layout change.
+
+**Fourth implementation checkpoint: proven forward-join frame addresses.**
+Reuse the emitter's existing IX frame-offset state instead of extending scalar
+promotion or adding another CFG/address framework. Remember the latest emitted
+conditional and unconditional branch states. At a label, retain the known
+offset only when the current fallthrough state and every explicit incoming
+edge prove the same frame address. An unrecorded edge, backward edge or
+conflicting offset keeps the old invalidation. Disable this extension for
+functions containing inline assembly and for default/no-RA/all-spill modes;
+retain all existing call, frame and index-register clobber barriers.
+
+The narrower shift/bitwise-local and BC-endpoint prototype made no improvement
+in 26 SSC/no-RA rows / 464 calls and was removed completely. Tile's CRC is still
+rejected by existing loop discovery because its common latch block does not
+define the value. Do not weaken that ownership proof to force promotion.
+The accepted alternative adds **31 net production C lines and no functions**;
+there are no allocator-core, endpoint-policy, verifier or ABI changes.
+
+Against `010b0a6`, the complete isolated kernels improve as follows:
+
+| Kernel | Bytes before -> after | Kernel T-states before -> after |
+| --- | ---: | ---: |
+| Array | 1559 -> 1517 | 6147298 -> 6094692 (0.86% fewer) |
+| Stencil | 1655 -> 1577 | 4218334 -> 4108018 (2.62% fewer) |
+| Tile | 1181 -> 1145 | 1990358 -> 1914842 (3.79% fewer) |
+| Path | 1384 -> 1354 | 5647913 -> 5539685 (1.92% fewer) |
+| PackBits | 547 -> 535 | 159268 -> 151525 (4.86% fewer) |
+| Packed CRC | 892 -> 874 | 12023460 -> 11404716 (5.15% fewer) |
+
+Other kernels, callers and frame footprints do not grow. These are not summed
+whole-ROM savings: measured calculations-1 used ROM falls from 20607 to
+20437 bytes, and calculations-2 from 31091 to 30555. Shared-arithmetic ROMs
+fall from 20587 to 20417 and from 30823 to 30287 respectively.
+
+Add 30 independently modeled branch/frame functions and 10800 executions per
+build across all five allocator modes. Cover small and large frame offsets,
+nested/multiple incoming paths, backedges, break/continue, calls, aliases,
+globals, early returns and an IX-clobbering assembly block. The parent passes
+the numeric/memory oracles but fails the new exact selection assertion:
+eligible diamonds require one IX materialization rather than three.
+The existing immutable 32 rejection cases, seven acceptances, 10200 endpoint
+checks and 65 frame-increment controls remain unchanged.
+
+Qualification includes 36 condition/policy tests and 21 optimized-policy tests
+per release/traced/ASan build, the
+104-row / 1856-call pinned comparison, paired 52-row / 928-call shared profiles,
+136 independent timing checks and 2320 non-growing individual SSC samples.
+All 422 condition images, 90 allocator images and complete default/shared
+ROMs match across builds. All 175 fixtures pass after seven byte vectors in
+two fixtures receive only
+absolute branch-target relocation updates because other functions shrink;
+their source bodies and complete symbolic instruction streams are identical
+to the parent, with every old/new vector checked against its corresponding
+ROM. No instruction selection or immutable expectation is relaxed.
+Evidence and source/commit bindings are retained in
+`C:\cygwin64\tmp\shift-residency-2t-20261021`.
+
+**Fifth implementation checkpoint: exact incoming-edge frame witnesses.**
+Replace the two single-branch snapshots with bounded caches of eight exact
+instruction/offset witnesses per branch kind. Reuse the same label scan and
+frame-offset proof, and share conditional/unconditional recording rather than
+duplicating it. This adds **four net production C lines and no functions**.
+Every incoming edge must still match the current fallthrough frame base;
+missing or evicted witnesses, conflicting offsets and backward edges retain
+the old invalidation. Existing call, inline-assembly and clobber barriers,
+default/no-RA/all-spill behavior, allocator policy and ABI remain unchanged.
+
+Keep the caches separate: otherwise many conditional branches could evict an
+unconditional witness that the previous implementation retained indefinitely.
+The latest witness of each kind is always available, preserving the earlier
+optimization while allowing joins with several recorded predecessors.
+A smaller same-target branch-run prototype made no measured improvement and
+was discarded; do not retain an extra recognition path for it.
+
+Against `b924000`, complete isolated kernels improve as follows:
+
+| Kernel | Bytes before -> after | Kernel T-states before -> after |
+| --- | ---: | ---: |
+| Array | 1517 -> 1505 | 6094692 -> 6092372 (0.04% fewer) |
+| Stencil | 1577 -> 1553 | 4108018 -> 4055470 (1.28% fewer) |
+| Tile | 1145 -> 1121 | 1914842 -> 1905388 (0.49% fewer) |
+| Path | 1354 -> 1318 | 5539685 -> 5393409 (2.64% fewer) |
+| PackBits | 535 -> 517 | 151525 -> 150974 (0.36% fewer) |
+| Packed CRC | 874 -> 850 | 11404716 -> 11402744 (0.02% fewer) |
+
+Other kernels, callers and frame footprints do not grow. Independently measured
+whole-ROM used bytes fall from 20437 to 20413 for calculations-1 and from
+30555 to 30315 for calculations-2. Shared-arithmetic ROMs fall from 20417 to
+20393 and from 30287 to 30047 respectively; these are not summed kernel wins.
+
+Extend the existing frame oracle to 51 functions / 18360 executions per build,
+partitioned by frame size to fit the existing ROM-bank limit. Cover short
+circuits, calls between edges, conflicting bases, the exact eight/nine-witness
+eviction boundary and 17-branch cross-kind pressure. The parent passes the
+numeric/memory oracles but fails the new short-circuit selection assertion:
+two IX materializations instead of one. The ninth same-kind incoming edge
+still forces conservative materialization; unrelated branch-kind pressure
+does not discard the original single-edge proof.
+
+Qualification uses all three builds, 36 condition/policy and 21 optimized-policy
+tests per build, the unchanged immutable controls, the full pinned comparison,
+paired shared profiles and complete default/shared ROMs. All 175 fixtures pass;
+two byte vectors in one fixture need only absolute branch-target relocation
+updates, with unchanged source bodies and symbolic instructions checked against
+both ROMs. All 442 condition images and 90 allocator images match across builds,
+and 2320 individual SSC samples are non-growing with 136 independent timing
+checks. Evidence and source/commit bindings are retained in
+`C:\cygwin64\tmp\repeated-joins-2t-20261021`.
+
+**Sixth implementation checkpoint: actual fallthrough predecessors.**
+Reuse the existing exact-edge cache, but do not merge in a nonexistent linear
+predecessor after an emitted unconditional jump or void/value return.
+Initialize the join state from the first real incoming witness, then require
+every remaining predecessor to agree. Missing/evicted witnesses, backward
+edges, unknown states and conflicting real predecessors remain conservative;
+a later valid witness cannot override an earlier invalid one.
+
+Track emitted chunks rather than the last consumed source TAC: folded pointer
+stores and optimized byte loops have real fallthrough even when bulk lowering
+consumes a source backedge. Preserve all existing call, assembly, frame and
+register-clobber barriers and default/no-RA/all-spill behavior. This adds
+**13 net production C lines and no functions**, without allocator-core,
+policy, verifier, cache-capacity or ABI changes.
+
+Against `040d9b9`, complete isolated kernels improve as follows:
+
+| Kernel | Bytes before -> after | Kernel T-states before -> after |
+| --- | ---: | ---: |
+| PackBits | 517 -> 505 | 150974 -> 150684 (0.19% fewer) |
+| Packed CRC | 850 -> 832 | 11402744 -> 11399786 (0.03% fewer) |
+
+Other kernels, callers and frame footprints do not grow. Independently measured
+whole-ROM used bytes fall from 20413 to 20395 for calculations-1 and from
+30315 to 30279 for calculations-2. Shared-arithmetic ROMs fall from 20393 to
+20375 and from 30047 to 30011 respectively; do not sum isolated kernel savings
+and call them a ROM measurement.
+
+Extend the existing frame oracle to 57 functions / 20520 executions per build
+across all five allocator modes. Cover early void/value returns and eight/nine
+incoming edges after a terminating return, while retaining short-circuit call,
+alias, conflicting-base, pressure and assembly controls. The parent passes the
+numeric/memory oracles but needs two IX materializations instead of one in the
+return cases, and five instead of four in the call case. The ninth incoming
+edge still forces conservative materialization, even without fallthrough.
+
+Qualification passes 36 condition/policy and 21 optimized-policy tests per
+release/traced/ASan build, unchanged immutable controls and all 175 fixtures
+without snapshot updates. The 104-row / 1856-call pinned comparison, paired
+52-row / 928-call shared profiles and 136 independent timing checks pass;
+all 2320 individual SSC samples are non-growing. All 442 condition images, 90 allocator
+images and complete default/shared ROMs match across builds.
+Evidence and source/commit bindings are retained in
+`C:\cygwin64\tmp\fallthrough-joins-2t-20261021`.
+
+**Seventh implementation checkpoint: retained BC frame-word copies.**
+Reuse the existing HL assignment shortcut for word copies into BC instead of
+rebuilding IY while IX can address the source. Keep the same declared-width,
+signedness, frame-displacement, reload-spill and allocator-mode guards; retain
+the existing global/far-frame fallback and all allocation/clobber contracts.
+This adds **eight net production C lines and no functions**, without changing
+allocation policy, the core, verifier or ABI.
+
+Against `11304a1`, complete isolated kernels and live dependencies improve:
+
+| Kernel | Bytes before -> after | Kernel T-states before -> after |
+| --- | ---: | ---: |
+| Tile | 1121 -> 1109 | 1905388 -> 1895180 (0.54% fewer) |
+| PackBits | 505 -> 481 | 150684 -> 142187 (5.64% fewer) |
+| Packed CRC | 832 -> 808 | 11399786 -> 11269634 (1.14% fewer) |
+
+Other kernels, callers and frame footprints do not grow. Whole projects are
+measured separately, not inferred by summing isolated savings:
+
+| Complete project | Default used ROM before -> after | Shared used ROM before -> after |
+| --- | ---: | ---: |
+| calculations-1 | 20395 -> 20083 | 20375 -> 20063 |
+| calculations-2 | 30279 -> 30267 | 30011 -> 29999 |
+
+Add a 20-function / 6300-execution independent return/memory/port oracle per
+build across all five modes. Cover signed/unsigned word arguments and escaped
+locals, calls, sequenced increments, negative/wrapping indices, large frames,
+the exact -130 through -125 displacement boundary and far-frame fallback.
+Assert actual retained BC selection and IX loads, not just numeric agreement.
+The parent passes every runtime oracle but fails the no-redundant-IY assertion.
+Existing width-conversion, alias, clobber and immutable controls remain intact.
+
+Qualification passes 37 condition/policy and 21 optimized-policy tests per
+release/traced/ASan build, unchanged immutable controls and all 175 fixtures.
+Three fixture vectors change only their BC source load: 12 bytes / 67 T-states
+through IY become six bytes / 38 T-states through IX. Check unchanged source
+bodies, the complete symbolic transformation and both old/new ROM vectors;
+do not weaken allocation or rejection assertions.
+
+The 104-row / 1856-call pinned comparison, paired 52-row / 928-call shared
+profiles and 136 independent timing checks pass. All 2320 individual SSC
+samples are non-growing; all 452 condition images, 90 allocator images and
+complete default/shared ROMs match across builds. Evidence and source/commit
+bindings are retained in `C:\cygwin64\tmp\bc-frame-loads-2t-20261021`.
+
+**Eighth implementation checkpoint: cached far-frame word sources.**
+Extend the existing retained HL/BC word-copy path when a proven IX window
+already covers the source, even if its canonical frame offset is outside
+-128 through 126. This new case neither rebuilds nor adjusts IX. Preserve
+canonical-frame eligibility, width/reload/register guards, global fallback
+and conservative cache invalidation. Reuse the existing target displacement
+policy and address emitter: **three net production C lines, no new functions**,
+and no allocator-core, policy, verifier or ABI changes.
+
+Reject the simpler unconditional far-frame IX prototype. Two valid far-argument
+controls grow from 59 to 65 bytes and from 333 to 362 T-states per call because
+rebasing IX displaces a useful near-frame window. The bounded implementation
+retains both original costs, while keeping the prototype's real-workload win:
+
+| Kernel | Bytes before -> after | Kernel T-states before -> after | Frame footprint |
+| --- | ---: | ---: | ---: |
+| Path | 1318 -> 1306 | 5393409 -> 5355245 (0.71% fewer) | 186 -> 186 |
+
+Other kernels, callers and frame footprints do not grow. Independently measured
+complete ROMs, rather than summed isolated savings:
+
+| Complete project | Default used ROM before -> after | Shared used ROM before -> after |
+| --- | ---: | ---: |
+| calculations-1 | 20083 -> 20083 | 20063 -> 20063 |
+| calculations-2 | 30267 -> 30255 | 29999 -> 29987 |
+
+Expand the existing word-copy oracle to 42 functions / 13410 executions per
+build across all five modes. Cover cached and uncached signed/unsigned locals,
+forward joins, aliases/calls, sequenced increments, frame boundaries and large
+argument lists. Assert actual IX loads without IX mutation for cached far
+sources, retain uncached IY fallback, and pin complete 59-byte/333-cycle
+far-argument costs. The parent passes all runtime/cost controls but fails the
+new cached-load assertion. Update the existing scalar cohort's exact -129
+assignment expectation to IX displacement -128; retain its uncached/global
+rejections and all immutable verifier expectations.
+
+Qualification passes 37 condition/policy and 21 optimized-policy tests per
+release/traced/ASan build, all 175 fixtures without snapshot updates and the
+unchanged immutable controls. The full pinned comparison, paired shared
+profiles, 2320 non-growing individual SSC samples and 136 independent timing
+checks pass. All 472 condition images, 90 allocator images and complete
+default/shared ROMs match across builds. Evidence, rejected-prototype controls
+and source/commit bindings are retained in
+`C:\cygwin64\tmp\far-frame-loads-2t-20261021`.
+
+**Ninth implementation checkpoint: shared-window frame memory copies.**
+The assignment emitter already addresses its frame destination through IX.
+For equal-width, one/two-byte stack-local/spill copies, reuse that proven window
+for source loads instead of rebuilding IY. Use the existing IX byte-load,
+byte-store and displacement-policy helpers; preserve low-load/store followed
+by high-load/store order. Do not move IX, bypass split store/reload transfers,
+or change physical-result, conversion, global, cache-miss, no-RA or all-spill
+fallbacks. No new functions, allocator policy, ownership proof or ABI changes;
+18 net production C lines.
+
+Against parent `547669d`, complete kernels and aggregate input timings:
+
+| Kernel | Bytes before -> after | Kernel T-states before -> after | Frame footprint |
+| --- | ---: | ---: | ---: |
+| Array | 1505 -> 1493 | 6092372 -> 6060356 (0.53% fewer) | 88 -> 88 |
+| Stencil | 1553 -> 1541 | 4055470 -> 4023454 (0.79% fewer) | 120 -> 120 |
+| Tile | 1109 -> 1079 | 1895180 -> 1879172 (0.84% fewer) | 126 -> 126 |
+| PackBits | 481 -> 475 | 142187 -> 138272 (2.75% fewer) | 39 -> 39 |
+| Packed CRC | 808 -> 802 | 11269634 -> 11222306 (0.42% fewer) | 47 -> 47 |
+| sumBytes | 99 -> 93 | 76126 -> 75633 (0.65% fewer) | 24 -> 24 |
+
+Other kernels and all callers/frame footprints are non-growing. Independently
+measured complete ROMs, not summed isolated-function savings:
+
+| Complete project | Default used ROM before -> after | Shared used ROM before -> after |
+| --- | ---: | ---: |
+| calculations-1 | 20083 -> 19957 | 20063 -> 19937 |
+| calculations-2 | 30255 -> 30183 | 29987 -> 29915 |
+
+Add a 56-function / 12600-execution memory-copy oracle across all five modes.
+Cover signed/unsigned byte/word copies, unchanged widening/narrowing paths,
+near/far locals, exact -128/-129 and +126/+127 displacement boundaries,
+escaped aliases, calls, loops, explicit IX clobbers and global fallbacks.
+Check complete observed memory/port results and actual byte-copy order.
+The parent passes all runtime controls but fails the new IX-selection check.
+
+Qualification passes 38 condition/policy and 21 optimized-policy tests per
+release/traced/ASan build, all 175 fixtures and unchanged immutable verifier
+controls. Seven fixtures need 15 exact vector updates: eight direct six-byte
+reductions and seven relocated-branch vectors. Prove unchanged source bodies
+and that their entire symbolic assembly changes contain only the qualified
+memory copies. Update only four matching IX-selection assertions; retain all
+global/conversion rejections and immutable native expectations. The full
+pinned comparison, paired shared profiles, 2320 non-growing individual SSC
+samples and 136 independent timing checks pass. All 512 condition images,
+90 allocator images and complete default/shared ROMs match across builds.
+Evidence and source/commit bindings are retained in
+`C:\cygwin64\tmp\frame-copies-2t-20261021`.
+
+**Closed at `fb45e29`.** The qualified checkpoints satisfy this step's bounded
+acceptance criteria: real size/speed wins, non-growing complete kernel/caller/
+frame costs and full compatibility qualification. General loop/CFG scalar
+residency is explicitly deferred, not claimed complete and not a prerequisite
+for 2u. Its rejected promotion probes and loop-scoped ownership requirements
+remain recorded above; do not relax those proofs to reopen this step.
+
+#### 2u. Investigate An Indexed Frame And Allocatable DE [DONE: BOUNDED NO-GO]
+
+After 2t, prototype an explicitly gated per-function frame strategy using the
+existing target policy and location/address helpers. SameSameC reserves DE as
+its frame pointer; SDCC can retain values in DE while using an indexed frame.
+Repeated frame-address setup alone occupies 192 bytes in Tile and 354 in Path.
+
+Measure whether persistent indexed addressing and another allocatable pair
+outweigh index-register pressure, pointer operations and call/helper saves.
+Audit flags, displacement limits, local-array addresses, prologue/epilogue,
+frame restoration and every full operand/result clobber contract. Do not
+silently change the public ABI or duplicate the emitter. If external contracts
+must change, version/gate them and retain compatibility adapters.
+
+Acceptance: compare complete bodies, callers, dependencies, cycles and frame
+footprints against the qualified default; test mixed versions, cross-file,
+banked, recursive and assembly-facing calls. Promote the prototype only after
+measured net wins; otherwise record a bounded no-go result.
+
+Bound this investigation against `fb45e29`: audit the current frame/register
+contracts, then measure one private per-function indexed-frame prototype using
+the existing generated bodies and independent runtime oracles. Account for
+index-register scratch conflicts, frame-address construction, entry/exit ABI
+adapters and stack saves; do not count a nominal free DE as an allocated value.
+Keep unsupported functions on the unchanged path. Conclude with an explicit
+integration decision and compatibility requirements, rather than accumulating
+more scalar-copy optimizations under this step.
+
+**Investigation result: do not promote the frame-switch prototype.** This is
+a bounded no-go for adapting the current emitters with generic scratch saves,
+not proof that allocator-integrated indexed frames cannot win. Production
+code, allocator policy, ABI, verifier controls and snapshots remain unchanged.
+No production functions or C lines are added.
+
+Audit `defines.h`, the pass-5 register/clobber policy and the pass-6 address,
+call, prologue and return helpers. There is no DE candidate/location class.
+DE also supplies the callee frame to the unchanged caller after return, so
+freeing it requires an exit adapter, not just another candidate enum. The
+advancing byte-copy emitter even saves the frame's D/E bytes directly into
+spill storage. Preserve that path rather than translating it speculatively.
+
+Measure two private assembly-level feasibility variants over the existing
+generated bodies, not a production compiler feature or another emitter.
+Keep IY as the canonical frame in supported leaf functions, restore DE for the
+existing ABI, and explicitly spill DE/save IY around TACs requiring scratch
+IY. The second variant also folds proven frame operands onto IY; the first
+leaves target-address copies intact. Retain unchanged fallbacks for calls,
+inline assembly, wide frames and unmapped frame-register uses. Path's wide
+frame and the advancing byte-copy implementation are not converted.
+
+Each variant executes 39 images / 696 independent return, full-buffer, port
+and stack-restoration checks: 13 measured RA images, 13 DE-canary images and
+13 byte-identical no-RA controls. Each also passes 26 independent timing
+checks. In each variant, 2567 executed entry/exit pairs prove that a live DE
+canary survives and IY retains the original frame. This establishes only the
+tested private preservation scheme, not allocation of a useful value to DE
+or general mixed-version/banked/recursive/assembly-facing compatibility.
+
+The more favorable, folded variant against `fb45e29`:
+
+| Complete kernel | Bytes before -> prototype | Kernel T-states before -> prototype | Frame footprint |
+| --- | ---: | ---: | ---: |
+| Array | 1493 -> 1505 | 6060356 -> 6113348 | 88 -> 88 |
+| Stencil | 1541 -> 1549 | 4023454 -> 4047006 | 120 -> 120 |
+| Tile | 1079 -> 1085 | 1879172 -> 1782544 | 126 -> 130 |
+| PackBits | 475 -> 463 | 138272 -> 129620 | 39 -> 41 |
+| Packed CRC | 802 -> 790 | 11222306 -> 11090726 | 47 -> 49 |
+| sumBytes | 93 -> 106 | 75633 -> 77452 | 24 -> 28 |
+
+Packed CRC's gain comes from its converted PackBits dependency, not from
+converting the CRC function itself. All measured caller bytes/cycles remain
+unchanged. Small arithmetic kernels grow four bytes and 32 T-states per call;
+the unconverted byte-copy kernel is unchanged. Faster Tile and PackBits do
+not erase the size, stack or other per-input regressions.
+
+Also build the complete calculation ROMs with the folded prototype:
+
+| Complete project | Default used ROM before -> prototype | Shared used ROM before -> prototype |
+| --- | ---: | ---: |
+| calculations-1 | 19957 -> 19954 | 19937 -> 19934 |
+| calculations-2 | 30183 -> 30231 | 29915 -> 29963 |
+
+These are independently linked complete-ROM sizes, not summed isolated
+savings. The complete ROMs are build/size probes, not runtime-qualified
+releases. Do not promote the three-byte first-project saving while hiding
+the second project's 48-byte growth.
+
+Recheck pinned SDCC r17016's `ralloc2.cc::omit_frame_ptr` and `gen.c`: frame
+selection considers register pressure and parameter-access cost, stack
+operands distinguish ordinary/extended addressing, and index preservation
+depends on actual register availability. A generic frame switch does not
+provide that coordination. Any future revival needs a separately scoped
+frame-specific target policy, actual DE ownership/overlap/clobber contracts,
+operand-aware scratch selection, wide-frame lowering and full compatibility
+qualification. Do not reopen 2t or start an unbounded rewrite here.
+
+The investigation is complete; the following 2v batch is now qualified. Both
+executed variants, rejected parser trials, exact baseline/source provenance,
+per-input results, complete-ROM probes and commit binding are retained in
+`C:\cygwin64\tmp\indexed-frame-2u-20261021`.
+
+#### 2v. Reduce Measured Internal Call Transport [DONE]
+
+Closed with a bounded improvement inside the existing ABI. No register-argument
+convention, new runtime helper, inlining policy or callee change was necessary.
+Before this batch, Array's three internal transport sequences occupied 241 bytes, excluding
+argument-expression evaluation and callee bodies. The three-argument wrapper
+example was 126 bytes / 729 T-states versus stock SDCC's 20 / 114.
+
+The existing call emitter already prepares each word argument in BC, then
+copies it using two indexed stores. For normal `-ra` calls with at least one
+argument, all declared target arguments word-sized and every target offset
+matching the contiguous ABI layout, reuse `_push_bc` instead. Constants use the
+existing BC immediate loader. Reserve the unchanged zero/one/two return bytes,
+push arguments in the existing order, then restore SP from the already-live
+new-frame HL and decrement it to the exact original entry offset, -3.
+This last restoration is required by the existing small-frame `DEC SP`
+prologues; simply leaving SP below the pushed arguments is not equivalent.
+
+The saved caller frame, return label, argument/result offsets, argument
+evaluation/snapshots, conversions, old-frame IY addressing, DE exchange, jump,
+callee prologue/return and caller restore are unchanged. IX remains scratch,
+not an input contract. No-RA, all-spill, byte/mixed-width target lists,
+zero-argument and `__pureasm` calls retain their original paths. Byte sources
+widened to word targets reuse the existing signed/unsigned transport.
+No signature/body-size assumption or speculative extra stack push is needed.
+
+The production change is **31 net C lines, zero new functions**, confined to
+the existing call emitter. With a two-byte return, even one constant word
+argument saves four bytes / ten T-states; one memory word saves five / twenty.
+The three-word wrapper is now **111 bytes / 655 T-states**, saving 15 bytes
+and 74 T-states (10.2%). This still leaves a substantial gap to SDCC; explicit
+register conventions remain separately scoped future work, not silently
+introduced by this change.
+
+Qualified kernel totals against `fa18484` (caller costs reported separately):
+
+| Kernel | Bytes before -> after | Aggregate kernel T-states before -> after | Frame footprint |
+| --- | ---: | ---: | ---: |
+| Array | 1493 -> 1450 | 6060356 -> 5948852 | 88 |
+| Stencil | 1541 -> 1513 | 4023454 -> 3976350 | 120 |
+| Path | 1306 -> 1292 | 5355245 -> 5353965 | 186 |
+| Packed CRC | 802 -> 784 | 11222306 -> 11220929 | 47 |
+
+Other measured kernels are unchanged; every measured caller shrinks and speeds
+up. All 2320 individual SSC samples across the default/shared qualification
+reports are non-growing in kernel and complete-call cycles, stack high-water,
+stack-access/below-SP extents and frame footprint. Do not infer complete-ROM
+savings by summing these isolated kernels.
+
+Independently linked complete used ROM, retaining all live callees/helpers:
+
+| Project | Default arithmetic before -> after | Shared arithmetic before -> after |
+| --- | ---: | ---: |
+| calculations-1 | 19957 -> 19007 (-950) | 19937 -> 18987 (-950) |
+| calculations-2 | 30183 -> 29001 (-1182) | 29915 -> 28733 (-1182) |
+
+These are used-ROM build/size measurements, not emulator runs of the entire
+interactive programs. Release, traced and ASan builds produce identical
+complete ROMs under each profile.
+
+Qualification:
+
+- Strict C89 normal/traced checks; release/traced/ASan builds; 39 condition/
+  policy tests and 21 optimized-policy tests per build; all 175 fixtures pass.
+- New independent 15-function transport oracle: 4050 executions per build,
+  covering constants/globals, signed/unsigned widening, far/escaped locals,
+  pointer arguments, snapshots around aliasing calls, nested/recursive calls,
+  zero/byte/word/void results, shallow frames, mixed/byte fallbacks and
+  `__pureasm` calls. Parent passes every runtime loop but fails the exact new
+  transport-selection assertion; default/no-RA/all-spill ROMs remain identical.
+- Existing cross-file/banked recursive tests now also link RA callers to
+  no-RA callees and vice versa. An additional run uses the actual saved parent
+  compiler for both old-caller/new-callee and new-caller/old-callee combinations:
+  448 guarded oracle calls across inline/shared arithmetic profiles.
+- Instrumented parent/current execution checks 19980 exact callee-entry
+  SP=-3 witnesses over 8100 calls, including small void/byte/word frames.
+  All 4050 paired per-input stack high-water comparisons are non-growing.
+- Full pinned comparison: 104 rows / 1856 calls. Shared comparison: 52 rows /
+  928 calls per traced/ASan build. 136 independent timing checks, 530 condition
+  image identities across all builds and 90 allocator ROM identities across
+  traced/ASan. All 91 no-RA/external full-comparison rows are unchanged.
+- Eleven fixture headers update exactly 24 tagged vectors. Parent fixtures
+  and old vectors pass; entire symbolic assembly differences are independently
+  reproduced from the qualified call rewrite and unchanged argument layouts.
+  All fixture source bodies and makefile checks remain unchanged. Only the
+  direct call-setup selection assertion and affected frame-join IX count
+  change in CI. Immutable verifier controls remain 32 rejections, seven accepts,
+  10200 endpoints and 65 frame-increment cases, with no policy/core edits.
+
+Reject blanket inlining: the earlier private Array probe saved 286 isolated
+bytes but grew its caller body 27 bytes; Stencil saved 170 isolated bytes but
+grew its body eight bytes. Those are not complete-program savings when the
+old helpers remain live. Any future register ABI still requires an explicit
+compatible convention and its own full compatibility/cost qualification.
+
+Exact parent sources/binaries, parser/assertion trials, per-input metrics,
+stack witnesses, mixed-version commands, snapshot proof, complete-ROM hashes
+and commit binding are retained in
+`C:\cygwin64\tmp\call-transport-2v-20261021`.
+
+The source provenance, exact 52-image ledger, 411 guarded research calls and
+21 independent timing checks for these three steps are retained in
+`C:\cygwin64\tmp\major-codegen-study-20261021`.
+
+#### 2w. Bounded Loop-Carried Scalar Register Ownership [DONE: BOUNDED CRC]
+
+The post-2v comparison at `2b14640` reproduces all pinned external results:
+130 unique configurations / 2320 guarded calls pass. Against stock SDCC, the
+five large kernels remain 1.553 times the code size and 1.408 times the cycles
+(geometric means, competitor size/speed settings respectively). Root-function
+frame-address setup and scalar-frame accesses alone consume 62.7% of Tile's
+kernel cycles, 52.3% of Path's and 50.8% of Packed CRC's. These are measured
+traffic budgets, not promised removable percentages.
+
+Start with Tile's call-free CRC bit loop: the existing bounded counter already
+lives in BC, while the CRC is reloaded and stored on every bit. A private
+assembly-only probe keeping the CRC in HL across both branches and the back
+edge, with entry/exit synchronization, gives:
+
+| Tile | Current compiler | Private residency probe |
+| --- | ---: | ---: |
+| Kernel bytes | 1079 | 1065 |
+| Aggregate kernel T-states | 1879172 | 1518518 (-19.2%) |
+| Frame footprint | 126 | 126 |
+
+All 20 guarded calls and one independent timing pass, with unchanged caller
+cost and no frame/stack growth. This is opportunity evidence, not a compiler
+implementation or general loop-ownership proof.
+
+- Reuse existing allocator/CFG legality and target-local loop emission. Keep
+  the first implementation bounded to proven call-free word-state loops with
+  compatible BC-counter/HL-state ownership; do not add a parallel framework.
+- Prove entry, both branch paths, the back edge and exit. Reject escaping or
+  aliased state, calls, pureasm, unsupported clobbers, external entry and
+  conflicting physical-register ownership. Preserve zero iterations, live-out
+  state/counter values, source widths and original ABI/fallback behavior.
+- Retain the failed 2t broad-promotion evidence. Do not revive unrestricted
+  promotion or the generic indexed-frame switch rejected in 2u.
+- Add independent runtime and exact-selection/fallback tests, including
+  signedness, bounds, nested loops, escaping state, calls and existing
+  specialized loops. The parent must pass the runtime oracle and fail the new
+  selection assertion.
+- Before closing a batch, run the existing checkpoint gates, compare every
+  input's cycles/frame/stack metrics, and independently link both complete
+  calculation ROMs under default/shared arithmetic. Do not infer whole-ROM
+  savings by adding isolated gains.
+
+Stock SDCC r17016's `SDCCloop.c::loopInvariants` and `loopInduction` provide
+source-backed precedent for explicit topology, dominance and conservative
+pointer/call handling, not permission to weaken SameSameC's existing contracts.
+
+##### First Qualified 2w Batch
+
+Extend the existing copy/fill/reduction emitter, renamed
+`_generate_asm_bounded_loop_z80`; add no production functions or allocator
+framework. Reuse `_is_z80_bounded_counter`, temporary-lifetime/ownership checks,
+external-entry and address-exposure checks, location resolution, frame loads,
+word stores and the existing live-out counter assignment.
+
+The accepted shape is a zero-initialized unsigned word counter, constant bound
+1..256, and an unsigned word local/argument CRC with the exact high-bit test,
+one-bit left shift and literal-polynomial XOR branches. The CRC stays in HL
+and uses the carry from `ADD HL,HL` instead of reloading/testing its high byte.
+The existing counted-loop machinery uses B, including B=0 for exactly 256
+iterations. Commit the CRC to its original frame location and restore any
+live-out word counter through the original assignment helper.
+
+Keep default/no-RA/all-spill, zero/variable/wide bounds, signed state/counters,
+nonmatching masks/shifts, far/global/escaped state, calls, asm, breaks/continues
+and crossing-temporary/nested-owner cases on their existing paths. This closes
+only the bounded constant-count CRC subset, not general CFG residency or
+multi-exit/variable-bound promotion. ABI, frame layout, DE ownership and all
+other allocator/core policies remain unchanged.
+
+Production growth is **74 net C lines, zero new functions**. Against `2b14640`,
+the final compiler improves beyond the private residency-only probe:
+
+| Tile | Parent compiler | Qualified compiler |
+| --- | ---: | ---: |
+| Kernel bytes | 1079 | 1034 (-45) |
+| Aggregate kernel T-states | 1879172 | 1323474 (-29.57%) |
+| Caller bytes / aggregate T-states | 111 / 12980 | 111 / 12980 |
+| Frame footprint | 126 | 126 |
+
+All other 12 kernels and every no-RA/external row are unchanged. Default and
+shared arithmetic give the same Tile improvement. Independently linked used
+ROM, not summed isolated gains:
+
+| Project | Default before -> after | Shared before -> after |
+| --- | ---: | ---: |
+| calculations-1 | 19007 -> 19007 | 18987 -> 18987 |
+| calculations-2 | 29001 -> 28956 (-45) | 28733 -> 28688 (-45) |
+
+These are whole-program build/size checks, not complete interactive-program
+runtime qualification. Release/traced/ASan images agree under each profile.
+
+Qualification:
+
+- Strict C89 normal/traced checks and release/traced/ASan builds pass.
+- Forty condition/policy tests and 21 optimized-policy tests pass per build.
+  The new 26-function oracle executes 4160 calls per build over five allocator
+  modes, with independent arithmetic, guarded buffers, exact selection and
+  fallback assertions. It covers count 0/1/255/256/257, polynomial byte lanes,
+  high-bit seeds, live-out word counters, argument state and conservative
+  signed/alias/call/asm/global/far/nested/control-flow fallbacks.
+- The saved parent passes all 4160 runtime calls, then fails only the new
+  selection assertion. Default/no-RA/all-spill focused ROMs are identical.
+  An additional 8320 instrumented parent/current calls prove all 4160 paired
+  cycle/frame-traffic/stack-high-water comparisons non-growing.
+- All 175 fixtures pass without snapshot changes. Existing word-counter CI
+  assertions change only for the exact newly selected CRC variants; all
+  numerical oracles and immutable verifier controls remain unchanged.
+- Full pinned comparison: 104 rows / 1856 calls. Shared comparisons: 52 rows /
+  928 calls per traced/ASan build. All 2320 individual SSC samples are
+  non-growing in timing and observed frame/stack metrics; 136 independent
+  timing checks, 540 condition-image identities and 90 allocator-ROM identities
+  pass. Native controls remain 32 rejections, seven accepts, 10200 endpoints
+  and 65 frame-increment controls.
+
+Parent binaries, exact sources, initial obsolete-selection assertion failures,
+per-input results, complete-ROM hashes and qualification/commit binding are
+retained in `C:\cygwin64\tmp\crc-loop-2w-20261021`.
+
+#### 2x. Allocation Costs, Assignment Packing And Rematerialization [DONE: BOUNDED ADDRESSES / PACKING CONSOLIDATION]
+
+Stock SDCC r17016's `ralloc2.cc::instruction_cost` checks candidate legality,
+assigns operands/surviving registers and calls `dryZ80iCode` for actual lowering
+costs. Its `ralloc.c::packRegisters` propagates assignments and rematerializable
+single-definition addresses, with conservative global/address-taken rules.
+
+SameSameC already has a bounded lowering-aware cost observer in `pass_5.c`.
+Extend it and existing copy/address handling instead of duplicating them:
+
+- Include context-dependent address setup, extension, scratch registers and
+  live-range pressure where they change the actual emitted cost.
+- Reuse safe assignment packing and rematerialization to remove unnecessary
+  temporary storage; preserve definition, alias, width and clobber proofs.
+- Measure the same workloads and full linked programs. Reject local regressions
+  hidden by aggregate gains; qualify spill/all-spill/no-RA and verifier controls.
+
+**Qualified bounded outcome:** one shared eligibility/byte-offset query now
+covers true byte/word arrays with a stable base and an integral in-bounds
+constant index (0..32767), or the unindexed array address. Mutable pointer
+contents and variable indices retain the previous lowering. This is normal
+`-ra` only; default, `-no-ra` and `-ra-all-spill` remain unchanged.
+
+- Reuse `_generate_asm_get_address_z80` rather than maintaining a separate
+  reload-address emitter. Fold the constant byte displacement into its existing
+  global-label or frame-offset materialization, including word-element scaling
+  and 16-bit address wrapping. Global BC destinations load BC directly instead
+  of clobbering HL to copy the address across.
+- Extend existing same-block reload rematerialization from global arrays to
+  local arrays **in HL only**. Local BC reloads keep their indexed spill path:
+  computing a frame address through HL would violate the reload's clobber
+  contract. The existing nearest-definition scan, call/ASM/label/jump/return
+  barriers, spill validation and live backing-store rules remain in force.
+- The existing cost observer uses the same query and destination restriction:
+  a global reload costs 10 T / 3 bytes; a frame-address HL reload costs
+  21 T / 4 bytes instead of two indexed loads at 38 T / 6 bytes. Existing
+  conservative handling of unknown costs and active-range pressure remains.
+- Six duplicate producer/result-assignment packers now reuse one existing
+  implementation. Preserve all six original invocation positions, arithmetic
+  opcode membership, function-local single-read/single-write proof, result
+  node/type propagation and dead-assignment handling. This changes no packing
+  policy. Net production change: **225 fewer C lines and four fewer functions**
+  (224 fewer lines when the shared declaration is included).
+
+Focused results, measured against `efe4516`, include all original frame space
+and execution overhead:
+
+| Address case | Function bytes before -> after | T-states saved per call | Frame reads saved per call |
+| --- | ---: | ---: | ---: |
+| Global byte array | 141 -> 137 | 21 | 0 |
+| Global word array | 164 -> 159 | 32 | 0 |
+| Local byte array | 149 -> 143 | 38 | 2 |
+| Local word array | 172 -> 165 | 49 | 2 |
+| Far-frame byte array | 226 -> 220 | 38 | 2 |
+| Far-frame word array | 261 -> 254 | 49 | 2 |
+
+Frames are unchanged. Mutable-pointer and variable-index controls are unchanged.
+The ten focused functions pass 32 inputs in all five compiler modes
+(1,600 guarded calls per build); the parent passes every runtime oracle before
+failing only the intended new-selection assertion. Another 3,200 instrumented
+parent/current calls prove 1,600 non-growing per-input cycle, frame-read,
+frame-write and stack-high-water comparisons. Disabled/all-spill ROMs are
+byte-identical to the parent.
+
+Release/traced/ASan builds pass the 41 condition/policy tests and 21 optimized
+policy tests each, strict C89 checks, and all 175 existing fixtures. One exact
+byte snapshot removes the intended redundant `LD BC,0 / ADD HL,BC`; its
+original failure is retained. Native controls are unchanged: 32 rejections,
+seven accepts, 10,200 endpoints and 65 frame-increment controls.
+
+**Application impact is deliberately not overstated:** all 104 rows of the
+pinned 13-kernel comparison are unchanged, including caller costs and per-input
+timing/frame/stack results. Shared profiles also do not regress. Independently
+linked complete ROM sizes are unchanged: calculations-1 is 19,007 bytes default
+/ 18,987 shared; calculations-2 is 28,956 / 28,688. These workloads have no
+explicit reload-rematerialization sites, so this batch is a bounded address
+improvement and source-size reduction, not the next large application speedup.
+It adds no allocator, generic dry-run framework, register class or ABI.
+
+Evidence: `C:\cygwin64\tmp\allocation-packing-2x-20261021`, including focused
+per-input metrics, original/rechecked byte snapshot logs, pinned comparisons,
+independent complete links, source hashes and qualification/commit bindings.
+Broader lowering-cost or copy-chain extensions remain optional and require
+their own measured opportunity; they are not new SM83 prerequisites.
+
+#### 2y. Explicit Compatible Internal Register Calls [COMPLETED]
+
+After 2v, the three-word example caller is still 111 bytes / 655 T-states
+versus stock SDCC's 20 / 114. Inspect r17016 `gen.c::genSend`/`genRet`, including
+its incompatible-return-convention tail-call rejection, and bundled z88dk
+sccz80 `callfunc.c`'s explicit FASTCALL path. The bundled sccz80 source is
+not independently revision-matched to the benchmark binary.
+
+- Investigate selected internal register arguments/results only behind an
+  explicit compatible convention. Reuse existing call/frame/location helpers.
+- Preserve exported, banked, indirect, recursive, mixed-width, pureasm and
+  old-object contracts; any adapters and caller/callee saves count in the cost.
+- Qualify nested calls, argument snapshots/evaluation order, result lifetime,
+  clobbers and old/new object combinations. Keep original ABI paths unchanged.
+- Accept only measured complete caller/callee/helper and independently linked
+  ROM wins. Do not substitute blanket inlining or count a removed standalone
+  callee while it remains live elsewhere.
+
+**Initial completed outcome:** the user-selected compiler flag `-z80-regcalls`, together
+with normal `-ra`, enables a bounded same-object leaf convention. Default,
+`-no-ra` and forced-all-spill paths remain unchanged. Eligibility requires a
+current-unit definition, zero to three word-width arguments, a word result,
+the existing contiguous argument offsets, and at least two used-result call
+sites to amortize the retained public adapter. Byte/mixed-width callees,
+recursive/non-leaf functions, source ASM/pureasm, fixed-address definitions,
+entry points and prototype/external calls retain their original ABI.
+
+- One argument travels in BC, two in HL/BC, and three in IY/HL/BC; HL carries the
+  result. The existing typed BC materializer loads arguments in source order,
+  including byte-source sign/zero extension and explicit constant zero.
+  Existing TAC snapshots remain responsible for nested-call evaluation order.
+- Fast callers save/restore DE around hardware CALL. The callee pushes its
+  incoming argument registers and establishes the original DE-relative frame
+  layout. CALL's PC occupies the legacy word-result slot. The shared body keeps
+  all original argument/local/temp offsets and returns HL through that slot's
+  PC. A public old-ABI entry calls the same body, stores HL into the now-dead
+  PC slot and uses the original return emitter. No serialized ABI metadata,
+  duplicate body, linker convention, allocator-core policy or broad clobber
+  relaxation was added.
+- Reused argument validation, source resolution, typed materialization, frame
+  addressing, return-value emission and the existing call-result store tail.
+  Production C grows by **125 net lines and one eligibility helper**, not a
+  claimed net source reduction; there is no parallel argument/result framework.
+
+**Measured against qualified 2x (`58142a1`):**
+
+| Complete independently linked application | Original ABI | Register calls | Saved |
+|---|---:|---:|---:|
+| calculations-1, default arithmetic | 19007 | 18471 | 536 bytes |
+| calculations-1, shared arithmetic | 18987 | 18451 | 536 bytes |
+| calculations-2, default arithmetic | 28956 | 27487 | 1469 bytes |
+| calculations-2, shared arithmetic | 28688 | 27219 | 1469 bytes |
+
+All retained adapters, bodies, callers and live arithmetic helpers count.
+The 24-root focused complete image shrinks **4138 -> 3447 bytes**. Across 32
+inputs, ordinary-RA caller timings fall from **16416 -> 11872** T-states for
+the zero-argument case, **20736 -> 15584** for one, **22400 -> 17408** for two
+and **28384 -> 24320** for three. A separate live shared-helper fixture shrinks
+**655 -> 577 bytes** with inline arithmetic and **619 -> 541** with shared
+arithmetic; its register bodies execute actual pooled multiply/divide CALLs.
+These are focused transport measurements, not whole-application speed claims.
+
+Compatibility is intentionally not free. Direct old-ABI public-entry timings
+for the measured zero/one/two/three-word leaves change from **119/189/241/407**
+to **200/287/336/502** T-states because the public adapter remains live.
+Three-word calls that discard the result perform **two extra frame reads** for
+the IY transfer; their measured aggregate time nevertheless falls
+**30368 -> 27520**, without growing frame writes or stack high-water.
+Do not describe this as universal traffic reduction or faster old callers.
+The feature remains explicitly opt-in.
+
+**Qualification:**
+
+- Release, traced and ASan builds pass the 44 condition/policy tests and 23
+  optimized policy tests, plus the final strengthened 24-test focused/policy
+  run in each build. The final focused case executes 3840 guarded root calls,
+  20 public-entry calls and 12 two-object compatibility calls per build.
+  Signed word comparisons/results, variable arithmetic, ignored results,
+  nested calls, snapshots across mutations, live results, pointers, far/escaped
+  frames, loops, global destinations and rejected boundaries are covered.
+- Instrumented actual-parent/current comparisons cover **7680 root samples**
+  across ordinary/shared linker settings. No input grows cycles, frame writes
+  or stack high-water; **7552** also do not grow frame reads, with precisely the
+  **128** discarded-result RA/quiet samples above accounting for the exception.
+  Six default/no-RA/all-spill parent/current ROM identities hold. An additional
+  **240** guarded calls exercise actual live shared arithmetic bodies; all
+  **120** paired samples are non-growing in cycles and frame reads/writes.
+- All four caller/callee object combinations also execute using the preserved
+  actual parent compiler for old units, not merely the new compiler without
+  the flag: **24** calls across the two linker-setting replays.
+- All **175** isolated fixtures pass without byte-snapshot updates. Original
+  **104** pinned rows / **1856** calls / **24** independent timings pass.
+  Three-build register-mode comparisons add **195** rows / **3480** calls /
+  **210** independent timings with no issues. Their optional mode selection is
+  correctly reported as partial benchmark coverage; the 13 isolated kernels
+  remain unchanged under the two-site eligibility threshold.
+- Complete linked payloads and sizes agree across all three builds; generated
+  SDSC calendar dates and their validated SMS checksums are accounted for
+  separately. Existing traced/ASan allocator
+  cohorts and immutable native controls pass, as do normal/traced strict C89
+  checks. Original baseline settings, corpus, numerical oracles, and verifier
+  controls remain unchanged.
+
+Evidence: `C:\cygwin64\tmp\register-calls-2y-20261021`, including preserved parent
+binaries, per-input native metrics, complete static budgets, old-object links,
+the live shared-helper probe, pinned comparisons and qualification bindings.
+Wider arities, mixed widths, non-leaves, cross-object register ABI descriptors
+and cheaper compatibility adapters remain separate measured opportunities,
+not additional requirements for closing this bounded step.
+
+##### ABI Boundary Follow-up: Private Entries And Explicit Cross-Object Calls [COMPLETED]
+
+Historical intermediate commit `bd1b7b0` added proven-private adapter elision
+and the optional explicit declaration, reusing the AST reference walk and
+transport emitters without new production helpers (+70 C/header lines).
+Its 2400 paired focused samples, 175 fixtures and annotated-copy application
+measurements are preserved in
+`C:\cygwin64\tmp\register-call-boundaries-20261022`. The opt-in automatic
+selection policy from that stage is superseded below.
+
+##### Default Automatic Cross-Object Register Calls [COMPLETED]
+
+**Normal use requires no source edits or additional arguments.** Supported
+word-returning leaves with zero to three word arguments are selected at link
+time, including calls through ordinary prototypes in other compilation units.
+Default, `-no-ra`, `-ra` and `-ra-all-spill` builds participate; enabling this
+calling convention does not turn on the physical allocator. The old
+`-z80-regcalls` option remains accepted for existing commands but is redundant.
+
+- The compiler emits versioned unit, leaf, call and escape records together
+  with assembler-conditional entry/call/return alternatives. The existing
+  linker assembly writer resolves these records before assembly. Only the
+  selected instructions enter the ROM; there is one shared callee body, not
+  duplicated implementations or a full LTO/assembly-peephole framework.
+- With fully described inputs and no escaping/unconverted references, one
+  direct call is enough, including an ignored result. Exported and static
+  functions both qualify. A lack of local calls alone does not prove privacy.
+  Functions with no eligible call sites keep their ordinary entry.
+- Source ASM, unmarked older inputs, function-address references and
+  unsupported callers preserve the ordinary entry. Conservatively unknown
+  assembly references apply across the linked inputs, not merely within one
+  unit. A retained adapter requires two used-result register-call sites;
+  otherwise the original call/body remains. This reuses the existing bounded
+  amortization rule rather than assuming every conversion is profitable.
+- Automatic entries use `ssc.autocall.v1.w<arity>.<function>`. Old generated
+  inputs need no metadata, and ordinary new inputs still fall back to the
+  original ABI with an older linker. Malformed/unsupported metadata, duplicate
+  definitions and incompatible word arities fail explicitly. Numeric fields
+  are bounded before conversion, including oversized/corrupted records.
+- Byte/mixed-width returns/arguments, larger arities, source non-leaves,
+  recursion, source ASM/pureasm and fixed-address definitions retain their
+  existing ABI automatically; they are not compilation errors. Existing typed
+  conversions, argument snapshots/order, aliases, clobbers, DE frame offsets
+  and actual pooled arithmetic calls remain covered.
+- Reused the eligibility helper, caller emitter, callee body and existing
+  linker writer: **139 net production C lines, no new production functions**.
+  The caller emitter generates both alternatives without duplicated C logic.
+  Frame-cache state and existing diagnostic cardinality are preserved.
+
+**Why the optional declaration remains:** `__z80_regcall` still enables a
+measurable optimization beyond conservative inference. It forbids legacy entry
+points even when unrelated opaque ASM means the linker cannot prove they are
+unused. Put it after the argument list on both definitions and caller
+prototypes only when that stronger contract is intended. Explicit entries keep
+`ssc.regcall.v1.w<arity>.<function>`; they cannot accidentally bind to automatic
+entries. Unsupported explicit contracts and address-taking are errors, and
+unannotated/explicit disagreements fail linking rather than changing ABI.
+Explicit interfaces remain usable with the previous linker.
+
+In the controlled one-call/opaque-ASM fixture, automatic selection correctly
+keeps the old entry: forcing the contract saves **300 -> 263 bytes** in
+default/no-RA/all-spill builds and **232 -> 209** under RA. Outside-repository
+copies annotating seven application helper interfaces save another **80 bytes**
+for calculations-1 (**17339 -> 17259**) and **60 bytes** for calculations-2
+(**26389 -> 26329**) under RA. The declaration is therefore optional, not
+redundant; none of the automatic results below requires it.
+
+**Unmodified complete applications, against `bd1b7b0`:**
+
+| Application / compiler mode | Previous ROM bytes | Automatic ROM bytes | Saving |
+|---|---:|---:|---:|
+| calculations-1, default | 24632 | 22446 | 2186 |
+| calculations-2, default | 41975 | 38440 | 3535 |
+| calculations-1, `-ra` | 19007 | 17339 | 1668 |
+| calculations-2, `-ra` | 28956 | 26389 | 2567 |
+
+Shared-arithmetic links have the same savings (both totals are 20 bytes lower
+for calculations-1 and 268 lower for calculations-2). All **32** complete
+parent/current builds include callers, callees, compatibility entries and live
+helpers. Current release/traced/ASan ROMs are byte-identical for each setting.
+Across **108 paired complete-banked-image samples / 216 native executions**,
+full buffers/VDP output and results match, no instructions are unmapped, and
+cycles/frame reads/writes never grow. With ordinary default compilation,
+Array's six-input total falls **2526806 -> 2396156** T-states and Stencil falls
+**1808102 -> 1750902**; Tile remains unchanged. No blanket speedup is claimed.
+
+**Focused costs and qualification:** the private fixture now shrinks
+**986 -> 821 bytes** in default/no-RA/all-spill modes; its already-optimized
+RA image stays **593 bytes**. The unannotated shared-arithmetic fixture shrinks
+**2232 -> 1734** without RA and **1517 -> 1313** with RA. All **2400 paired
+inputs / 4800 executions** preserve non-growing cycles, frame writes and stack
+high-water; **192** discarded-three-word-result samples add exactly two frame
+reads, and the other **2208** do not grow reads.
+
+All **52** condition/policy tests pass in each release/traced/ASan build,
+including independent caller/callee modes, cross-unit escapes, ignored-result
+side effects, assembly-to-C/C-to-assembly boundaries and invalid metadata/
+contracts. Previous-linker explicit-contract checks pass in all three builds.
+All **175** existing fixtures pass without snapshot updates.
+The original **104** pinned rows / **1856** calls and optional-mode **65** rows /
+**1160** calls pass without issues; the old option produces identical costs.
+Instruction-shape
+checks use assembled listing instructions, not inactive ABI alternatives;
+existing diamond load-count limits remain exact. The pinned corpus, numerical
+oracles, native verifier controls and exact ROM/trace-quiet guards are unchanged.
+Selected register-call profiles compare complete kernel-plus-caller bytes and
+cycles, retaining the original total budgets and stack limits; moving work
+between caller and callee must not masquerade as improvement or regression.
+Ordinary non-register-call and external-compiler gates remain unchanged.
+Normal/traced strict C89 checks pass. Detailed reports, parent binaries and
+source/commit qualification bindings are retained in
+`C:\cygwin64\tmp\automatic-register-calls-20261022`.
+
+#### 2z. Constant Byte Lanes And Bounded Pure-Expression Reuse [COMPLETED]
+
+Stock SDCC r17016 `gen.c::genAnd` lowers constant zero/identity lanes directly;
+`SDCCcse.c` provides conservative assignment/expression reuse. Extend existing
+SameSameC logical emitters and pure-expression rewrites, not a new peephole/CSE
+framework.
+
+- A private assembly probe replaces a zero high AND lane only when the following
+  low AND overwrites A/flags. Current Tile shrinks 1079 -> 1063 bytes, with smaller
+  Stencil/Path wins; all 232 guarded calls / 14 independent timings pass.
+- Tile still computes `seed >> (i & 7)` twice. An equivalent-source probe
+  reusing the shift shrinks 1079 -> 1060 bytes and reduces aggregate cycles
+  1879172 -> 1854656 (-1.30%), with frame 126 unchanged; all 20 guarded calls /
+  one independent timing pass.
+- Prove A/flags liveness, types, reaching definitions, aliases and evaluation
+  order. Do not reuse across calls/volatile effects or extend live ranges into
+  spills that cancel the gain.
+- Treat these as separate opportunity probes, not additive production or
+  whole-ROM savings. Unsigned power-of-two folds are already implemented.
+
+**Qualified implementation (2026-10-22), relative to `5fee275`:**
+
+- Extend the existing word logical emitter for both HL and BC destinations.
+  Constant high AND-zero / OR-255 lanes become direct loads; high identity
+  lanes become copies or disappear, and high XOR-255 uses `CPL`. The following
+  low operation always overwrites A and every logical flag. Low identities
+  instead retain the exact accumulator and flags with `AND A,A` / `OR A,A`;
+  do not replace observable low zero/255 results with flag-changing shortcuts.
+  Use existing `tac_swap_args()` on a local TAC copy for constant-first forms.
+  These instruction-selection improvements apply without `-ra`.
+- Extend existing `_optimize_il_25()` rather than introduce another pass.
+  Normal RA can reuse a dynamic word shift, and its repeated AND count, within
+  six live scalar TACs. Require identical actual/promoted types, unique
+  definitions and stable scalar local/argument or constant inputs. Do not
+  common global/static, array or pointer sources. Calls, inline assembly,
+  array/pointer accesses, control flow and global/static writes stop the scan.
+  Reject another live temporary spanning the duplicate or more than one
+  intervening named result. Recount uses after each rewrite; ignore dead reads
+  in the pressure proof. Default, `-no-ra` and all-spill keep both calculations.
+- Reuse the existing split-reload policy to reload a constant word logical
+  operation's first operand into BC when its result is allocated to BC.
+  Reloading into HL would otherwise destroy an unrelated retained value.
+  The new straight-line reuse tests expose and verify this conflict with the
+  unchanged native allocation verifier. No production helper functions,
+  optimizer framework, compiler flags or source annotations were added.
+
+Final pinned Tile kernel: **1041 -> 1001 bytes**, aggregate cycles
+**1324334 -> 1284632 (-3.00%)**, stack high-water **122**, frame footprint
+**124**, unchanged. Without RA: **1703 -> 1676 bytes** and
+**3634240 -> 3614638 cycles**. Array, Stencil and Path also improve; none of
+the 13 ordinary kernels regresses in code bytes, cycles or stack footprint.
+These are final production results, not sums of the historical probes above.
+
+Independently linked, unmodified applications include all live callees,
+compatible entries/adapters and helpers:
+
+| Application | Default used bytes | RA used bytes |
+| --- | ---: | ---: |
+| calculations-1 | 22446 -> 22405 (-41) | 17339 -> 17308 (-31) |
+| calculations-2 | 38440 -> 38275 (-165) | 26389 -> 26217 (-172) |
+
+Shared arithmetic retains the same additional savings: 20 / 268 bytes
+respectively. All 108 paired complete-image samples have nonincreasing cycles
+and frame reads. **Bounded tradeoff:** retaining Tile's shared shift needs one
+two-byte spill write per encoding iteration, up to 32 extra frame-byte writes
+at count 16; its frame footprint does not grow. This also appears inside the
+bank-3 display workload, in 12 sampled RA executions including shared builds.
+Do not claim universal frame-write reduction.
+
+Qualification: 54 tests in each release/traced/ASan suite, with the affected
+word-copy snapshot rechecked in all three after improving **333 -> 325 cycles**
+and **59 -> 57 bytes**; 175 existing fixtures, with only two directly affected
+byte expectations refreshed and rechecked; original pinned comparison
+**104 rows / 1856 calls / 24 independent timings**, plus ordinary/shared
+**52 rows / 928 calls**; **14280 additional parent/current pairs / 28560
+executions**, including exact full-AF capture equality, side effects, pressure
+and alias barriers; 32 complete application builds / 108 paired real samples.
+Strict normal/traced C89, Python syntax, exact three-build image identity,
+default/no-RA and traced/quiet-RA identity remain qualified. Numerical oracles,
+CPU guards, compiler-comparison corpus and native verifier controls are
+unchanged. Evidence: `C:\cygwin64\tmp\constant-lanes-reuse-20261022`.
+
+The comparison, exact instruction ledger, ROM-identical dynamic annotations,
+source provenance and three private probes for 2w-2z are retained in
+`C:\cygwin64\tmp\compiler-reprofile-20261021-2v`.
+
+#### 2aa. Frame-Only Crossings In Bounded CRC Loops [COMPLETED]
+
+The post-2z profile at `f4c2a1f` identifies another eligible eight-round CRC in
+PackedCrc. The existing matcher rejects its crossing outer counter even though
+that counter is frame-backed. Reuse `_generate_asm_bounded_loop_z80`, not a new
+emitter or general loop-promotion pass.
+
+- Require a real spill home and no physical ownership for accepted crossing
+  temporaries. A spill flag or function-wide `phy NONE` alone is insufficient:
+  interval-local retained operands must also be considered.
+- Preserve the existing unsigned-state/count proof, exact loop shape, spill
+  transitions, address-exposure, external-entry, call/asm and live-out checks.
+  Keep non-CRC loop ownership unchanged.
+- Extend existing CRC regressions with frame-only outer loops, live-out state
+  and retained-owner/control/alias fallbacks. Keep numerical oracles, CPU
+  guards, native verifier controls and the pinned comparison corpus unchanged.
+- A private residency-only probe gives 784 -> 770 bytes and
+  11220929 -> 7604417 aggregate T-states (-32.23%), frame 47 unchanged.
+  Its 17 guarded cases and independent timing pass establish an opportunity,
+  not qualified compiler gains or a promise for the counted-loop implementation.
+
+**Implementation and measured results (2026-10-22), relative to `f4c2a1f`:**
+
+Extend only the existing CRC ownership check. A crossing temporary needs a spill
+home, `phy NONE`, and no physically annotated read/write from its first
+definition through the loop exit. This conservatively rejects retained prefixes
+even when the function-wide summary says spilled; later reloads may establish
+their own owners from the unchanged home. All non-CRC crossing checks, shape,
+type, alias, transition and external-entry guards remain unchanged. Keep the
+existing counter proof, including its fallback for an inner counter live across
+an outer back-edge. Reuse the original CRC emitter and live-out assignment.
+Production growth is **15 net C lines, zero new functions**, flags or annotations.
+
+| PackedCrc, normal RA | Parent | Current |
+| --- | ---: | ---: |
+| Kernel plus dependencies, bytes | 784 | 739 (-45) |
+| Aggregate kernel T-states | 11220929 | 5635305 (-49.78%) |
+| Stack high-water, bytes | 45 | 45 |
+| Frame footprint, bytes | 47 | 47 |
+
+Ordinary/shared arithmetic give the same improvement. All other 12 ordinary
+kernels, all allocator-off and external rows, and caller costs are unchanged.
+The counted implementation improves beyond the historical residency-only probe;
+do not add the two savings together.
+
+Independently linked complete RA applications:
+
+| Application | Ordinary used bytes | Shared used bytes |
+| --- | ---: | ---: |
+| calculations-1 | 17308 -> 17263 (-45) | 17288 -> 17243 (-45) |
+| calculations-2 | 26217 -> 26217 | 25949 -> 25949 |
+
+Default allocator-off application sizes remain 22405 / 38275 bytes respectively.
+The extended 35-function CRC oracle covers 5600 calls per build in five allocator
+modes, including nested frame state, bounds 1/255/256, live-out counters, calls
+outside versus inside the loop, escapes, asm, control flow and partial retained
+prefixes. The parent passes every runtime oracle and fails the newly required
+nested selection.
+
+Qualification: 54 tests plus 24 optimized-Python policy tests per
+release/traced/ASan build; all 175 fixtures without snapshot updates; original
+104-row/1856-call and shared 52-row/928-call comparisons with 80 independent
+timings. All 1392 individual SSC profile comparisons and 5600 additional
+parent/current pairs (11200 executions) have nonincreasing cycles, frame traffic
+and observed stack/frame metrics. The 32 complete application builds include
+176 paired runtime samples with nonincreasing cycles and frame reads/writes.
+All 367 condition images per build and corresponding complete ROMs agree across
+the three builds; default/no-RA/all-spill CRC images remain identical to the
+parent. Strict normal/traced C89 and Python syntax pass. Numerical oracles,
+guards, corpus and native verifier controls remain unchanged. Detailed evidence
+and source/commit bindings are retained in
+`C:\cygwin64\tmp\crc-frame-crossings-20261022`.
+
+#### 2ab. Quotient Result Placement [COMPLETED]
+
+Normal `-ra` carries single-definition, single-use `u16` quotients directly from
+C:A into BC for a word multiplication's ARG1. Division inputs must be actual
+and promoted `u16`; the multiplication's other input must be a word or constant,
+with word promotion and no conflicting BC owner. Reuse the existing packing,
+operand materialization and divider. ARG2 carriers, byte/mixed/signed division,
+multiple reads and unsupported schedules keep their previous fallbacks.
+
+Extract the existing DIV/MOD matcher into one shared predicate for emission and
+BC transparency. It retains exact input/node/type matching, stable nonglobal
+inputs, scalar-declaration/dead-TAC skips and alias/effect/control barriers.
+Memory quotients retain their existing sharing; the new word BC quotient also
+preserves HL's remainder. Do not infer HL transparency: an HL quotient destroys
+that remainder. The cost observer uses the original MOD position, accounts for
+the two quotient-packing moves and avoids charging a BC-to-HL input transfer
+that multiplication does not need. The paired case predicts and saves 68
+T-states and 10 bytes per invocation, without additional saves or runtime helpers.
+
+SDCC r17016 `gen.c::genCall` was the result-placement precedent. The initial
+private assembly probe gave 126 -> 116 bytes and 40052 -> 38896 T-states with
+frame 26 unchanged. The compiler implementation additionally removes the
+quotient's unused spill home. Against parent `39ad4ec`:
+
+| Normal RA kernel, including dependencies | Bytes | Aggregate T-states | Frame footprint |
+|---|---:|---:|---:|
+| PartitionRestore | 126 -> 116 | 40052 -> 38896 | 26 -> 24 |
+| ArrayWorkload | 1355 -> 1345 | 5683936 -> 5646400 | 86 -> 86 |
+| StencilWorkload | 1445 -> 1435 | 3850538 -> 3838026 | 118 -> 116 |
+| PathWorkload | 1251 -> 1241 | 5325141 -> 5323781 | 184 -> 182 |
+
+The three workloads benefit through their shared PartitionRestore dependency.
+PartitionRestore saves 2.89% kernel cycles; its unchanged caller costs 75 bytes
+and 7752 aggregate T-states, so caller-inclusive costs improve 201 -> 191 bytes
+and 47804 -> 46648 T-states (-2.42%). Stack high-water improves 24 -> 22 bytes.
+Ordinary/shared arithmetic give the same gains. The other nine kernels,
+allocator-off rows and all external-compiler rows are unchanged.
+
+Both complete RA applications save 10 bytes: calculations-1 17263 -> 17253
+(shared 17243 -> 17233), calculations-2 26217 -> 26207 (shared 25949 -> 25939).
+The first application uses the equivalent QuotientRoundTrip sequence.
+Allocator-off complete images are unchanged. Net production growth is 33 C
+lines plus one declaration; extracting the matcher shrinks the backend by 27
+lines. No duplicate packing, new arithmetic helper, flag or annotation was added.
+
+Qualification: 55 tests plus 24 optimized-Python policy tests per
+release/traced/ASan build; all 175 fixtures without snapshot updates; 372
+corresponding regression images identical across builds. The full/shared
+comparisons cover 156 configurations, 2784 calls and 80 independent timing
+checks; all 1392 individual SSC profile samples are non-growing. The 23-function
+focused cohort covers zero/boundary divisors, direct and paired uses, constant
+multiplication, truncated/signed remainders, pressure and conservative fallbacks:
+5520 parent/current pairs (11040 executions) have non-growing cycles, frame
+reads/writes and stack high-water. All 32 complete application builds and 316
+paired real-image samples pass, including both quotient routines and display
+callers. Native controls, corpus, numerical oracles and CPU guards are unchanged.
+Evidence: `C:\cygwin64\tmp\quotient-result-placement-20261022`.
+
+#### 2ac. Register-Live-In Frameless Microleaves [COMPLETED]
+
+Automatically converted word-register leaves retain their BC/HL live-ins and
+omit argument homes, frame construction and cleanup when the final TACs prove
+the frame unnecessary. This applies in every allocator mode without new flags
+or annotations. Reuse the existing ABI eligibility/metadata, physical-location
+resolver, word arithmetic/complement emitters and return materialization.
+Incoming register order and the caller are unchanged: one argument uses BC;
+two arguments use HL then BC; the result uses HL.
+
+The bounded shape has at most two word arguments, no remaining stack locals,
+and either a direct word argument/constant return or one word ADD/SUB/AND/OR/XOR/
+COMPLEMENT immediately returned. Reject other TACs, source calls and generated
+arithmetic/copy helpers, branches, address-taking, memory access, stack arrays,
+byte arguments, narrowing and pressure-bearing expressions. In particular,
+BC-minus-HL stays framed because the existing subtraction schedule does not
+support it. This is not general frame omission or a new register allocator.
+
+The existing linker conversion/legacy requirements select either the frameless
+prefix or the original framed implementation, never both in the linked image.
+Opaque asm, escaping function addresses and older inputs retain their existing
+compatible path. Explicit register-call contracts retain their existing rules.
+No ABI version, linker changes, global DE-to-indexed-frame switch or new runtime
+helper is needed. A scoped resolver mode describes only the checked live-ins
+and single HL result; it does not mutate TACs or allocator annotations.
+The complement emitter now accepts BC through its existing HL materializer.
+One combined eligibility/emission helper adds 120 net production C lines,
+without a separate pass, allocator, duplicate arithmetic emitter or new header.
+
+Source precedents are SDCC r17016 `genReceive` and `omit_frame_ptr`, and bundled
+z88dk 2.4 sccz80 FASTCALL handling. Against parent `9078f1d`, normal-RA primitive
+costs are:
+
+| Leaf | Callee bytes | Callee T-states | Caller-inclusive T-states | Extra callee stack bytes |
+|---|---:|---:|---:|---:|
+| Return a word constant | 22 -> 4 | 111 -> 20 | 273 -> 182 | 0 -> 0 |
+| Return first of two arguments | 33 -> 1 | 190 -> 10 | 465 -> 285 | 4 -> 0 |
+| Add two arguments | 40 -> 2 | 239 -> 21 | 514 -> 296 | 4 -> 0 |
+| XOR two arguments | 45 -> 7 | 252 -> 34 | 527 -> 309 | 4 -> 0 |
+| Complement one argument | 40 -> 11 | 209 -> 48 | 438 -> 277 | 2 -> 0 |
+
+All 15 selected primitive shapes shrink. Caller bytes and caller-exclusive
+cycles are unchanged; for addition these are 47 bytes / 275 T-states, so the
+complete caller/callee pair shrinks 87 -> 49 bytes and saves 42.41% cycles.
+Observed caller-inclusive stack high-water improves 17 -> 13 bytes. The selected
+callee's static frame is zero, with no local stack growth. Zero-argument leaves
+already had no extra stack growth but still remove frame-pointer work.
+Ordinary/shared arithmetic and all five allocator modes benefit; opaque cohort
+images remain byte-identical to the parent.
+
+The existing 13-kernel full/shared profiles do not change. Neither complete
+application gains: calculations-1 remains 22405 default / 17253 RA bytes
+(shared 22385 / 17233); calculations-2 remains 38275 default / 26207 RA
+(shared 38007 / 25939). Their independently linked images and all 384 sampled
+routine/display pairs are identical to the parent. Do not extrapolate primitive
+wins to unsupported multi-operation helpers or asm-constrained applications.
+
+Qualification: 56 tests plus 24 optimized-Python policy tests per
+release/traced/ASan build; all 175 fixtures without snapshot changes; 412
+corresponding regression images identical across builds. The new 27-function
+ordinary/shared/opaque cohort supplies 12960 parent/current pairs (25920 guarded
+executions), all non-growing in cycles, frame reads/writes and stack high-water.
+Its 4800 independently timed selected callee/caller pairs confirm zero callee
+stack growth and unchanged caller-exclusive cycles. The cross-object matrix
+also executes frameless subtraction under all 25 caller/callee mode combinations.
+Full/shared profiles cover 156 configurations, 2784 calls, 80 independent timing
+checks and 1392 non-growing individual SSC sample comparisons. All 32 application
+builds pass. Strict normal/traced C89 and Python syntax pass.
+
+WLA listings retain inactive compatibility-frame comments. The image reader now
+reports zero frame size only when the linked `ssc.regleaf` marker exists; all
+other reader/oracle/control code is AST-identical to the parent. Numerical
+oracles, CPU guards, corpus and native verifier controls remain unchanged.
+Evidence: `C:\cygwin64\tmp\register-live-in-leaves-20261022`.
+
+#### 2ad. Bounded Nonliteral Known-Bit Facts [COMPLETED]
+
+Following SDCC r17016 `aopIsLitVal` / `aopIsLitBit`, query proven zero bits of
+nonliteral operands using existing types and temporary producer metadata.
+One backend-local query feeds the existing location resolver, BC/index
+materializer and word-shift emitter; no new optimization pass, exported API,
+runtime helper, flag or source annotation is needed. Net production growth is
+70 C lines, including one location field and one shared bounded query.
+
+Constants and zero-extended `u8` operands provide direct facts. Follow at most
+three single-definition temporary producers, each within six intervening live
+scalar TACs in the same function/block. Reuse existing write counts/live-start
+metadata rather than guessing from a register or frame home. Supported
+producers are assignments, word AND/OR/XOR and constant unsigned word shifts.
+Calls, asm, ordinary memory/address operations and control flow end traversal;
+dead TACs, declarations and compiler spill TACs are skipped. Signed-byte
+extension and unsupported/narrow operation widths remain unknown. No public
+types, allocator ownership, aliases, evaluation order or source operations are
+rewritten.
+
+- A proven zero high byte selects the existing guarded DJNZ word-shift loop
+  for counts 0..255. Keep the zero-count guard; do not interpret zero as 256.
+  Counts with an unknown high byte retain the full BC loop. Reuse the existing
+  loop-counter proof with bounds through 255; a 256 bound remains conservative.
+- The shared BC/index materializer loads a proven-zero high byte as zero rather
+  than reading it from the frame. This also benefits its existing word
+  arithmetic callers. Physical word locations keep their current copies;
+  there is no growing one-byte register copy to immediate-zero substitution.
+- Preserve the previous single-definition AND-mask-below-16 proof independently
+  of the new query's block/distance limits. A long-lived-count probe caught the
+  initial regression; its final regression cohort retains identical costs.
+  Do not discard existing optimizations when introducing a narrower query.
+
+Against parent `fc84c37`, normal-RA focused costs over 112 calls per row are:
+
+| Shape | Function bytes | Aggregate T-states | Frame bytes |
+|---|---:|---:|---:|
+| `a << (b & 31)` | 48 -> 48 | 95744 -> 64064 (-33.09%) | 9 -> 9 |
+| `a >> (b & 255)` | 49 -> 49 | 453992 -> 278904 (-38.57%) | 9 -> 9 |
+| `a >> (b >> 8)` | 50 -> 50 | 227864 -> 145544 (-36.13%) | 9 -> 9 |
+| `(a & 255) - (b >> 8)` | 68 -> 67 | 44464 -> 43120 (-3.02%) | 13 -> 13 |
+
+The last row removes 112 high-byte frame reads, with writes unchanged. An
+independently linked pressured masked-index case shrinks 122 -> 121 bytes and
+8640 -> 8496 T-states over 12 calls; frame 17 and writes are unchanged, reads
+192 -> 180. Additional loop probes verify 16/255/256 boundaries: the 255-bound
+cohort improves 19936932 -> 12146244 T-states while the 256-bound fallback stays
+identical. Direct byte counts and some frame-backed facts also benefit
+allocator-off/all-spill modes; temporary compaction can conservatively prevent
+other nonliteral proofs there.
+
+The existing 13-kernel full/shared profiles are unchanged in every mode.
+Complete calculations-1 RA images save one byte, 17253 -> 17252
+(shared 17233 -> 17232), in the bank-switching static main display routine.
+Default calculations-1 and every calculations-2 image are unchanged. The 384
+sampled real routine/display pairs have identical runtime costs; no application
+runtime gain is claimed from the one-byte display-root saving.
+
+Qualification: 57 tests plus 24 optimized-Python policy tests per
+release/traced/ASan build; all 175 fixtures without snapshot updates; 417
+corresponding regression images identical across builds. The 24-function cohort
+checks masks, composed counts, signedness, carries, zero/255/256/257 boundaries,
+calls before/after producers, aliases, branches, asm, indices and long-lived
+legacy counts. All 13280 parent/current pairs (26560 guarded executions) have
+non-growing cycles, frame reads/writes, frame size and observed stack high-water.
+Five independently linked index/loop probes add 300 non-growing cycle/traffic
+pairs. Full/shared profiles cover 156 configurations, 2784 calls, 80 independent
+timing checks and 1392 non-growing individual SSC samples. All 32 complete
+application builds pass. Strict normal/traced C89 and Python syntax pass.
+Numerical oracles, CPU guards, corpus and native verifier controls are unchanged.
+Evidence: `C:\cygwin64\tmp\known-bit-facts-20261022`.
+
+#### 2ae. Costed Complex Scaled Induction [COMPLETED]
+
+Revisited the multi-access scaled loops conservatively deferred in 2p, using
+SDCC r17016 `SDCCloop.c::loopInduction` as the recurrence precedent. Extend the
+existing bounded-loop matcher/emitter rather than adding an induction pass,
+helper function or another cost framework. Constant multiplication and general
+row/stencil loops are unchanged.
+
+**Selected scope.** Normal `-ra` recognizes the existing canonical TAC shape:
+
+```c
+for (i = 0; i < count; i++)
+  checksum = (checksum + values[i] + bytes[i]) & constant_mask;
+```
+
+`values` must be a fixed local/global `u16` array, `bytes` an invariant unsigned
+byte pointer, and `checksum` an unescaped local/argument `u16` scalar. The
+existing unsigned word-counter proof requires initialization at zero, unit
+increments, a stable bound and proven entry/backedge/exit ownership. Match the
+word read, pointer snapshot, byte read, two additions and constant word mask
+in source order, retaining their exact widths and def/use links. The mask may
+include low/high zero lanes or be 65535. Addition and address increments retain
+16-bit wraparound.
+
+**Schedule and cost admission.** Reuse the copy path's two-pointer setup and
+existing dead word spill home to preserve DE, then the sum path's IY setup,
+accumulator loads/stores and counter loop. IY advances by two bytes, DE by one,
+HL holds the sum, and BC/B holds the remaining count. IX remains the frame base.
+Use the existing logical emitter for the mask and existing assignment emitter
+for any live-out counter. Dynamic zero skips pointer setup, DE preservation,
+memory accesses and accumulator stores; constant 1..256 uses DJNZ, including
+B=0 for 256, while larger/dynamic counts retain the full-word loop.
+
+Only admit an already-allocated, dead, single-definition word spill home within
+IX displacement range. The existing crossing-temp/physical-owner, split
+transition, invariant-address, frame-location and incoming-control checks remain
+in force; there is no new slot, frame growth or push/pop. All preserved DE
+bytes, setup/reloads, final stores and observable counter publication are charged
+in the complete parent/current executions, including one iteration and zero.
+The production change is **61 net C lines and no new functions**.
+
+General word-pointer sources, signed/narrowed values or counters, non-unit/row
+indices, extra writes, helper calls, branches/break/continue, escaped scalar
+state, inline assembly, distant scalar homes and crossing retained owners keep
+the existing lowering. These exclusions deliberately avoid speculative
+profitability and call-preservation machinery. Read-only overlapping sources
+are supported; word bytes are still read before the byte source.
+
+**Measured results against 2ad.** Complete routine costs, not inner-loop-only
+estimates; all rows use normal RA:
+
+| Workload | Bytes before -> after | Aggregate T-states before -> after | Frame bytes |
+| --- | ---: | ---: | ---: |
+| ArrayWorkload, existing 20-input profile | 1345 -> 1325 | 5646400 -> 5552765 (-1.66%) | 86 -> 86 footprint |
+| Dynamic local-array reduction, 36 calls including initialization | 262 -> 230 | 500160 -> 373203 (-25.38%) | 51 -> 51 |
+| One iteration, 36 calls including initialization | 250 -> 211 | 350640 -> 338980 (-3.33%) | 51 -> 51 |
+| Constant 256, 36 complete calls | 166 -> 119 | 5959548 -> 1331367 (-77.66%) | 19 -> 19 |
+| Constant 257, 36 complete calls | 166 -> 124 | 5982768 -> 1438573 (-75.95%) | 19 -> 19 |
+| Overlapping read-only sources, 36 complete calls | 169 -> 132 | 181146 -> 56346 (-68.89%) | 19 -> 19 |
+
+ArrayWorkload frame-byte reads improve 85248 -> 82272 and writes
+50480 -> 49268 over the same inputs. Wrapper cost and stack bounds are unchanged.
+The other 12 kernel profiles are unchanged in every measured mode. Complete
+calculations-2 RA images improve 26207 -> 26187 used bytes, or 25939 -> 25919
+with shared arithmetic. Calculations-1 and allocator-off images are unchanged.
+Complete-image routine/display samples retain numerical, buffer and port
+oracles; this is not a claim to emulate the SMS main root's bank switching.
+
+**Qualification.** The 35-function focused cohort covers zero/one, 255/256/257,
+dynamic counts through 512, arithmetic wrap, low/high/identity masks,
+read-only overlap, live-out counters, ownership pressure and the exclusions
+above. It includes a full-word bound with an early-break fallback. The identical
+parent/current sources pass 12720 guarded executions: every one of 6360
+pairs has non-growing cycles, frame reads/writes and observed stack high-water;
+all 175 function/mode combinations have non-growing ROM and frame size.
+Release/traced/ASan each pass 58 normal and 24 optimized-policy tests, with
+422 identical linked regression images per build. All 175 fixtures pass without
+snapshot changes. Full/shared profiles cover 156 configurations, 2784 calls,
+80 independent timings and 1392 non-growing individual SSC comparisons.
+All 32 complete application builds and 384 paired routine/display samples pass.
+Strict normal/traced C89 and Python syntax pass. Numerical oracles, CPU guards,
+corpus and native verifier controls are unchanged.
+An initial parallel qualification exhausted host memory; diagnostics are
+retained and affected checks were repeated without source/tool/control changes.
+Evidence: `C:\cygwin64\tmp\scaled-induction-20261022`.
+
+The refreshed 130-configuration comparison, per-input metrics, source hashes and
+two private probes underlying 2aa-2ae are retained in
+`C:\cygwin64\tmp\compiler-reprofile-20261022-after-2z`.
+These opportunities are not additive whole-ROM promises.
+
+### 2af. Proven Byte Factors In Word-Result Multiplication (Completed)
+
+**Status: completed.** Path's final checksum previously multiplied a
+zero-extended byte load by a word expression using sixteen iterations.
+The existing word multiplier now selects eight iterations when either operand's
+upper byte is proven zero. BC-byte factors use A/B and the existing DE addend;
+DE-byte factors use A/D and the existing BC addend. This avoids operand swaps,
+new materializers and evaluation-order changes. Both paths preserve the full
+low-word product, original result stores, DE/frame preservation and conservative
+clobber contract. Constant chains and actual byte-expression widths are unchanged.
+
+The existing bounded known-zero query also recognizes a single-definition,
+word-promoted unsigned-byte array-read snapshot using the array emitter's element
+type query. Its three-link/six-scalar-TAC bounds and call, control and intervening
+memory barriers are unchanged. Signed reads and unsupported producers remain
+unknown; this is a fact about an already loaded value, not a memory reread or
+permission to cross aliases. Existing BC materialization reuses the same fact.
+There are **nine net production C lines**, no new functions, flags, frame slots
+or linker changes.
+
+SDCC's `genMultOneChar`/`genMult` demonstrate width-sensitive multiplication;
+use that precedent, not copied implementation. Keep this bounded and Z80-local.
+The earlier private Path probe measured 1241 -> 1239 bytes and
+5323781 -> 4705541 cycles; the compiler result below also benefits from avoiding
+a proven-zero high-byte reload. These are measured complete schedules, not
+inner-loop-only estimates.
+
+| Workload/mode | Kernel + dependency bytes | Aggregate kernel T-states |
+| --- | ---: | ---: |
+| ArrayWorkload, RA | 1325 -> 1324 | 5552765 -> 5546141 (-0.12%) |
+| PathWorkload, RA | 1241 -> 1238 | 5323781 -> 4688981 (-11.92%) |
+| sumBytes, allocator off | 166 -> 165 | 543386 -> 532070 (-2.08%) |
+| PathWorkload, RA/shared | 1233 -> 1238 | 5361581 -> 4688981 (-12.55%) |
+
+The other ten kernels and all competitor rows are unchanged. Ordinary Path's
+frame footprint remains 182 bytes; shared Path drops 184 -> 182, with stack
+high-water 182 -> 180. No per-input execution/frame/stack metric grows.
+
+**Approved shared-ROM trade-off.** Existing exact-body matching safely separates
+the 13/14-byte byte-factor loops from the 15-byte word loop, using the same
+arithmetic family without merging incompatible bodies. Splitting old sharing
+groups can cost ROM. The user explicitly selected retaining fast loops rather
+than restoring sixteen iterations merely to preserve the old sharing ratio.
+The unchanged CALL/RET timing and traffic checks still pass.
+Complete RA calculations-1 saves 2 bytes normally (17252 -> 17250), but grows
+10 bytes shared (17232 -> 17242). RA calculations-2 saves 13 bytes normally
+(26187 -> 26174), but grows 25 bytes shared (25919 -> 25944).
+Allocator-off complete images are unchanged. The focused cohort saves 36 bytes
+with ordinary RA and 9 with allocator off/all-spill; shared images grow 29 bytes
+because two specialized helpers supplement the original word helper.
+
+Qualification: release, traced and ASan each pass 59 normal and 24 optimized
+Python tests, with 432 identical regression images per build. The 34-function
+cohort covers both operand orders, all byte factors against full-word edge
+values, products above 255, wrap, signed operands, snapshots, masks/shifts,
+constant chains, narrow results, pressure, escapes and effect/control barriers
+under all five allocator modes and both sharing policies. Its 99840 guarded
+parent/current executions provide 49920 non-growing cycle/traffic/stack pairs.
+Full/shared profiles cover 156 configurations, 2784 calls, 80 independent
+timings and 1392 individual SSC comparisons; only the documented shared Path
+ROM comparison grows. All 32 complete application builds and 384 paired
+routine/display samples pass, including the documented shared-ROM costs.
+All 175 fixtures pass after changing one exact expected instruction,
+`DD 46 FD` -> `06 00`, in the far-word initializer snapshot: a high-byte frame
+reload becomes `LD B,0`. The rechecked ROM is identical to the initially
+generated ROM, and 1310 additional guarded initializer executions verify the
+calculation independently. Strict normal/traced C89 and Python syntax pass;
+numerical oracles, CPU guards, corpus and native verifier controls are unchanged.
+Evidence: `C:\cygwin64\tmp\byte-factor-word-multiply-20261022`.
+
+### 2ag. Costed Biased Frame Windows (Completed)
+
+**Status: completed.** Reuse the existing IX
+cache, target address policy and materializer. No frame layout, address allocator,
+production helper function or separate cost framework is added.
+
+Normal allocation, without source ASM, may use IX=DE-126 when the existing frame
+total is between -254 and -129. This window covers starting offsets -254 through
+0 while reserving the high-byte displacement. Selection still prefers an
+already-covered address or the existing cheap one/two-step adjustment. Only an
+otherwise-required complete 6-byte/29-T-state rebuild can select the bias.
+The target policy validates the folded displacement, including the high byte.
+
+**Closed-region scope is necessary.** The existing TAC walk looks ahead through
+straight-line regions, allowing labels without jump references. A region is
+eligible only if its sole outgoing edge is an unconditional backedge. Calls,
+returns, conditional exits and forward jumps end the region without enabling
+the bias. Existing loop-header joins already discard backedge cache witnesses;
+no new state can disturb an otherwise-profitable forward join. There is no
+loop-invariance assumption, hoisting, edge restore or extra preservation.
+Raw call/return anchors, global/DE invalidations, physical ownership, memory-copy
+fallbacks and arithmetic-helper IX preservation remain unchanged.
+
+A smaller whole-function prototype was rejected despite larger Path gains:
+mixed biased and cheap-adjusted incoming windows lost an old matching join.
+Its cold path grew 4320 -> 4342 cycles, even though the hot path improved.
+The added escaped-word diamond now keeps the original schedule. This is why
+setup parity and a window covering the entire frame are not sufficient cost
+proofs on their own.
+
+Against the completed 2af compiler:
+
+| Mode | Path bytes | Aggregate kernel T-states | Frame footprint |
+|---|---:|---:|---:|
+| RA | 1238 -> 1232 | 4688981 -> 4648961 (-0.85%) | 182 -> 182 |
+| RA/shared | 1238 -> 1232 | 4688981 -> 4648961 (-0.85%) | 182 -> 182 |
+
+The complete comparison unit emits 42 -> 41 full IX rebuilds. The existing
+final checksum loop saves one rebuild per iteration, including all setup and
+exit costs. Both sharing policies pass all twenty inputs and independent
+timing checks. This narrower compiler result supersedes the private pre-2af
+assembly probe; its proposed gains are not assumed additive.
+
+The other twelve kernels and all competitor rows are unchanged. Complete RA
+calculations-2 saves 72 bytes ordinarily (26174 -> 26102) and with sharing
+(25944 -> 25872); calculations-1 and allocator-off images are unchanged.
+Complete-image Path, complex bank-2 display and complex bank-3 display sample
+totals improve by 0.96%, 0.64% and 0.34%, respectively. No sampled execution,
+frame-traffic or stack metric grows.
+
+This adds 44 net production C lines, with no new functions, flags, frame slots,
+ABI or linker changes. The two focused tests cover 77 functions, frame totals
+on both sides of the exact selection limit, zero/one/multiple iterations,
+word/byte wrap, high-bit inputs, aliases, calls, global IX clobbers, source ASM
+and the mixed-join fallback under all five allocator modes and both sharing
+policies. Their 86240 guarded parent/current executions provide 43120
+non-growing cycle/frame-traffic/stack comparisons; individual function/frame
+sizes and complete ordinary/shared cohort ROM are also non-growing.
+
+Final qualification: release, traced and ASan each pass 61 normal and 24
+optimized-Python tests, with 492 byte-identical linked regression images per
+build. All 175 native fixtures pass without snapshot changes, including the
+existing 57-byte/325-T-state word-copy controls. Full/shared profiles cover
+156 configurations, 2784 calls, 80 independent timings and 1392 individual SSC
+sample comparisons. All 32 complete application builds and 384 paired
+routine/display samples pass, with no new shared-ROM trade-off. Strict
+normal/traced C89 and Python syntax pass; numerical oracles, CPU guards, corpus
+and native verifier controls are unchanged.
+Evidence: `C:\cygwin64\tmp\biased-frame-windows-20261022`.
+
+### 2ah. Post-Increment Copy/Fill Induction (Completed)
+
+**Status: completed.** Reuse the existing
+bounded-loop matcher/emitter for an adjacent unsigned-word old-value snapshot
+and unit post-increment used by the destination byte index. The separate loop
+counter still controls the count; `written` may start anywhere, including
+65534/65535, and accumulate across consecutive decoder runs. No benchmark source,
+global TAC, frame layout, ABI or linker changes are needed.
+
+**Scope and reuse.** Materialize `destination + written` with the existing
+index/address helpers, then use the existing advancing fill or forward copy
+schedule. On the positive-count path, publish `written + bound` modulo 65536
+after restoring DE. The zero-count edge leaves `written` untouched. Reuse BC's
+retained bound when publishing a live counter to its existing near word home;
+dynamic post-increment fills without that profitable publication shape retain
+the ordinary path. Copy preservation still requires an already-dead word spill
+home: no extra slot, push, frame or production helper function is introduced.
+
+Compact the existing positive word-fill setup from five bytes to three:
+`DEC BC; INC B; INC C` preserves the low count and encodes the rounded-up page
+count in B, including 256/65535. Exhaustive execution of all 65535 positive word
+counts confirms the old/new BC values agree; setup drops from 19/20 to 14 T-states.
+The existing zero guard remains outside this sequence. This removes duplicate
+counter reloads and shortens existing fills rather than adding a separate
+post-increment loop implementation. Production C grows by 65 net lines.
+
+**Conservative fallbacks.** Retain all existing width, counter, ownership,
+spill-transition, scalar-address escape and external-entry checks. The index
+must be an unescaped word scalar distinct from the bound, loop counter, bases
+and fill value; source indexing remains subject to the existing counter/affine
+proof. Pre-increments, multiple writes/increments, non-unit strides, dependent
+values, moving pointers, signed indices, byte bounds, calls, assembly and
+unsupported crossing owners keep their ordinary schedules. Forward source
+load/store order is preserved for overlapping copies.
+
+**Measured complete costs against `a1ed139` (step 2ag).** Ordinary and shared
+normal-RA results agree:
+
+| Kernel/dependencies | Bytes before -> after | Aggregate T-states before -> after | Cycle change |
+| --- | ---: | ---: | ---: |
+| Tile | 1001 -> 980 | 1284632 -> 1165178 | -9.30% |
+| unpackPackBits | 475 -> 469 | 138272 -> 99328 | -28.16% |
+| PackedCrc | 739 -> 733 | 5635305 -> 4834860 | -14.20% |
+| fillBytes | 67 -> 65 | 32970 -> 32894 | -0.23% |
+
+Frames, wrapper costs and stack bounds are unchanged. The other nine kernels,
+all competitor rows and allocator-off output are unchanged. Complete RA
+calculations-1 saves six bytes (17250 -> 17244 ordinary, 17242 -> 17236 shared);
+calculations-2 saves 21 (26102 -> 26081 ordinary, 25872 -> 25851 shared).
+The complete bank-3 display sample improves 2.30%. No shared-ROM trade-off is
+introduced.
+
+The focused 31-function cohort covers both sharing policies and five allocator
+modes: 310 configurations, 11440 guarded parent/current executions and 5720
+individual non-growing cycle/frame-traffic/stack comparisons. It includes
+zero/one/two, 127/128/255/256/257 counts, arbitrary/wrapping starts, forward
+overlap, consecutive loops, live-out indices, pressure and negative controls.
+Every function/frame and complete cohort ROM is non-growing. Ordinary/shared
+RA cohort ROM shrinks 4326 -> 4083 bytes; dynamic fill/repeat functions retain
+their original sizes while becoming faster. The initial eight-byte dynamic
+fill growth was rejected and removed by the shared setup/publication changes.
+
+**Qualification.** Release, traced and ASan each pass 62 normal and 24
+optimized-Python tests, with 502 byte-identical regression images per build.
+All 175 native fixtures pass without snapshot changes; the existing
+57-byte/325-T-state word-copy controls remain intact. Full ordinary/shared
+profiles cover 156 configurations, 2784 numerical calls, 80 independent timings
+and 1392 individual SSC sample comparisons. All 32 complete application builds
+and 384 paired routine/display samples pass. Every measured cycle, frame-traffic,
+stack, function/frame and ordinary/shared ROM guard is non-growing. Strict
+normal/traced C89 and Python syntax pass. Numerical oracles, CPU guards,
+competitor inputs, corpus and native verifier controls are unchanged.
+Evidence: `C:\cygwin64\tmp\postincrement-induction-20261023`.
+
+### 2ai. Dead Argument Homes And Expanded Register-Entry Leaves (Completed)
+
+**Status: completed.** Reuse the
+existing register-call eligibility walk to record argument-node references in
+nondead TAC, including writes and address-taking. Omit only dead trailing
+register-entry homes, charging DE's entry offset for the pushes actually emitted.
+Live argument offsets, the canonical DE anchor and framed-body SP allocation
+remain unchanged. Dead holes preceding a live argument remain materialized;
+this avoids replacing a one-byte push with a larger/slower gap adjustment.
+Caller argument transport and expression evaluation are unchanged.
+
+**Expanded existing microleaves.** Reuse the existing frameless matcher,
+location resolver, word arithmetic/shift emitters and return emitter:
+
+- Accept up to three declared word arguments when only the first two are
+  referenced. Convert the needed IY/HL live-ins to the existing HL/BC schedule;
+  no new physical-register kind or global scheduling state is needed.
+- Add an unsigned-word shift, or a two-shift chain whose second input is the
+  first result and whose count is identical. Values/results remain word-sized;
+  zero, 16+, 255/256/257 and high-byte counts keep the existing shift semantics.
+- Preserve a repeated variable count in DE between the two existing shift
+  emitters. The register caller already saves/restores DE; no extra count push,
+  spill home or frame is added. The temporary IY-to-HL push/pop is included in
+  the complete stack/cycle measurements.
+- Keep the existing no-local, word-operand and direct-return proofs.
+  Multiplication/division, different-count or more general multi-operation
+  chains, unsupported operand layouts, a live third argument, narrow/signed
+  shift values, memory, calls/recursion and address escapes retain their framed
+  paths. Functions containing source ASM remain outside register-call eligibility.
+
+The v1 register-call metadata, linker selection and compatible public entries
+are unchanged. Opaque inputs and escaping function addresses still select the
+shared framed body rather than duplicating it to manufacture a microbenchmark
+win. Dead trailing register-entry pushes can still be omitted there, while old
+public callers keep their existing argument/result homes. This adds 44 net
+production C lines, no functions, fields, linker code, flags or annotations.
+
+**Measured complete costs against `fedb9cd` (step 2ah).** Ordinary normal-RA
+kernel/dependency results:
+
+| Kernel/dependencies | Bytes before -> after | Aggregate T-states before -> after | Cycle change |
+| --- | ---: | ---: | ---: |
+| ShiftRestore | 66 -> 29 | 10665 -> 6891 | -35.39% |
+| PartitionRestore | 116 -> 115 | 38896 -> 38709 | -0.48% |
+| ArrayWorkload | 1324 -> 1286 | 5546141 -> 5417525 | -2.32% |
+| StencilWorkload | 1435 -> 1397 | 3838026 -> 3713458 | -3.25% |
+| PathWorkload | 1232 -> 1231 | 4648961 -> 4648741 | -0.005% |
+
+ShiftRestore stack high-water/access extent drops 18 -> 14 bytes and frame
+footprint 20 -> 16; its wrapper is unchanged. The other listed frame/stack
+bounds are unchanged. Shared RA saves the same byte counts, with no new helper
+or ROM trade-off. Allocator-off ShiftRestore improves 90 -> 89 bytes and
+13249 -> 13062 T-states (-1.41%); its retained local keeps the framed fallback.
+Allocator-off dependencies also benefit from dead-home omission. The other
+eight kernels and all competitor rows are unchanged.
+
+The complete banked applications retain compatible framed entries because
+their opaque assembly inputs require them: calculations-1 saves only one byte
+(17244 -> 17243 ordinary RA, 17236 -> 17235 shared RA), and calculations-2 saves
+two (26081 -> 26079 ordinary RA, 25851 -> 25849 shared RA). Allocator-off images
+save the same 1/2 bytes. Complete bank-1/2/3 display samples save 275/836/143
+T-states, not the isolated frameless-kernel percentages above.
+
+The 27-function focused cohort covers five allocator modes under inline,
+shared and opaque policies, including direct public legacy calls: 47520 guarded
+parent/current executions and 23760 individually non-growing cycle/traffic/stack
+comparisons. Every callee, caller, witness, frame and complete cohort ROM is
+non-growing. Ordinary RA cohort ROM shrinks 4592 -> 4155 bytes; opaque RA shrinks
+5176 -> 5148. A zero-count caller-plus-ShiftRestore schedule shrinks 122 -> 85
+bytes and 659 -> 437 T-states, with stack high-water 21 -> 17. A framed multiply
+with one dead trailing home saves one byte, 11 T-states and two stack writes.
+Mixed allocator-mode cross-unit tests cover 100 linked configurations; 36
+additional parent/current/default/spill/RA/shared/older-header builds pass
+1152 guarded executions and 576 non-growing sample pairs.
+
+**Qualification.** Release, traced and ASan each pass 63 normal and 24
+optimized-Python tests, with 567 byte-identical regression images per build.
+All 175 native fixtures pass without snapshot changes, including the unchanged
+57-byte/325-T-state word-copy controls. Full ordinary/shared profiles cover
+156 configurations, 2784 numerical calls, 80 independent timings and 1392
+individual SSC sample comparisons. All 32 complete application builds and 384
+paired routine/display samples pass. Cycle, frame-traffic, stack, function/frame
+and complete ordinary/shared ROM guards are non-growing. Strict normal/traced
+C89 and Python syntax pass. Existing numerical oracles, CPU guards, corpus,
+competitor inputs and native verifier controls are unchanged.
+Evidence: `C:\cygwin64\tmp\dead-argument-homes-20261023`.
+
+### 2aj. Byte Facts For Comparisons And Bounded Dynamic Loops (Completed)
+
+**Status: completed.** Extend the existing bounded known-zero-bit query,
+comparison dispatcher and counter proof. There is no global range-analysis
+pass, new production function, physical-register kind, frame slot, ABI change,
+flag or source annotation. The production C change is 108 additions and
+32 deletions, or **76 net lines**. z88dk's character-compare selection and SDCC's
+width-sensitive arithmetic remain precedents, not assumed benchmark bounds.
+
+Scope and conservative fallbacks:
+
+- The same six-TAC, depth-three query now accepts a dominating definition of a
+  plain local/argument word scalar. Keep globals, statics, pointers, arrays,
+  labels/branches, calls, source ASM and intervening memory effects conservative.
+  Reuse the existing type, constant, unsigned-byte-read and logical/shift facts.
+  Addition supplies a byte fact only when the sum of both operands' possible
+  maximum bit patterns is at most 255; `(value & 7) + 1` qualifies, while
+  `(value & 255) + 1` does not.
+- When both word-promoted comparison operands are proven 0..255, normal RA
+  reuses the byte comparator for all six relations. This is also valid for
+  nonnegative signed-word values; unproved signed/narrow values retain their
+  original comparison. Reverse `>`/`<=` locations to reuse carry-only `<`/`>=`
+  schedules without copying TACs or changing source evaluation order.
+- Reuse the byte comparator's existing address/materialization machinery.
+  Normal RA subtracts a retained low byte or addressed byte directly instead
+  of copying it to B, preserving a live BC counter's zero high lane. Remove
+  the redundant zero branch before unsigned `>=` in every allocator mode:
+  no carry already includes equality.
+- The existing canonical word-counter proof now accepts dynamic unsigned-byte
+  bounds and proven byte-valued word bounds, including single-definition
+  temporaries. Query the bound **before counter initialization**, not across
+  the loop header. Word scalar bounds must remain unmodified and unescaped;
+  actual unsigned-byte bounds remain bounded even when changed. Keep the
+  existing unit update, initial range, backedge, external-entry, counter-address,
+  call and ASM guards. Reuse existing low-byte increment/comparison emitters
+  while retaining full word storage and live-out high bytes.
+- Unknown/wide counts, signed counters/bounds, 256, possible carry into bit 8,
+  mutations/aliases and unsupported control/effects retain ordinary lowering.
+  No source word is narrowed. Tile's separated length definitions still cross
+  unsupported control/effect barriers; its already-lowered copy/fill loops and
+  the complete Tile profile are unchanged. Do not cross those barriers merely
+  to manufacture a benchmark gain.
+
+Measured costs versus 2ai, using the unchanged kernel corpus:
+
+| Normal-RA kernel and dependencies | Bytes before -> after | Aggregate T-states before -> after | Cycle change |
+|---|---:|---:|---:|
+| StencilWorkload | 1397 -> 1391 | 3713458 -> 3701458 | -0.32% |
+| PathWorkload | 1231 -> 1201 | 4648741 -> 4467377 | -3.90% |
+| unpackPackBits | 469 -> 466 | 99328 -> 99148 | -0.18% |
+| PackedCrc | 733 -> 730 | 4834860 -> 4834010 | -0.02% |
+
+The other nine kernels, including Tile, are unchanged. Shared RA saves the same
+bytes; Stencil's shared result is 1361 -> 1355 bytes and
+3743266 -> 3731266 T-states. Wrapper costs, frames and stack bounds are unchanged.
+The all-mode redundant-branch deletion also saves three bytes in allocator-off
+Path/unpack/PackedCrc, with cycles 9852837 -> 9826117,
+225089 -> 224909 and 24167130 -> 24166280 respectively.
+Competitor outputs are unchanged.
+
+Representative entry-to-return focused costs use 88 comparison inputs or
+18 loop inputs per row; these aggregate cycles are not whole-program promises:
+
+| Normal-RA primitive | Bytes before -> after | Aggregate T-states before -> after |
+|---|---:|---:|
+| `(a & 127) < (b & 255)` | 67 -> 66 | 24288 -> 23320 |
+| Nonnegative signed-word `<=` | 76 -> 66 | 25728 -> 23320 |
+| Word loop bounded by `a & 127` | 146 -> 132 | 293088 -> 238932 |
+| Word loop bounded by `(a & 7) + 1` | 147 -> 133 | 36264 -> 30546 |
+| Word loop bounded by unsigned byte | 139 -> 126 | 554946 -> 466470 |
+| Masked-bound loop with live multiply result | 188 -> 174 | 310872 -> 256716 |
+
+Focused ordinary/shared RA ROM is 10152 -> 9909 bytes; allocator-off ROM remains
+13981 bytes. All 1080 focused root configurations retain their frame and
+stack-high-water sizes. All 82440 individual parent/current execution pairs are
+non-growing in cycles, frame-byte reads/writes and stack high-water.
+
+Complete unchanged-source application ROM, including opaque/public entries,
+all banks, shared helpers and callers:
+
+| Application / mode | Ordinary before -> after | Shared before -> after |
+|---|---:|---:|
+| calculations-1 / normal RA | 17243 -> 17189 | 17235 -> 17181 |
+| calculations-1 / allocator off | 22404 -> 22377 | 22384 -> 22357 |
+| calculations-2 / normal RA | 26079 -> 25892 | 25849 -> 25662 |
+| calculations-2 / allocator off | 38273 -> 38240 | 38005 -> 37972 |
+
+Normal-RA complete calculations-2 bank-1/2/3 display calls save
+25957/10394/10541 T-states. All 384 complete-image sample pairs are non-growing;
+do not substitute isolated-kernel percentages for these complete display costs.
+No new shared-ROM or runtime trade-off is accepted.
+
+Qualification: release, traced and ASan each pass **64 normal + 24 optimized-policy
+tests**, with **577 byte-identical linked regression images per build**.
+The new focused test covers 90 comparison forms and 18 loop families, ordinary/
+shared linking and all five allocator modes: **164880 guarded parent/current
+executions**, including all relations/operand positions, signed/unsigned byte
+boundaries, zero/255/256/257, wider values, carries, live-out counters, mutable
+byte bounds, aliases, calls, control, ASM and pointer/word pressure.
+All **175 native fixtures** pass after updating **12 byte assertions in six
+fixtures** for direct memory subtraction, the removed branch and relocations;
+their source programs and trace/verifier expectations are unchanged. The six
+affected fixtures are rerun, including the native CFG/liveness verifiers.
+The full **156 profile configurations, 2784 calls, 80 independent timings and
+1392 SSC sample pairs**, **32 complete application builds / 384 pairs**, strict
+normal/traced C89 and Python syntax pass. The existing 57-byte/325-T-state word-copy
+controls remain intact. Exact parent tools, rejected fixture prototypes,
+snapshot-only checks, measurements and source/image/commit bindings are retained
+in `C:\cygwin64\tmp\byte-facts-comparisons-20261023`.
+
+The after-2ae comparison and private probes underlying 2af-2aj are retained in
+`C:\cygwin64\tmp\compiler-reprofile-20261022-after-2ae`.
+Root scalar frame-memory/address cycle shares remain material (21.34% Array,
+39.03% Stencil, 51.37% Tile, 52.62% Path and 27.59% PackedCrc) at that baseline;
+these attributed shares are not wholly
+removable and the probes are not additive whole-program promises.
+
+### 2ak. Hot Scalar/Spill Placement Before Large Local Arrays (Completed)
+
+Implemented and qualified on 2026-10-23. The RA-only profile after 2aj
+(`17f4cd9`) left Path 39.0% larger
+and 40.1% more kernel cycles than the independently best external size and
+speed results. Its scalar/frame accesses and frame-address construction account
+for 1861488 and 822092 of 4467377 kernel cycles, respectively; these costs are
+not wholly removable. SDCC's emitted Path keeps hot counters at IX offsets
+-4/-2, whereas SameSameC's large arrays separate parameters from deep scalar
+and temporary homes.
+
+Implementation:
+
+- Extend existing `assign_spill_slot_offsets` after its normal CFG/liveness
+  packing. Keep `assign_local_variable_offsets` and allocator decisions intact.
+  Place local objects larger than two bytes after the scalar homes and packed
+  movable spill region. Preserve their relative order and internal byte
+  offsets; shift every owner of a shared spill slot by the same amount.
+- Select only normal RA functions whose old lowest home needs a frame-address
+  materialization and whose entire compacted scalar/spill region fits the
+  existing target-policy IX displacement window. This includes its lowest
+  byte at -128 but rejects -129; the existing word-safe upper bound is +126,
+  not +127. No added padding, frame growth, storage copies or source changes.
+- Keep metadata/node/register identities, byte-granular Z80 object layout,
+  widths, escaped storage and argument/return/saved-frame offsets intact.
+  Functions with source assembly or any fixed-destination spill keep their
+  original layout. Forced spills, allocator-off correctness controls,
+  already-near frames, oversized hot regions and unsupported target policies
+  also keep the original layout.
+- Reuse the existing location resolvers, array-address lowering and 2ag IX
+  cache/windows. No new helper function, allocator, cache, metadata structure,
+  command-line option or cost framework was added. Final relocation traces
+  distinguish old and new offsets without changing identity.
+
+Cost guard and complete qualification:
+
+The selection is deliberately stronger than scalar-first or displacement-only
+ranking: **all scalar and packed spill homes must fit one window**. Aggregate
+addresses still use the existing fixed-width IY/HL materializations; their
+contents do not become IX scalar requests. Calls, returns, joins, invalidations
+and biased-window selection retain their existing emitter rules. This removes
+the distant spill/scalar alternation rather than merely moving its cost to
+another portion of the frame. Actual complete caller/helper costs and every
+input's kernel cycles, wrapper cycles and stack/frame extents were then checked
+against the immediate qualified parent, not just an inner loop.
+
+The original source-declaration-only scout is reproduced by a compiler
+scalar-only prototype: Path 1201 -> 1117 bytes and 4467377 -> 4375157 cycles
+(-2.06%). It regresses sprite, tracker, navigation, A* and quicksort because
+their spill homes remain distant; that prototype was rejected. Moving packed
+spills with the scalars produces the following final ordinary-RA results:
+
+| Workload | Kernel/dependency bytes, parent -> 2ak | Kernel cycles, parent -> 2ak | Cycle change |
+| --- | ---: | ---: | ---: |
+| Path | 1201 -> 1027 | 4467377 -> 4075529 | -8.77% |
+| Sprite scene | 3725 -> 3467 | 17331570 -> 16085498 | -7.19% |
+| Tracker | 3572 -> 3506 | 11518619 -> 11350303 | -1.46% |
+| Navigation | 3056 -> 2816 | 12019455 -> 11227030 | -6.59% |
+| A* | 2776 -> 2638 | 50039955 -> 49604781 | -0.87% |
+| Quicksort | 1906 -> 1792 | 26729902 -> 26253142 | -1.78% |
+
+Shared-helper mode saves the same bytes and cycles while retaining its existing
+mode-specific helper totals. Wrappers, helper contracts and complete frame footprints are
+unchanged. All twelve other kernels, including Array and Stencil, retain their
+previous size and timing. These are independent workload improvements, not
+additive whole-program promises.
+
+Validation:
+
+- Release, traced and AddressSanitizer builds: **108 RA/shared builds, 1668
+  guarded calls and 162 independent timing checks**. All 36 candidate ROMs
+  match across the three compiler builds. All eighteen immutable
+  source/oracle/layout fingerprints remain unchanged.
+- All 36 ordinary/shared complete code images are no larger, and every one of
+  the 556 input cases is no slower in complete/kernel cycles than its immediate
+  parent. Wrapper cycles and maximum frame/stack extents are unchanged;
+  per-input observed extents never increase (navigation case 0's accessed span
+  falls from 1010 to 242 bytes). No external
+  compiler results or historical baselines were rewritten, and no allocator-off
+  performance comparisons were run.
+- **54 focused unit tests**, including **43120** guarded frame/window/join
+  calls. The bias test now requires either its original biased window or
+  compact scalar homes with exclusively `IX=DE` setups; it still exercises
+  both paths and the 253/254-frame boundary.
+- Existing native allocator verifier plus ten new layout cases in both traced
+  and untraced builds: exact -129/-128/+126/+127 policy boundaries, odd-sized
+  interleaved arrays, word/byte spill aliases, poison homes, escaped scalar
+  identity, pressure at the compact-window limit, fixed/forced/assembly/target
+  fallbacks, unchanged TACs and nonoverlapping objects.
+- All six self-contained SMS/GG ROMs pass complete reset/display, CRC,
+  font/palette, mapper and RAM checks. Full boot savings are 638/25636/744372
+  cycles for SMS 1/2/3 and 319/25636/744372 for GG 1/2/3; all displayed values
+  and RAM footprints are unchanged. No calculation-project source was changed.
+
+Evidence and rejected scouts are retained under
+`C:\cygwin64\tmp\hot-frame-layout-20261023`.
+
+### 2al. Direct Call-Argument Register Placement (Completed)
+
+Implemented bounded producer/call fusion in the existing Z80 emitter. Up to
+three consecutive fixed-index global word loads or global array-address
+calculations can feed their existing ABI destinations directly, without
+storing and immediately reloading argument temporaries. Constants can occupy
+any argument position. This reuses call lowering, temporary use/definition and
+spill facts, constant loaders and constant-array-address validation; no new
+compiler functions, IR fields, allocation framework, options or ABI were added.
+
+Register calls use the existing IY/HL/BC order. The same ordered-source proof
+also feeds the existing legacy word-argument push path directly through BC,
+preserving HL's saved new-frame address. This improves larger/nonleaf callers
+without broadening automatic callee eligibility. The linker still chooses
+the existing automatic entry or legacy entry; explicit register calls and
+cross-unit/banked contracts are unchanged. Unsupported push layouts emit the
+original staged producers instead.
+
+Safety bounds:
+
+- Each producer must define a spilled word temporary exactly once, read only
+  by this call, with no physical-register or spill-transfer annotations.
+  Nonconstant arguments must consume every producer once in evaluation order.
+  Only dead TACs may intervene; no loads move across other operations, calls,
+  writes, labels or variable creation.
+- Reuse the existing frame-join gate to exclude allocator-off/forced-spill
+  modes and callers containing source assembly. Source arrays must have known
+  normal global/static storage and bounded constant indices. External or
+  fixed-origin storage and the special port arrays retain ordinary lowering.
+- Nested/effectful expressions, earlier snapshots, repeated values, dynamic
+  indices, local addresses and mixed-width contracts remain staged. Dead formal
+  parameters do not erase argument effects. Existing conversion and overlap
+  handling is unchanged.
+- Original temporary homes and frame sizes are intentionally retained.
+  This is emitter fusion, not an allocator/liveness rewrite or general
+  destination-passing/parallel-copy implementation.
+
+SDCC r17016's `genSend` was implementation precedent, not copied compiler code.
+The earlier private 25-byte/2499-cycle MultiplyAdd prototype also shrank its
+frame; the qualified implementation reaches 30 bytes/2958 cycles while keeping
+the existing frame and fallback contracts.
+
+Measured against immediate step-2ak parent `003944f`, ordinary `-ra`:
+
+| Workload(s) | Wrapper bytes, parent -> 2al | Aggregate wrapper cycles, parent -> 2al |
+| --- | ---: | ---: |
+| MultiplyAdd, Product, Shift, Partition | 75 -> 30 | 7752 -> 2958 |
+| Array, Stencil, Path | 111 -> 65 | 12980 -> 7420 |
+| Tile | 75 -> 29 | 9000 -> 3280 |
+| Sum, Copy, Fill | 75 -> 29 | 7650 -> 2788 |
+| Sprite, Navigation | 75 -> 29 | 5400 -> 1968 |
+| Tracker | 111 -> 65 | 7788 -> 4452 |
+| A* | 94 -> 59 | 1086 -> 674 |
+| Quicksort | 111 -> 65 | 5192 -> 2968 |
+| PackBits | 131 -> 131 | 12272 -> 12272 |
+| Packed CRC | 77 -> 77 | 7378 -> 7378 |
+
+Each grouped row gives the result for each named workload, not their sum.
+Cycles are summed over that workload's existing inputs. Shared-helper mode
+saves the same wrapper bytes/cycles and retains its mode-specific kernel
+costs. Sixteen wrappers improve; the other two remain outside the bounded
+shape. Across all eighteen wrappers, bytes fall **1607 -> 886** and transport
+cycles **146414 -> 77416 (-47.13%)**. These are independent workload totals,
+not an additive whole-program speedup. All kernel sizes and per-input kernel
+cycles/instructions are unchanged.
+
+Validation:
+
+- Release, traced and AddressSanitizer: **108 RA/shared builds, 1668 guarded
+  calls and 162 independent timing checks**. All 36 ROMs match across builds
+  (72 cross-build identity comparisons), with unchanged immutable
+  source/oracle/layout fingerprints.
+- All 556 immediate-parent input comparisons have nonincreasing complete
+  cycles/instructions and stack/frame extents. All complete linked section
+  totals shrink or remain unchanged; every nonwrapper section, including
+  retained adapters and arithmetic helpers, keeps its size. Shared-helper
+  inventories and call-site counts are unchanged.
+- **64 focused unit tests** pass. The two new methods execute **11440**
+  guarded calls over 27 expression cases and eight separate-object contracts.
+  They cover all three argument positions, constants, signs/widths, reversed
+  source order, global/local addresses, snapshots, aliases, effects on dead
+  arguments, unused results, nested/nonleaf calls, external storage, source
+  assembly, banked/legacy objects and the existing explicit convention.
+  Selection assertions require the actual entry symbol as well as the
+  direct-path marker, not just comments in an unselected conditional branch.
+- All six self-contained SMS/GG ROMs pass complete reset/display, CRC,
+  palette/font, mapper and RAM checks. Their full boot cycles and observed
+  results/footprints are unchanged. No calculation-project or comparison
+  source was changed, no external baselines were rewritten, and no
+  allocator-off performance comparisons were run.
+
+Evidence, earlier scouts and final `qualification.json` are retained under
+`C:\cygwin64\tmp\direct-call-arguments-20261023`; the final build cohorts are
+`qualify-release-qualified`, `qualify-traced-qualified` and
+`qualify-asan-qualified`.
+
+### 2am. Costed Nested-Loop Invariant Hoisting (Pending)
+
+Stencil recomputes `(seed >> pass) & 31` for each processed cell. Stock SDCC
+computes it once per pass, before the row loop; SDCC r17016's `loopInvariants`
+checks definitions, volatile accesses, pointers and calls before preheader
+movement. Array also repeats pass-invariant arithmetic inside its inner loop.
+
+- Reuse existing TAC, CFG/preheader, single-definition, effect, type and
+  pressure machinery. Begin with bounded pure scalar arithmetic, not general
+  memory-load hoisting or a global value-numbering framework.
+- Prove invariant operands and availability on every entry. Preserve zero-trip,
+  early-exit and short-circuit behavior, widths, signedness and wraparound.
+  Never speculate effectful operations or potentially trapping division.
+- Include longer live ranges, new homes/spills, setup, exits, calls and helper
+  sharing in profitability. Do not accept a faster inner body that silently
+  grows the complete default output or frame.
+- Qualify nested/irreducible entries, changing bounds/inputs, aliases, calls,
+  volatile/assembly barriers and pressure fallbacks, including zero work.
+
+A private Stencil fixture hoisting only the pass bias changes 3701458 ->
+3605014 cycles (-2.61%), but 1391 -> 1393 bytes; frame span 116 is unchanged.
+Hoisting its row expression as well makes that prototype slightly slower,
+larger and two frame bytes deeper. This is evidence for a costed search, not
+approval for an unconditional default size/speed tradeoff.
+
+Acceptance: independently correct profitable sites in Stencil and an application
+kernel, with whole-function/application costs. Reject unprofitable candidates;
+document any deliberately accepted policy change rather than hiding it in an
+aggregate or changing compiler defaults/arguments.
+
+### 2an. Live-Third-Argument Frameless Multiply Leaves (Pending)
+
+The existing register-leaf emitter excludes multiplication and a live third
+argument. MultiplyAdd therefore still saves argument registers, creates a
+frame and reloads inputs even though the existing multiply sequence suffices.
+SDCC's corresponding leaf avoids a general frame.
+
+- Extend the existing 2ac/2ai leaf eligibility and location handling; reuse the
+  current word multiply, argument/result transfers and return machinery.
+- Begin with bounded unsigned word multiply and multiply/add shapes using the
+  current IY/HL/BC live-ins and HL result. Preserve all 16-bit wraparound and
+  byte-versus-word expression semantics; do not invent a narrower source type.
+- Account for a live third argument across multiply clobbers and for DE, flags,
+  physical owners, caller saves and stack extent. Retain framed paths for
+  unsupported effects, locals, pressure, control flow and legacy requirements.
+- Measure mixed legacy/automatic callers and arithmetic sharing on assembled
+  active paths. Keep automatic selection: no new ABI, annotations or flags.
+
+A closed-world private normal-RA assembly experiment reusing the current
+multiply sequence changes 65 -> 24 kernel bytes and 19537 -> 15491 aggregate
+cycles (-20.71%), with its 75-byte wrapper unchanged. Combined with 2al's
+private caller, kernel plus native wrapper changes 140 -> 49 bytes and
+27289 -> 17990 cycles; shared arithmetic gives 53 bytes / 18449 cycles.
+These are not whole-ROM figures, additive general promises or production
+legacy-compatibility qualification. Corpus and 793 extra boundary/random
+argument combinations per mode pass independently.
+
+Acceptance: qualify live/dead third arguments, operand orders, zero/high-bit/
+maximum words, aliases, width/sign fallbacks, shared helpers and legacy entries.
+Keep full native caller/frame costs visible. The tracker uses this leaf for
+actual per-channel mixing, rather than adding only another arithmetic toy.
+
+The four follow-ups above come from the retained RA-only research under
+`C:\cygwin64\tmp\compiler-reprofile-20261023-after-2aj-ra-only`. Rejected private
+experiments are also relevant: saving a Path address in a new local saves 13
+bytes but costs 1.05% more cycles and one frame byte; inlining Array's
+constant-argument ProductRestore call saves 2.64% cycles but adds 77 ordinary
+bytes. Do not adopt blanket pointer spilling or inlining as a substitute for
+the measured bounded steps.
+
+### 3. Maintain Induction Addresses And Select Z80 Loops
+
+Reuse existing array/pointer TAC and Z80 address emitters. Introduce a narrowly
+scoped rewrite only when base, stride, bounds, aliases and wraparound are known.
+
+- Replace repeated `base + index` reconstruction with advancing addresses where
+  legal. Prefer existing `HL`/`BC` location and transfer scheduling.
+- Select byte operations/counters only when their ranges and observable
+  wraparound agree with the original types.
+- Consider `DJNZ` only with correct zero/256 behavior. Keep a word-count path.
+- Consider `LDI`/`LDIR` and fill patterns only when count, overlap direction,
+  flags/register clobbers and memory/port side effects permit them.
+- Preserve source-order behavior for overlapping forward-copy loops; do not
+  silently turn them into `memmove`, or execute a 65536-byte block for count zero.
+
+Acceptance: focused exact-byte tests plus complete buffer/guard checks for
+overlap, boundaries and zero count; a measured win in byte copy/fill and at
+least one real decoder/array workload. Keep Z80 instruction selection target
+local and retain the generic safe path.
+
+### 4. Reduce Leaf And Call Overhead
+
+Do this after branch/loop improvements identify the remaining call cost.
+Use the existing call lowering, frame layouts, location resolution and
+return-value emitters in [pass_4.c](compiler/pass_4.c) and
+[pass_6_z80.c](compiler/pass_6_z80.c).
+
+- First remove provably redundant setup/copies within the existing ABI.
+- Measure cheap leaf prologues/epilogues before designing another convention.
+- If register arguments/results are justified, make the convention explicit and
+  gated. Keep existing cross-file, banked, recursive, indirect/assembly-facing
+  contracts working; never silently change only one caller or callee.
+- Account for reserved DE, byte/pair overlap, caller/callee saves and result
+  lifetime. Include mixed-width arguments and nested calls.
+
+Acceptance: reduce the 172-byte/971-cycle caller example and whole call-heavy
+workloads, with full caller/callee/frame correctness. Report wrapper and kernel
+metrics separately. An ABI change requires dedicated compatibility tests and
+documentation, not just a smaller leaf-function listing.
+
+### 5. Add A Measured Size/Speed Arithmetic Policy
+
+Review existing arithmetic emission in [pass_6_z80.c](compiler/pass_6_z80.c) and
+existing linker helper generation before adding runtime entry points.
+
+- Compare repeated inline arithmetic with shared helpers, including all call,
+  argument, clobber and return overhead.
+- Look for quotient/remainder pairs that can share one division, and eliminate
+  redundant arithmetic through existing TAC optimization before adding helpers.
+- Preserve already good constant multiply/shift paths.
+- Define any size/speed choice explicitly. Do not quietly trade cycles for bytes
+  under the existing default and hide it by summing unrelated improvements.
+- Exhaustively test bounded byte operations; use word edge cases and independent
+  numerical oracles, including zero-divisor behavior defined by the compiler.
+
+Acceptance: show standalone and combined-program code bytes, helper sharing and
+cycles. Add distinct benchmark modes if a new optimization profile is introduced;
+keep the original baseline/settings available.
+
+### 6. Expand Qualification And Guide Future Backends
+
+- Port a complete representative application to the supported common C subset
+  before claiming whole-program parity with competing compilers. Match hardware,
+  data, startup requirements and libraries; separate hand-written assembly.
+- Add workloads only for a concrete gap: signed arithmetic, wider values,
+  pointers/aliases, standard-library idioms or banked calling. Version the corpus
+  rather than replacing its old meanings.
+- Share branch/loop analysis when implementing SM83. Its lack of IX/IY and some
+  Z80 instructions requires different addressing/spill/selection decisions.
+- Implement a separate 6502 policy/backend. Do not force it into Z80 register-pair,
+  stack-frame or block-instruction assumptions.
+- Let real second-backend requirements justify extraction. Do not build a new
+  generic framework speculatively.
+
+## Repeating The Competitor Comparison
+
+Use Python 3.10+ and the existing dependency:
+
+```sh
+python -m pip install -r ci/requirements.txt
+```
+
+Install toolchains outside the repository; do not vendor their binaries or
+libraries. The original pinned Windows downloads are:
+
+| Toolchain | Official archive | SHA-256 |
+| --- | --- | --- |
+| Stock SDCC | [2026-10-18 #17016 snapshot](https://sourceforge.net/projects/sdcc/files/snapshot_builds/x86_64-w64-mingw32/sdcc-snapshot-x86_64-w64-mingw32-20261018-17016-cf-x86.zip/download) | `34c7ec74b0478f77d7617113635d9eb6bff2cfd3eb35c9ed19cc1336e8e90938` |
+| z88dk | [2.4 Windows release](https://github.com/z88dk/z88dk/releases/tag/v2.4), `z88dk-win32-2.4.zip` | `26d9880ee2e43077808ac86a4b6247a81f5dadc30563ca7cedc58bc4fb5ccb57` |
+
+The expected code generators identify as SDCC `4.6.4 #17016`, sccz80
+`23854-4d530b6eb7-20251002` and z88dk's patched SDCC `4.5.0 #15242`. Stock SDCC
+uses its native register ABI; the z88dk backends use their shipped newlib ABI.
+These are the measured releases, not a claim that all are the latest releases.
+
+Example PowerShell setup; replace the tool installation paths:
+
+```powershell
+$env:PATH = "C:\cygwin64\bin;$PWD\binaries;$PWD\wla-dx\binaries;C:\toolchains\sdcc\bin;C:\toolchains\z88dk\bin;$env:PATH"
+$env:ZCCCFG = "C:\toolchains\z88dk\lib\config\"
+python ci\compare_z80_compilers.py --output-dir C:\benchmarks\ssc-codegen-new
+```
+
+`SAMESAMECC`, `SAMESAMECL`, `SDCC` and `ZCC` optionally select executable paths.
+Assembler/linker tools and `z88dk-ticks` must be on PATH. The default output is
+a new system-temporary directory. A supplied directory must be empty: no cached
+compiler output can pass as a measurement after a rebuild.
+
+POSIX installations use the same Python entry point, their normal executable
+PATH and their z88dk `ZCCCFG` directory. Version checks and actual emitted
+competitor metrics still apply; the archived download hashes above are Windows
+provenance, not hashes of POSIX executables.
+
+For a focused development run:
+
+```sh
+python ci/compare_z80_compilers.py --names fillBytes sumBytes copyBytes --modes ssc-ra sdcc-size
+python ci/compare_z80_compilers.py --names calculationSpriteSceneWorkload calculationTrackerWorkload calculationNavigationWorkload
+python -m unittest discover -s ci -p test_compare_z80_compilers.py
+```
+
+A subset is explicitly reported as `partial`, not a full comparison. Before
+closing a compiler batch, run all 16 workloads and all seven default
+configurations. The full default runner repeats 42 independent whole-call
+timing checks across six workloads/seven configurations, including the
+256-byte fill and all three applications. To include shared arithmetic, select
+`ssc-ra ssc-ra-shared sdcc-size sdcc-speed sccz80-size sccz80-speed zsdcc-size
+zsdcc-speed`: all sixteen workloads then receive a seed-zero independent
+timing, plus the fill boundary, for 128 builds, 2144 calls and 136 timing checks.
+No SameSameC allocator-off performance builds are permitted.
+
+### What Fails And What Gets Recorded
+
+- Missing selected tools, changed source/asset/oracle fingerprints, changed
+  settings, wrong output, out-of-bounds writes, unexpected I/O, broken returns,
+  instruction bounds and independent timing mismatches fail explicitly.
+- Fixed inputs remain identical for each competitor, including the 16 PackBits
+  boundary/error vectors and 0/255/256-byte loop cases.
+- Each build retains generated input, assembly/listings, linked image, symbols,
+  logs, actual command lines, measured call samples and metrics.
+- `max_stack_bytes` retains its original meaning: displacement below entry SP.
+  `max_stack_access_bytes` measures the deepest stack/frame access below entry
+  SP, and `max_below_sp_bytes` records accesses below the instruction's stack
+  pointer. `max_frame_footprint_bytes` combines reserved SP span and frame
+  accesses, including the two-byte entry return address. This is observed
+  whole-call storage, not global RAM, interrupt headroom or an unexecuted-path
+  bound. These additional observations do not regenerate the historical
+  five-metric baseline; compare them against a consistently remeasured parent.
+  The version-2 application extension records all four observations from its
+  first qualified measurement.
+- `report.json` records partial/full status, tool versions/hashes, baseline
+  deltas and SameSameC/competitor geometric ratios. Negative deltas are gains.
+  Build seconds are observations, not a statistically qualified speed benchmark.
+- SameSameC regressions fail the existing reference gates: compare complete
+  kernel-plus-wrapper bytes/cycles for automatic register-call output, otherwise
+  compare the individual kernel/caller metrics. Keep maximum SP displacement
+  and, where recorded, full frame/access observations non-growing. Shared
+  arithmetic retains its separate paired 27-T-state call-cost and two-byte
+  stack allowances. Inspect each workload; an aggregate win does not cancel
+  a local regression.
+- Pinned competitors must reproduce their reference metrics exactly. This also
+  catches library/peephole changes despite an unchanged version banner.
+- `--allow-competitor-drift` is only for separately evaluating new external
+  releases or host differences. It records drift and is not a pinned-control
+  pass. It never relaxes correctness or SameSameC regression checks.
+- There is no automatic baseline-update switch. Keep the historical baseline.
+  A deliberate corpus/settings/profile change requires reviewed versioned
+  reference data, new independent validation and an explanation of what is no
+  longer directly comparable. Do not regenerate references to hide regressions.
+
+The runner reuses [existing calculation oracles](ci/check_register_allocator.py)
+and [native CPU stepping](ci/ra_cpu.py); it does not replace allocator verification.
+The different native-ABI memory setup and caller/kernel accounting are specific
+to this cross-compiler experiment.
+
+## Gates For Every Implementation Batch
+
+1. Record the current commit, compiler build/settings and baseline measurements.
+   Use a clean rebuild when changing host flags or trace definitions.
+2. Add the smallest regression that exposes the intended source/TAC/assembly
+   change. Test legal fallbacks and boundary cases as well as the fast path.
+3. Run focused compiler fixtures, then the existing allocator verifier and
+   generated/real-program execution corpus. Keep independent oracles and
+   traced/quiet target-code equivalence. Allocator-off checks in existing
+   correctness suites are separate from performance comparisons.
+4. Run the full seven-configuration, sixteen-workload RA-only competitor
+   comparison, with the paired shared mode when relevant. Report per-workload
+   bytes, cycles, caller overhead and stack observations; preserve exact external
+   controls and identify any intentionally accepted tradeoff.
+5. At a checkpoint, rebuild both full calculation projects and report used ROM,
+   not padded image size. Run the existing full suites and relevant native/
+   sanitizer configurations before declaring a substantial new surface stable.
+6. Recheck target-local clobbers, aliases, failure propagation, frame safety,
+   immutable verification and unsupported conservative fallback.
+7. Update this plan with actual results, not optimistic completion claims. Keep
+   compiler source growth visible and remove superseded logic. Commit the batch
+   locally with the validation summary; do not push.
+
+The recorded implementation batches through **2aj** are complete. The next
+user-requested bounded sequence is **2ak-2an**, all pending; adding the larger
+comparison applications does not implement those optimizations. The initial
+SM83 backend remains the next backend target, not a reason to make every
+possible Z80 optimization mandatory. Keep qualified Z80 behavior and shared
+core coverage intact throughout.

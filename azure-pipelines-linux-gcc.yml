@@ -23,7 +23,7 @@ steps:
 - script: |
     set -eux
     WLA_INCLUDE="$PWD/ci/relax_wla_dx_warnings.cmake"
-    cmake -DCMAKE_BUILD_TYPE=Debug -G "Unix Makefiles"
+    cmake -DSAMESAMEC_TRACE=ON -DCMAKE_BUILD_TYPE=Debug -G "Unix Makefiles"
     make
     cd wla-dx
     cmake -DCMAKE_BUILD_TYPE=Release \
@@ -36,13 +36,13 @@ steps:
   timeoutInMinutes: 60
 - script: |
     set -eux
-    ./run_tests.sh
+    bash ./run_tests.sh
   displayName: 'Run Tests (Debug)'
   timeoutInMinutes: 60
 - script: |
     set -eux
     WLA_INCLUDE="$PWD/ci/relax_wla_dx_warnings.cmake"
-    cmake -DCMAKE_BUILD_TYPE=Release -G "Unix Makefiles"
+    cmake -DSAMESAMEC_TRACE=ON -DCMAKE_BUILD_TYPE=Release -G "Unix Makefiles"
     make
     cd wla-dx
     cmake -DCMAKE_BUILD_TYPE=Release \
@@ -55,6 +55,7 @@ steps:
   timeoutInMinutes: 60
 - script: |
     set -eux
-    ./run_tests.sh
+    bash ./run_tests.sh
   displayName: 'Run Tests (Release)'
   timeoutInMinutes: 60
+- template: ci/publish-test-failure-artifacts.yml

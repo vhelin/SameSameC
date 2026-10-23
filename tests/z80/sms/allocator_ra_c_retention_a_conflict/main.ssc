@@ -1,0 +1,24 @@
+// @BT linked.sms
+// @BT TEST-01 01 START
+// @BT DD 21 00 00 DD 19 DD 7E FB DD 86 FA 4F DD 7E F9
+// @BT DD 86 F8 A9 DD 77 F6 DD 7E F6 DD AE F7 DD 77 F6
+// @BT DD 21 00 C0 FD 21 F6 FF FD 19 FD 7E 00 DD 77 00
+// @BT END
+
+u8 g_allocator_c_retention_target;
+
+u8 allocatorRaCRetentionAConflict(u8 a, u8 b, u8 c, u8 d, u8 mask) {
+
+  u8 out;
+
+  __asm(".DB \"01>\"");
+  out = (a + b) ^ (c + d);
+  out = out ^ mask;
+  g_allocator_c_retention_target = out;
+  __asm(".DB \"<01\"");
+
+  return out;
+}
+
+void main(void) {
+}

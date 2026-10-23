@@ -1,0 +1,24 @@
+void printCalculationLine(u8 *chars, u8 low, u8 high, u16 expected, u16 first, u16 second, u16 third);
+u16 calculationAdd3(u16 first, u16 second, u16 third);
+u16 calculationXorRoundTrip(u16 value, u16 mask);
+u16 calculationQuotientRoundTrip(u16 value, u16 divisor);
+
+void calculateAndPrint4(u8 *chars, u8 one, u8 zero) {
+
+  s16 value = -666;
+  u8 factor = 11;
+  s16 result;
+
+  result = -((value - zero) * (-(-(factor - one + zero + one))));
+  result = -result | zero;
+  result = -result + one - one;
+  printCalculationLine(chars, 0, 0, 0x1C9E, result, result, result);
+  result = calculationAdd3(0x6000, 0x0D00, 0x00B6);
+  result = calculationXorRoundTrip(calculationQuotientRoundTrip(result, 31), 0x4242);
+  printCalculationLine(chars, 0, 0, 0x6DB6, result, result, result);
+  result = calculationXorRoundTrip(calculationAdd3(0x7000, 0x0F00, one), 0x7E7E);
+  result = calculationQuotientRoundTrip(result, 37);
+  printCalculationLine(chars, 0, 0, 0x7F01, result, result, result);
+  result = calculationXorRoundTrip(calculationQuotientRoundTrip(0x491A << one, 41), 0x0F0F);
+  printCalculationLine(chars, 0, 0, 0x9234, result, result, result);
+}

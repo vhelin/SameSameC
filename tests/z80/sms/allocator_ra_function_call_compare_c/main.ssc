@@ -1,0 +1,34 @@
+// @BT linked.sms
+// @BT TEST-01 01 START
+// @BT 21 FF FF 39 01 CC 00 C5 D5 DD 21 03 00 DD 39 FD
+// @BT 21 00 00 FD 19 FD 4E FB DD 71 FB EB C3 22 00 DD
+// @BT 21 00 00 DD 19 DD 6E FC DD 5E FD DD 56 FE FD 21
+// @BT F7 FF FD 19 FD 75 00 DD 21 00 00 DD 19 DD 7E FA
+// @BT DD 86 F9 0E 00 47 DD 7E F7 90 CA FD 00 C3 FF 00
+// @BT 0E 01 79 D6 01 C2 0F 01 DD 21 00 00 DD 19 DD 36
+// @BT F8 01 DD 21 00 C0 FD 21 F8 FF FD 19 FD 7E 00 DD
+// @BT 77 00
+// @BT END
+
+u8 g_allocator_call_compare_c_sink;
+
+u8 allocatorRaCallCompareCCallee(u8 value) {
+  return value + 3;
+}
+
+u8 allocatorRaFunctionCallCompareC(u8 value, u8 left, u8 right) {
+
+  u8 out = 0;
+
+  __asm(".DB \"01>\"");
+  // Keep a Boolean value consumer so this still exercises allocator joins.
+  if ((allocatorRaCallCompareCCallee(value) == left + right) == 1)
+    out = 1;
+  g_allocator_call_compare_c_sink = out;
+  __asm(".DB \"<01\"");
+
+  return out;
+}
+
+void main(void) {
+}

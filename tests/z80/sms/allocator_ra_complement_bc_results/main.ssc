@@ -1,0 +1,40 @@
+// @BT linked.sms
+// @BT TEST-01 01 START
+// @BT DD 21 00 00 DD 19 DD 7E FB EE FF 4F DD 7E FA DD
+// @BT 86 F9 A9 DD 77 F8 DD 21 00 C0 FD 21 F8 FF FD 19
+// @BT FD 7E 00 DD 77 00
+// @BT END
+// @BT TEST-02 02 START
+// @BT DD 21 00 00 DD 19 DD 7E FB DD 86 FA 4F DD 7E F9
+// @BT EE FF 47 DD 7E F8 DD 86 F7 A8 A9 DD 77 F6 DD 21
+// @BT 00 C0 FD 21 F6 FF FD 19 FD 7E 00 DD 77 00
+// @BT END
+
+u8 g_allocator_complement_bc_target;
+
+u8 allocatorRaComplementResultC(u8 value, u8 left, u8 right) {
+
+  u8 out;
+
+  __asm(".DB \"01>\"");
+  out = (~value) ^ (left + right);
+  g_allocator_complement_bc_target = out;
+  __asm(".DB \"<01\"");
+
+  return out;
+}
+
+u8 allocatorRaComplementResultB(u8 a, u8 b, u8 value, u8 left, u8 right) {
+
+  u8 out;
+
+  __asm(".DB \"02>\"");
+  out = (a + b) ^ ((~value) ^ (left + right));
+  g_allocator_complement_bc_target = out;
+  __asm(".DB \"<02\"");
+
+  return out;
+}
+
+void main(void) {
+}

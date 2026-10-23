@@ -1,0 +1,91 @@
+void convertNumbersToChars16(u16 value, u8 *chars, u8 *index);
+void printCalculationLine(u8 *chars, u8 addressLow, u8 addressHigh, u16 expected, u16 first, u16 second, u16 third);
+u16 calculationAdd3(u16 first, u16 second, u16 third);
+u16 calculationMultiplyAdd(u16 value, u16 multiplier, u16 addend);
+u16 calculationXorRoundTrip(u16 value, u16 mask);
+u16 calculationQuotientRoundTrip(u16 value, u16 divisor);
+
+void calculateAndPrint3(u8 *chars, u8 one, u8 zero) {
+
+  u16 index = 0;
+  u16 extra1;
+  u16 extra2;
+  u16 extra3;
+
+  //////////////////////////////////////////////////////////////////////////////////////////
+  // $0115 = $0115 = $0115 = $0115
+  //////////////////////////////////////////////////////////////////////////////////////////
+
+  chars[index++] = 0x04; // '$'
+  chars[index++] = 0x00;
+
+  convertNumbersToChars16(0x0115, chars, &index); // "0115"
+
+  chars[index++] = 0x00; // ' '
+  chars[index++] = 0x00;
+  chars[index++] = 0x1D; // '='
+  chars[index++] = 0x00;
+  chars[index++] = 0x00; // ' '
+  chars[index++] = 0x00;
+
+  chars[index++] = 0x04; // '$'
+  chars[index++] = 0x00;
+
+  u16 result = (34000 / 123) | 1;
+  convertNumbersToChars16(result, chars, &index); // "0115"
+
+  chars[index++] = 0x00; // ' '
+  chars[index++] = 0x00;
+  chars[index++] = 0x1D; // '='
+  chars[index++] = 0x00;
+  chars[index++] = 0x00; // ' '
+  chars[index++] = 0x00;
+
+  chars[index++] = 0x04; // '$'
+  chars[index++] = 0x00;
+
+  u16 var1 = 34000;
+  u8 var2 = 123;
+  u8 var3 = 1;
+
+  result = (var1 / var2) | var3;
+  convertNumbersToChars16(result, chars, &index); // "0115"
+
+  chars[index++] = 0x00; // ' '
+  chars[index++] = 0x00;
+  chars[index++] = 0x1D; // '='
+  chars[index++] = 0x00;
+  chars[index++] = 0x00; // ' '
+  chars[index++] = 0x00;
+
+  chars[index++] = 0x04; // '$'
+  chars[index++] = 0x00;
+
+  result = ((var1 + one - one) / (var2 | zero)) | (var3 - zero);
+  convertNumbersToChars16(result, chars, &index); // "0115"
+
+  u8 i;
+
+  __z80_out[0xBF] = 0x00;
+  __z80_out[0xBF] = 0x43 | 0x38;
+  for (i = 0; i < index; i++)
+    __z80_out[0xBE] = chars[i];
+
+  extra1 = calculationMultiplyAdd(0x1234, 3, zero);
+  extra2 = calculationMultiplyAdd(0x0369, 0x0010, 0x000C);
+  extra3 = calculationQuotientRoundTrip(extra2, 19);
+  extra3 = calculationXorRoundTrip(extra3, 0x0FF0);
+  printCalculationLine(chars, 0x40, 0x7B, 0x369C, extra1, extra2, extra3);
+
+  extra1 = (one << 14) | one;
+  extra2 = calculationMultiplyAdd(0x0400, 0x0010, one);
+  extra3 = calculationXorRoundTrip(extra2, 0xAAAA);
+  extra3 = calculationQuotientRoundTrip(extra3, 23);
+  printCalculationLine(chars, 0x80, 0x7B, 0x4001, extra1, extra2, extra3);
+
+  extra1 = 0x2D2D << one;
+  extra2 = calculationAdd3(0x5000, 0x0A00, 0x005A);
+  extra3 = calculationQuotientRoundTrip(extra2, 29);
+  extra3 = calculationXorRoundTrip(extra3, 0x3333);
+  printCalculationLine(chars, 0xC0, 0x7B, 0x5A5A, extra1, extra2, extra3);
+}

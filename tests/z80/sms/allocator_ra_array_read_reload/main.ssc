@@ -1,0 +1,207 @@
+// @BT linked.sms
+// @BT TEST-01 01 START
+// @BT 21 00 C0 DD 21 00 00 DD 19 DD 4E FB 06 00 09 DD
+// @BT 75 F8 DD 74 F9 6E DD 75 FA DD 6E F8 DD 66 F9 6E
+// @BT 7D DD 86 FA DD 77 FA
+// @BT END
+// @BT TEST-02 02 START
+// @BT 21 00 C0 DD 21 00 00 DD 19 DD 4E FB 06 00 09 DD
+// @BT 75 F6 DD 74 F7 6E DD 75 F8 DD 7E FA DD 86 F9 4F
+// @BT 06 00 DD 6E F6 DD 66 F7 09 6E 7D DD 86 F8 DD 77
+// @BT F8 01 02 00 DD 6E F6 DD 66 F7 09 6E 7D DD 86 F8
+// @BT DD 77 F8
+// @BT END
+// @BT TEST-03 03 START
+// @BT 21 00 C1 DD 21 00 00 DD 19 DD 4E FA 06 00 09 09
+// @BT DD 75 F6 DD 74 F7 7E 23 66 6F DD 75 F8 DD 74 F9
+// @BT 01 01 00 DD 6E F6 DD 66 F7 09 09 7E 23 66 6F DD
+// @BT 4E F8 DD 46 F9 09 DD 75 F8 DD 74 F9 01 02 00 DD
+// @BT 6E F6 DD 66 F7 09 09 7E 23 66 6F DD 4E F8 DD 46
+// @BT F9 09 DD 75 F8 DD 74 F9
+// @BT END
+// @BT TEST-04 04 START
+// @BT 21 80 C1 DD 21 00 00 DD 19 DD 4E FA 06 00 09 DD
+// @BT 75 F6 DD 74 F7 E5 FD E1 FD 6E 00 7D 87 9F 67 DD
+// @BT 75 F8 DD 74 F9 01 01 00 DD 6E F6 DD 66 F7 E5 FD
+// @BT E1 FD 09 FD 6E 00 7D 87 9F 67 DD 4E F8 DD 46 F9
+// @BT 09 DD 75 F8 DD 74 F9
+// @BT END
+
+u8 g_allocator_reload_bytes[256];
+u16 g_allocator_reload_words[64];
+s8 g_allocator_reload_signed_bytes[256];
+u8 **g_allocator_reload_escape;
+u8 g_allocator_reload_sink;
+
+u8 allocatorRaReadReloadZero(u8 base_index) {
+
+  u8 *target;
+  u8 out;
+
+  __asm(".DB \"01>\"");
+  target = &g_allocator_reload_bytes[base_index];
+  out = target[0];
+  out = out + target[0];
+  __asm(".DB \"<01\"");
+
+  return out;
+}
+
+u8 allocatorRaReadReloadIndex(u8 base_index, u8 index_left, u8 index_right) {
+
+  u8 *target;
+  u8 out;
+
+  __asm(".DB \"02>\"");
+  target = &g_allocator_reload_bytes[base_index];
+  out = target[0];
+  out = out + target[index_left + index_right];
+  out = out + target[2];
+  __asm(".DB \"<02\"");
+
+  return out;
+}
+
+u16 allocatorRaReadReloadWord(u8 base_index) {
+
+  u16 *target;
+  u16 out;
+
+  __asm(".DB \"03>\"");
+  target = &g_allocator_reload_words[base_index];
+  out = target[0];
+  out = out + target[1];
+  out = out + target[2];
+  __asm(".DB \"<03\"");
+
+  return out;
+}
+
+s16 allocatorRaReadReloadSigned(u8 base_index) {
+
+  s8 *target;
+  s16 out;
+
+  __asm(".DB \"04>\"");
+  target = &g_allocator_reload_signed_bytes[base_index];
+  out = target[0];
+  out = out + target[1];
+  __asm(".DB \"<04\"");
+
+  return out;
+}
+
+u8 allocatorRaReadReloadRejectBranch(u8 base_index, u8 condition) {
+
+  u8 *target;
+  u8 out;
+
+  target = &g_allocator_reload_bytes[base_index];
+  out = target[0];
+  if (condition)
+    out = out + target[1];
+
+  return out;
+}
+
+u8 allocatorRaReadReloadRejectLoop(u8 base_index, u8 index) {
+
+  u8 *target;
+  u8 out;
+
+  target = &g_allocator_reload_bytes[base_index];
+  while (1) {
+    g_allocator_reload_sink = target[index];
+    if (g_allocator_reload_sink)
+      break;
+  }
+  out = target[0];
+  out = out + target[1];
+
+  return out;
+}
+
+u8 allocatorRaReadReloadRejectBaseCopy(u8 base_index, u16 index_left, u16 index_right) {
+
+  u8 *target;
+  u8 out;
+
+  target = &g_allocator_reload_bytes[base_index];
+  out = target[0];
+  out = out + target[index_left + index_right];
+
+  return out;
+}
+
+u8 allocatorRaReadReloadRejectAsm(u8 base_index) {
+
+  u8 *target;
+  u8 out;
+
+  target = &g_allocator_reload_bytes[base_index];
+  out = target[0];
+  __asm("NOP");
+  out = out + target[1];
+
+  return out;
+}
+
+u8 allocatorRaReadReloadRejectAsmOperand(u8 base_index) {
+
+  u8 *target;
+  u8 out;
+
+  target = &g_allocator_reload_bytes[base_index];
+  out = target[0];
+  out = out + target[1];
+  __asm("LD HL,(@target)");
+
+  return out;
+}
+
+u8 allocatorRaReadReloadRejectEscape(u8 base_index) {
+
+  u8 *target;
+  u8 out;
+
+  target = &g_allocator_reload_bytes[base_index];
+  g_allocator_reload_escape = &target;
+  out = target[0];
+  out = out + target[1];
+
+  return out;
+}
+
+u8 allocatorRaReadReloadRejectDefinition(u8 base_index) {
+
+  u8 *target;
+  u8 out;
+
+  target = &g_allocator_reload_bytes[base_index];
+  out = target[0];
+  target = &g_allocator_reload_bytes[base_index + 1];
+  out = out + target[0];
+
+  return out;
+}
+
+void allocatorRaReadReloadCall(void) {
+
+  g_allocator_reload_sink++;
+}
+
+u8 allocatorRaReadReloadRejectCall(u8 base_index) {
+
+  u8 *target;
+  u8 out;
+
+  target = &g_allocator_reload_bytes[base_index];
+  out = target[0];
+  out = out + target[1];
+  allocatorRaReadReloadCall();
+
+  return out;
+}
+
+void main(void) {
+}

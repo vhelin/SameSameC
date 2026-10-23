@@ -1,0 +1,44 @@
+// @BT linked.sms
+// @BT TEST-01 01 START
+// @BT 21 00 C0 DD 21 00 00 DD 19 DD 4E F9 DD 46 FA 78
+// @BT AC 67 79 AD 6F DD 75 F7 DD 74 F8 DD 21 11 C0 FD
+// @BT 21 F7 FF FD 19 FD 7E 00 DD 77 00 FD 7E 01 DD 77
+// @BT 01
+// @BT END
+// @BT TEST-02 02 START
+// @BT 21 01 C0 DD 21 00 00 DD 19 DD 4E FA 06 00 09 DD
+// @BT 4E F8 DD 46 F9 78 AC 67 79 AD 6F DD 75 F6 DD 74
+// @BT F7 DD 21 11 C0 FD 21 F6 FF FD 19 FD 7E 00 DD 77
+// @BT 00 FD 7E 01 DD 77 01
+// @BT END
+
+u8 g_allocator_get_address_value;
+u8 g_allocator_get_address_values[16];
+u16 g_allocator_get_address_sink;
+
+u16 allocatorRaGetAddressResultHl(u16 mask) {
+
+  u16 out;
+
+  __asm(".DB \"01>\"");
+  out = (&g_allocator_get_address_value) ^ mask;
+  g_allocator_get_address_sink = out;
+  __asm(".DB \"<01\"");
+
+  return out;
+}
+
+u16 allocatorRaGetAddressArrayResultHl(u8 index, u16 mask) {
+
+  u16 out;
+
+  __asm(".DB \"02>\"");
+  out = (&g_allocator_get_address_values[index]) ^ mask;
+  g_allocator_get_address_sink = out;
+  __asm(".DB \"<02\"");
+
+  return out;
+}
+
+void main(void) {
+}

@@ -1,0 +1,49 @@
+// @BT linked.sms
+// @BT TEST-01 01 START DD 21 00 00 DD 19 DD 7E FB DD 86 FA 4F DD 7E F9 DD 86 F8 81 DD 77 F7 END
+// @BT TEST-02 02 START DD 21 00 00 DD 19 DD 6E F9 DD 66 FA DD 4E F7 DD 46 F8 09 DD 4E F5 DD 46 F6 79 EE FF 4F 78 EE FF 47 09 DD 75 F3 DD 74 F4 DD 21 00 C0 FD 21 F3 FF FD 19 FD 7E 00 DD 77 00 FD 7E 01 DD 77 01 END
+// @BT TEST-03 03 START
+// @BT DD 21 00 00 DD 19 DD 6E F7 DD 66 F8 DD 4E F5 DD
+// @BT 46 F6 09 44 4D DD 6E F9 DD 66 FA 78 B1 28 04 29
+// @BT 0B 18 F8 DD 75 F3 DD 74 F4 DD 21 00 C0 FD 21 F3
+// @BT FF FD 19 FD 7E 00 DD 77 00 FD 7E 01 DD 77 01
+// @BT END
+
+u16 g_primary_candidate_evaluation_word_target = 0;
+
+u8 allocatorRaCorePrimaryCandidateEvaluationPath(u8 a, u8 b, u8 c, u8 d) {
+
+  u8 out;
+
+  __asm(".DB \"01>\"");
+  out = (a + b) + (c + d);
+  __asm(".DB \"<01\"");
+
+  return out;
+}
+
+u16 allocatorRaCorePrimaryCandidateEvaluationConflict(u16 a, u16 b, u16 c) {
+
+  u16 out;
+
+  __asm(".DB \"02>\"");
+  out = (a + b) + (~c);
+  g_primary_candidate_evaluation_word_target = out;
+  __asm(".DB \"<02\"");
+
+  return g_primary_candidate_evaluation_word_target;
+}
+
+u16 allocatorRaCorePrimaryCandidateEvaluationUnsupported(u16 value, u16 left, u16 right) {
+
+  u16 out;
+
+  __asm(".DB \"03>\"");
+  out = value << (left + right);
+  g_primary_candidate_evaluation_word_target = out;
+  __asm(".DB \"<03\"");
+
+  return out;
+}
+
+void main(void) {
+}

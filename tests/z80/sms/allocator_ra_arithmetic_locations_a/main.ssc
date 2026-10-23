@@ -1,0 +1,40 @@
+// @BT linked.sms
+// @BT TEST-01 01 START
+// @BT DD 21 00 00 DD 19 DD 7E FB DD 21 00 C0 DD 86 00 DD 21 01 C0 DD 77 00
+// @BT END
+// @BT TEST-02 02 START
+// @BT DD 21 00 C0 DD 7E 00 DD 21 00 00 DD 19 DD 96 FA DD 21 01 C0 DD 77 00
+// @BT END
+// @BT TEST-03 03 START
+// @BT DD 21 00 C0 DD 7E 00 F6 80 DD 21 01 C0 DD 77 00
+// @BT END
+// @BT TEST-04 04 START
+// @BT DD 21 00 00 DD 19 DD 7E FB DD 21 00 C0 DD AE 00 E6 0F DD 21 01 C0 DD 77 00
+// @BT END
+
+u8 g_arithmetic_source = 5;
+u8 g_arithmetic_target = 0;
+
+u8 allocatorRaArithmeticLocationsA(u8 a, u8 b) {
+
+  __asm(".DB \"01>\"");
+  g_arithmetic_target = a + g_arithmetic_source;
+  __asm(".DB \"<01\"");
+
+  __asm(".DB \"02>\"");
+  g_arithmetic_target = g_arithmetic_source - b;
+  __asm(".DB \"<02\"");
+
+  __asm(".DB \"03>\"");
+  g_arithmetic_target = g_arithmetic_source | 0x80;
+  __asm(".DB \"<03\"");
+
+  __asm(".DB \"04>\"");
+  g_arithmetic_target = (a ^ g_arithmetic_source) & 0x0f;
+  __asm(".DB \"<04\"");
+
+  return g_arithmetic_target;
+}
+
+void main(void) {
+}

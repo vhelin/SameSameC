@@ -1,0 +1,134 @@
+// @BT linked.sms
+// @BT TEST-01 01 START
+// @BT DD 21 00 00 DD 19 DD 4E F9 DD 46 FA 60 69 29 09 DD 75 F7 DD 74 F8
+// @BT END
+// @BT TEST-02 02 START
+// @BT DD 21 00 00 DD 19 DD 4E F9 DD 46 FA 60 69 29 29 29 09 29 29 29 09 DD 75 F7 DD 74 F8
+// @BT END
+// @BT TEST-03 03 START
+// @BT DD 21 00 00 DD 19 DD 4E F9 DD 46 FA 60 69 29 29 29 29 29 29 29 29 29 29 29 29 29 29 29 09 DD 75 F7 DD 74 F8
+// @BT END
+// @BT TEST-04 04 START
+// @BT DD 21 00 00 DD 19 DD 4E F9 DD 46 FA 60 69 29 09 29 09 29 09 29 09 29 09 29 09 29 09 29 09 DD 75 F7 DD 74 F8
+// @BT END
+// @BT TEST-05 05 START
+// @BT DD 21 00 00 DD 19 DD 4E F9 DD 46 FA D5 11 FF 03 78 06 10 21 00 00 29 CB 21 17 30 01 19 10 F7 D1 DD 75 F7 DD 74 F8
+// @BT END
+// @BT TEST-06 06 START
+// @BT DD 21 00 00 DD 19 DD 4E F9 DD 46 FA D5 DD 5E F7 DD 56 F8 78 06 10 21 00 00 29 CB 21 17 30 01 19 10 F7 D1 DD 75 F5 DD 74 F6
+// @BT END
+// @BT TEST-07 07 START
+// @BT DD 21 00 00 DD 19 DD 4E FA 79 87 9F 47 60 69 29 29 29 29 29 29 29 29 09 DD 75 F8 DD 74 F9
+// @BT END
+// @BT TEST-08 08 START
+// @BT DD 21 00 00 DD 19 DD 4E F9 DD 46 FA D5 DD 5E F7 DD 56 F8 78 06 10 21 00 00 29 CB 21 17 30 01 19 10 F7 D1 DD 75 F5 DD 74 F6
+// @BT END
+// @BT TEST-09 09 START
+// @BT DD 21 00 00 DD 19 DD 4E FA 79 87 9F 47 D5 DD 5E F8 DD 56 F9 78 06 10 21 00 00 29 CB 21 17 30 01 19 10 F7 D1 DD 75 F6 DD 74 F7
+// @BT END
+// @BT TEST-10 10 START
+// @BT DD 21 00 00 DD 19 DD 66 FB DD 21 00 00 DD 19 D5 DD 5E FA 16 00 6A 06 08 29 30 01 19 10 FA D1 DD 21 00 00 DD 19 DD 75 F9
+// @BT END
+
+u16 constantMultiplyRight(u16 value) {
+
+  u16 result;
+
+  __asm(".DB \"01>\"");
+  result = value * 3;
+  __asm(".DB \"<01\"");
+  return result;
+}
+
+u16 constantMultiplyLeft(u16 value) {
+
+  u16 result;
+
+  __asm(".DB \"02>\"");
+  result = 73 * value;
+  __asm(".DB \"<02\"");
+  return result;
+}
+
+s16 constantMultiplySigned(s16 value) {
+
+  s16 result;
+
+  __asm(".DB \"03>\"");
+  result = value * (-32767);
+  __asm(".DB \"<03\"");
+  return result;
+}
+
+u16 constantMultiplyBound(u16 value) {
+
+  u16 result;
+
+  __asm(".DB \"04>\"");
+  result = value * 511;
+  __asm(".DB \"<04\"");
+  return result;
+}
+
+u16 constantMultiplyFallback(u16 value) {
+
+  u16 result;
+
+  __asm(".DB \"05>\"");
+  result = value * 1023;
+  __asm(".DB \"<05\"");
+  return result;
+}
+
+u16 variableMultiply(u16 value, u16 factor) {
+
+  u16 result;
+
+  __asm(".DB \"06>\"");
+  result = value * factor;
+  __asm(".DB \"<06\"");
+  return result;
+}
+
+u16 constantMultiplySignedByte(s8 value) {
+
+  u16 result;
+
+  __asm(".DB \"07>\"");
+  result = 257 * value;
+  __asm(".DB \"<07\"");
+  return result;
+}
+
+s16 variableSignedMultiply(s16 value, s16 factor) {
+
+  s16 result;
+
+  __asm(".DB \"08>\"");
+  result = value * factor;
+  __asm(".DB \"<08\"");
+  return result;
+}
+
+u16 variableSignedByteMultiply(s8 value, u16 factor) {
+
+  u16 result;
+
+  __asm(".DB \"09>\"");
+  result = value * factor;
+  __asm(".DB \"<09\"");
+  return result;
+}
+
+u8 variableByteMultiply(u8 value, u8 factor) {
+
+  u8 result;
+
+  __asm(".DB \"10>\"");
+  result = value * factor;
+  __asm(".DB \"<10\"");
+  return result;
+}
+
+void main(void) {
+}

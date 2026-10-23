@@ -489,6 +489,7 @@ int stack_calculate_tokens(int *value) {
   }
 
   /* slice the data into infix format */
+  q = 0;
   while (1) {
     if (g_token_current == NULL)
       break;
@@ -745,7 +746,7 @@ int stack_calculate_tokens(int *value) {
     /* next token */
     g_token_current = g_token_current->next;
 
-    if (q == 255) {
+    if (q == 64) {
       print_error("Out of stack space.\n", ERROR_STC);
       return FAILED;
     }

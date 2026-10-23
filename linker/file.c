@@ -12,6 +12,7 @@
 
 struct file *g_files_first = NULL, *g_files_last = NULL;
 unsigned char g_copy_bytes_bank[256];
+extern int g_share_arithmetic;
 
 
 static int _get_plain_filename(char *output, int output_size, char *input) {
@@ -95,7 +96,7 @@ int file_load(char *name) {
   fseek(fp, 0, SEEK_SET);
   f->size = file_size;
 
-  f->data = calloc(file_size, 1);
+  f->data = calloc((size_t)file_size + 1, 1);
   if (f->data == NULL) {
     fprintf(stderr, "FILE_LOAD: Out of memory error.\n");
     free(f);
@@ -193,7 +194,170 @@ int file_find_copy_bytes_calls(void) {
 
 int file_write_all_asm_files_into_tmp_file(FILE *fp) {
 
+  struct register_call {
+    char name[MAX_NAME_LENGTH + 1];
+    int arguments, defined, calls, used_calls, escaped, explicit_call;
+    struct register_call *next;
+  } *register_calls = NULL, *regcall, *next_regcall;
+  struct arithmetic_body {
+    struct file *file;
+    char *start, *body, *end;
+    int kind, bank, slot, length, uses, id;
+    struct arithmetic_body *helper, *next;
+  } *bodies = NULL, *last = NULL, *body, *match, *next;
+  const char *begin_marker = "      ; ssc_arithmetic_begin ";
+  const char *end_marker = "      ; ssc_arithmetic_end";
+  const char *call_marker = "      ; ssc_regcalls ";
+  char *cursor, *start, *end, *code;
+  char name[MAX_NAME_LENGTH + 1];
+  int kind, bank, slot, consumed, version, arguments, value, header, opaque = NO, id = 0, status = FAILED;
   struct file *f;
+
+  for (f = g_files_first; f != NULL; f = f->next) {
+    header = NO;
+    cursor = f->data;
+    while ((start = strstr(cursor, call_marker)) != NULL) {
+      cursor = start + strlen(call_marker);
+      if (start != f->data && start[-1] != '\n')
+        continue;
+      end = strchr(cursor, '\n');
+      if (end == NULL || end - cursor < 9 || cursor[1] != ' ' || cursor[3] != ' ' ||
+          cursor[5] != ' ' || cursor[7] != ' ' || sscanf(cursor, "%1d %1d %1d %1d %256s%n",
+                               &version, &kind, &arguments, &value, name, &consumed) != 5)
+        goto invalid_regcall;
+      cursor += consumed;
+      if (cursor > end)
+        goto invalid_regcall;
+      while (cursor < end && strchr(" \t\r", *cursor) != NULL)
+        cursor++;
+      if (cursor != end || version != 1 || kind < 0 || kind > 4 ||
+          arguments < 0 || arguments > 3 || value < 0 || value > 1)
+        goto invalid_regcall;
+      cursor = end + 1;
+      if (kind == 0) {
+        if (header == YES || arguments != 0 || strcmp(name, "-") != 0)
+          goto invalid_regcall;
+        header = YES;
+        if (value == YES)
+          opaque = YES;
+        continue;
+      }
+      if (header == NO || ((kind == 1 || kind == 4) && value != 0) || (kind == 3 && (arguments != 0 || value != 0)) ||
+          (!isalpha((unsigned char)name[0]) && name[0] != '_'))
+        goto invalid_regcall;
+      for (code = name; *code != 0; code++) {
+        if (!isalnum((unsigned char)*code) && *code != '_')
+          goto invalid_regcall;
+      }
+      for (regcall = register_calls; regcall != NULL; regcall = regcall->next) {
+        if (strcmp(regcall->name, name) == 0)
+          break;
+      }
+      if (regcall == NULL) {
+        regcall = calloc(1, sizeof(*regcall));
+        if (regcall == NULL) {
+          fprintf(stderr, "FILE_WRITE_ALL_ASM_FILES_INTO_TMP_FILE: Out of memory error.\n");
+          goto cleanup;
+        }
+        strcpy(regcall->name, name);
+        regcall->arguments = -1;
+        regcall->next = register_calls;
+        register_calls = regcall;
+      }
+      if (kind == 3) {
+        regcall->escaped = YES;
+        continue;
+      }
+      if ((regcall->arguments >= 0 && regcall->arguments != arguments) || ((kind == 1 || kind == 4) && regcall->defined == YES)) {
+        fprintf(stderr, "FILE_WRITE_ALL_ASM_FILES_INTO_TMP_FILE: Incompatible register-call records for \"%s\" in \"%s\".\n",
+                name, f->name);
+        goto cleanup;
+      }
+      regcall->arguments = arguments;
+      if (kind == 1 || kind == 4) {
+        regcall->defined = YES;
+        regcall->explicit_call = kind == 4;
+      }
+      else {
+        regcall->calls++;
+        regcall->used_calls += value;
+      }
+    }
+    /* Older inputs and source ASM can reference any ordinary public entry. */
+    if (header == NO)
+      opaque = YES;
+  }
+  for (regcall = register_calls; regcall != NULL; regcall = regcall->next) {
+    int legacy = regcall->explicit_call == NO && (opaque == YES || regcall->escaped == YES);
+    if (regcall->defined != YES || (regcall->explicit_call == NO && regcall->calls == 0) ||
+        (legacy && regcall->used_calls < 2))
+      continue;
+    fprintf(fp, "  .DEFINE ssc.auto.v1.w%d.%s 1\n", regcall->arguments, regcall->name);
+    if (legacy)
+      fprintf(fp, "  .DEFINE ssc.legacy.v1.w%d.%s 1\n", regcall->arguments, regcall->name);
+  }
+
+  if (g_share_arithmetic == YES) {
+    for (f = g_files_first; f != NULL; f = f->next) {
+      cursor = f->data;
+      while ((start = strstr(cursor, begin_marker)) != NULL) {
+        cursor = start + strlen(begin_marker);
+        if (start != f->data && start[-1] != '\n')
+          continue;
+        end = strchr(cursor, '\n');
+        if (end == NULL || sscanf(cursor, "%d %d %d%n", &kind, &bank, &slot, &consumed) != 3)
+          goto invalid_body;
+        for (cursor += consumed; cursor < end && strchr(" \t\r", *cursor) != NULL; cursor++)
+          ;
+        if (cursor != end || kind < 0 || kind > 3 || bank < 0 || bank > 255 || slot < 0 || slot > 3)
+          goto invalid_body;
+        code = end + 1;
+        end = strstr(code, end_marker);
+        cursor = strstr(code, begin_marker);
+        if (end == NULL || end == code || end[-1] != '\n' || (cursor != NULL && cursor < end))
+          goto invalid_body;
+        cursor = end + strlen(end_marker);
+        if (*cursor == '\r')
+          cursor++;
+        if (*cursor != '\n' && *cursor != 0)
+          goto invalid_body;
+        if (*cursor == '\n')
+          cursor++;
+        /* RAM code cannot call an ordinary ROM-bank-local helper. */
+        if (slot == 3)
+          continue;
+        body = calloc(1, sizeof(*body));
+        if (body == NULL) {
+          fprintf(stderr, "FILE_WRITE_ALL_ASM_FILES_INTO_TMP_FILE: Out of memory error.\n");
+          goto cleanup;
+        }
+        body->file = f;
+        body->start = start;
+        body->body = code;
+        body->end = cursor;
+        body->kind = kind;
+        body->bank = bank;
+        body->slot = slot;
+        body->length = (int)(end - code);
+        body->uses = 1;
+        body->id = id++;
+        body->helper = body;
+        for (match = bodies; match != NULL; match = match->next) {
+          if (match->helper == match && match->kind == kind && match->bank == bank && match->slot == slot &&
+              match->length == body->length && memcmp(match->body, code, body->length) == 0) {
+            body->helper = match;
+            match->uses++;
+            break;
+          }
+        }
+        if (last == NULL)
+          bodies = body;
+        else
+          last->next = body;
+        last = body;
+      }
+    }
+  }
 
   f = g_files_first;
   while (f != NULL) {
@@ -201,7 +365,16 @@ int file_write_all_asm_files_into_tmp_file(FILE *fp) {
     fprintf(fp, "; ######################################################################\n");
     fprintf(fp, "; %s\n", f->name);
     fprintf(fp, "; ######################################################################\n");
-    fwrite(f->data, 1, f->size, fp);
+    cursor = f->data;
+    for (body = bodies; body != NULL; body = body->next) {
+      if (body->file != f || body->helper->uses < 2)
+        continue;
+      fwrite(cursor, 1, body->start - cursor, fp);
+      fprintf(fp, "      CALL ssc.arithmetic_%d_bank_%.3d_slot_%d\n",
+              body->helper->id, body->bank, body->slot);
+      cursor = body->end;
+    }
+    fwrite(cursor, 1, f->data + f->size - cursor, fp);
 
     /* copy_bytes_bank_??? function? */
     if (f->data_copy_bytes_size > 0)
@@ -210,7 +383,39 @@ int file_write_all_asm_files_into_tmp_file(FILE *fp) {
     f = f->next;
   }
 
-  return SUCCEEDED;
+  for (body = bodies; body != NULL; body = body->next) {
+    /* All four emitted kernels save bytes from their second use, including RET. */
+    if (body->helper != body || body->uses < 2)
+      continue;
+    /* Leading underscores are section-local in WLA; dots cannot collide with C identifiers. */
+    fprintf(fp, "\n  .BANK %d SLOT %d\n", body->bank, body->slot);
+    fprintf(fp, "  .SECTION \"ssc.arithmetic_%d_bank_%.3d_slot_%d\" FREE\n", body->id, body->bank, body->slot);
+    fprintf(fp, "    ssc.arithmetic_%d_bank_%.3d_slot_%d:\n", body->id, body->bank, body->slot);
+    fwrite(body->body, 1, body->length, fp);
+    fprintf(fp, "      RET\n  .ENDS\n");
+  }
+  status = SUCCEEDED;
+  if (fflush(fp) != 0 || ferror(fp)) {
+    fprintf(stderr, "FILE_WRITE_ALL_ASM_FILES_INTO_TMP_FILE: Cannot write combined assembly.\n");
+    status = FAILED;
+  }
+  goto cleanup;
+
+invalid_body:
+  fprintf(stderr, "FILE_WRITE_ALL_ASM_FILES_INTO_TMP_FILE: Invalid arithmetic body in \"%s\".\n", f->name);
+  goto cleanup;
+invalid_regcall:
+  fprintf(stderr, "FILE_WRITE_ALL_ASM_FILES_INTO_TMP_FILE: Invalid register-call metadata in \"%s\".\n", f->name);
+cleanup:
+  for (regcall = register_calls; regcall != NULL; regcall = next_regcall) {
+    next_regcall = regcall->next;
+    free(regcall);
+  }
+  for (body = bodies; body != NULL; body = next) {
+    next = body->next;
+    free(body);
+  }
+  return status;
 }
 
 
