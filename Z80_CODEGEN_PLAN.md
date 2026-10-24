@@ -392,6 +392,14 @@ extraction.
   expressions to existing loop preheaders only when complete costs justify it.
 - [x] **2an. Live-third-argument frameless multiply leaves:** reuse existing
   word multiplication and leaf lowering without new ABI contracts or flags.
+- [ ] **2ao. Costed complementary constant-word shifts:** extend existing shift
+  selection with profitable opposite-direction shifts, byte transfers and masks.
+- [ ] **2ap. Exact local-array forwarding and scaled-index reuse:** avoid proven
+  redundant reloads and address calculations with existing alias/def-use machinery.
+- [ ] **2aq. Proven loop-header frame-cache and scalar ownership:** extend existing
+  forward-join witnesses to bounded backedges without weakening ownership checks.
+- [ ] **2ar. Broader bounded nested copy/fill selection:** reuse existing matchers
+  and block lowering for additional proven local-array/frame-crossing cases.
 - [ ] **3. Initial SM83 backend:** establish correct Game Boy code generation,
   target-specific addressing/spills/calls and execution tests. Use actual
   requirements to identify reusable code; do not assume IX/IY, `DJNZ` or `LDIR`.
@@ -4844,13 +4852,163 @@ included in measured stack access and complete frame extents.
 Evidence, the rejected shared-helper scout and consolidated `qualification.json`
 are retained under `C:\cygwin64\tmp\frameless-multiply-20261024`.
 
-The four follow-ups above come from the retained RA-only research under
+The completed steps 2ak-2an come from the retained RA-only research under
 `C:\cygwin64\tmp\compiler-reprofile-20261023-after-2aj-ra-only`. Rejected private
 experiments are also relevant: saving a Path address in a new local saves 13
 bytes but costs 1.05% more cycles and one frame byte; inlining Array's
 constant-argument ProductRestore call saves 2.64% cycles but adds 77 ordinary
 bytes. Do not adopt blanket pointer spilling or inlining as a substitute for
 the measured bounded steps.
+
+### After-2an Measurement Basis For Steps 2ao-2ar
+
+The RA-only comparison at `8fe50ab` on 2026-10-24 passes all eighteen workloads
+in eight ordinary/shared RA and external configurations: **144 builds, 2224
+guarded calls and 216 independent timings**. All 108 pinned external rows
+reproduce their controls. The earlier full profile contained thirteen tests;
+compare the five newer applications against their own first qualified
+baselines, not a fabricated eighteen-test historical profile.
+
+The largest remaining ordinary-RA gaps are:
+
+| Workload | Kernel/dependency bytes | Aggregate kernel T-states | Bytes / smallest external | Cycles / fastest external |
+| --- | ---: | ---: | ---: | ---: |
+| Tracker | 3462 | 10848095 | 1.85x | 1.78x |
+| Sprite scene | 3467 | 16085498 | 1.71x | 1.68x |
+| Navigation | 2816 | 11227030 | 1.51x | 1.62x |
+| A* | 2638 | 49604781 | 1.54x | 1.55x |
+| Quicksort | 1792 | 26253142 | 1.60x | 1.40x |
+
+External minima are selected independently across size/speed modes, not one
+claimed configuration. Byte-identical label-only attribution of one hot input
+per workload assigns frame-address setup plus indexed scalar-frame traffic
+approximately 40% of Tracker, 63% of Sprite, 60% of Navigation, 58% of A* and
+55% of Quicksort cycles. These are neither aggregate-input percentages nor
+wholly removable costs.
+
+Fresh competitor assembly, retained SDCC selector/allocator source and shipped
+z88dk 2.4 sources motivate the four steps below. The SDCC source-study snapshot
+is mechanism research, not a claim to reproduce the pinned binary's source
+tree. Full reports, source/binary bindings, attribution and private scouts are
+retained under
+`C:\cygwin64\tmp\compiler-reprofile-20261024-after-2an-ra-only`.
+These steps are planned, not completed, and do not add SM83 prerequisites.
+
+### 2ao. Costed Complementary Constant-Word Shifts (Planned)
+
+Extend `_shift_hl_by_bc` in [pass_6_z80.c](compiler/pass_6_z80.c), reusing its
+constant/variable selection, register transfers and existing clobber/owner
+handling. Compare the current counted/unrolled sequences against equivalent
+opposite-direction shifts, byte transfers, rotates and masks. SDCC's retained
+selector and z88dk's constant-shift lowering provide prior art for costed
+alternatives; fresh SDCC/ZSDCC A* assembly uses unrolled shifts.
+
+- Begin with unsigned literal word right shifts near a byte boundary, especially
+  counts 6 and 7. Select by operand/result locations, live registers, flags and
+  complete assembled cost, not workload names, map widths or source rewrites.
+- Preserve full-width results and the existing language behavior for zero,
+  oversized and variable counts. Unsupported signed/narrow/mixed forms keep
+  their existing lowering. Do not weaken a caller's byte or word contract.
+- Account explicitly for A, flags, BC and physical byte/pair overlap. Include
+  every required save/restore, transfer, helper call and stack byte in the
+  profitability decision; a shorter inner sequence is insufficient.
+
+A private generic scout scans all 36 ordinary/shared RA assemblies. Its
+unsigned `HL >> 6` alternative costs eight bytes / 46 T-states versus the
+existing eight-byte / 176-T-state counted loop. The count-6/count-7 primitives
+pass 131072 exhaustive word inputs; all 68 affected workload calls pass
+independent timing, numerical/buffer/stack checks. A* remains 2638 bytes while
+aggregate cycles fall 49604781 -> 46527161 (-6.20%); Path and Tracker also
+improve slightly. This is opportunity evidence, not production qualification:
+A/flags ownership and preservation costs still require compiler-level proof.
+
+Acceptance: exhaustive eligible word inputs, all count boundaries and legal
+fallbacks, live scratch/flag and byte-pair pressure, caller/helper contracts
+and complete stack/frame costs. Run ordinary/shared RA corpus comparisons and
+all six unmodified console projects; report actual gains separately from the
+private estimate. Do not add a parallel arithmetic framework or new default.
+
+### 2ap. Exact Local-Array Forwarding And Scaled-Index Reuse (Planned)
+
+Reuse 2z's bounded pure-expression reuse, existing def/use and alias facts,
+array-address materialization and location resolution. Start within one
+straight-line region with an identical unescaped local-array base, unchanged
+index and matching byte/word access. Forward a just-stored value to a proven
+same-element load, then reuse matching scaled-index/address work where its
+complete lifetime cost is profitable.
+
+Fresh SDCC Tracker assembly retains the updated `phase[channel]` value in
+registers across its store and feeds the following shift directly. SameSameC
+reconstructs addresses and reloads state. This is evidence for general
+store/load forwarding, not permission to recognize a phase array or mixer.
+
+- End the proof at uncertain aliases, may-overlapping stores, base/index
+  mutation, calls, ASM, volatile/port effects or unsupported control boundaries.
+  Handle partial byte/word overlap conservatively; never reuse stale high bytes.
+- Preserve evaluation order, index scaling and source-width wraparound. Do not
+  narrow indices, extend a value across an unproved join or introduce pointer
+  spills merely to reduce TAC count.
+- Prefer existing values and address witnesses over new caches, temporaries or
+  analysis structures. Price register pressure, spills, calls and live-outs.
+
+Acceptance: selected and rejected byte/word shapes, changed/aliased indices,
+partial overlaps, escaped storage, effects, control and pressure. Demonstrate
+the source/TAC/assembly cause and assembled whole-function/caller savings in
+Tracker and any other affected workloads, without changing benchmark sources.
+Keep immutable controls, full frame/access extents and paired RA modes intact.
+
+### 2aq. Proven Loop-Header Frame-Cache And Scalar Ownership (Planned)
+
+Forward frame-cache joins already exist in the 2ag emitter; not-yet-visited
+backedges invalidate their witnesses. Extend those existing region/edge facts,
+CFG/liveness, owner reservations and biased-window costs rather than adding
+another cache, register allocator or general dataflow framework.
+
+- Begin with canonical call-free loops and stable frame-base/counter facts.
+  Require agreement at every entry and backedge, valid physical byte/pair
+  owners, and safe exits. Reuse 2w's bounded loop-carried ownership proofs.
+- Keep conservative fallback for unknown predecessors, multiple entries,
+  aliases, calls, ASM, clobbers or unsupported pressure. An emitter's linear
+  visitation order is not evidence that a runtime backedge preserves a value.
+- Price entry setup, backedge transfers, exits, spills and window changes.
+  Retaining IX must not silently evict a more valuable scalar or corrupt a
+  byte alias, flag dependency or saved-frame/return-address contract.
+
+Acceptance: zero/one/many iterations, nested loops, continue/break, early exits,
+unequal joins, overwritten owners, pair overlap, effects and register pressure,
+with independent numerical/frame checks and traced/untraced image identity.
+Show per-input complete costs on the large applications and all existing
+controls. The measured 40-63% frame-traffic shares are opportunity attribution,
+not a promised speedup or evidence that every access is a removable spill.
+
+### 2ar. Broader Bounded Nested Copy/Fill Selection (Planned)
+
+Audit concrete rejections in `_generate_asm_bounded_loop_z80` before extending
+it. The matcher already accepts some local arrays and 2aa's bounded CRC
+frame-only crossings; non-CRC live-through temporaries are still rejected.
+Reuse those existing shape, alias, location, owner and crossing proofs and the
+advancing-pointer, LDI/LDIR and fill emitters.
+
+Sprite's `bytes[i] = terrain[i]` remains scalar indexed in both SameSameC and
+fresh SDCC output: do not claim SDCC already emits LDIR. Its two transfer TACs
+consume 262080 cycles on the attributed hot input, before index/loop overhead.
+The exact selector blocker for that loop is not yet proven; establish it
+before choosing the smallest general extension.
+
+- Target proven nested byte copies/fills and memory-backed outer state, not
+  application names, fixed dimensions or rewritten sources. Extend only the
+  actual safe rejection, preserving existing physical-owner restrictions.
+- Preserve zero/255/256 counts, bounds, live-out pointers/counters, flags,
+  clobbers, wraparound, calls and memory/port effects. Forward-copy overlap must
+  retain source-order behavior, not silently become `memmove`.
+- Choose scalar, advancing-pointer or block lowering using complete setup,
+  preservation, loop, exit and stack/frame costs. Do not add a second matcher
+  or an unconditional block instruction for a zero count.
+
+Acceptance: local/global/pointer forms, nesting, accepted/rejected frame-only
+crossings, alias/overlap directions, boundaries, live-outs and pressure. Show a
+measured real-workload benefit while retaining existing copy/fill/decoder
+fast paths, both RA arithmetic policies and all six self-contained consoles.
 
 ### 3. Maintain Induction Addresses And Select Z80 Loops
 
@@ -4974,13 +5132,14 @@ python -m unittest discover -s ci -p test_compare_z80_compilers.py
 ```
 
 A subset is explicitly reported as `partial`, not a full comparison. Before
-closing a compiler batch, run all 16 workloads and all seven default
-configurations. The full default runner repeats 42 independent whole-call
-timing checks across six workloads/seven configurations, including the
-256-byte fill and all three applications. To include shared arithmetic, select
+closing a compiler batch, run all 18 workloads and all seven default
+configurations: 126 builds and 1946 guarded calls. Independent whole-call
+timings include the 256-byte fill boundary, all applications and every A*/sort
+input. To include shared arithmetic, select
 `ssc-ra ssc-ra-shared sdcc-size sdcc-speed sccz80-size sccz80-speed zsdcc-size
-zsdcc-speed`: all sixteen workloads then receive a seed-zero independent
-timing, plus the fill boundary, for 128 builds, 2144 calls and 136 timing checks.
+zsdcc-speed`: all eighteen workloads receive independent seed-zero timings,
+plus the fill boundary and remaining algorithm inputs, for 144 builds, 2224
+calls and 216 timing checks.
 No SameSameC allocator-off performance builds are permitted.
 
 ### What Fails And What Gets Recorded
@@ -5037,13 +5196,14 @@ to this cross-compiler experiment.
    generated/real-program execution corpus. Keep independent oracles and
    traced/quiet target-code equivalence. Allocator-off checks in existing
    correctness suites are separate from performance comparisons.
-4. Run the full seven-configuration, sixteen-workload RA-only competitor
+4. Run the full seven-configuration, eighteen-workload RA-only competitor
    comparison, with the paired shared mode when relevant. Report per-workload
    bytes, cycles, caller overhead and stack observations; preserve exact external
    controls and identify any intentionally accepted tradeoff.
-5. At a checkpoint, rebuild both full calculation projects and report used ROM,
-   not padded image size. Run the existing full suites and relevant native/
-   sanitizer configurations before declaring a substantial new surface stable.
+5. At a checkpoint, rebuild all six self-contained SMS/Game Gear calculation
+   projects and report used ROM, not padded image size. Run the existing full
+   suites and relevant native/sanitizer configurations before declaring a
+   substantial new surface stable.
 6. Recheck target-local clobbers, aliases, failure propagation, frame safety,
    immutable verification and unsupported conservative fallback.
 7. Update this plan with actual results, not optimistic completion claims. Keep
@@ -5052,7 +5212,8 @@ to this cross-compiler experiment.
 
 The recorded implementation batches through **2an** are complete, including
 the user-requested bounded sequence **2ak-2an**; adding the larger comparison
-applications was qualified separately from those optimizations. The initial
-SM83 backend remains the next backend target, not a reason to make every
-possible Z80 optimization mandatory. Keep qualified Z80 behavior and shared
-core coverage intact throughout.
+applications was qualified separately from those optimizations. Steps
+**2ao-2ar** are the new, unimplemented RA-only profile follow-ups, in that
+order. The initial SM83 backend remains the next backend target, not a reason
+to make every possible Z80 optimization mandatory. Keep qualified Z80 behavior
+and shared core coverage intact throughout.
