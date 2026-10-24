@@ -173,6 +173,21 @@ images save only 1/2 bytes, including allocator-off builds.
 See [step 2ai](Z80_CODEGEN_PLAN.md#2ai-dead-argument-homes-and-expanded-register-entry-leaves-completed)
 for exact scope, unchanged compatibility, caller-inclusive costs and qualification.
 
+The same frameless emitter now handles bounded unsigned-word multiply and
+multiply/add leaves with live IY/HL/BC inputs. Existing word/constant multiply,
+transfers, ADD and returns are reused; preserve a live or aliased addend with
+balanced temporary pushes and keep full word wraparound. No new production
+functions, ABI or flags are added. Signed/narrow/effect/pressure shapes and
+retained legacy entries keep framed lowering. Arithmetic sharing now counts
+only active compiler ABI alternatives instead of extracting a helper from two
+mutually exclusive bodies; unknown assembler conditions conservatively stay
+inline. Ordinary/shared RA MultiplyAdd improves 65 -> 24 bytes and 20.77% in
+cycles. Tracker's real mixer saves the same 41 bytes, 4.40% ordinary cycles and
+six complete frame-footprint bytes. Other kernels and all six console ROMs
+are unchanged; existing opaque application calls still require framed entries.
+See [step 2an](Z80_CODEGEN_PLAN.md#2an-live-third-argument-frameless-multiply-leaves-completed)
+for complete caller/stack costs, legacy compatibility and qualification.
+
 Normal RA now reuses byte comparison and counter emitters when the existing
 bounded known-bit query proves word values are 0..255. The query also accepts
 nearby scalar definitions and addition with a proven byte-sized maximum.

@@ -16,6 +16,135 @@ from ra_cpu import execute
 
 
 class BranchConditionsTests(unittest.TestCase):
+    def test_frameless_multiply_leaves(self):
+        from random import Random
+
+        cases = {}
+        names = ("a", "b", "c")
+        for first in range(3):
+            for second in range(3):
+                expression = f"{names[first]}*{names[second]}"
+                cases[f"product_{first}_{second}"] = (
+                    "u16 a,u16 b,u16 c", f"return {expression};",
+                    lambda values, initial, f=first, s=second: values[f]*values[s], True)
+                for third in range(3):
+                    for reverse in (False, True):
+                        body = f"{names[third]}+({expression})" if reverse else f"({expression})+{names[third]}"
+                        cases[f"sum_{first}_{second}_{third}_{int(reverse)}"] = (
+                            "u16 a,u16 b,u16 c", f"return {body};",
+                            lambda values, initial, f=first, s=second, t=third: values[f]*values[s]+values[t], True)
+        for factor in (3, 5, 7, 17, 255, 257, 0x1234, 65535):
+            for first in range(3):
+                for reverse in (False, True):
+                    product = f"{factor}*{names[first]}" if reverse else f"{names[first]}*{factor}"
+                    cases[f"constant_{factor}_{first}_{int(reverse)}"] = (
+                        "u16 a,u16 b,u16 c", f"return ({product})+{names[(first+1)%3]};",
+                        lambda values, initial, k=factor, f=first: values[f]*k+values[(f+1)%3], True)
+        cases.update({
+            "constant_sum": ("u16 a,u16 b,u16 c", "return a*b+0x9234;",
+                             lambda v, initial: v[0]*v[1]+0x9234, True),
+            "signed": ("s16 a,u16 b,u16 c", "return a*b+c;", lambda v, initial: v[0]*v[1]+v[2], False),
+            "byte": ("u8 a,u16 b,u16 c", "return a*b+c;", lambda v, initial: (v[0]&255)*v[1]+v[2], False),
+            "signed_byte": ("s8 a,u16 b,u16 c", "return a*b+c;",
+                            lambda v, initial: ((v[0]&255)-(256 if v[0]&128 else 0))*v[1]+v[2], False),
+            "narrow": ("u16 a,u16 b,u16 c", "u8 value=a*b; return value+c;",
+                       lambda v, initial: (v[0]*v[1]&255)+v[2], False),
+            "pressure": ("u16 a,u16 b,u16 c", "return a*b+b*c;", lambda v, initial: v[0]*v[1]+v[1]*v[2], False),
+            "alias": ("u16 a,u16 b,u16 c", "u16 *p=&a; p[0]^=c; return a*b+c;",
+                      lambda v, initial: (v[0]^v[2])*v[1]+v[2], False),
+            "memory": ("u16 a,u16 b,u16 c", "return a*ra_buffer[3]+c;",
+                       lambda v, initial: v[0]*initial[3]+v[2], False),
+            "branch": ("u16 a,u16 b,u16 c", "if(a&1) { return a*b+c; } return b*c+a;",
+                       lambda v, initial: v[0]*v[1]+v[2] if v[0]&1 else v[1]*v[2]+v[0], False),
+        })
+        programs = [Program(f"multiply_caller_{name}", name, 0, 0, [2, 2, 2], 2, [],
+                            f"u16 multiply_caller_{name}(u16 a,u16 b,u16 c) {{ u16 saved=a^b^c; "
+                            f"return multiply_leaf_{name}(a,b,c)^saved; }}")
+                    for name in cases]
+        random = Random(0x2A0)
+        inputs = [(a, b, c) for a, b, c in (
+            (0, 0, 0), (0, 65535, 0x8000), (1, 1, 1), (1, 65535, 65535),
+            (127, 128, 255), (255, 256, 257), (0x8000, 1, 65535),
+            (65535, 0x8000, 0x8000), (65535, 65535, 65535))]
+        inputs += [tuple(random.randrange(65536) for _ in range(3)) for _ in range(12)]
+        extra = [tuple(random.randrange(65536) for _ in range(3)) for _ in range(793)]
+        directory = self.output / "multiply-leaves"
+        for policy, offset in ((policy, offset) for policy in ("inline", "shared")
+                               for offset in range(0, len(programs), 24)):
+            group = programs[offset:offset+24]
+            helpers = "u8 ra_buffer[128];\n"+"\n".join(
+                f"u16 multiply_leaf_{p.family}({cases[p.family][0]}) {{ {cases[p.family][1]} }}" for p in group)
+            images = compile_generated(
+                directory / policy / f"batch-{offset}", os.environ.get("SAMESAMECC") or "samesamecc",
+                os.environ.get("SAMESAMECL") or "samesamecl", group,
+                helpers+"\n"+"\n".join(p.source for p in group)+"\nvoid main(void) {}\n",
+                linker_flags=("-share-arithmetic",) if policy == "shared" else ())
+            for mode, image in images.items():
+                for program in group:
+                    eligible = cases[program.family][3]
+                    self.assertEqual(f"ssc.regleaf.multiply_leaf_{program.family}" in image.symbols,
+                                     eligible, (policy, mode, program.family))
+                    if eligible:
+                        self.assertEqual(image.staticMetrics["functions"][f"multiply_leaf_{program.family}"]["frame_bytes"], 0)
+                    for values in inputs+(extra if program.family == "sum_0_1_2_0" else []):
+                        initial = bytes((index*37+sum(values))&255 for index in range(128))
+                        expected = (cases[program.family][2](values, initial)&65535)^values[0]^values[1]^values[2]
+                        result = execute(image.rom, image.symbols[program.name], values, [2, 2, 2], initial,
+                                         image.symbols["ra_buffer"], 2, image.transfers, frame_bytes=2048)
+                        self.assertEqual((result["value"], result["buffer"], result["port_writes"]),
+                                         (expected, initial, []), (policy, mode, program.family, values))
+                        self.assertEqual(result["unmapped_instructions"], 0)
+
+    def test_frameless_multiply_objects(self):
+        compiler = os.environ.get("SAMESAMECC") or "samesamecc"
+        linker = os.environ.get("SAMESAMECL") or "samesamecl"
+        for contract in ("native", "banked", "old", "escape", "mixed", "opaque", "explicit", "explicit_opaque"):
+            for mode, flags in (("default", ()), ("ra", ("-ra",)), ("forced", ("-ra-all-spill",))):
+                work = self.output / f"multiply-objects-{contract}-{mode}"
+                work.mkdir()
+                annotation = " __z80_regcall" if contract.startswith("explicit") else ""
+                barrier = '__asm("LD BC,4660");' if contract in ("opaque", "explicit_opaque") else ""
+                escape = "u16 address=&multiply_object;" if contract in ("escape", "mixed") else ""
+                value = ("multiply_object(a,b,c)^multiply_object(c,a,b)" if contract == "mixed" else
+                         "multiply_object(a,b,c)")
+                adjustment = "+(address!=0)" if escape else ""
+                sources = {
+                    "callee": f"u16 multiply_object(u16 a,u16 b,u16 c){annotation} {{ return a*b+c; }}\n",
+                    "caller": ("u8 ra_buffer[128];\n"
+                               f"u16 multiply_object(u16 a,u16 b,u16 c){annotation};\n"
+                               f"u16 multiply_boundary(u16 a,u16 b,u16 c) {{ {escape} u16 saved=a^b^c; "
+                               f"{barrier} return (({value})^saved){adjustment}; }}\nvoid main(void) {{}}\n"),
+                }
+                for unit, source in sources.items():
+                    (work / f"{unit}.ssc").write_text(source)
+                    bank = ("-b", "3", "-s", "2") if contract == "banked" and unit == "callee" else ()
+                    run(compiler, ["-mz80", "-rs", "3", *bank, *flags, "-o", f"{unit}.asm", f"{unit}.ssc"],
+                        work, f"{unit}.compiler.log")
+                if contract == "old":
+                    path = work / "callee.asm"
+                    path.write_text(re.sub(r"^\s*; ssc_regcalls[^\n]*\n", "", path.read_text(), flags=re.M))
+                run(linker, ["-lsms", "-ro", "4", "-share-arithmetic", "-v", "-o", "linked.sms",
+                             "caller.asm", "callee.asm"], work, "linker.log")
+                image = read_image(work)
+                selected = contract in ("native", "banked", "explicit", "explicit_opaque")
+                self.assertEqual("ssc.regleaf.multiply_object" in image.symbols, selected, (contract, mode))
+                self.assertFalse(any(name.startswith("ssc.arithmetic_") for name in image.symbols))
+                if contract == "banked":
+                    image = mapped_routine_image("multiply", "ssc.autocall.v1.w3.multiply_object", mode, image)
+                for a, b, c in ((0, 0, 0), (1, 65535, 0x8000), (127, 128, 255), (255, 256, 257),
+                                (0x8000, 0x8000, 1), (65535, 65535, 65535)):
+                    expected = (a*b+c)&65535
+                    if contract == "mixed":
+                        expected ^= (c*a+b)&65535
+                    expected ^= a^b^c
+                    expected = (expected+bool(escape))&65535
+                    initial = bytes((i*37+a+b+c)&255 for i in range(128))
+                    result = execute(image.rom, image.symbols["multiply_boundary"], [a, b, c], [2, 2, 2],
+                                     initial, image.symbols["ra_buffer"], 2, image.transfers, frame_bytes=2048)
+                    self.assertEqual((result["value"], result["buffer"], result["port_writes"]),
+                                     (expected, initial, []), (contract, mode, a, b, c))
+                    self.assertEqual(result["unmapped_instructions"], 0)
+
     def test_costed_loop_invariant_hoisting(self):
         cases = {
             "bias": ("4", "(a>>pass)&31", "", "", True),
@@ -339,14 +468,14 @@ u16 lh_object(u16 a,u16 b) {
             "effects": (3, "return a;", lambda a, b, c: a, True),
             "one_shift": (1, "return a<<7;", lambda a, b, c: a<<7, True),
             "two_shift": (2, "return a>>b;", lambda a, b, c: a>>b, True),
-            "mul": (3, "return a*b;", lambda a, b, c: a*b, False),
-            "mul_two": (2, "return a*a;", lambda a, b, c: a*a, False),
+            "mul": (3, "return a*b;", lambda a, b, c: a*b, True),
+            "mul_two": (2, "return a*a;", lambda a, b, c: a*a, True),
             "memory_one": (1, "return ra_buffer[5];", lambda a, b, c: (185+a+b+c)&255, False),
             "memory_two": (2, "return ra_buffer[5];", lambda a, b, c: (185+a+b+c)&255, False),
             "memory_three": (3, "return ra_buffer[5];", lambda a, b, c: (185+a+b+c)&255, False),
-            "gap": (3, "return a*c;", lambda a, b, c: a*c, False),
-            "dead_first": (3, "return b*c;", lambda a, b, c: b*c, False),
-            "assigned": (3, "c=a; return c*b;", lambda a, b, c: a*b, False),
+            "gap": (3, "return a*c;", lambda a, b, c: a*c, True),
+            "dead_first": (3, "return b*c;", lambda a, b, c: b*c, True),
+            "assigned": (3, "c=a; return c*b;", lambda a, b, c: a*b, True),
             "escape": (3, "u16 *p=&c; p[0]^=a; return c;", lambda a, b, c: a^c, False),
             "third": (3, "return c;", lambda a, b, c: c, False),
             "different": (3, "return (a<<b)>>c;",
@@ -1162,7 +1291,7 @@ void main(void) {}
             "mask": ("u16 a", "return a&0xff00;", "a", lambda a, b: a&0xff00, True),
             "signed": ("s16 a,s16 b", "return a^b;", "a,b", lambda a, b: a^b, True),
             "sub": ("u16 a,u16 b", "return a-b;", "a,b", lambda a, b: a-b, True),
-            "multiply": ("u16 a,u16 b", "return a*b;", "a,b", lambda a, b: a*b, False),
+            "multiply": ("u16 a,u16 b", "return a*b;", "a,b", lambda a, b: a*b, True),
             "divide": ("u16 a,u16 b", "return a/b;", "a,b",
                        lambda a, b: a//b if b else 65535, False),
             "modulo": ("u16 a,u16 b", "return a%b;", "a,b",
@@ -1535,7 +1664,7 @@ static u16 pr_discard(u16 a,u16 b,u16 c) { ra_buffer[0]=a; return a+3*b+5*c; }
                     run(linker, ["-lsms", "-v", "-o", "linked.sms", "caller.asm", "callee.asm"], work, "linker.log")
                     image = read_image(work)
                     self.assertNotIn("cross_leaf", image.symbols)
-                    selected = kind == "sub" or (kind == "shift" and os.environ.get("RA_BASELINE") != "1")
+                    selected = kind == "sub" or (kind in ("shift", "dead") and os.environ.get("RA_BASELINE") != "1")
                     self.assertEqual("ssc.regleaf.cross_leaf" in image.symbols, selected)
                     if selected:
                         self.assertEqual(image.staticMetrics["functions"]["cross_leaf"]["frame_bytes"], 0)
@@ -2875,7 +3004,24 @@ u16 rc_four(u16 a,u16 b,u16 c,u16 d) { return a+b+c+d; }
             self.assertEqual(image.rom, inline[mode].rom)
             self.assertFalse(any(name.startswith("ssc.arithmetic_") for name in image.symbols))
         assembly = (directory / "shared" / "ra" / "main.asm").read_text()
-        self.assertEqual(len(re.findall("ssc_arithmetic_begin", assembly)), 4)
+        self.assertEqual(len(re.findall("ssc_arithmetic_begin", assembly)), 5)
+        for index, (prefix, opening, closing) in enumerate((
+            (".DEFINE user_guard 1\n", ".IFDEF user_guard", ".ENDIF"),
+            ("", ".IFNDEF user_guard", ".ENDIF"),
+            ("", ".if 1", ".endif"),
+            ("", ".IF 0\n.ELSE", ".ENDIF"),
+            ("", ".IF 0\n.ELIF 1", ".ENDIF"),
+            (".DEFINE user_guard 1\n", ".IFDEF user_guard\n.IFNDEF other_guard", ".ENDIF\n.ENDIF"),
+        )):
+            work = directory / f"unknown-{index}"
+            work.mkdir()
+            guarded = assembly.replace("      ; ssc_arithmetic_begin", opening+"\n      ; ssc_arithmetic_begin")
+            guarded = prefix+guarded.replace("      ; ssc_arithmetic_end\n", "      ; ssc_arithmetic_end\n"+closing+"\n")
+            (work / "main.asm").write_text(guarded)
+            run(linker, ["-lsms", "-share-arithmetic", "-v", "-o", "linked.sms", "main.asm"], work, "linker.log")
+            image = read_image(work)
+            self.assertEqual(image.rom, inline["ra"].rom)
+            self.assertFalse(any(name.startswith("ssc.arithmetic_") for name in image.symbols))
         for index, malformed in enumerate((
             assembly.replace("ssc_arithmetic_begin 0 0 0", "ssc_arithmetic_begin x 0 0", 1),
             assembly.replace("ssc_arithmetic_begin 0 0 0", "ssc_arithmetic_begin 4 0 0", 1),

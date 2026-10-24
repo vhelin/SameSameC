@@ -8599,11 +8599,13 @@ static int _generate_asm_register_leaf_z80(struct tree_node *function_node, int 
 
   struct tac *body[3];
   struct local_variables *locals = function_node->local_variables;
-  int count = 0, i, operand, argument, shift_chain;
+  int count = 0, i, operand, argument, shift_chain, multiply, addend = 1;
+  char *sources[3][2] = {{NULL, NULL}, {NULL, NULL}, {NULL, NULL}};
+  char *live_ins[3] = {"HL", "BC", "BC"};
   char label[MAX_NAME_LENGTH + 32];
 
   *selected = NO;
-  if (argument_mask > 3 || locals->local_variables_count != locals->arguments_count)
+  if (locals->local_variables_count != locals->arguments_count)
     return SUCCEEDED;
   for (i = start + 1; i < g_tacs_count && g_tacs[i].function_node == function_node; i++) {
     struct tac *t = &g_tacs[i];
@@ -8616,7 +8618,16 @@ static int _generate_asm_register_leaf_z80(struct tree_node *function_node, int 
   }
   if (count == 0 || body[count - 1]->op != TAC_OP_RETURN_VALUE)
     return SUCCEEDED;
-  shift_chain = count == 3;
+  multiply = count >= 2 && body[0]->op == TAC_OP_MUL;
+  shift_chain = count == 3 && multiply == NO;
+  if ((argument_mask > 3 && multiply == NO) ||
+      (multiply == YES && (tree_node_get_max_var_type(function_node->children[0]) != VARIABLE_TYPE_UINT16 ||
+       (body[0]->arg1_type == TAC_ARG_TYPE_CONSTANT && body[0]->arg2_type == TAC_ARG_TYPE_CONSTANT) ||
+       (count == 3 && (body[1]->op != TAC_OP_ADD ||
+        (body[1]->arg1_type == TAC_ARG_TYPE_TEMP && body[1]->arg2_type == TAC_ARG_TYPE_TEMP))))))
+    return SUCCEEDED;
+  if (multiply == YES && count == 3 && body[1]->arg1_type != TAC_ARG_TYPE_TEMP)
+    addend = 0;
   if (shift_chain && ((body[0]->op != TAC_OP_SHIFT_LEFT && body[0]->op != TAC_OP_SHIFT_RIGHT) ||
       (body[1]->op != TAC_OP_SHIFT_LEFT && body[1]->op != TAC_OP_SHIFT_RIGHT) ||
       body[0]->arg2_type != body[1]->arg2_type ||
@@ -8627,9 +8638,13 @@ static int _generate_asm_register_leaf_z80(struct tree_node *function_node, int 
     struct tac *t = body[i];
     if ((t->op != TAC_OP_ADD && t->op != TAC_OP_SUB && t->op != TAC_OP_AND &&
          t->op != TAC_OP_OR && t->op != TAC_OP_XOR && t->op != TAC_OP_COMPLEMENT &&
-         t->op != TAC_OP_SHIFT_LEFT && t->op != TAC_OP_SHIFT_RIGHT) ||
-        t->result_type != TAC_ARG_TYPE_TEMP || body[i + 1]->arg1_type != TAC_ARG_TYPE_TEMP ||
-        t->result_d != body[i + 1]->arg1_d || get_variable_type_size(t->result_var_type) != 16 ||
+         t->op != TAC_OP_SHIFT_LEFT && t->op != TAC_OP_SHIFT_RIGHT && t->op != TAC_OP_MUL) ||
+        t->result_type != TAC_ARG_TYPE_TEMP ||
+        ((multiply == YES && i == 0 && count == 3 && addend == 0) ?
+         (body[i + 1]->arg2_type != TAC_ARG_TYPE_TEMP || t->result_d != body[i + 1]->arg2_d) :
+         (body[i + 1]->arg1_type != TAC_ARG_TYPE_TEMP || t->result_d != body[i + 1]->arg1_d)) ||
+        get_variable_type_size(t->result_var_type) != 16 ||
+        (multiply == YES && t->result_var_type != VARIABLE_TYPE_UINT16) ||
         ((t->op == TAC_OP_SHIFT_LEFT || t->op == TAC_OP_SHIFT_RIGHT) &&
          (t->arg1_var_type != VARIABLE_TYPE_UINT16 || t->arg1_var_type_promoted != VARIABLE_TYPE_UINT16)))
       return SUCCEEDED;
@@ -8645,6 +8660,8 @@ static int _generate_asm_register_leaf_z80(struct tree_node *function_node, int 
       struct tree_node *node = operand == 0 ? t->arg1_node : t->arg2_node;
       if (t->op != TAC_OP_RETURN_VALUE && get_variable_type_size(promoted) != 16)
         return SUCCEEDED;
+      if (multiply == YES && t->op != TAC_OP_RETURN_VALUE && promoted != VARIABLE_TYPE_UINT16)
+        return SUCCEEDED;
       if (type == TAC_ARG_TYPE_CONSTANT) {
         if (value < -32768 || value > 65535 || value != (int)value)
           return SUCCEEDED;
@@ -8657,13 +8674,21 @@ static int _generate_asm_register_leaf_z80(struct tree_node *function_node, int 
             if (locals->local_variables[argument].node == node)
               break;
           }
-          if (argument == locals->arguments_count ||
+          if (argument == locals->arguments_count || (multiply == YES && var_type != VARIABLE_TYPE_UINT16) ||
               ((t->op == TAC_OP_SUB || t->op == TAC_OP_SHIFT_LEFT || t->op == TAC_OP_SHIFT_RIGHT) &&
                operand == 1 && argument != (locals->arguments_count == 1 ? 0 : 1)))
             return SUCCEEDED;
+          if (locals->arguments_count == 1)
+            live_ins[0] = "BC";
+          else if (locals->arguments_count == 3) {
+            live_ins[0] = "IY";
+            live_ins[1] = "HL";
+          }
+          sources[i][operand] = live_ins[argument];
         }
-        else if (type != TAC_ARG_TYPE_TEMP || operand != 0 || i == 0 ||
-                 (t->op != TAC_OP_RETURN_VALUE && !shift_chain))
+        else if (type != TAC_ARG_TYPE_TEMP || i == 0 || value != body[i - 1]->result_d ||
+                 (operand != 0 && !(multiply == YES && i == 1)) ||
+                 (t->op != TAC_OP_RETURN_VALUE && !shift_chain && multiply == NO))
           return SUCCEEDED;
       }
     }
@@ -8678,32 +8703,92 @@ static int _generate_asm_register_leaf_z80(struct tree_node *function_node, int 
   _add_label(label, file_out, NO);
   snprintf(label, sizeof(label), "ssc.regleaf.%s", function_node->children[1]->label);
   _add_label(label, file_out, NO);
-  fprintf(file_out, "      ; frameless register leaf; BC/HL live-ins, HL result\n");
+  fprintf(file_out, "      ; frameless register leaf; %s live-ins, HL result\n", multiply == YES ? "IY/HL/BC" : "BC/HL");
   g_register_call_body = Z80_FRAMELESS_REGISTER_BODY;
   g_ix_frame_offset = Z80_GLOBAL_OFFSET;
-  /* Three-word entries keep the first two values in IY/HL; the third is dead. */
-  if (locals->arguments_count == 3) {
-    if ((argument_mask & 2) != 0)
-      _load_hl_to_bc(file_out);
-    if ((argument_mask & 1) != 0)
-      fprintf(file_out, "      PUSH IY\n      POP HL\n");
+  if (multiply == YES) {
+    char *left = sources[0][0], *right = sources[0][1];
+    char *saved = count == 3 ? sources[1][addend] : NULL;
+    int constant = left == NULL ? 0 : right == NULL ? 1 : -1;
+
+    if (constant >= 0) {
+      struct z80_location source, factor;
+      int simplified;
+
+      if (saved != NULL)
+        fprintf(file_out, "      PUSH %s\n", saved);
+      left = constant == 0 ? right : left;
+      memset(&source, 0, sizeof(source));
+      memset(&factor, 0, sizeof(factor));
+      source.kind = LOC_PHY_HL;
+      source.size = factor.size = 2;
+      factor.kind = LOC_CONST;
+      factor.value = (int)(constant == 0 ? body[0]->arg1_d : body[0]->arg2_d);
+      if (strcmp(left, "IY") == 0)
+        fprintf(file_out, "      PUSH IY\n      POP HL\n");
+      else if (strcmp(left, "BC") == 0)
+        fprintf(file_out, "      LD  L,C\n      LD  H,B\n");
+      if (_multiply_constant_to_hl(body[0], constant == 0 ? &factor : &source,
+          constant == 0 ? &source : &factor, NO, &simplified, file_out) == FAILED)
+        return FAILED;
+      if (simplified == NO) {
+        _load_hl_to_bc(file_out);
+        _load_value_to_de(factor.value, file_out);
+        _multiply_bc_and_de_to_hl(file_out, NO);
+      }
+    }
+    else {
+      /* DE is caller-saved. Read IY before saving the addend to bound scratch depth. */
+      if (strcmp(right, "BC") == 0 || strcmp(left, "IY") == 0) {
+        char *swap = left;
+        left = right;
+        right = swap;
+      }
+      if (strcmp(right, "IY") == 0)
+        fprintf(file_out, "      PUSH IY\n      POP DE\n");
+      else
+        fprintf(file_out, "      LD  E,%c\n      LD  D,%c\n", right[1], right[0]);
+      if (saved != NULL)
+        fprintf(file_out, "      PUSH %s\n", saved);
+      if (strcmp(left, "HL") == 0)
+        _load_hl_to_bc(file_out);
+      else if (strcmp(left, "IY") == 0)
+        fprintf(file_out, "      LD  C,E\n      LD  B,D\n");
+      _multiply_bc_and_de_to_hl(file_out, NO);
+    }
+    if (count == 3) {
+      if (saved != NULL)
+        _pop_bc(file_out);
+      else
+        _load_value_to_bc((int)(addend == 0 ? body[1]->arg1_d : body[1]->arg2_d), file_out);
+      _add_bc_to_hl(file_out);
+    }
   }
-  /* Both shift emitters consume BC; the register caller already saves DE. */
-  if (shift_chain && body[0]->arg2_type == TAC_ARG_TYPE_LABEL)
-    fprintf(file_out, "      LD  E,C\n      LD  D,B\n");
-  for (i = 0; i < count - 1; i++) {
-    if (i == 1 && body[i]->arg2_type == TAC_ARG_TYPE_LABEL)
-      fprintf(file_out, "      LD  C,E\n      LD  B,D\n");
-    if (body[i]->op == TAC_OP_COMPLEMENT) {
-      if (_generate_asm_complement_z80_16bit(body[i], file_out, function_node) == FAILED)
+  else {
+    /* Three-word entries keep the first two values in IY/HL; the third is dead. */
+    if (locals->arguments_count == 3) {
+      if ((argument_mask & 2) != 0)
+        _load_hl_to_bc(file_out);
+      if ((argument_mask & 1) != 0)
+        fprintf(file_out, "      PUSH IY\n      POP HL\n");
+    }
+    /* Both shift emitters consume BC; the register caller already saves DE. */
+    if (shift_chain && body[0]->arg2_type == TAC_ARG_TYPE_LABEL)
+      fprintf(file_out, "      LD  E,C\n      LD  D,B\n");
+    for (i = 0; i < count - 1; i++) {
+      if (i == 1 && body[i]->arg2_type == TAC_ARG_TYPE_LABEL)
+        fprintf(file_out, "      LD  C,E\n      LD  B,D\n");
+      if (body[i]->op == TAC_OP_COMPLEMENT) {
+        if (_generate_asm_complement_z80_16bit(body[i], file_out, function_node) == FAILED)
+          return FAILED;
+      }
+      else if (body[i]->op == TAC_OP_SHIFT_LEFT || body[i]->op == TAC_OP_SHIFT_RIGHT) {
+        if (_aaa_generate_asm_shift_left_right_z80_16bit(body[i], file_out, function_node, body[i]->op) == FAILED)
+          return FAILED;
+      }
+      else if (_aaa_generate_asm_add_sub_or_xor_and_z80_16bit(body[i], file_out, function_node, body[i]->op) == FAILED)
         return FAILED;
     }
-    else if (body[i]->op == TAC_OP_SHIFT_LEFT || body[i]->op == TAC_OP_SHIFT_RIGHT) {
-      if (_aaa_generate_asm_shift_left_right_z80_16bit(body[i], file_out, function_node, body[i]->op) == FAILED)
-        return FAILED;
-    }
-    else if (_aaa_generate_asm_add_sub_or_xor_and_z80_16bit(body[i], file_out, function_node, body[i]->op) == FAILED)
-      return FAILED;
   }
   if (_generate_asm_return_value_z80(body[count - 1], file_out, function_node) == FAILED)
     return FAILED;

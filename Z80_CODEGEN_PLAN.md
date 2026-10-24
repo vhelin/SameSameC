@@ -288,8 +288,7 @@ needed rerunning. Follow-up evidence is retained under
 
 Evidence, failed scouts and final reports are retained under
 `C:\cygwin64\tmp\maze-console-20261023`. That batch expanded and validated
-workloads without changing the compiler. Steps 2ak-2am are now completed below;
-step 2an remains pending.
+workloads without changing the compiler. Steps 2ak-2an are now completed below.
 
 ## Implementation Order
 
@@ -391,7 +390,7 @@ extraction.
   and reloads within the existing register ABI and legacy push transport.
 - [x] **2am. Costed nested-loop invariant hoisting:** move proven stable pure
   expressions to existing loop preheaders only when complete costs justify it.
-- [ ] **2an. Live-third-argument frameless multiply leaves:** reuse existing
+- [x] **2an. Live-third-argument frameless multiply leaves:** reuse existing
   word multiplication and leaf lowering without new ABI contracts or flags.
 - [ ] **3. Initial SM83 backend:** establish correct Game Boy code generation,
   target-specific addressing/spills/calls and execution tests. Use actual
@@ -4757,37 +4756,93 @@ Qualification:
 Evidence, rejected scouts and the consolidated `qualification.json` are
 retained under `C:\cygwin64\tmp\nested-loop-hoist-20261024`.
 
-### 2an. Live-Third-Argument Frameless Multiply Leaves (Pending)
+### 2an. Live-Third-Argument Frameless Multiply Leaves (Completed)
 
-The existing register-leaf emitter excludes multiplication and a live third
-argument. MultiplyAdd therefore still saves argument registers, creates a
-frame and reloads inputs even though the existing multiply sequence suffices.
-SDCC's corresponding leaf avoids a general frame.
+Extended the existing 2ac/2ai register-leaf matcher and emitter rather than
+adding another ABI or multiply implementation. Bounded unsigned-word
+`MUL -> RETURN` and `MUL -> ADD -> RETURN` shapes use the existing IY/HL/BC
+argument registers and return HL. All operand orders, identical multiplicands,
+live/dead third arguments, addends aliasing either input, constant factors and
+constant addends retain full 16-bit wraparound. ADD accepts either product
+operand. Earlier copy elimination may expose these same shapes; no source-name
+or workload recognition is involved.
 
-- Extend the existing 2ac/2ai leaf eligibility and location handling; reuse the
-  current word multiply, argument/result transfers and return machinery.
-- Begin with bounded unsigned word multiply and multiply/add shapes using the
-  current IY/HL/BC live-ins and HL result. Preserve all 16-bit wraparound and
-  byte-versus-word expression semantics; do not invent a narrower source type.
-- Account for a live third argument across multiply clobbers and for DE, flags,
-  physical owners, caller saves and stack extent. Retain framed paths for
-  unsupported effects, locals, pressure, control flow and legacy requirements.
-- Measure mixed legacy/automatic callers and arithmetic sharing on assembled
-  active paths. Keep automatic selection: no new ABI, annotations or flags.
+The existing word/constant multiply kernels, register transfers, ADD and return
+emitters are reused. Stage a dynamic factor in DE before saving the addend,
+preserving original BC until both inputs have been read. Balanced existing
+PUSH/POP transfers handle IY and protect the addend across multiply clobbers.
+DE is already caller-saved by the native convention. No new physical location
+kind, production function, ABI, metadata format, annotation or command-line
+flag is introduced. Production C grows by 160 net lines: 85 in the existing
+leaf emitter and 75 in the existing linker collector.
 
-A closed-world private normal-RA assembly experiment reusing the current
-multiply sequence changes 65 -> 24 kernel bytes and 19537 -> 15491 aggregate
-cycles (-20.71%), with its 75-byte wrapper unchanged. Combined with 2al's
-private caller, kernel plus native wrapper changes 140 -> 49 bytes and
-27289 -> 17990 cycles; shared arithmetic gives 53 bytes / 18449 cycles.
-These are not whole-ROM figures, additive general promises or production
-legacy-compatibility qualification. Corpus and 793 extra boundary/random
-argument combinations per mode pass independently.
+Unsupported signed/mixed/narrow expressions, remaining locals, effects, loads,
+branches, calls and multiple-product pressure retain framed lowering. Existing
+legacy-entry requirements still gate the entire frameless body; opaque,
+address-escaping, mixed and older-object references do not silently acquire a
+new calling convention. Explicit register calls keep their existing contract.
 
-Acceptance: qualify live/dead third arguments, operand orders, zero/high-bit/
-maximum words, aliases, width/sign fallbacks, shared helpers and legacy entries.
-Keep full native caller/frame costs visible. The tracker uses this leaf for
-actual per-channel mixing, rather than adding only another arithmetic toy.
+**Active shared-helper costs.** The first production scout exposed a real
+linker cost bug: raw scanning counted both the frameless body and its inactive
+framed fallback, extracting a single-use 15-byte multiply into a 19-byte
+helper. That grew MultiplyAdd from 24 to 28 bytes, added 459 aggregate cycles
+and two stack bytes. The existing collector now counts only active known
+compiler ABI guards, including the frameless definition. Nested/ELSE guards
+are tracked; unknown conditions and ELIF alternatives conservatively stay
+inline. Directive parsing is line-bounded and case-insensitive, and inactive
+arithmetic markers are still validated. Real repeated helpers and bank/slot
+restrictions are unchanged. The final MultiplyAdd has no shared helper.
+
+**Qualified immediate-parent results (`ca54358`).** These are normal-RA
+profiles with unchanged sources, inputs and native wrappers, not the earlier
+private assembly estimates:
+
+| Kernel / mode | Kernel bytes, parent -> 2an | Aggregate kernel cycles | Maximum complete frame footprint |
+| --- | ---: | ---: | ---: |
+| MultiplyAdd, ordinary/shared RA | 65 -> 24 | 19537 -> 15479 (-20.77%) | 22 -> 16 |
+| Tracker, ordinary RA | 3503 -> 3462 | 11346855 -> 10848095 (-4.40%) | 260 -> 254 |
+| Tracker, shared RA | 3475 -> 3434 | 11362191 -> 10863431 (-4.39%) | 260 -> 254 |
+
+Tracker's actual per-channel mixer is the improved MultiplyAdd section.
+MultiplyAdd's 30-byte / 2958-cycle wrapper and Tracker's 65-byte / 4452-cycle
+wrapper are unchanged. Complete linked code/data sections change 155 -> 114
+bytes for MultiplyAdd, 3628 -> 3587 for ordinary Tracker and 3600 -> 3559 for
+shared Tracker. These are used sections, not padded cartridge sizes.
+Frameless does not mean stackless: temporary transfers/addend saves remain
+included in measured stack access and complete frame extents.
+
+- All 18 kernels pass in ordinary/shared RA with release, traced and ASan
+  compiler/linker builds: 108 builds, 1668 guarded profile calls and 162
+  independently checked timings. All 556 immediate-parent input comparisons
+  have nonincreasing complete cycles, stack/access/below-SP/frame extents,
+  unchanged wrapper costs and nonincreasing linked section sizes. There is
+  no new cold-input tradeoff. The other 16 kernels reproduce their parent
+  ROMs byte for byte, and 72 cross-build profile ROM identities pass.
+- The new 120-shape regression covers all IY/HL/BC operand/addend orders,
+  aliases, constants, zero/high-bit/maximum words, signed/byte/narrow
+  fallbacks, addresses, memory, branches and pressure. Both arithmetic policies
+  and five correctness modes pass in release and ASan, including 793 extra
+  deterministic random triples per mode/policy. These runs plus eight
+  three-mode object contracts execute 66404 guarded calls; 50 additional
+  private cross-build ROM identities pass. Allocator-off/forced-spill builds
+  are correctness controls only.
+- Twenty-two distinct targeted unit methods pass across broader/final runs,
+  covering existing leaf/argument handling, automatic/explicit calls,
+  metadata, opaque/legacy/banked objects, repeated/single-use/malformed
+  arithmetic markers, byte factors, constants and the previous hoister.
+  Native allocation and traced/untraced frame mutation verifiers pass.
+- Eight additional RA-only parent/current object-cost comparisons include
+  native, banked, explicit, opaque, escaping, mixed and old-metadata
+  contracts. Complete bytes, caller-inclusive cycles and frame traffic never
+  grow. All four retained-legacy contracts reproduce parent ROMs exactly.
+- All six unmodified SMS/Game Gear calculation projects boot with identical
+  display, CRC, hardware, RAM, cycles, complete linked sections and cartridge
+  bytes. Their opaque assembly still requires compatible framed entries;
+  this step does not claim an application-ROM gain where no native-only leaf
+  is selected. No workload source or immutable baseline was changed.
+
+Evidence, the rejected shared-helper scout and consolidated `qualification.json`
+are retained under `C:\cygwin64\tmp\frameless-multiply-20261024`.
 
 The four follow-ups above come from the retained RA-only research under
 `C:\cygwin64\tmp\compiler-reprofile-20261023-after-2aj-ra-only`. Rejected private
@@ -4995,9 +5050,9 @@ to this cross-compiler experiment.
    compiler source growth visible and remove superseded logic. Commit the batch
    locally with the validation summary; do not push.
 
-The recorded implementation batches through **2aj** are complete. The next
-user-requested bounded sequence is **2ak-2an**, all pending; adding the larger
-comparison applications does not implement those optimizations. The initial
+The recorded implementation batches through **2an** are complete, including
+the user-requested bounded sequence **2ak-2an**; adding the larger comparison
+applications was qualified separately from those optimizations. The initial
 SM83 backend remains the next backend target, not a reason to make every
 possible Z80 optimization mandatory. Keep qualified Z80 behavior and shared
 core coverage intact throughout.

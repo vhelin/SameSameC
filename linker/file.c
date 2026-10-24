@@ -196,7 +196,7 @@ int file_write_all_asm_files_into_tmp_file(FILE *fp) {
 
   struct register_call {
     char name[MAX_NAME_LENGTH + 1];
-    int arguments, defined, calls, used_calls, escaped, explicit_call;
+    int arguments, defined, calls, used_calls, escaped, explicit_call, selected, legacy, frameless;
     struct register_call *next;
   } *register_calls = NULL, *regcall, *next_regcall;
   struct arithmetic_body {
@@ -208,7 +208,7 @@ int file_write_all_asm_files_into_tmp_file(FILE *fp) {
   const char *begin_marker = "      ; ssc_arithmetic_begin ";
   const char *end_marker = "      ; ssc_arithmetic_end";
   const char *call_marker = "      ; ssc_regcalls ";
-  char *cursor, *start, *end, *code;
+  char *cursor, *start, *end, *code, *guards = NULL;
   char name[MAX_NAME_LENGTH + 1];
   int kind, bank, slot, consumed, version, arguments, value, header, opaque = NO, id = 0, status = FAILED;
   struct file *f;
@@ -292,6 +292,8 @@ int file_write_all_asm_files_into_tmp_file(FILE *fp) {
     if (regcall->defined != YES || (regcall->explicit_call == NO && regcall->calls == 0) ||
         (legacy && regcall->used_calls < 2))
       continue;
+    regcall->selected = YES;
+    regcall->legacy = legacy;
     fprintf(fp, "  .DEFINE ssc.auto.v1.w%d.%s 1\n", regcall->arguments, regcall->name);
     if (legacy)
       fprintf(fp, "  .DEFINE ssc.legacy.v1.w%d.%s 1\n", regcall->arguments, regcall->name);
@@ -299,8 +301,78 @@ int file_write_all_asm_files_into_tmp_file(FILE *fp) {
 
   if (g_share_arithmetic == YES) {
     for (f = g_files_first; f != NULL; f = f->next) {
+      char *line = f->data;
+      int depth = 0, active = YES;
+
+      guards = calloc((size_t)f->size + 1, 1);
+      if (guards == NULL) {
+        fprintf(stderr, "FILE_WRITE_ALL_ASM_FILES_INTO_TMP_FILE: Out of memory error while checking arithmetic guards.\n");
+        goto cleanup;
+      }
       cursor = f->data;
       while ((start = strstr(cursor, begin_marker)) != NULL) {
+        /* Count active compiler ABI alternatives, not both sides of a frameless leaf. */
+        while (line < start) {
+          char directive[16], symbol[MAX_NAME_LENGTH + 64];
+          char *argument, *next_line = strchr(line, '\n');
+          int evaluated = -1, selector = 0;
+
+          if (next_line == NULL)
+            next_line = f->data + f->size;
+          if (sscanf(line, " .%15s%n", directive, &consumed) == 1 && line + consumed <= next_line) {
+            argument = line + consumed;
+            while (argument < next_line && strchr(" \t\r", *argument) != NULL)
+              argument++;
+            symbol[0] = 0;
+            if (argument < next_line)
+              sscanf(argument, "%319s", symbol);
+            for (consumed = 0; directive[consumed] != 0; consumed++)
+              directive[consumed] = (char)toupper((unsigned char)directive[consumed]);
+            if (strncmp(directive, "IF", 2) == 0) {
+              if (strcmp(directive, "IFDEF") == 0 || strcmp(directive, "IFNDEF") == 0) {
+                if (sscanf(symbol, "ssc.auto.v1.w%d.%256s", &arguments, name) == 2)
+                  selector = 1;
+                else if (sscanf(symbol, "ssc.legacy.v1.w%d.%256s", &arguments, name) == 2)
+                  selector = 2;
+                else if (sscanf(symbol, "ssc.frameless.%256s", name) == 1)
+                  selector = 3;
+                if (selector != 0) {
+                  evaluated = NO;
+                  for (regcall = register_calls; regcall != NULL; regcall = regcall->next) {
+                    if (strcmp(regcall->name, name) == 0 &&
+                        (selector == 3 || regcall->arguments == arguments)) {
+                      evaluated = selector == 3 ? regcall->frameless :
+                        regcall->selected && (selector == 1 || regcall->legacy);
+                      break;
+                    }
+                  }
+                  if (strcmp(directive, "IFNDEF") == 0)
+                    evaluated = !evaluated;
+                }
+              }
+              guards[depth++] = (char)((active ? 1 : 0) | (evaluated >= 0 ? 4 : 0) | (evaluated == YES ? 2 : 0));
+              active = active && evaluated == YES;
+            }
+            else if (strcmp(directive, "ELSE") == 0 && depth > 0)
+              active = (guards[depth - 1] & 5) == 5 && (guards[depth - 1] & 2) == 0;
+            else if ((strncmp(directive, "ELIF", 4) == 0 || strncmp(directive, "ELSEIF", 6) == 0) && depth > 0) {
+              guards[depth - 1] &= 1;
+              active = NO;
+            }
+            else if (strcmp(directive, "ENDIF") == 0 && depth > 0)
+              active = guards[--depth] & 1;
+            else if (active && strcmp(directive, "DEFINE") == 0 &&
+                     sscanf(symbol, "ssc.frameless.%256s", name) == 1) {
+              for (regcall = register_calls; regcall != NULL; regcall = regcall->next) {
+                if (strcmp(regcall->name, name) == 0) {
+                  regcall->frameless = YES;
+                  break;
+                }
+              }
+            }
+          }
+          line = next_line < f->data + f->size ? next_line + 1 : next_line;
+        }
         cursor = start + strlen(begin_marker);
         if (start != f->data && start[-1] != '\n')
           continue;
@@ -324,7 +396,7 @@ int file_write_all_asm_files_into_tmp_file(FILE *fp) {
         if (*cursor == '\n')
           cursor++;
         /* RAM code cannot call an ordinary ROM-bank-local helper. */
-        if (slot == 3)
+        if (slot == 3 || active == NO)
           continue;
         body = calloc(1, sizeof(*body));
         if (body == NULL) {
@@ -356,6 +428,8 @@ int file_write_all_asm_files_into_tmp_file(FILE *fp) {
           last->next = body;
         last = body;
       }
+      free(guards);
+      guards = NULL;
     }
   }
 
@@ -407,6 +481,7 @@ invalid_body:
 invalid_regcall:
   fprintf(stderr, "FILE_WRITE_ALL_ASM_FILES_INTO_TMP_FILE: Invalid register-call metadata in \"%s\".\n", f->name);
 cleanup:
+  free(guards);
   for (regcall = register_calls; regcall != NULL; regcall = next_regcall) {
     next_regcall = regcall->next;
     free(regcall);
