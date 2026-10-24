@@ -25,6 +25,19 @@ tradeoffs are recorded in
 [Z80 code generation step 2y](Z80_CODEGEN_PLAN.md#2y-explicit-compatible-internal-register-calls-completed).
 It does not change the allocator's general call-clobber or verifier contracts.
 
+Normal `-ra` also hoists bounded, pure byte-valued word shift/mask chains using
+the existing CFG, counter proofs and spill layout. A single invariant reuses
+one byte of a legacy word-return slot; it is neither a new frame byte nor a
+shareable spill owner. Only non-ASM word-return functions with active calls
+and no explicit register convention qualify, excluding automatic native
+entries where that apparent slot can contain the machine return address.
+Evaluation widths and ABI offsets stay unchanged. Stencil saves two code and
+frame bytes; Tracker saves three code bytes without growing its frame. Stencil
+has a disclosed 558-cycle zero-work setup cost, while nonempty/aggregate timing
+improves. See
+[step 2am](Z80_CODEGEN_PLAN.md#2am-costed-nested-loop-invariant-hoisting-completed)
+for the bounded cost policy, exclusions, complete costs and qualification.
+
 Word logical constant-lane simplification now applies in every Z80 mode.
 Normal `-ra` additionally reuses bounded, identically typed dynamic shifts and
 their masked counts using the existing IL rewrite pass. Scalar inputs must

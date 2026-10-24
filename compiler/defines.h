@@ -381,6 +381,7 @@ struct local_variables {
   int temp_registers_count;
   struct temp_register *temp_registers;
   int offset_to_fp_total;
+  int loop_invariant_temp;
 };
 
 struct tree_node {

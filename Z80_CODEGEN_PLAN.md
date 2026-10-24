@@ -288,8 +288,8 @@ needed rerunning. Follow-up evidence is retained under
 
 Evidence, failed scouts and final reports are retained under
 `C:\cygwin64\tmp\maze-console-20261023`. That batch expanded and validated
-workloads without changing the compiler. Steps 2ak-2al are now completed below;
-steps 2am-2an remain pending.
+workloads without changing the compiler. Steps 2ak-2am are now completed below;
+step 2an remains pending.
 
 ## Implementation Order
 
@@ -389,7 +389,7 @@ extraction.
   existing frame assignment and packing to reduce distant-home window changes.
 - [x] **2al. Direct call-argument register placement:** avoid redundant staging
   and reloads within the existing register ABI and legacy push transport.
-- [ ] **2am. Costed nested-loop invariant hoisting:** move proven stable pure
+- [x] **2am. Costed nested-loop invariant hoisting:** move proven stable pure
   expressions to existing loop preheaders only when complete costs justify it.
 - [ ] **2an. Live-third-argument frameless multiply leaves:** reuse existing
   word multiplication and leaf lowering without new ABI contracts or flags.
@@ -4634,7 +4634,7 @@ Evidence, earlier scouts and final `qualification.json` are retained under
 `qualify-release-qualified`, `qualify-traced-qualified` and
 `qualify-asan-qualified`.
 
-### 2am. Costed Nested-Loop Invariant Hoisting (Pending)
+### 2am. Costed Nested-Loop Invariant Hoisting (Completed)
 
 Stencil recomputes `(seed >> pass) & 31` for each processed cell. Stock SDCC
 computes it once per pass, before the row loop; SDCC r17016's `loopInvariants`
@@ -4659,10 +4659,103 @@ Hoisting its row expression as well makes that prototype slightly slower,
 larger and two frame bytes deeper. This is evidence for a costed search, not
 approval for an unconditional default size/speed tradeoff.
 
-Acceptance: independently correct profitable sites in Stencil and an application
-kernel, with whole-function/application costs. Reject unprofitable candidates;
-document any deliberately accepted policy change rather than hiding it in an
-aggregate or changing compiler defaults/arguments.
+Implemented a bounded normal-RA TAC transform after final type propagation and
+register compression, before allocation. It reuses the existing CFG, loop-join,
+def/use, metadata allocation, spill packing and bounded-counter proof. The
+counter proof is shared with the backend; its original emitter callers retain
+their conservative call barriers. No GVN framework, new ABI, flags, source
+annotations or workload edits were added.
+
+Scope and cost screen:
+
+- One unsigned word right-shift chain per function: a constant shift 8..15
+  yielding a byte, or a shift followed by an AND with a byte mask, optionally
+  followed by a constant left shift whose complete result still fits a byte.
+  Dynamic shift counts must be canonical counters with a constant bound <=15.
+  Evaluation/promotions stay word-sized; only the proved result and its single
+  consumer operand are packed to a byte.
+- The single consumer must be a word ADD competing with a single-definition,
+  single-use multiply/divide/remainder/shift result in the same block. This
+  bounds the original competing materialization cost instead of lengthening
+  arbitrary cheap expressions. Only stable nonescaping scalar arguments and
+  already-bounded word counters are admitted as inputs.
+- Require a canonical zero-initialized unit loop with constant bound 2..255,
+  one entry and latch, no outside entries into its body, and an entry block
+  flowing only to that header. Existing CFG predecessors prove availability on
+  every entry; writes and address-taking reject unstable inputs. Move before
+  counter initialization, not after it, to avoid forcing a counter spill.
+- Reuse one byte of the existing legacy word-return slot for the invariant.
+  This is not a new frame allocation or a shareable spill owner. Explicit
+  spill destinations are checked and hot-frame relocation preserves the
+  reserved home. Require an active source-level call and exclude explicit
+  register conventions and source ASM: these conditions exclude automatic
+  native bodies, where the same apparent offset can be the machine return
+  address. Native/explicit leaves keep their existing paths.
+- Only pure, nontrapping arithmetic is speculated. Loads, calls, division,
+  effects and short-circuit decisions stay at their original sites. Zero/one
+  or dynamic target bounds, irreducible entries, changing bounds/inputs,
+  escaping arguments, signed/wide chains and unsupported pressure retain
+  ordinary lowering. This is a bounded cost screen, not a general LICM
+  optimizer or a global minimum-code search.
+
+Final immediate-parent comparison (`8f16f3d`, not the older pinned profile):
+
+| Kernel / mode | Kernel bytes, parent -> 2am | Aggregate kernel cycles | Maximum complete frame footprint |
+|---|---:|---:|---:|
+| Stencil / RA | 1391 -> 1389 | 3701458 -> 3597250 (-2.82%) | 116 -> 114 |
+| Stencil / RA shared | 1355 -> 1353 | 3731266 -> 3627058 (-2.79%) | 118 -> 116 |
+| Tracker / RA | 3506 -> 3503 | 11350303 -> 11346855 (-0.030%) | 260 -> 260 |
+| Tracker / RA shared | 3478 -> 3475 | 11365639 -> 11362191 (-0.030%) | 260 -> 260 |
+
+The other sixteen kernels, all wrappers, retained adapters and arithmetic
+helpers are unchanged in size. Every one of 211 complete linked sections is
+nonincreasing, including initialization and callers, and all 556 immediate-
+parent per-input stack/access/below-SP/frame extents are nonincreasing.
+
+**Explicit setup tradeoff:** Stencil's zero-work input (seed/count 0) adds
+558 cycles in each mode, because the pure bias is now computed before a loop
+whose cells are all skipped. Its numerical/effect behavior is unchanged.
+Every other measured input is nonregressing. This bounded size-first policy
+accepts the disclosed cold setup cost while reducing complete code/frame and
+nonempty/aggregate runtime; no extra zero-work branch or new defaults were
+introduced to hide the tradeoff.
+
+Rejected scouts include word-wide caches, placement after counter
+initialization, and a native-eligible Navigation cache: these grew complete
+code or frames. The historical 1391 -> 1393 fixture above is not the accepted
+implementation.
+
+Qualification:
+
+- Release, traced and ASan ordinary/shared RA: 108 builds, 1668 guarded calls,
+  162 independent timing checks and 72 cross-build ROM identity comparisons.
+  All eighteen source/oracle/layout fingerprints are unchanged. Only RA modes
+  were used for performance comparisons.
+- Focused numerical, effect and return-address tests cover both masked chain
+  lengths, high-byte extraction, bounded counter sources, constants, zero
+  work, early exits, short circuits, changing bounds/inputs, multiple updates
+  and entries, aliases, loads, calls, ASM, signed/wide expressions and pressure.
+  Native/explicit leaf entries, separate/banked/older-metadata objects and
+  opaque callers retain their ABI behavior. Allocator-off/forced-spill modes
+  are correctness controls only. Native allocation and traced/untraced frame
+  mutation verifiers pass.
+- Seventy distinct targeted unit tests pass across the broader and final
+  focused runs. The two new methods execute 10710 guarded calls: 24 scalar
+  shapes in both arithmetic policies and five separate-object contracts.
+  Their seven selected scalar shapes each save two complete function bytes;
+  all rejected shapes and retained helper/native sections are unchanged
+  (complete fixture images 7137 -> 7123 and 6405 -> 6391 linked bytes).
+  One additional existing CRC `far` selection assertion fails identically in
+  the parent: both emit the same bounded-CRC function assembly. Its numerical
+  checks pass; the unrelated stale selection expectation is left unchanged.
+- All six unmodified full console boots pass with display, CRC, hardware and
+  RAM contracts unchanged. SMS/GG calculations-2 each save 9474 cycles;
+  calculations-3 each save 456 cycles; calculations-1 are unchanged. Complete
+  linked code/data sections save two bytes per calculations-2 and three per
+  calculations-3; no console section grows.
+
+Evidence, rejected scouts and the consolidated `qualification.json` are
+retained under `C:\cygwin64\tmp\nested-loop-hoist-20261024`.
 
 ### 2an. Live-Third-Argument Frameless Multiply Leaves (Pending)
 

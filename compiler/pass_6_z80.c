@@ -3059,9 +3059,10 @@ static int _bbb_generate_asm_add_sub_or_xor_and_z80_8bit(struct tac *t, FILE *fi
 }
 
 
-static int _is_z80_bounded_counter(struct tac *t, struct tree_node *function_node, int maximum) {
+int is_z80_bounded_counter(struct tac *t, struct tree_node *function_node, int maximum, int allow_calls) {
 
   struct temp_register *counter = NULL;
+  struct temp_register unallocated = {0};
   struct tac *initial, *header = NULL, *bound = NULL, *update = NULL, *backedge, *exit;
   int index, i, j, end, last;
 
@@ -3073,6 +3074,23 @@ static int _is_z80_bounded_counter(struct tac *t, struct tree_node *function_nod
   if ((t->op == TAC_OP_ASSIGNMENT ? t->result_type : t->arg1_type) == TAC_ARG_TYPE_TEMP) {
     index = (int)(t->op == TAC_OP_ASSIGNMENT ? t->result_d : t->arg1_d);
     counter = _find_z80_temp_register(function_node, index);
+    if (counter == NULL && allow_calls == YES) {
+      unallocated.live_start = -1;
+      for (i = 0; i < g_tacs_count; i++) {
+        struct tac *current = &g_tacs[i];
+        if (current->function_node != function_node || current->op == TAC_OP_DEAD ||
+            (current->op == TAC_OP_LABEL && current->is_function == YES))
+          continue;
+        unallocated.live_end = i;
+        if (current->result_type == TAC_ARG_TYPE_TEMP && (int)current->result_d == index &&
+            current->op != TAC_OP_ARRAY_WRITE && current->op != TAC_OP_CREATE_VARIABLE) {
+          if (unallocated.live_start < 0)
+            unallocated.live_start = i;
+          unallocated.write_count++;
+        }
+      }
+      counter = &unallocated;
+    }
     if (counter == NULL || counter->write_count != 2 || counter->live_start < 0 ||
         counter->live_end >= g_tacs_count || counter->live_end <= counter->live_start)
       return NO;
@@ -3128,6 +3146,7 @@ static int _is_z80_bounded_counter(struct tac *t, struct tree_node *function_nod
           current->arg1_var_type != VARIABLE_TYPE_UINT16 ||
           current->arg1_var_type_promoted != VARIABLE_TYPE_UINT16 ||
           current->arg2_var_type_promoted != VARIABLE_TYPE_UINT16 ||
+          (maximum < 255 && current->arg2_type != TAC_ARG_TYPE_CONSTANT) ||
           (current->arg2_type == TAC_ARG_TYPE_CONSTANT ?
            (current->arg2_d < 0.0 || current->arg2_d > maximum || current->arg2_d != (int)current->arg2_d) :
            ((current->arg2_type != TAC_ARG_TYPE_LABEL &&
@@ -3185,7 +3204,7 @@ static int _is_z80_bounded_counter(struct tac *t, struct tree_node *function_nod
         ((current->op == TAC_OP_GET_ADDRESS || current->op == TAC_OP_GET_ADDRESS_ARRAY) &&
          current->arg1_type == initial->result_type &&
          (counter != NULL ? (int)current->arg1_d == index : current->arg1_node == initial->result_node)) ||
-        (current > bound && current < exit &&
+        (current > bound && current < exit && (allow_calls == NO || counter == NULL) &&
          (current->op == TAC_OP_FUNCTION_CALL || current->op == TAC_OP_FUNCTION_CALL_USE_RETURN_VALUE)))
       return NO;
     if (current->op < TAC_OP_JUMP || current->op > TAC_OP_JUMP_GTE)
@@ -3255,7 +3274,7 @@ static int _aaa_generate_asm_add_sub_or_xor_and_z80_16bit(struct tac *t, FILE *f
 
   if ((op == TAC_OP_ADD || op == TAC_OP_SUB) && arg2_location.kind == LOC_CONST && arg2_location.value == 1 &&
       arg1_location.kind == LOC_PHY_BC && result_location.kind == LOC_PHY_BC) {
-    int byte_counter = op == TAC_OP_ADD && _is_z80_bounded_counter(t, function_node, 255) == YES;
+    int byte_counter = op == TAC_OP_ADD && is_z80_bounded_counter(t, function_node, 255, NO) == YES;
     if (byte_counter)
       fprintf(file_out, "      ; bounded word counter increment; high byte preserved\n");
     fprintf(file_out, "      ; retained arg1 in BC\n      %s %s\n      ; retained result in BC\n",
@@ -3270,7 +3289,7 @@ static int _aaa_generate_asm_add_sub_or_xor_and_z80_16bit(struct tac *t, FILE *f
       arg1_location.size == 2 && result_location.size == 2) {
     if (_load_location_address_to_ix(&arg1_location, &ix_offset, file_out) == FAILED)
       return FAILED;
-    if (_is_z80_bounded_counter(t, function_node, 255) == YES)
+    if (is_z80_bounded_counter(t, function_node, 255, NO) == YES)
       fprintf(file_out, "      ; bounded word counter increment; high byte preserved\n      INC (IX%+d)\n", ix_offset);
     else
       fprintf(file_out, "      INC (IX%+d)\n      JR  NZ,+\n      INC (IX%+d)\n+:\n", ix_offset, ix_offset + 1);
@@ -5302,7 +5321,7 @@ static int _aaa_generate_asm_shift_left_right_z80_16bit(struct tac *t, FILE *fil
           ((initial->arg1_type == TAC_ARG_TYPE_CONSTANT && initial->arg1_d >= 0.0 && initial->arg1_d < 16.0) ||
            (initial->arg2_type == TAC_ARG_TYPE_CONSTANT && initial->arg2_d >= 0.0 && initial->arg2_d < 16.0)))
         bounded = YES;
-      else if (_is_z80_bounded_counter(initial, function_node, 255) == YES)
+      else if (is_z80_bounded_counter(initial, function_node, 255, NO) == YES)
         bounded = YES;
     }
   }
@@ -6704,7 +6723,7 @@ static int _generate_asm_jump_eq_lt_gt_neq_lte_gte_z80(struct tac *t, FILE *file
     return _bbb_generate_asm_jump_eq_lt_gt_neq_lte_gte_z80_8bit(t, file_out, function_node, op);
   }
 
-  if (op == TAC_OP_JUMP_GTE && _is_z80_bounded_counter(t, function_node, 255) == YES) {
+  if (op == TAC_OP_JUMP_GTE && is_z80_bounded_counter(t, function_node, 255, NO) == YES) {
     struct z80_location counter;
     if (_resolve_tac_location(t, TAC_USE_ARG1, function_node, &counter) == FAILED)
       return FAILED;
@@ -7995,7 +8014,7 @@ static int _generate_asm_bounded_loop_z80(int *tac_index, FILE *file_out, struct
 
   initial = &g_tacs[*tac_index];
   if (initial->op != TAC_OP_ASSIGNMENT || initial->arg1_d != 0.0 ||
-      _is_z80_bounded_counter(initial, function_node, 65535) == NO)
+      is_z80_bounded_counter(initial, function_node, 65535, NO) == NO)
     return SUCCEEDED;
   for (i = *tac_index; i < g_tacs_count && count < 16; i++) {
     if (g_tacs[i].function_node != function_node || g_tacs[i].is_function == YES)
@@ -8847,6 +8866,8 @@ int generate_asm_z80(FILE *file_out) {
           }
 
           /* Keep allocator diagnostic comments stable; byte tests live under tests/z80/sms/allocator_*. */
+          if (local_variables->loop_invariant_temp > 0)
+            fprintf(file_out, "      ; loop invariant r%d uses legacy return byte\n", local_variables->loop_invariant_temp - 1);
           for (k = 0; k < local_variables->temp_registers_count; k++) {
             if (g_allocator_enabled == YES) {
               fprintf(file_out, "      ; register %d size %d spill %s phy %s\n", local_variables->temp_registers[k].register_index,

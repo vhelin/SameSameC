@@ -15,6 +15,7 @@
 #include "include_file.h"
 #include "pass_4.h"
 #include "pass_5.h"
+#include "pass_6_z80.h"
 #include "tree_node.h"
 #include "symbol_table.h"
 #include "il.h"
@@ -45,6 +46,8 @@ static struct label *g_removed_jump_destinations_first = NULL, *g_removed_jump_d
 static int g_register_reads_and_writes_count = 0, g_local_variable_running_index = 1;
 
 static int _promote_register_allocator_local_values(void);
+static int _hoist_register_allocator_loop_values(void);
+static int _allocate_local_variable_metadata(struct tree_node *function_node, int local_variables_count, int arguments_count, int used_registers);
 static int _is_register_allocator_jump_op(int op);
 static int _is_first_allocator_producer(int op);
 static int _is_first_allocator_consumer(int op);
@@ -102,6 +105,9 @@ int pass_5(void) {
 
   /* reuse_registers() might have removed some registers, so let's compress again */
   if (compress_register_names() == FAILED)
+    return FAILED;
+  if (g_allocator_enabled == YES && g_allocator_force_all_spill == NO && g_backend == BACKEND_Z80 &&
+      _hoist_register_allocator_loop_values() == FAILED)
     return FAILED;
   if (g_register_allocator_trace) {
   _debug_register_allocator_temp_compaction_stage("after_second_compress");
@@ -5330,6 +5336,262 @@ static int _tac_writes_temp_register(struct tac *t, int register_index) {
     return YES;
 
   return NO;
+}
+
+
+static int _hoist_register_allocator_loop_values(void) {
+
+  int start;
+
+  for (start = 0; start < g_tacs_count; start++) {
+    struct tree_node *function;
+    struct register_allocator_control_flow_storage storage;
+    struct register_allocator_basic_block *blocks;
+    struct register_allocator_cfg_edge *edges;
+    int *work, block_count, edge_count, end, i, header, changed = NO, status = SUCCEEDED, calls = NO;
+    char *seen;
+
+    if (g_tacs[start].op != TAC_OP_LABEL || g_tacs[start].is_function != YES)
+      continue;
+    function = g_tacs[start].function_node;
+    if ((function->flags & TREE_NODE_FLAG_Z80_REGCALL) != 0 ||
+        get_variable_type_size(tree_node_get_max_var_type(function->children[0])) != 16)
+      continue;
+    for (end = start + 1; end < g_tacs_count &&
+        (g_tacs[end].op != TAC_OP_LABEL || g_tacs[end].is_function != YES); end++) {
+      g_tacs[end].function_node = function;
+      if (g_tacs[end].op == TAC_OP_ASM)
+        break;
+      if (g_tacs[end].op == TAC_OP_FUNCTION_CALL || g_tacs[end].op == TAC_OP_FUNCTION_CALL_USE_RETURN_VALUE)
+        calls = YES;
+    }
+    /* Calls exclude automatic register entries, whose return address occupies this scratch byte. */
+    if (calls == NO || (end < g_tacs_count && g_tacs[end].op == TAC_OP_ASM))
+      continue;
+    if (_count_and_allocate_register_usage(start, end - 1) == FAILED ||
+        register_allocator_plan_control_flow_storage(function->children[1]->label, g_tacs_count, &storage) == FAILED)
+      return FAILED;
+    blocks = calloc(1, storage.block_bytes);
+    edges = calloc(1, storage.edge_bytes);
+    work = calloc(storage.max_blocks, sizeof(*work));
+    seen = calloc(storage.max_blocks, sizeof(*seen));
+    if (blocks == NULL || edges == NULL || work == NULL || seen == NULL) {
+      fprintf(stderr, "register_allocator: out of memory while planning loop invariants.\n");
+      status = FAILED;
+      goto hoist_cleanup;
+    }
+    if (_collect_register_allocator_basic_blocks(function, blocks, storage.max_blocks, storage.instruction_bytes, &block_count) == FAILED ||
+        _collect_register_allocator_cfg_edges(function, blocks, block_count, edges, storage.max_edges, storage.instruction_bytes, &edge_count) == FAILED) {
+      status = FAILED;
+      goto hoist_cleanup;
+    }
+    for (i = start + 1; i < end && changed == NO; i++) {
+      struct tac *first = &g_tacs[i], *mask, *last;
+      int indices[3] = {i, 0, 0}, count = 1, use, other, other_temp, definition, block_start;
+
+      if (first->op != TAC_OP_SHIFT_RIGHT || first->result_type != TAC_ARG_TYPE_TEMP ||
+          first->arg1_var_type != VARIABLE_TYPE_UINT16 || first->result_var_type != VARIABLE_TYPE_UINT16 ||
+          first->arg1_var_type_promoted != VARIABLE_TYPE_UINT16 ||
+          first->result_var_type_promoted != VARIABLE_TYPE_UINT16 ||
+          g_register_reads[(int)first->result_d] != 1 || g_register_writes[(int)first->result_d] != 1 ||
+          (first->arg2_type == TAC_ARG_TYPE_CONSTANT && (first->arg2_d < 2 || first->arg2_d > 15)))
+        continue;
+      if (first->arg2_type != TAC_ARG_TYPE_CONSTANT) {
+        int initial;
+        if (first->arg2_type != TAC_ARG_TYPE_TEMP)
+          continue;
+        for (initial = start + 1; initial < i; initial++) {
+          if (_tac_writes_temp_register(&g_tacs[initial], (int)first->arg2_d) == YES)
+            break;
+        }
+        if (initial == i || is_z80_bounded_counter(&g_tacs[initial], function, 15, YES) == NO)
+          continue;
+      }
+      if (first->arg1_type == TAC_ARG_TYPE_TEMP) {
+        int initial;
+        for (initial = start + 1; initial < i; initial++) {
+          if (_tac_writes_temp_register(&g_tacs[initial], (int)first->arg1_d) == YES)
+            break;
+        }
+        if (initial == i || is_z80_bounded_counter(&g_tacs[initial], function, 65535, YES) == NO)
+          continue;
+      }
+      indices[1] = _find_next_living_tac(i + 1);
+      if (indices[1] < 0 || indices[1] >= end)
+        continue;
+      mask = &g_tacs[indices[1]];
+      if (mask->op == TAC_OP_AND && mask->arg1_type == TAC_ARG_TYPE_TEMP && mask->arg1_d == first->result_d &&
+          mask->arg2_type == TAC_ARG_TYPE_CONSTANT && mask->arg2_d >= 1 && mask->arg2_d <= 255 &&
+          mask->arg2_d == (int)mask->arg2_d && mask->result_type == TAC_ARG_TYPE_TEMP &&
+          mask->result_var_type == VARIABLE_TYPE_UINT16 &&
+          g_register_reads[(int)mask->result_d] == 1 && g_register_writes[(int)mask->result_d] == 1)
+        count = 2;
+      else if (first->arg2_type != TAC_ARG_TYPE_CONSTANT || first->arg2_d < 8)
+        continue;
+      use = _find_next_living_tac(indices[count - 1] + 1);
+      if (count == 2 && use >= 0 && use < end && g_tacs[use].op == TAC_OP_SHIFT_LEFT &&
+          g_tacs[use].arg1_type == TAC_ARG_TYPE_TEMP && g_tacs[use].arg1_d == mask->result_d &&
+          g_tacs[use].arg2_type == TAC_ARG_TYPE_CONSTANT && g_tacs[use].arg2_d >= 1 &&
+          g_tacs[use].arg2_d <= 7 && ((int)mask->arg2_d << (int)g_tacs[use].arg2_d) <= 255 &&
+          g_tacs[use].result_type == TAC_ARG_TYPE_TEMP &&
+          g_tacs[use].result_var_type == VARIABLE_TYPE_UINT16 &&
+          g_register_reads[(int)g_tacs[use].result_d] == 1 && g_register_writes[(int)g_tacs[use].result_d] == 1)
+        indices[count++] = use;
+      last = &g_tacs[indices[count - 1]];
+      for (use = indices[count - 1] + 1; use < end; use++) {
+        if (_tac_reads_temp_register(&g_tacs[use], (int)last->result_d) == YES ||
+            g_tacs[use].op == TAC_OP_LABEL || _is_register_allocator_jump_op(g_tacs[use].op) == YES)
+          break;
+      }
+      if (use == end || g_tacs[use].op != TAC_OP_ADD || g_tacs[use].result_var_type != VARIABLE_TYPE_UINT16)
+        continue;
+      other = g_tacs[use].arg1_type == TAC_ARG_TYPE_TEMP && g_tacs[use].arg1_d == last->result_d ? TAC_USE_ARG2 : TAC_USE_ARG1;
+      if ((other == TAC_USE_ARG1 ? g_tacs[use].arg1_type : g_tacs[use].arg2_type) != TAC_ARG_TYPE_TEMP)
+        continue;
+      other_temp = (int)(other == TAC_USE_ARG1 ? g_tacs[use].arg1_d : g_tacs[use].arg2_d);
+      if (g_register_reads[other_temp] != 1 || g_register_writes[other_temp] != 1)
+        continue;
+      block_start = use;
+      while (block_start > start && g_tacs[block_start - 1].op != TAC_OP_LABEL &&
+          _is_register_allocator_jump_op(g_tacs[block_start - 1].op) == NO)
+        block_start--;
+      for (definition = block_start; definition < use; definition++) {
+        if (_tac_writes_temp_register(&g_tacs[definition], other_temp) == YES)
+          break;
+      }
+      if (definition == use || (g_tacs[definition].op != TAC_OP_MUL &&
+          g_tacs[definition].op != TAC_OP_DIV && g_tacs[definition].op != TAC_OP_MOD &&
+          g_tacs[definition].op != TAC_OP_SHIFT_LEFT && g_tacs[definition].op != TAC_OP_SHIFT_RIGHT))
+        continue;
+      for (header = 0; header < block_count && changed == NO; header++) {
+        struct register_allocator_loop_join loop;
+        struct tac *bound = &g_tacs[blocks[header].end_tac], *initial;
+        int begin = blocks[header].start_tac, finish, entry, insert, edge, operand, eligible = YES;
+
+        if (begin >= i || bound->op != TAC_OP_JUMP_GTE || bound->arg2_type != TAC_ARG_TYPE_CONSTANT ||
+            bound->arg2_d < 2 || bound->arg2_d > 255 ||
+            is_z80_bounded_counter(bound, function, 255, YES) == NO)
+          continue;
+        if (register_allocator_classify_loop_join(function->children[1]->label,
+            block_count, header, edges, edge_count, &loop) == FAILED) {
+          status = FAILED;
+          goto hoist_cleanup;
+        }
+        if (loop.status != RA_LOOP_JOIN_READY || loop.entry_predecessor >= header ||
+            loop.latch_predecessor < header)
+          continue;
+        finish = blocks[loop.latch_predecessor].end_tac;
+        entry = loop.entry_predecessor;
+        initial = &g_tacs[blocks[entry].end_tac];
+        if (initial->op != TAC_OP_ASSIGNMENT || initial->arg1_type != TAC_ARG_TYPE_CONSTANT ||
+            initial->arg1_d != 0 || initial->result_type != bound->arg1_type ||
+            (initial->result_type == TAC_ARG_TYPE_TEMP ? initial->result_d != bound->arg1_d :
+             initial->result_type != TAC_ARG_TYPE_LABEL || initial->result_node != bound->arg1_node))
+          continue;
+        insert = blocks[entry].start_tac;
+        if (finish < use)
+          continue;
+        if (g_tacs[insert].op == TAC_OP_LABEL)
+          insert++;
+        if (insert > begin)
+          continue;
+        for (edge = 0; edge < edge_count; edge++) {
+          if ((edges[edge].from_block < header || edges[edge].from_block > loop.latch_predecessor) &&
+              edges[edge].to_block >= header && edges[edge].to_block <= loop.latch_predecessor &&
+              (edges[edge].to_block != header || edges[edge].from_block != entry))
+            eligible = NO;
+          if (edges[edge].from_block == entry && edges[edge].to_block != header)
+            eligible = NO;
+        }
+        for (operand = 0; operand < 2 && eligible == YES; operand++) {
+          int type = operand == 0 ? first->arg1_type : first->arg2_type;
+          int value = (int)(operand == 0 ? first->arg1_d : first->arg2_d);
+          struct tree_node *node = operand == 0 ? first->arg1_node : first->arg2_node;
+          int scan, head = 0, tail = 0;
+
+          if (type == TAC_ARG_TYPE_CONSTANT)
+            continue;
+          if (type != TAC_ARG_TYPE_TEMP && (type != TAC_ARG_TYPE_LABEL || node == NULL ||
+              node->type != TREE_NODE_TYPE_CREATE_VARIABLE_FUNCTION_ARGUMENT ||
+              node->children[0]->value_double != 0.0 ||
+              (node->flags & (TREE_NODE_FLAG_GLOBAL | TREE_NODE_FLAG_STATIC | TREE_NODE_FLAG_EXTERN |
+                              TREE_NODE_FLAG_ADDRESS_TAKEN)) != 0)) {
+            eligible = NO;
+            break;
+          }
+          for (scan = start + 1; scan < end; scan++) {
+            struct tac *t = &g_tacs[scan];
+            if (t->op == TAC_OP_DEAD)
+              continue;
+            if (node != NULL && (t->op == TAC_OP_GET_ADDRESS || t->op == TAC_OP_GET_ADDRESS_ARRAY) &&
+                t->arg1_node == node)
+              eligible = NO;
+            if (scan >= insert && scan <= finish &&
+                (type == TAC_ARG_TYPE_TEMP ? _tac_writes_temp_register(t, value) == YES :
+                 (t->result_node == node && t->op != TAC_OP_ARRAY_WRITE && t->op != TAC_OP_CREATE_VARIABLE)))
+              eligible = NO;
+          }
+          memset(seen, 0, block_count);
+          work[tail++] = entry;
+          seen[entry] = YES;
+          while (head < tail && eligible == YES) {
+            int block = work[head++], defined = NO, predecessors = 0;
+            for (scan = blocks[block].start_tac; scan <= blocks[block].end_tac && scan < insert; scan++) {
+              struct tac *t = &g_tacs[scan];
+              if (t->op != TAC_OP_DEAD &&
+                  (type == TAC_ARG_TYPE_TEMP ? _tac_writes_temp_register(t, value) == YES :
+                   (t->result_node == node && t->op != TAC_OP_ARRAY_WRITE && t->op != TAC_OP_CREATE_VARIABLE)))
+                defined = YES;
+            }
+            if (defined == YES)
+              continue;
+            for (edge = 0; edge < edge_count; edge++) {
+              if (edges[edge].to_block != block)
+                continue;
+              predecessors++;
+              if (seen[edges[edge].from_block] == NO) {
+                seen[edges[edge].from_block] = YES;
+                work[tail++] = edges[edge].from_block;
+              }
+            }
+            if (predecessors == 0 && type == TAC_ARG_TYPE_TEMP)
+              eligible = NO;
+          }
+        }
+        if (eligible == YES) {
+          int item;
+          if (_allocate_local_variable_metadata(function, 0, 0, 0) == FAILED) {
+            status = FAILED;
+            goto hoist_cleanup;
+          }
+          function->local_variables->loop_invariant_temp = (int)last->result_d + 1;
+          /* Keep word evaluation; pack only the proven byte result and its single use. */
+          last->result_var_type = VARIABLE_TYPE_UINT8;
+          if (other == TAC_USE_ARG1)
+            g_tacs[use].arg2_var_type = VARIABLE_TYPE_UINT8;
+          else
+            g_tacs[use].arg1_var_type = VARIABLE_TYPE_UINT8;
+          for (item = 0; item < count; item++) {
+            struct tac moved = g_tacs[indices[item]];
+            memmove(&g_tacs[insert + 1], &g_tacs[insert], (indices[item] - insert) * sizeof(*g_tacs));
+            g_tacs[insert++] = moved;
+          }
+          RA_TRACE((stderr, "register_allocator: loop_invariant function=%s header=%d chain=%d home_bytes=1 sources=available_stable\n",
+            function->children[1]->label, header, count));
+          changed = YES;
+        }
+      }
+    }
+hoist_cleanup:
+    free(seen);
+    free(work);
+    free(edges);
+    free(blocks);
+    if (status == FAILED)
+      return FAILED;
+    start = end - 1;
+  }
+  return SUCCEEDED;
 }
 
 
@@ -11413,7 +11675,8 @@ static int collect_local_variables_and_temps(struct tree_node *function_node, in
 
 static int _allocate_local_variable_metadata(struct tree_node *function_node, int local_variables_count, int arguments_count, int used_registers) {
 
-  function_node->local_variables = (struct local_variables *)calloc(sizeof(struct local_variables), 1);
+  if (function_node->local_variables == NULL)
+    function_node->local_variables = (struct local_variables *)calloc(sizeof(struct local_variables), 1);
   if (function_node->local_variables == NULL) {
     fprintf(stderr, "collect_and_preprocess_local_variables_inside_functions(): Out of memory error.\n");
     return FAILED;
@@ -11565,7 +11828,14 @@ static int assign_spill_slot_offsets(struct tree_node *function_node, int *offse
             function_node->children[1]->label, j, destination, bytes);
         return FAILED;
       }
-      if (destination < fixed_limit)
+      if (g_tacs[j].arg1_type == TAC_ARG_TYPE_TEMP &&
+          (int)g_tacs[j].arg1_d + 1 == function_node->local_variables->loop_invariant_temp) {
+        if (bytes != 1 || destination != _get_register_allocator_stack_return_value_end_offset(2) + 1) {
+          fprintf(stderr, "register_allocator: invalid loop invariant spill in %s.\n", function_node->children[1]->label);
+          return FAILED;
+        }
+      }
+      else if (destination < fixed_limit)
         fixed_limit = (int)destination;
     }
   }
@@ -11609,6 +11879,13 @@ static int assign_spill_slot_offsets(struct tree_node *function_node, int *offse
     temp_register = &function_node->local_variables->temp_registers[temp_index];
     temp_size = temp_register->size / 8;
 
+    if (temp_register->spill_required == YES &&
+        temp_register->register_index + 1 == function_node->local_variables->loop_invariant_temp) {
+      temp_register->offset_to_fp = _get_register_allocator_stack_return_value_end_offset(2) + 1;
+      RA_TRACE((stderr, "register_allocator: loop_invariant_home function=%s temp=r%d offset=%d size=1 owner=legacy_return_slot\n",
+        function_node->children[1]->label, temp_register->register_index, temp_register->offset_to_fp));
+      continue;
+    }
     if (order != NULL && *offset < fixed_limit && temp_register->spill_required == YES) {
       int instruction_index, retained = Z80_PHY_NONE;
       for (instruction_index = 0; instruction_index < g_tacs_count; instruction_index++) {
@@ -11792,15 +12069,16 @@ static int assign_spill_slot_offsets(struct tree_node *function_node, int *offse
         }
         for (j = 0; j < count; j++) {
           struct temp_register *temp = &locals->temp_registers[j];
-          if (temp->spill_required == YES) {
+          if (temp->spill_required == YES && temp->register_index + 1 != locals->loop_invariant_temp) {
             int previous = temp->offset_to_fp;
             temp->offset_to_fp += array_bytes;
             RA_TRACE((stderr, "register_allocator: hot_frame_spill function=%s temp=r%d previous=%d offset=%d size=%d\n",
               function_node->children[1]->label, temp->register_index, previous, temp->offset_to_fp, temp->size / 8));
           }
         }
-        RA_TRACE((stderr, "register_allocator: hot_frame_layout function=%s array_bytes=%d hot_end=%d frame_end=%d identities=preserved fixed_owners=none window=single\n",
-          function_node->children[1]->label, array_bytes, hot_end, *offset));
+        RA_TRACE((stderr, "register_allocator: hot_frame_layout function=%s array_bytes=%d hot_end=%d frame_end=%d identities=preserved fixed_owners=%s window=single\n",
+          function_node->children[1]->label, array_bytes, hot_end, *offset,
+          locals->loop_invariant_temp > 0 ? "legacy_return_byte" : "none"));
       }
     }
   }
@@ -11883,6 +12161,15 @@ int collect_and_preprocess_local_variables_inside_functions(void) {
         return FAILED;
 
       _initialize_temp_register_metadata(function_node, used_registers);
+      if (function_node->local_variables->loop_invariant_temp > 0) {
+        struct temp_register *temp = _find_temp_register_info(function_node,
+          function_node->local_variables->loop_invariant_temp - 1);
+        if (temp == NULL || temp->size != 8 || return_value_size != 2) {
+          print_error("Invalid legacy return-slot loop invariant.\n", ERROR_ERR);
+          return FAILED;
+        }
+        temp->offset_to_fp = return_value_end_offset + 1;
+      }
       if (run_register_allocator(function_node) == FAILED)
         return FAILED;
 

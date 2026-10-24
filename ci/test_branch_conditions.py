@@ -16,6 +16,177 @@ from ra_cpu import execute
 
 
 class BranchConditionsTests(unittest.TestCase):
+    def test_costed_loop_invariant_hoisting(self):
+        cases = {
+            "bias": ("4", "(a>>pass)&31", "", "", True),
+            "scaled": ("4", "((a>>pass)&31)<<3", "", "", True),
+            "constant": ("4", "(a>>8)&31", "", "", True),
+            "high": ("4", "a>>8", "", "", True),
+            "counter_scaled": ("4", "((pass>>2)&15)<<3", "", "", True),
+            "calls": ("4", "(a>>pass)&31", "", "value=lh_read(value);", True),
+            "early": ("4", "(a>>pass)&31", "", "if(i==2 && (b&1)) { return total; }", False),
+            "signed": ("4", "(input>>pass)&31", "s16 input=a;", "", False),
+            "changing": ("4", "(a>>pass)&31", "", "a^=i+pass;", False),
+            "escaped": ("4", "(a>>pass)&31", "", "lh_change(&a,a^(i+pass));", False),
+            "unknown_shift": ("4", "(a>>b)&31", "", "", False),
+            "effectful": ("4", "(lh_read(a)>>pass)&31", "", "", False),
+            "wide": ("4", "(a>>pass)&511", "", "", False),
+            "leaf": ("4", "(a>>pass)&31", "", "", False),
+            "explicit": ("4", "(a>>pass)&31", "", "", False),
+            "one": ("1", "(a>>pass)&31", "", "", False),
+            "zero": ("0", "(a>>pass)&31", "", "", False),
+            "dynamic_bound": ("b", "(a>>pass)&31", "", "", False),
+            "outer_bound": ("4", "(a>>pass)&31", "", "", False),
+            "latches": ("4", "(a>>pass)&31", "", "if(i==1) { i++; }", False),
+            "load": ("4", "(ra_buffer[249]>>pass)&31", "", "", False),
+            "short_circuit": ("4", "(a>>pass)&31", "", "", True),
+            "entries": ("4", "(a>>pass)&31", "", "", False),
+            "pressure": ("4", "(a>>pass)&31",
+                         "u16 reserve[80]; for(i=0;i<80;i++) { reserve[i]=(a+i*13)^b; }", "", False),
+        }
+        helpers = """u8 ra_buffer[256];
+u16 lh_read(u16 value) { ra_buffer[250]+=1; return value; }
+u16 lh_change(u16 *p,u16 value) { p[0]=value; return value; }
+"""
+        programs = []
+        for name, (bound, bias, setup, update, _) in cases.items():
+            loop_entry = "i=0; if(a&1) { goto lh_entry; }" if name == "entries" else ""
+            label = "lh_entry:" if name == "entries" else ""
+            value = "reserve[pass*4+i]" if name == "pressure" else "ra_buffer[pass*4+i]+257"
+            tail = "total" if name in ("leaf", "explicit") else "lh_read(total)"
+            target = f"hoist_{name}_body" if name in ("leaf", "explicit") else f"hoist_{name}"
+            annotation = " __z80_regcall" if name == "explicit" else ""
+            passes = "b" if name == "outer_bound" else "12" if name == "counter_scaled" else "3"
+            guard = "i>=b || lh_read(i)==2" if name == "short_circuit" else "i>=b"
+            source = (
+                f"u16 {target}(u16 a,u16 b){annotation} {{ "
+                f"u16 pass; u16 i; u16 value; u16 total=a; {setup} "
+                f"for(pass=0;pass<{passes};pass++) {{ {loop_entry} for(i=0;i<{bound};i++) {{ "
+                f"{label} if({guard}) {{ continue; }} value={value}; {update} "
+                f"total+=(value/6)+({bias}); }} }} return {tail}; }}"
+            )
+            if name in ("leaf", "explicit"):
+                source += f"\nu16 hoist_{name}(u16 a,u16 b) {{ return {target}(a,b); }}"
+            programs.append(Program(f"hoist_{name}", name, 0, 0, [2, 2], 2, [], source))
+        directory = self.output / "loop-invariants"
+        for policy in ("inline", "shared"):
+            images = compile_generated(
+                directory / policy, os.environ.get("SAMESAMECC") or "samesamecc",
+                os.environ.get("SAMESAMECL") or "samesamecl", programs,
+                helpers+"\n".join(program.source for program in programs)+"\nvoid main(void) {}\n",
+                linker_flags=("-share-arithmetic",) if policy == "shared" else ())
+            for mode, image in images.items():
+                assembly = (directory / policy / mode / "linked.sms.combined.asm").read_text()
+                for program in programs:
+                    name = program.family
+                    body = assembly.split(f'.SECTION "{program.name}" FREE')[1].split(".ENDS")[0]
+                    self.assertEqual("; loop invariant " in body,
+                                     cases[name][4] and mode in ("ra", "ra_quiet"), (name, policy, mode))
+                    if name in ("leaf", "explicit"):
+                        target = assembly.split(f'.SECTION "{program.name}_body" FREE')[1].split(".ENDS")[0]
+                        self.assertNotIn("; loop invariant ", target)
+                        if mode in ("ra", "ra_quiet"):
+                            convention = "regcall" if name == "explicit" else "autocall"
+                            self.assertIn(f"ssc.{convention}.v1.w2.{program.name}_body", image.symbols)
+                    for a in (0, 1, 127, 255, 256, 0x8000, 0xFFFF):
+                        for b in (0, 1, 2, 3, 4, 16):
+                            initial = bytes((index*37+a+b)&255 for index in range(256))
+                            expected = bytearray(initial)
+                            total, current, stopped = a, a, False
+                            bound = b if name == "dynamic_bound" else 1 if name == "one" else 0 if name == "zero" else 4
+                            passes = b if name == "outer_bound" else 12 if name == "counter_scaled" else 3
+                            for outer in range(passes):
+                                for inner in ((0, 1, 3) if name == "latches" else range(bound)):
+                                    if inner >= b:
+                                        continue
+                                    if name == "short_circuit":
+                                        expected[250] = (expected[250]+1)&255
+                                        if inner == 2:
+                                            continue
+                                    if name == "early" and inner == 2 and b&1:
+                                        stopped = True
+                                        break
+                                    if name in ("changing", "escaped"):
+                                        current ^= inner+outer
+                                    value = (((a+(outer*4+inner)*13)&65535)^b if name == "pressure" else
+                                             initial[outer*4+inner]+257)
+                                    shift = b if name == "unknown_shift" else 8 if name in ("constant", "high") else outer
+                                    bias = (current >> shift)&(511 if name == "wide" else 31)
+                                    if name == "high":
+                                        bias = current>>8
+                                    if name == "load":
+                                        bias = (initial[249]>>outer)&31
+                                    if name == "counter_scaled":
+                                        bias = ((outer>>2)&15)<<3
+                                    if name == "scaled":
+                                        bias <<= 3
+                                    total = (total+value//6+bias)&65535
+                                    if name in ("calls", "effectful"):
+                                        expected[250] = (expected[250]+1)&255
+                                if stopped:
+                                    break
+                            if not stopped and name not in ("leaf", "explicit"):
+                                expected[250] = (expected[250]+1)&255
+                            result = execute(image.rom, image.symbols[program.name], [a, b], [2, 2], initial,
+                                             image.symbols["ra_buffer"], 2, image.transfers,
+                                             frame_bytes=2048, instruction_limit=100000)
+                            self.assertEqual((result["value"], result["buffer"], result["port_writes"]),
+                                             (total, expected, []), (name, policy, mode, a, b))
+                            self.assertEqual(result["unmapped_instructions"], 0)
+
+    def test_loop_invariant_object_boundaries(self):
+        compiler = os.environ.get("SAMESAMECC") or "samesamecc"
+        linker = os.environ.get("SAMESAMECL") or "samesamecl"
+        callee = """extern u8 ra_buffer[256];
+u16 lh_object_finish(u16 value) { ra_buffer[250]+=1; return value; }
+u16 lh_object(u16 a,u16 b) {
+  u16 i; u16 value; u16 total=a;
+  for(i=0;i<4;i++) {
+    if(i>=b) { continue; }
+    value=ra_buffer[i]+257;
+    total+=(value/6)+((a>>2)&31);
+  }
+  return lh_object_finish(total);
+}
+"""
+        for contract in ("separate", "banked", "legacy", "caller_asm", "callee_asm"):
+            for mode, flags in (("ra", ("-ra",)), ("shared", ("-ra",)), ("forced", ("-ra-all-spill",))):
+                work = self.output / f"loop-objects-{contract}-{mode}"
+                work.mkdir()
+                barrier = '__asm("LD BC,4660");' if contract == "caller_asm" else ""
+                caller = ("u8 ra_buffer[256]; u16 lh_object(u16 a,u16 b);\n"
+                          f"u16 hoist_object(u16 a,u16 b) {{ {barrier} return lh_object(a,b); }}\n"
+                          "void main(void) {}\n")
+                body = callee.replace("u16 total=a;", 'u16 total=a; __asm("NOP");') if contract == "callee_asm" else callee
+                for unit, source in (("caller", caller), ("callee", body)):
+                    (work / f"{unit}.ssc").write_text(source)
+                    bank = ("-b", "3", "-s", "2") if contract == "banked" and unit == "callee" else ()
+                    run(compiler, ["-mz80", "-rs", "3", *bank, *flags, "-o", f"{unit}.asm", f"{unit}.ssc"],
+                        work, f"{unit}.compiler.log")
+                if contract == "legacy":
+                    path = work / "callee.asm"
+                    path.write_text(re.sub(r"^\s*; ssc_regcalls[^\n]*\n", "", path.read_text(), flags=re.M))
+                run(linker, ["-lsms", "-ro", "4", "-v", *(["-share-arithmetic"] if mode == "shared" else []),
+                             "-o", "linked.sms", "caller.asm", "callee.asm"], work, "linker.log")
+                assembly = (work / "callee.asm").read_text()
+                self.assertEqual("; loop invariant " in assembly,
+                                 mode != "forced" and contract != "callee_asm", (contract, mode))
+                image = read_image(work)
+                self.assertNotIn("ssc.autocall.v1.w2.lh_object", image.symbols)
+                if contract == "banked":
+                    image = mapped_routine_image("loop", "lh_object", mode, image)
+                for a in (0, 1, 127, 255, 256, 0x8000, 65535):
+                    for b in (0, 1, 2, 3, 4, 16):
+                        initial = bytes((index*37+a+b)&255 for index in range(256))
+                        expected = bytearray(initial)
+                        expected[250] = (expected[250]+1)&255
+                        value = (a+sum((initial[i]+257)//6+((a>>2)&31) for i in range(min(b, 4))))&65535
+                        result = execute(image.rom, image.symbols["hoist_object"], [a, b], [2, 2], initial,
+                                         image.symbols["ra_buffer"], 2, image.transfers, frame_bytes=2048)
+                        self.assertEqual((result["value"], result["buffer"], result["port_writes"]),
+                                         (value, expected, []), (contract, mode, a, b))
+                        self.assertEqual(result["unmapped_instructions"], 0)
+
     def test_byte_fact_comparisons_and_dynamic_counters(self):
         comparisons = {
             "mask": ("", "a&127", "b&255", lambda a, b: (a&127, b&255), True),
