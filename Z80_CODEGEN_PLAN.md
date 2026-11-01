@@ -5317,7 +5317,167 @@ Final source-bound qualification, parent tools and retained probes are under
 `C:\cygwin64\tmp\nested-copy-fill-20261101`. The obsolete pre-safety-fix
 eight-mode run was stopped; final measurements use only ordinary/shared RA,
 and the competitor baseline is reused explicitly. The unrelated 1911-byte
-tracked patch is preserved. Commit locally without pushing; step 3 is next.
+tracked patch is preserved. Commit locally without pushing; the next planned
+follow-up is 2as below.
+
+### RA-Only Reprofile After 2ar
+
+The fresh comparison at `d135fe0` on 2026-11-01 passes all 144 builds,
+2224 guarded calls and 216 calibrated independent timings. Both ordinary and
+shared RA reproduce the final qualification ROMs; all eighteen workload
+fingerprints and 108 pinned competitor rows are unchanged. Against the last
+full profile at `8fe50ab` (after 2an), neither RA policy regresses in kernel
+bytes or per-input complete/kernel cycles, and full frame footprints are
+unchanged. Ordinary RA improves Sprite cycles by 19.216%, A* by 6.396% and
+Tracker by 2.876%; Navigation remains unchanged.
+
+The largest remaining application gaps motivate the four planned steps below:
+
+| Workload | Ordinary RA excess kernel bytes | Extra kernel cycles | Hot-sample frame setup plus scalar-frame access cycles |
+|---|---:|---:|---:|
+| Tracker | 1530 | 72.6% | 40.1% |
+| Navigation | 950 | 62.1% | 60.0% |
+| A* | 918 | 45.2% | 62.4% |
+| QuickSort | 668 | 39.7% | 54.8% |
+| Sprite | 1414 | 35.7% | 57.9% |
+
+Size and speed gaps use the best external configuration independently, not
+one claimed compiler setting. Attribution uses each workload's highest-cycle
+ordinary-RA input; these observed costs are not all removable overhead.
+Six exact-byte annotated ROMs pass independent execution/timing checks.
+Current assembly, full tables, source/tool bindings and the instruction-form
+scout are retained under `C:\cygwin64\tmp\ra-profile-20261101-after-2ar`.
+The SDCC study source is a retained public snapshot, not a claimed exact build
+tree for the pinned binary; selected-code evidence comes from the fresh
+competitor assembly.
+
+### 2as. Lowering-Aware Multi-Value Register Allocation And Scheduling (Planned)
+
+Extend the existing allocator, not a parallel allocation framework. Reuse
+CFG/liveness, byte/pair ownership, target-policy clobbers, transactional join/
+loop retention and transfer-cost machinery in
+[pass_5.c](compiler/pass_5.c), [register_allocator.c](compiler/register_allocator.c)
+and [pass_6_z80.c](compiler/pass_6_z80.c).
+
+- Cost complete producer/consumer and loop-path instruction forms, including
+  materialization, transfers, preservation and spills. Select compatible
+  groups of useful state values rather than winning one isolated retention
+  while forcing another value through memory.
+- Keep loaded words, scan indices, bounds and accumulators in suitable
+  existing pairs across real branches/backedges when ownership and lowering
+  permit it. Extend existing join/latch handling; do not duplicate it.
+- Use SDCC's `instruction_cost`/`dryZ80iCode` coupling as prior art: its pinned
+  QuickSort keeps scan indices in DE between accesses and updates, and A*
+  keeps a comparison value in DE. Ordinary SSC candidates currently comprise
+  A/C/B for bytes and HL/BC for words.
+- Do not simply enable DE or H/L byte lanes. New availability needs explicit
+  byte/pair alias, frame-role, location and clobber contracts. DE currently
+  owns the frame pointer; any ordinary framed-region use must wait for the
+  compatible frame policy in 2av. Improvements using existing candidates
+  need not wait for that expansion.
+
+Acceptance: show actual removed transfers/spills and smaller/faster complete
+code in at least two of Tracker, Navigation, A*, QuickSort and Sprite, with
+all eighteen ordinary/shared RA workloads nonregressing under existing gates.
+Exercise simultaneous live values, byte/pair overlap, unequal joins, multiple
+latches, nested calls and conservative fallbacks. Preserve complete caller/
+callee frame bounds; report compiler source growth and remove superseded logic.
+
+### 2at. General Address-Form Selection And Induction-Address Reuse (Planned)
+
+Reuse existing array/pointer TAC, typed locations, address materialization,
+ownership and transfer scheduling. This establishes shared address selection/
+reuse for step 3; do not introduce a second induction or array-loop matcher.
+
+- Choose ordinary HL/DE accesses versus indexed IY using actual available
+  registers, result placement and complete costs, not an unconditional form.
+  Extend beyond the current byte-pointer special cases to dynamic local
+  word arrays and other already represented array/pointer accesses.
+- Share scaled indices and exact addresses across related reads/writes.
+  Advance proven strided addresses instead of repeatedly reconstructing
+  `base + index`; keep the original observable index and live-outs correct.
+- Pinned SDCC A* shares a scaled BC index across two array bases; QuickSort
+  reuses the left address and the right scan's address/value during a swap.
+  `setupPair`/`adjustPair` provide source prior art for nearby-address reuse.
+- A scoped unsigned-word address/read scout passes 224 equivalence cases
+  (448 executions): an indexed-IY sequence costs 16 bytes/97 T-states versus
+  10 bytes/67 T-states with HL/A available. DE/BC/IX/SP, flags and memory are
+  preserved, including address wrap. This is an instruction-form opportunity,
+  not a compiler implementation or a promised whole-workload speedup.
+- Preserve signed index extension, modular address/index wrap, zero/word
+  counts, overlapping source-order access, flags, ports and live registers.
+  Reuse established copy/fill lowering; step 3 retains broader counter/block
+  selection and must consume these same proofs and emitters.
+
+Acceptance: demonstrate smaller/faster real array code in at least two of
+A*, QuickSort, Tracker, Sprite and Navigation. Cover local/global/pointer
+bases, byte/word elements, signed/unsigned indices, address boundaries, alias
+and register-pressure fallbacks. Measure complete functions/calls and all
+eighteen ordinary/shared RA workloads, not only isolated load timings.
+
+### 2au. Memory-Aware Regional Reuse And Broader Invariant Motion (Planned)
+
+Extend immediate local-array forwarding, bounded pure-expression reuse and
+the existing loop hoister. Reuse escape/type/alias facts, CFG definitions,
+dominance, joins and location/ownership proofs rather than adding separate
+value caches or a speculative memory-SSA framework.
+
+- Reuse array values and addresses across intervening operations and joins
+  only while the relevant memory, base and index definitions remain valid.
+  Unrelated proven non-aliasing stores need not kill every fact; possible
+  aliases, escaping addresses, unknown calls, ASM and ports retain fallback.
+- Move invariant address/arithmetic work into guarded preheaders when every
+  necessary path and live-out is proved. Do not speculate observable loads,
+  division or other operations onto zero-iteration/otherwise skipped paths.
+- Consider conditional loop-carried expression reuse: retain a derived value
+  until its inputs change, then refresh it on the proved defining path.
+  Evaluate added lifetime, joins and refresh costs before committing a rewrite.
+- Pinned SDCC QuickSort reuses the right scan's value/address in the swap,
+  and A* reuses the final best element/value at loop exit. SDCC
+  `loopInvariants` checks pointer writes, escapes, definitions and dominance.
+  This does not claim that the rivals already eliminate every repeated A*
+  best-score calculation.
+- Build on 2at's address proofs; retain existing immediate-forwarding behavior
+  and eliminate superseded local logic rather than layering another pass.
+  Never recognize application names, array dimensions or algorithm identities.
+
+Acceptance: prove fewer repeated loads/address calculations or invariant
+operations and smaller/faster complete code in at least two large applications.
+Test equal/unequal joins, index changes, partial/overlapping stores, escaped
+locals, unknown calls, nested/zero-trip loops and observable memory order.
+All eighteen ordinary/shared RA workloads and caller/frame gates must hold;
+an aggregate gain must not hide a local regression.
+
+### 2av. Stable Large-Frame Addressing And Register Roles (Planned)
+
+Extend the existing hot-frame layout, address-window cache and exact edge
+witnesses. Steps 2aq and 2ar are already implemented; this is a general
+large/biased-frame policy, not another small-header special case.
+
+- Keep the hot scalar window stable across large loops and joins while cold
+  array addresses use other legal forms. Track actual frame origin/bias on
+  every incoming edge; unknown or disagreeing witnesses require safe setup.
+- The current bounded loop-header proof excludes full frames beyond 128
+  bytes. Tracker, Navigation, A*, QuickSort and Sprite all exceed that limit.
+  Pinned SDCC uses IX as its frame pointer here and HL/DE/SP-relative array
+  addressing, avoiding repeated destruction of the scalar frame base.
+- Evaluate either extending proven cache states to large/biased frames or an
+  explicit internal function/region register-role policy. Charge setup,
+  preservation, window changes and cold accesses before selecting a policy.
+- Any DE availability must be reflected consistently in frame-location
+  resolution, ownership, all emitters and call clobbers before 2as uses it.
+  Do not silently alter caller/callee assumptions or external, banked,
+  recursive, cross-file, indirect and assembly-facing ABI contracts.
+- Reuse 2at's address forms and existing frame helpers. Preserve physical
+  home identities, escaped addresses and full reserved/accessed frame bounds;
+  do not obtain a timing win by allocating hidden storage below SP.
+
+Acceptance: reduce measured frame-address setup in at least two large-frame
+applications with smaller/faster complete code and non-growing full storage.
+Exercise displacement/window boundaries, large arrays, nested loops,
+multiple/unequal entries and latches, calls, recursion, ASM and escapes.
+Run existing biased-window/ownership contracts, all eighteen ordinary/shared
+RA workloads and all six self-contained console qualifications.
 
 ### 3. Maintain Induction Addresses And Select Z80 Loops
 
@@ -5519,10 +5679,12 @@ to this cross-compiler experiment.
    compiler source growth visible and remove superseded logic. Commit the batch
    locally with the validation summary; do not push.
 
-The recorded implementation batches through **2ao** are complete, including
+The recorded implementation batches through **2ar** are complete, including
 the user-requested bounded sequence **2ak-2an**; adding the larger comparison
 applications was qualified separately from those optimizations. Steps
-**2ap-2ar** are the remaining unimplemented RA-only profile follow-ups, in that
-order. The initial SM83 backend remains the next backend target, not a reason
+**2as-2av** are the new planned RA-only profile follow-ups, in that order;
+**2as** is next. Step 3 must reuse 2at's address work, and any DE expansion in
+2as must wait for a compatible 2av frame policy. The initial SM83 backend
+remains the next backend target, not a reason
 to make every possible Z80 optimization mandatory. Keep qualified Z80 behavior
 and shared core coverage intact throughout.
