@@ -9098,13 +9098,49 @@ int generate_asm_z80(FILE *file_out) {
           if (frame_joins == NO || t->is_function == YES)
             g_ix_frame_offset = Z80_GLOBAL_OFFSET;
           else {
-            int edge;
+            int edge, loop_latch = -1, previous = i - 1;
+            while (previous > function_start && g_tacs[previous].op == TAC_OP_DEAD)
+              previous--;
+            if (g_ix_frame_offset == 0 && g_tacs[previous].op == TAC_OP_ASSIGNMENT &&
+                function_node->local_variables != NULL &&
+                function_node->local_variables->offset_to_fp_total >= -128 &&
+                (is_z80_bounded_counter(&g_tacs[previous], function_node, 65535, NO) == YES ||
+                 is_z80_bounded_counter(&g_tacs[previous], function_node, 255, NO) == YES)) {
+              for (j = i + 1; j < g_tacs_count && g_tacs[j].function_node == function_node; j++) {
+                struct tac *instruction = &g_tacs[j];
+                if (instruction->op == TAC_OP_REGISTER_SPILL && instruction->result_d != 0)
+                  break;
+                if (instruction->op == TAC_OP_JUMP && strcmp(instruction->result_s, t->result_s) == 0) {
+                  struct z80_location source, target;
+                  int update = j - 1;
+                  while (update > i && g_tacs[update].op == TAC_OP_DEAD)
+                    update--;
+                  if (_resolve_tac_location(&g_tacs[update], TAC_USE_ARG1, function_node, &source) == FAILED ||
+                      _resolve_tac_location(&g_tacs[update], TAC_USE_RESULT, function_node, &target) == FAILED)
+                    return FAILED;
+                  /* The memory counter update establishes IX = DE on every backedge. */
+                  if ((source.kind == LOC_STACK_LOCAL || source.kind == LOC_STACK_SPILL) &&
+                      target.kind == source.kind && source.offset == target.offset &&
+                      source.size == 2 && target.size == 2 &&
+                      get_register_allocator_address_materialization_mode(source.kind, RA_ADDRESS_TARGET_IX,
+                        source.offset) == RA_ADDRESS_MODE_FRAME_DISPLACEMENT)
+                    loop_latch = j;
+                  break;
+                }
+              }
+            }
             /* Every incoming edge must have an exact recorded frame-state witness. */
             for (j = function_start + 1; j < g_tacs_count && g_tacs[j].function_node == function_node; j++) {
               struct tac *branch = &g_tacs[j];
               if (branch->op < TAC_OP_JUMP || branch->op > TAC_OP_JUMP_GTE ||
                   strcmp(branch->result_s, t->result_s) != 0)
                 continue;
+              if (j == loop_latch && g_ix_frame_offset == 0) {
+                fprintf(file_out, "      ; proven loop-header frame address IX = DE\n");
+                RA_TRACE((stderr, "register_allocator: loop_header_frame function=%s header=%d latch=%d offset=0 counter=memory entry=agrees ownership=unchanged\n",
+                  function_node->children[1]->label, i, loop_latch));
+                continue;
+              }
               edge_kind = branch->op == TAC_OP_JUMP ? 0 : 1;
               for (edge = 0; edge < frame_edge_count[edge_kind]; edge++) {
                 if (frame_edges[edge_kind][edge].instruction == j)

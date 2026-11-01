@@ -219,6 +219,22 @@ See [step 2ap](Z80_CODEGEN_PLAN.md#2ap-exact-local-array-forwarding-and-scaled-i
 for typed/alias regressions, exact-parent costs and the independently reproduced
 pre-existing frame-offset test assertion.
 
+Normal RA frame joins now retain IX = DE at proven canonical loop headers.
+The entry must already agree, and the existing bounded-counter proof must
+identify a call-free backedge with an in-place memory-word counter update.
+Only complete frames fitting the zero-bias displacement window qualify;
+nonzero fixed-spill witnesses and physical-only counters retain fallback.
+Existing aliases, scalar/byte-pair ownership and result storage are unchanged.
+No new function, cache, reservation, IR field or ABI is added; production C
+grows by 36 net lines. The proof starts only at the canonical initial assignment,
+never an unrelated body label after its bound. Each selected header removes six bytes and 29 T-states
+per visit, without entry setup or new live ranges. Unpack improves 4.15%,
+PackedCrc 3.62%, Tile 2.35% and QuickSort 0.48%; all full frame/access extents
+and wrappers remain unchanged. All six consoles shrink and boot faster with
+unchanged RAM. See
+[step 2aq](Z80_CODEGEN_PLAN.md#2aq-proven-loop-header-frame-cache-and-scalar-ownership-completed)
+for the backedge proof, source-bounded tests and complete qualification.
+
 Normal RA now reuses byte comparison and counter emitters when the existing
 bounded known-bit query proves word values are 0..255. The query also accepts
 nearby scalar definitions and addition with a proven byte-sized maximum.

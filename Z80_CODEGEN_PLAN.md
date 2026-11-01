@@ -5093,29 +5093,143 @@ attempts and qualification are retained privately under
 patch and all comparison/console sources remain unchanged. No push is made;
 2aq is next.
 
-### 2aq. Proven Loop-Header Frame-Cache And Scalar Ownership (Planned)
+### 2aq. Proven Loop-Header Frame-Cache And Scalar Ownership (Completed)
 
-Forward frame-cache joins already exist in the 2ag emitter; not-yet-visited
-backedges invalidate their witnesses. Extend those existing region/edge facts,
-CFG/liveness, owner reservations and biased-window costs rather than adding
-another cache, register allocator or general dataflow framework.
+The existing normal-RA frame-edge join now accepts one narrowly proven future
+backedge rather than always discarding an otherwise valid loop-header witness.
+It reuses `is_z80_bounded_counter`, actual TAC location/ownership resolution,
+the in-place memory-word update and the existing frame-edge cache. There is no
+new function, cache, analysis structure, register reservation, IR rewrite,
+scalar lifetime, frame home, flag or ABI; production C grows by 36 net lines.
 
-- Begin with canonical call-free loops and stable frame-base/counter facts.
-  Require agreement at every entry and backedge, valid physical byte/pair
-  owners, and safe exits. Reuse 2w's bounded loop-carried ownership proofs.
-- Keep conservative fallback for unknown predecessors, multiple entries,
-  aliases, calls, ASM, clobbers or unsupported pressure. An emitter's linear
-  visitation order is not evidence that a runtime backedge preserves a value.
-- Price entry setup, backedge transfers, exits, spills and window changes.
-  Retaining IX must not silently evict a more valuable scalar or corrupt a
-  byte alias, flag dependency or saved-frame/return-address contract.
+Proof and selection:
 
-Acceptance: zero/one/many iterations, nested loops, continue/break, early exits,
-unequal joins, overwritten owners, pair overlap, effects and register pressure,
-with independent numerical/frame checks and traced/untraced image identity.
-Show per-input complete costs on the large applications and all existing
-controls. The measured 40-63% frame-traffic shares are opportunity attribution,
-not a promised speedup or evidence that every access is a removable spill.
+- The header's fallthrough entry must already have IX = DE. Only DEAD TACs
+  may separate the header from its canonical initial assignment. The helper
+  also accepts bound/update TACs in other uses; this join explicitly requires
+  the assignment so its proof belongs to this header, not a user body label.
+  Existing
+  unsigned-word/full-word or byte-bound counter proofs must establish the
+  unique header entry and backedge, exact increment, call-free loop body and
+  unescaped counter. ASM retains the existing whole-function join exclusion.
+- The complete frame must fit the zero-bias displacement window
+  (`offset_to_fp_total >= -128`, including the reserved high byte). Nonzero
+  fixed-spill witnesses inside the loop reject selection. Thus ordinary frame
+  materialization uses IX = DE, not an unproved alternative biased window.
+- Resolve both actual update operands. They must be the same two-byte
+  stack-local/spill home with a legal zero-bias displacement. The existing
+  in-place word update reuses IX = DE or materializes it after a clobber.
+  This update immediately precedes every admitted backedge, establishing the
+  same exact address as the entry independently of emitter visitation order.
+- Only that proven future edge is accepted. Other predecessors still need
+  exact recorded agreement and retain the existing eight-edge capacity and
+  eviction fallback. Canonical nested loops, continue-to-update, break and
+  return paths preserve their existing control/exit semantics.
+- Physical-only BC/HL counters, escaped or overwritten counters, unknown or
+  multiple entries, calls, ASM, fixed spills and larger/biased frames retain
+  conservative lowering. Existing physical byte/pair owners are resolved,
+  not reassigned; no scalar is evicted merely to retain IX.
+
+The old header repeated `LD IX,0; ADD IX,DE` even when its entry and every
+backedge already established that address. Each selected header now removes
+exactly six assembled bytes and 29 T-states per runtime visit. There is no
+new entry setup, preservation, transfer, exit work or register pressure, and
+zero-iteration paths also save their redundant first header materialization.
+
+Actual application examples include the shared word-array checksum helper
+called by QuickSort/A*, plus PackedCrc's scalar bit and checksum loops.
+Their memory-counter initialization stores through IX = DE, the header reads
+reuse that address, and the final in-place update proves its backedge.
+No application name, array dimension or benchmark source is recognized.
+
+Immediate-parent ordinary RA results against 2ap (`7fe8797`):
+
+| Workload | Kernel bytes before -> after | Aggregate kernel cycles before -> after |
+|---|---:|---:|
+| Array | 1286 -> 1280 | 5417525 -> 5411609 (-0.109%) |
+| Stencil | 1389 -> 1371 | 3597250 -> 3547834 (-1.374%) |
+| Tile | 980 -> 962 | 1165178 -> 1137802 (-2.350%) |
+| Unpack | 466 -> 460 | 99148 -> 95030 (-4.153%) |
+| PackedCrc | 730 -> 718 | 4834010 -> 4658995 (-3.621%) |
+| A* | 2635 -> 2629 | 46432465 -> 46432291 (-0.0004%) |
+| QuickSort | 1792 -> 1786 | 26253142 -> 26126702 (-0.482%) |
+
+Paired shared RA saves the same bytes/cycles: Array 1218 -> 1212,
+5492045 -> 5486129; Stencil 1353 -> 1335, 3627058 -> 3577642. The other
+five changed kernels have the same ordinary/shared results. All eleven
+unaffected kernels and their 22 parent RA/shared ROMs are byte-identical.
+Wrappers and every complete stack/frame/access extent remain unchanged,
+including QuickSort's 1120-byte and A*'s 3652-byte caller-chain footprints.
+The dominant large A* search frame remains outside this bounded proof;
+the six-byte A* improvement is its checksum helper, not a search-loop speedup.
+
+Qualification:
+
+- Full eighteen-workload, eight-mode release comparison: 144 builds,
+  2224 guarded calls and 216 calibrated independent timings. Traced/ASan
+  ordinary/shared RA repeats add 72 builds, 1112 calls and 108 timings.
+  All 108 external-control rows, eighteen corpus fingerprints and immutable
+  baselines remain unchanged. All 556 per-input complete cycle, instruction,
+  stack traffic and frame/access checks are nonincreasing; 72 cross-build ROM
+  identities hold.
+- New independent full-buffer/return/guard models cover 68 shapes across
+  small/boundary/large frames: zero/one/many iterations, nested loops,
+  continue, break, return, unequal/global paths, pair/scalar pressure,
+  calls, ASM, escaped/overwritten counters, multiple entries, byte/signed
+  counters and full-word bounds. Both arithmetic policies/all five numerical
+  modes pass 59840 calls per release/traced/ASan run, 179520 total, with
+  identical 72 selected shape/mode combinations per build.
+  Unsigned-byte bounds use their actual type proof; word snapshots outside
+  the bounded fact region remain conservative. A 511-iteration non-RA case
+  needs 21601 instructions, above the helper's default 20000; only that new
+  source-bounded fixture family gets the existing 100000 limit used by long
+  tests. Global CPU guards and performance controls are not relaxed.
+- Exact-parent ordinary/shared RA controls add 22848 guarded executions.
+  All 172 function sizes and complete linked code sizes are non-growing,
+  every input's complete cycles/frame traffic is nonincreasing, and frame
+  sizes are unchanged. Thirty-six functions improve; assembled function
+  savings equal six bytes times the actual selected-header count.
+- Eight directly related existing methods pass; join/window/byte-counter
+  tests also pass in traced/ASan builds. Strict C89 allocation, ownership,
+  clobber and traced/untraced frame verifiers pass. The existing CRC-loop
+  method passes its numerical phase but expects the `far` case not to select
+  its old CRC lowering. Exact-parent assembly is identical, already selects
+  CRC, and contains no new loop-header selection, proving that assertion is
+  pre-existing. Its expectation and unrelated implementation are not changed.
+  Initial fixture failures and an external independent-timer wall-clock
+  timeout are retained; the full comparison retry passes with unchanged limits.
+- A terminating labeled-body/goto regression exposed an incorrect proof
+  association before committing: querying a bound immediately before a body
+  label could prove the outer loop, then try to resolve an unrelated label
+  before the body's backedge. The explicit initial-assignment guard fixes
+  this at the proof boundary. All five numerical modes/both policies pass
+  640 full-buffer/return/guard calls per final release/traced/ASan build,
+  1920 total.
+  After this final guard, all 68 original shapes are regenerated in both
+  policies/all five modes on all three builds. Their 270 exact ROM,
+  instruction-metadata and static-metric identities preserve the earlier
+  numerical evidence; those 179520 calls are not claimed as rerun.
+  Final tools independently reprofile all eighteen ordinary/shared RA
+  workloads (108 builds, 1668 calls, 162 timings), reproducing the original
+  results/ROMs, and rerun all six consoles with identical results/ROMs.
+  Overall profile evidence is 324 builds, 5004 calls and 486 timings;
+  the 108 external rows come from the successful complete pre-guard run.
+- All six unchanged console sources pass reset/display, CRC, mapper,
+  palette/font and full RAM checks:
+
+| Console | Used code bytes saved | Boot cycles saved | RAM unchanged |
+|---|---:|---:|---:|
+| SMS calculations-1 | 42 | 574287 | 465 |
+| GG calculations-1 | 42 | 574345 | 438 |
+| SMS calculations-2 | 132 | 580580 | 373 |
+| GG calculations-2 | 132 | 580638 | 362 |
+| SMS calculations-3 | 60 | 752927 | 4789 |
+| GG calculations-3 | 60 | 646062 | 4789 |
+
+Source-bound reports, exact-parent tools, fixture costs and qualification
+are retained privately under `C:\cygwin64\tmp\loop-frame-ownership-20261101`.
+The unrelated 1911-byte tracked patch and all comparison/console sources are
+preserved. No push is made; 2ar is next.
 
 ### 2ar. Broader Bounded Nested Copy/Fill Selection (Planned)
 

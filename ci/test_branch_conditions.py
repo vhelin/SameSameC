@@ -16,6 +16,176 @@ from ra_cpu import execute
 
 
 class BranchConditionsTests(unittest.TestCase):
+    def test_loop_header_control_boundaries(self):
+        source = """
+u8 ra_buffer[128];
+u16 loop_control_label(u16 a,u16 b,u16 c) {
+  u8 count=b&15;
+  u16 total=c;
+  u16 i;
+  for(i=0;i<count;i++) {
+body:
+    if(a&1) {
+      a^=1;
+      if(c&1) { goto again; }
+again:
+      goto body;
+    }
+    total+=a+i;
+  }
+  ra_buffer[0]=i; ra_buffer[1]=i>>8;
+  return total+i;
+}
+void main(void) {}
+"""
+        program = Program("loop_control_label", "control", 0, 0, [2, 2, 2], 2, [], source)
+        calls = 0
+        for policy in ("inline", "shared"):
+            images = compile_generated(self.output / "loop-control-label" / policy,
+                                       os.environ.get("SAMESAMECC") or "samesamecc",
+                                       os.environ.get("SAMESAMECL") or "samesamecl", [program], source,
+                                       linker_flags=("-share-arithmetic",) if policy == "shared" else ())
+            for a in (0, 1, 127, 128, 255, 256, 32768, 65535):
+                for b in (0, 1, 2, 3, 7, 15, 255, 65535):
+                    count = b&15
+                    c = (a*37+b)&65535
+                    expected = (c+count*((a&~1) if count else a)+count*(count-1)//2+count)&65535
+                    initial = bytes((i*37+a+b+c)&255 for i in range(128))
+                    buffer = bytearray(initial)
+                    buffer[:2] = count.to_bytes(2, "little")
+                    for mode, image in images.items():
+                        result = execute(image.rom, image.symbols[program.name], [a, b, c], [2, 2, 2],
+                                         initial, image.symbols["ra_buffer"], 2, image.transfers)
+                        self.assertEqual((result["value"], result["buffer"], result["port_writes"],
+                                          result["unmapped_instructions"]), (expected, buffer, [], 0),
+                                         (policy, mode, a, b, c))
+                        calls += 1
+        self.assertEqual(calls, 640)
+        print(f"Noncanonical loop-control oracle executions: {calls}", flush=True)
+
+    def test_proven_loop_header_frame_addresses(self):
+        forms = {
+            "plain": "total+=a+i;",
+            "global": "total+=a+i; ra_buffer[32+(i&31)]=total;",
+            "diamond": "if(i&1) { total+=a+i; } else { total^=c; }",
+            "continue": "if(i&1) { continue; } total+=a+i;",
+            "break": "if(i==3) { break; } total+=a+i;",
+            "return": "if(i==2) { return total+i+workspace[LAST]; } total+=a+i;",
+            "nested": "for(j=0;j<3;j++) { total+=a+i+j; }",
+            "pressure": "total+=a+i; total+=x+y+z;",
+            "pair": "total+=saved*3; total^=i+c;",
+            "call": "total=loop_cache_touch(total+a+i);",
+            "asm": '__asm("LD IX,1234"); total+=a+i;',
+            "escape": "total+=a+i;",
+            "overwrite": "if(i==2) { i+=2; } total+=a+i;",
+            "entry": "",
+            "byte_counter": "total+=a+i;",
+            "signed_counter": "total+=a+i;",
+            "word_bound": "total+=a+i;",
+        }
+        programs = []
+        for size in (8, 104, 136, 260):
+            for family, body in forms.items():
+                name = f"loop_frame_{size}_{family}"
+                kind = "u8" if family == "byte_counter" else "s16" if family == "signed_counter" else "u16"
+                prefix = (f"u8 workspace[{size}]; {'u16' if family == 'word_bound' else 'u8'} "
+                          f"count=b&{511 if family == 'word_bound' else 15}; "
+                          f"u16 total=c; {kind} i; u16 j; workspace[{size-1}]=a; ")
+                if family == "pressure":
+                    prefix += "u16 x=a+c; u16 y=a^c; u16 z=a*257; "
+                elif family == "pair":
+                    prefix += "u16 saved=a+c; "
+                elif family == "escape":
+                    prefix += "u16 *pointer=&i; "
+                loop = "for(i=0;i<count;i++) { " + body.replace("LAST", str(size-1)) + " } "
+                if family == "entry":
+                    loop = (f"i=0; if(a&1) {{ goto {name}_step; }} {name}_head: "
+                            f"if(i>=count) {{ goto {name}_done; }} total+=a+i; "
+                            f"{name}_step: i++; goto {name}_head; {name}_done: ")
+                tail = ("total+=pointer[0]; " if family == "escape" else "")
+                tail += (f"ra_buffer[0]=i; ra_buffer[1]=i>>8; ra_buffer[2]=total; ra_buffer[3]=total>>8; "
+                         f"return total+i+workspace[{size-1}];")
+                programs.append(Program(name, family, size, 0, [2, 2, 2], 2, [],
+                                        f"u16 {name}(u16 a,u16 b,u16 c) {{ {prefix}{loop}{tail} }}"))
+
+        def oracle(program, a, b, c, initial):
+            count = b & (511 if program.family == "word_bound" else 15)
+            total = c
+            index = int(bool(a&1)) if program.family == "entry" else 0
+            buffer = bytearray(initial)
+            while index < count:
+                if program.family == "break" and index == 3:
+                    break
+                if program.family == "return" and index == 2:
+                    return (total+index+(a&255))&65535, buffer
+                if program.family == "overwrite" and index == 2:
+                    index += 2
+                if program.family == "continue" and index&1:
+                    index += 1
+                    continue
+                if program.family == "diamond":
+                    total = total+a+index if index&1 else total^c
+                elif program.family == "nested":
+                    total += sum(a+index+j for j in range(3))
+                elif program.family == "pressure":
+                    total += a+index+((a+c)&65535)+(a^c)+((a*257)&65535)
+                elif program.family == "pair":
+                    total = ((total+((a+c)&65535)*3)&65535)^((index+c)&65535)
+                elif program.family == "call":
+                    value = (total+a+index)&65535
+                    buffer[127] ^= value&255
+                    total = value+1
+                else:
+                    total += a+index
+                total &= 65535
+                if program.family == "global":
+                    buffer[32+(index&31)] = total&255
+                index += 1
+            if program.family == "escape":
+                total = (total+index)&65535
+            buffer[:4] = index.to_bytes(2, "little")+total.to_bytes(2, "little")
+            return (total+index+(a&255))&65535, buffer
+
+        calls = selected = 0
+        for policy in ("inline", "shared"):
+            for offset in range(0, len(programs), 8):
+                group = programs[offset:offset+8]
+                directory = self.output / "loop-header-frames" / policy / f"batch-{offset}"
+                source = ("u8 ra_buffer[128];\nu16 loop_cache_touch(u16 value) { "
+                          "ra_buffer[127]^=value; return value+1; }\n"
+                          + "\n".join(p.source for p in group) + "\nvoid main(void) {}\n")
+                images = compile_generated(directory, os.environ.get("SAMESAMECC") or "samesamecc",
+                                           os.environ.get("SAMESAMECL") or "samesamecl", group, source,
+                                           linker_flags=("-share-arithmetic",) if policy == "shared" else ())
+                for mode, image in images.items():
+                    assembly = (directory / mode / "main.asm").read_text()
+                    for program in group:
+                        body = assembly.split(f'.SECTION "{program.name}" FREE')[1].split(".ENDS")[0]
+                        reused = "; proven loop-header frame address IX = DE" in body
+                        frame = int(re.search(r"allocate space for the stack frame bytes=(\d+)", body)[1])
+                        if not mode.startswith("ra") or frame > 127 or program.family in (
+                                "call", "asm", "escape", "overwrite", "entry", "byte_counter", "signed_counter"):
+                            self.assertFalse(reused, (policy, mode, program.name, frame))
+                        elif program.family != "word_bound":
+                            self.assertTrue(reused, (policy, mode, program.name, frame))
+                        selected += reused
+                        for a in (0, 1, 127, 128, 255, 256, 32768, 65535):
+                            for b in (0, 1, 2, 3, 7, 15, 255, 256, 511, 512, 65535):
+                                c = (a*37+b)&65535
+                                initial = bytes((i*37+a+b+c)&255 for i in range(128))
+                                value, buffer = oracle(program, a, b, c, initial)
+                                result = execute(image.rom, image.symbols[program.name], [a, b, c], [2, 2, 2],
+                                                 initial, image.symbols["ra_buffer"], 2, image.transfers,
+                                                 instruction_limit=100000 if program.family == "word_bound" else 20000,
+                                                 frame_bytes=1024)
+                                self.assertEqual((result["value"], result["buffer"], result["port_writes"],
+                                                  result["unmapped_instructions"]), (value, buffer, [], 0),
+                                                 (policy, mode, program.name, a, b, c))
+                                calls += 1
+        self.assertGreater(selected, 0)
+        self.assertEqual(calls, 59840)
+        print(f"Loop-header frame oracle executions: {calls}; selected shapes: {selected}", flush=True)
+
     def test_exact_local_array_forwarding(self):
         forms = {
             "direct": "data[index]=a+c; result=data[index];",
