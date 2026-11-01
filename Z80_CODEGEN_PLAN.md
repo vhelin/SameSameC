@@ -398,7 +398,7 @@ extraction.
   redundant reloads and address calculations with existing alias/def-use machinery.
 - [ ] **2aq. Proven loop-header frame-cache and scalar ownership:** extend existing
   forward-join witnesses to bounded backedges without weakening ownership checks.
-- [ ] **2ar. Broader bounded nested copy/fill selection:** reuse existing matchers
+- [x] **2ar. Broader bounded nested copy/fill selection:** reuse existing matchers
   and block lowering for additional proven local-array/frame-crossing cases.
 - [ ] **3. Initial SM83 backend:** establish correct Game Boy code generation,
   target-specific addressing/spills/calls and execution tests. Use actual
@@ -5231,34 +5231,93 @@ are retained privately under `C:\cygwin64\tmp\loop-frame-ownership-20261101`.
 The unrelated 1911-byte tracked patch and all comparison/console sources are
 preserved. No push is made; 2ar is next.
 
-### 2ar. Broader Bounded Nested Copy/Fill Selection (Planned)
+### 2ar. Broader Bounded Nested Copy/Fill Selection (Completed)
 
-Audit concrete rejections in `_generate_asm_bounded_loop_z80` before extending
-it. The matcher already accepts some local arrays and 2aa's bounded CRC
-frame-only crossings; non-CRC live-through temporaries are still rejected.
-Reuse those existing shape, alias, location, owner and crossing proofs and the
-advancing-pointer, LDI/LDIR and fill emitters.
+The existing `_generate_asm_bounded_loop_z80` now admits byte copies/fills
+across the same memory-only temporary crossings already proved for CRC loops.
+It retains the existing shape, alias, typed-location, physical-owner and
+retained-prefix checks. No second matcher, helper, reservation, frame slot,
+IR rewrite, flag or ABI is added; production C grows by **seven net lines**.
+The existing advancing-pointer, short-copy LDI/load/store, LDIR and fill
+emitters remain unchanged, including their zero/256 and word-count handling.
 
-Sprite's `bytes[i] = terrain[i]` remains scalar indexed in both SameSameC and
-fresh SDCC output: do not claim SDCC already emits LDIR. Its two transfer TACs
-consume 262080 cycles on the attributed hot input, before index/loop overhead.
-The exact selector blocker for that loop is not yet proven; establish it
-before choosing the smallest general extension.
+Two concrete Sprite blockers were established before choosing the extension:
 
-- Target proven nested byte copies/fills and memory-backed outer state, not
-  application names, fixed dimensions or rewritten sources. Extend only the
-  actual safe rejection, preserving existing physical-owner restrictions.
-- Preserve zero/255/256 counts, bounds, live-out pointers/counters, flags,
-  clobbers, wraparound, calls and memory/port effects. Forward-copy overlap must
-  retain source-order behavior, not silently become `memmove`.
-- Choose scalar, advancing-pointer or block lowering using complete setup,
-  preservation, loop, exit and stack/frame costs. Do not add a second matcher
-  or an unconditional block instruction for a zero count.
+- At its copy initialization (TAC 542), the CRC-only gate rejected outer
+  temporary r163, live from TAC 147 through 596, with a required memory home
+  at -35 and no physical owner. Removing only that gate for copies/fills
+  exposed the next rejection: no eligible scratch slot for saving DE.
+- The actual unsigned-word counter is an unescaped memory local at -13/-12.
+  The lowered copy no longer reads its induction home. After resolving the
+  same initial/update location and proving both bytes fit IX displacement,
+  it can reuse that home for DE rather than allocate storage or push.
+  The existing emitter restores DE before its unchanged final publication.
+  Existing scratch choices are preferred; physical-only counters without a
+  suitable existing scratch home still fall back.
 
-Acceptance: local/global/pointer forms, nesting, accepted/rejected frame-only
-crossings, alias/overlap directions, boundaries, live-outs and pressure. Show a
-measured real-workload benefit while retaining existing copy/fill/decoder
-fast paths, both RA arithmetic policies and all six self-contained consoles.
+Crossing temporaries must remain memory-backed and physically unowned; the
+existing walk also rejects physical ownership in earlier retained prefixes.
+Their homes and subsequent reloads are untouched. Reductions retain their
+previous crossing/scratch restrictions. Loop-body calls, ASM, escaping counter/bound/
+pointer homes, unsupported control and commuted index forms retain fallback.
+
+The broader admission also exposed `dst[i] = i` being treated as an invariant
+fill: a terminating two-round probe produced `[4,4,4,4]` instead of `[0,1,2,3]`.
+The existing counter-value alias exclusion, previously postincrement-only,
+now applies to all fills. This fixes the proof, not the application or test.
+Forward-copy overlap still follows sequential source order, not `memmove`;
+zero counts never reach LDIR and live-out counters/pointers remain observable.
+
+Immediate-parent results against 2aq (`00db06a`):
+
+| RA policy | Sprite kernel bytes before -> after | Aggregate kernel cycles before -> after | Full frame unchanged |
+|---|---:|---:|---:|
+| Ordinary | 3467 -> 3438 | 16085498 -> 12994566 (-19.216%) | 322 |
+| Shared | 3439 -> 3410 | 16093274 -> 13002342 (-19.206%) | 324 |
+
+The other seventeen kernels and 34 parent RA/shared ROMs are byte-identical.
+All wrappers and complete frame/access extents are unchanged. Both original
+and fresh SDCC Sprite copies were scalar indexed; this result does not claim
+that SDCC previously selected LDIR. No workload name, dimension or immutable
+benchmark/console source is changed or recognized.
+
+Qualification:
+
+- Final release/traced/ASan ordinary/shared comparisons cover all eighteen
+  workloads: 108 builds, 1668 guarded calls and 162 calibrated independent
+  timings. All 556 parent input comparisons have nonincreasing complete
+  cycles, instructions, stack traffic and frame/access costs; 72 cross-build
+  ROM identities hold. The 108 pinned external baseline rows are reused,
+  not claimed as rerun; all eighteen corpus fingerprints are unchanged.
+- Independent full-buffer/return/port/guard models cover 34 shapes, both
+  policies/all five numerical modes: 4890 calls per build, **14670 total**,
+  with 84 selected shape/mode combinations each. Coverage includes nested
+  local/global/pointer copies/fills, 0/1/2/3/255/256/257 counts, outer zero/
+  repeat paths, equal/forward/backward overlap, 16-bit address wrap,
+  pointer/counter live-outs, partial owners, calls, ASM, escaping homes,
+  changing/counter-valued bodies and control/commuted-index fallbacks.
+- Exact-parent RA-only controls cover 978 inputs/1956 guarded calls and 74
+  functions. Every function/complete image is non-growing; complete cycles,
+  instructions and total frame accesses are nonincreasing for every input,
+  with unchanged frames. Forty-two functions improve. Four one-byte,
+  two-round local-destination cases add two preservation writes but save
+  more reads; their total traffic and complete cycles still improve.
+- Postincrement copy/fill tests pass on all three builds. Shared-window
+  copies, biased windows, dynamic counters and labeled controls pass.
+  Strict C89 native allocation/ownership/clobber/frame contracts pass.
+  The existing scaled-sum test's `far` selection expectation also fails
+  on the exact parent: the full scaled-sum corpus ROM and ownership metadata
+  remain byte-identical in all final builds. Its assertion is unchanged.
+- All six self-contained consoles pass full display/CRC/mapper/font/palette/
+  RAM checks. SMS/GG calculations-1/2 are unchanged. Each calculations-3
+  saves **29 used bytes and 237764 boot cycles**, with RAM still 4789 bytes
+  (SMS 23441 -> 23412 used bytes; GG 23419 -> 23390).
+
+Final source-bound qualification, parent tools and retained probes are under
+`C:\cygwin64\tmp\nested-copy-fill-20261101`. The obsolete pre-safety-fix
+eight-mode run was stopped; final measurements use only ordinary/shared RA,
+and the competitor baseline is reused explicitly. The unrelated 1911-byte
+tracked patch is preserved. Commit locally without pushing; step 3 is next.
 
 ### 3. Maintain Induction Addresses And Select Z80 Loops
 

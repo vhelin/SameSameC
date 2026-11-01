@@ -16,6 +16,149 @@ from ra_cpu import execute
 
 
 class BranchConditionsTests(unittest.TestCase):
+    def test_nested_copy_fill_loops(self):
+        forms = {
+            "copy": "dst[i]=src[i];",
+            "fill": "dst[i]=value;",
+            "global_copy": "ra_buffer[i+128]=ra_buffer[i+512];",
+            "global_fill": "ra_buffer[i+128]=value;",
+            "global_commuted_copy": "ra_buffer[128+i]=ra_buffer[512+i];",
+            "global_commuted_fill": "ra_buffer[128+i]=value;",
+            "local_source": "dst[i]=local_src[i];",
+            "local_dest": "local_dst[i]=src[i];",
+            "local_both": "local_dst[i]=local_src[i];",
+            "source_wrap": "dst[i]=src[i+65535];",
+            "dest_wrap": "dst[i+65535]=src[i];",
+            "counter_fill": "dst[i]=i;",
+            "partial_owner": "dst[i]=src[i];",
+            "call": "dst[i]=nested_touch(src[i]);",
+            "assembly": '__asm("NOP"); dst[i]=src[i];',
+            "escaped_counter": "dst[i]=src[i];",
+            "escaped_bound": "dst[i]=src[i];",
+            "counter_write": "if(i==3) { i++; } dst[i]=src[i];",
+            "break": "if(i==3) { break; } dst[i]=src[i];",
+            "continue": "if(i&1) { continue; } dst[i]=src[i];",
+        }
+        programs = []
+        variants = [(family, -1) for family in forms]
+        variants += [(family, count) for family in ("copy", "fill") for count in (0, 1, 2, 3, 255, 256, 257)]
+        for family, constant in variants:
+            name = f"nested_{family}_{'word' if constant < 0 else constant}"
+            filled = family.endswith("fill")
+            local_source = family in ("local_source", "local_both")
+            local_dest = family in ("local_dest", "local_both")
+            prefix = "u16 i=0; u16 k; u16 total=n^rounds; "
+            if local_source:
+                prefix += ("u8 local_src[272]; u16 j; "
+                           "for(j=0;j<272;j++) { local_src[j]=ra_buffer[512+j]; } ")
+            if local_dest:
+                prefix += "u8 local_dst[272]; "
+            if family == "partial_owner":
+                prefix += "u16 held=n+rounds; total^=held; "
+            elif family in ("escaped_counter", "escaped_bound"):
+                prefix += f"nested_escape(&{'i' if family == 'escaped_counter' else 'n'}); "
+            inner = f"for(i=0;i<{'n' if constant < 0 else constant};i++) {{ {forms[family]} }} "
+            loop = f"for(k=0;k<(rounds&3);k++) {{ total+=k; {inner} }} "
+            if local_dest:
+                loop += "for(k=0;k<i;k++) { ra_buffer[128+k]=local_dst[k]; } "
+            tail = ("total+=dst[0]; " + ("total+=value; " if filled else "total+=src[0]; ") +
+                    ("total+=held; " if family == "partial_owner" else "") + "return total+i+k;")
+            programs.append(Program(name, family, 0, constant, [2, 2, 2, 2], 2, [],
+                                    f"u16 {name}(u16 n,u16 rounds,u8 *dst,{'u16 value' if filled else 'u8 *src'}) "
+                                    f"{{ {prefix}{loop}{tail} }}"))
+        source = ("u8 ra_buffer[1024];\n"
+                  "u16 nested_touch(u16 value) { ra_buffer[1023]+=1; return value^7; }\n"
+                  "void nested_escape(u16 *value) { value[0]^=1; ra_buffer[1022]^=1; }\n" +
+                  "\n".join(program.source for program in programs) + "\nvoid main(void) {}\n")
+        directory = self.output / "nested-copy-fill"
+        calls = selected = 0
+        for policy in ("inline", "shared"):
+            images = compile_generated(directory / policy, os.environ.get("SAMESAMECC") or "samesamecc",
+                                       os.environ.get("SAMESAMECL") or "samesamecl", programs, source,
+                                       linker_flags=("-share-arithmetic",) if policy == "shared" else ())
+            for mode, image in images.items():
+                assembly = (directory / policy / mode / "main.asm").read_text()
+                for program in programs:
+                    body = assembly.split(f'.SECTION "{program.name}" FREE')[1].split(".ENDS")[0]
+                    supported = program.family not in ("global_commuted_copy", "global_commuted_fill", "counter_fill",
+                                                       "partial_owner", "call", "assembly", "escaped_counter",
+                                                       "escaped_bound", "counter_write", "break", "continue")
+                    chosen = "; advancing byte " in body
+                    if os.environ.get("RA_BASELINE") != "1":
+                        self.assertEqual(chosen, supported and program.constant != 0 and mode in ("ra", "ra_quiet"),
+                                         (policy, mode, program.name))
+                        if chosen:
+                            self.assertNotRegex(body, r"TAC: if _i_\d+\.u16 .*>= ",
+                                                (policy, mode, program.name, "nested counter still scalar"))
+                    selected += int(chosen)
+                    vectors = [(n, rounds, 64, 512) for n in (0, 1, 2, 3, 4, 255, 256, 257)
+                               for rounds in (0, 1, 2)]
+                    if program.family in ("copy", "source_wrap", "dest_wrap"):
+                        vectors += [(7, 3, dst, src) for dst, src in
+                                    ((32, 32), (33, 32), (32, 33), (64, 32), (32, 64))]
+                    if program.family.startswith("local_"):
+                        vectors = [(n, rounds, 64, 512) for n in (0, 1, 16, 257) for rounds in (0, 2)]
+                    if program.constant >= 0:
+                        vectors = [(0, 0, 64, 512), (65535, 2, 33, 32), (256, 1, 32, 33)]
+                    for n, rounds, dst, src in vectors:
+                        initial = bytes((index*37+n+rounds)&255 for index in range(1024))
+                        buffer = bytearray(initial)
+                        local = initial[512:784]
+                        count = program.constant if program.constant >= 0 else n
+                        total = n^rounds
+                        index = 0
+                        if program.family == "escaped_counter":
+                            index = 1
+                            buffer[1022] ^= 1
+                        elif program.family == "escaped_bound":
+                            count ^= 1
+                            buffer[1022] ^= 1
+                        elif program.family == "partial_owner":
+                            total ^= (n+rounds)&65535
+                        for outer in range(rounds&3):
+                            total = (total+outer)&65535
+                            index = 0
+                            while index < count:
+                                if program.family == "break" and index == 3:
+                                    break
+                                if program.family == "counter_write" and index == 3:
+                                    index += 1
+                                if program.family != "continue" or not index&1:
+                                    value = (index if program.family == "counter_fill" else
+                                             (n*257+rounds)&65535 if program.family.endswith("fill") else
+                                             local[index] if program.family in ("local_source", "local_both") else
+                                             buffer[(512 if program.family.startswith("global_") else src)+index-
+                                                    (program.family == "source_wrap")])
+                                    if program.family == "call":
+                                        value ^= 7
+                                        buffer[1023] = (buffer[1023]+1)&255
+                                    if program.family not in ("local_dest", "local_both"):
+                                        buffer[(128 if program.family.startswith("global_") else dst)+index-
+                                               (program.family == "dest_wrap")] = value&255
+                                index += 1
+                        outer = rounds&3
+                        if program.family in ("local_dest", "local_both"):
+                            buffer[128:128+index] = (local[:index] if program.family == "local_both" else
+                                                     buffer[src:src+index])
+                            outer = index
+                        total += buffer[dst]
+                        total += ((n*257+rounds)&65535 if program.family.endswith("fill") else buffer[src])
+                        if program.family == "partial_owner":
+                            total += (n+rounds)&65535
+                        expected = (total+index+outer)&65535
+                        address = image.symbols["ra_buffer"]
+                        parameters = [n, rounds, address+dst,
+                                      (n*257+rounds)&65535 if program.family.endswith("fill") else address+src]
+                        result = execute(image.rom, image.symbols[program.name], parameters, program.widths,
+                                         initial, address, 2, image.transfers, instruction_limit=200000,
+                                         frame_bytes=1024)
+                        self.assertEqual((result["value"], result["buffer"], result["port_writes"],
+                                          result["unmapped_instructions"]), (expected, buffer, [], 0),
+                                         (policy, mode, program.name, n, rounds, dst, src))
+                        calls += 1
+        self.assertGreater(selected, 0)
+        print(f"Nested copy/fill oracle executions: {calls}; selected shape/modes: {selected}", flush=True)
+
     def test_loop_header_control_boundaries(self):
         source = """
 u8 ra_buffer[128];

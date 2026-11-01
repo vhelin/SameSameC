@@ -235,6 +235,20 @@ unchanged RAM. See
 [step 2aq](Z80_CODEGEN_PLAN.md#2aq-proven-loop-header-frame-cache-and-scalar-ownership-completed)
 for the backedge proof, source-bounded tests and complete qualification.
 
+Normal RA byte copy/fill selection now reuses the existing CRC frame-only
+crossing proof, still excluding physical owners and retained prefixes.
+Copies without an existing scratch slot may save DE in their unescaped
+two-byte memory counter home; the unchanged emitter restores DE and publishes
+the final counter. Counter-valued fills retain scalar lowering through the
+existing alias exclusion, now applied beyond postincrement loops.
+No new function, slot, reservation, IR rewrite or ABI is added; production C
+grows by seven net lines. Sprite saves 29 bytes and 19.22% ordinary RA cycles
+(19.21% shared), with unchanged frames and wrappers; the other 17 kernels
+remain byte-identical. Each calculations-3 saves 29 used bytes and 237764
+boot cycles without changing RAM; calculations-1/2 are unchanged.
+See [step 2ar](Z80_CODEGEN_PLAN.md#2ar-broader-bounded-nested-copyfill-selection-completed)
+for the actual blockers, general safety proof, complete costs and qualification.
+
 Normal RA now reuses byte comparison and counter emitters when the existing
 bounded known-bit query proves word values are 0..255. The query also accepts
 nearby scalar definitions and addition with a proven byte-sized maximum.

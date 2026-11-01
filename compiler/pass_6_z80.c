@@ -8318,12 +8318,13 @@ check_access_bases:
   nodes[1] = operands[0] == TAC_USE_RESULT ? base[0]->result_node : base[0]->arg1_node;
   nodes[2] = reduction != NULL && scaled_sum == NO ? (accumulator == NULL ? reduction->result_node : accumulator->arg1_node) :
     copied == YES ? base[1]->arg1_node : access[0]->arg1_node;
+  if (copied == NO && nodes[2] != NULL && nodes[2] == initial->result_node)
+    return SUCCEEDED;
   if (post_increment != NULL) {
     nodes[3] = post_increment->result_node;
     node_count = 4;
     if (nodes[3] == nodes[0] || nodes[3] == nodes[1] || nodes[3] == nodes[2] ||
-        nodes[3] == initial->result_node ||
-        (copied == NO && nodes[2] != NULL && nodes[2] == initial->result_node))
+        nodes[3] == initial->result_node)
       return SUCCEEDED;
   }
   if (scaled_sum == YES) {
@@ -8366,7 +8367,8 @@ check_loop_ownership:
     if (initial->result_type == TAC_ARG_TYPE_TEMP && temp->register_index == (int)initial->result_d)
       counter = temp;
     else if (temp->live_start < *tac_index && temp->live_end >= *tac_index) {
-      if (crc_loop == NO || temp->spill_required != YES || temp->physical_register != Z80_PHY_NONE)
+      if ((crc_loop == NO && reduction != NULL) ||
+          temp->spill_required != YES || temp->physical_register != Z80_PHY_NONE)
         return SUCCEEDED;
       /* Exclude retained prefixes; later reloads can use the unchanged home. */
       for (j = temp->live_start; j <= temp->live_end && j <= end; j++) {
@@ -8398,8 +8400,6 @@ check_loop_ownership:
     return SUCCEEDED;
   if (counter != NULL && counter->spill_required == YES && counter->offset_to_fp >= -128 && counter->offset_to_fp <= 126)
     scratch = counter->offset_to_fp;
-  if (copied == YES && scratch == 0)
-    return SUCCEEDED;
   for (i = 0; i < g_tacs_count; i++) {
     struct tac *t = &g_tacs[i];
     if (t->function_node != function_node || t->op == TAC_OP_DEAD)
@@ -8435,6 +8435,13 @@ check_loop_ownership:
     return FAILED;
   if (counter_location.kind != final_location.kind || counter_location.phy != final_location.phy ||
       counter_location.offset != final_location.offset)
+    return SUCCEEDED;
+  /* The lowered byte-copy body no longer reads the unescaped counter home. */
+  if (copied == YES && reduction == NULL && scratch == 0 &&
+      counter_location.kind == LOC_STACK_LOCAL && counter_location.size == 2 &&
+      counter_location.offset >= -128 && counter_location.offset <= 126)
+    scratch = counter_location.offset;
+  if (copied == YES && scratch == 0)
     return SUCCEEDED;
   for (i = 0; i < node_count; i++) {
     if (locations[i].kind != LOC_CONST && locations[i].kind != LOC_STACK_LOCAL &&
