@@ -4543,6 +4543,56 @@ static int _generate_asm_array_read_z80(struct tac *t, FILE *file_out, struct tr
   else
     var_type = t->arg1_var_type;
 
+  result_needs_16_bit = result_location.size == 2 ||
+                        t->result_var_type_promoted == VARIABLE_TYPE_INT16 ||
+                        t->result_var_type_promoted == VARIABLE_TYPE_UINT16;
+
+  if (g_allocator_enabled == YES && g_allocator_force_all_spill == NO &&
+      arg1_location.kind == LOC_STACK_LOCAL && base_memory_pointer_load == NO &&
+      t->arg1_type == TAC_ARG_TYPE_LABEL && t->arg1_node != NULL &&
+      t->arg1_node->type == TREE_NODE_TYPE_CREATE_VARIABLE &&
+      (t->arg1_node->flags & TREE_NODE_FLAG_ARRAY) != 0 &&
+      (t->arg1_node->flags & (TREE_NODE_FLAG_GLOBAL | TREE_NODE_FLAG_STATIC |
+       TREE_NODE_FLAG_EXTERN | TREE_NODE_FLAG_ADDRESS_TAKEN)) == 0 &&
+      (var_type == VARIABLE_TYPE_UINT8 || var_type == VARIABLE_TYPE_UINT16) &&
+      t->store_retained_to_spill_operand == -1 && t->reload_spill_to_physical_operand == -1) {
+    int previous_index = (int)(t - g_tacs) - 1, scan, stable = YES;
+    struct tac *previous;
+
+    while (previous_index >= 0 && g_tacs[previous_index].op == TAC_OP_DEAD)
+      previous_index--;
+    previous = previous_index >= 0 ? &g_tacs[previous_index] : NULL;
+    if (previous != NULL && previous->op == TAC_OP_ARRAY_WRITE && previous->function_node == function_node &&
+        previous->result_type == TAC_ARG_TYPE_LABEL && previous->result_node == t->arg1_node &&
+        previous->result_var_type == var_type && previous->arg2_type == t->arg2_type &&
+        previous->arg2_var_type == t->arg2_var_type &&
+        previous->arg2_var_type_promoted == t->arg2_var_type_promoted &&
+        (t->arg2_type == TAC_ARG_TYPE_LABEL ? previous->arg2_node == t->arg2_node :
+         (t->arg2_type == TAC_ARG_TYPE_TEMP || t->arg2_type == TAC_ARG_TYPE_CONSTANT) &&
+         previous->arg2_d == t->arg2_d) &&
+        previous->store_retained_to_spill_operand == -1 && previous->reload_spill_to_physical_operand == -1) {
+      for (scan = 0; scan < g_tacs_count; scan++) {
+        struct tac *instruction = &g_tacs[scan];
+        if (instruction->function_node == function_node && instruction->op != TAC_OP_DEAD &&
+            (instruction->op == TAC_OP_ASM ||
+             ((instruction->op == TAC_OP_GET_ADDRESS || instruction->op == TAC_OP_GET_ADDRESS_ARRAY) &&
+              instruction->arg1_node == t->arg1_node)))
+          stable = NO;
+      }
+      if (stable == YES) {
+        /* Local-array writes leave their exact element address in IY. */
+        base_in_hl = NO;
+        if (var_type == VARIABLE_TYPE_UINT16 && previous->arg1_var_type == VARIABLE_TYPE_UINT16 &&
+            previous->arg1_physical_register == Z80_PHY_HL) {
+          fprintf(file_out, "      ; forward preceding local-array word store in HL\n");
+          goto array_read_store_value;
+        }
+        fprintf(file_out, "      ; reuse preceding local-array store address in IY\n");
+        goto array_read_load_value;
+      }
+    }
+  }
+
   if (base_memory_pointer_load == NO && arg2_location.kind == LOC_CONST &&
       (arg1_location.kind == LOC_GLOBAL || arg1_location.kind == LOC_STACK_LOCAL) &&
       (var_type == VARIABLE_TYPE_UINT8 || var_type == VARIABLE_TYPE_INT8 ||
@@ -4628,10 +4678,6 @@ static int _generate_asm_array_read_z80(struct tac *t, FILE *file_out, struct tr
   /* source address (arg1) -> hl/iy */
   /******************************************************************************************************/
 
-  result_needs_16_bit = result_location.size == 2 ||
-                        t->result_var_type_promoted == VARIABLE_TYPE_INT16 ||
-                        t->result_var_type_promoted == VARIABLE_TYPE_UINT16;
-
   if (constant_address == YES && arg1_location.kind == LOC_GLOBAL) {
     if (var_type == VARIABLE_TYPE_UINT8 || var_type == VARIABLE_TYPE_INT8) {
       if (_load_location_address_to_hl(&arg1_location, file_out) == FAILED)
@@ -4671,6 +4717,7 @@ static int _generate_asm_array_read_z80(struct tac *t, FILE *file_out, struct tr
   /* copy data -> hl */
   /******************************************************************************************************/
 
+ array_read_load_value:
   if (t->arg1_type == TAC_ARG_TYPE_CONSTANT) {
     fprintf(stderr, "_generate_asm_array_read_z80(): Source cannot be a value!\n");
     return FAILED;
@@ -4718,6 +4765,7 @@ static int _generate_asm_array_read_z80(struct tac *t, FILE *file_out, struct tr
     }
   }
 
+ array_read_store_value:
 #if defined(DEBUG_PASS_6_REGISTER_ALLOCATOR)
   if (g_allocator_enabled == YES) {
     RA_TRACE((stderr, "register_allocator: array_read_result function=%s kind=%s size=%d phy=%s value_bytes=%d\n",

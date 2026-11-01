@@ -202,6 +202,23 @@ four used code bytes and 3173924 boot cycles.
 See [step 2ao](Z80_CODEGEN_PLAN.md#2ao-costed-complementary-constant-word-shifts-completed)
 for the cost proof, exhaustive tests, caller costs and full qualification.
 
+Normal RA now reuses an immediately preceding unescaped local-array store's
+exact IY element address. Matching unsigned-word stores whose value remains
+in physical HL forward that value directly into existing result packing;
+other unsigned byte/word stores reuse IY through the existing typed read.
+Identical typed indices, same-function adjacency and absent spill prefixes
+are required. Address-taking, ASM, signed arrays, uncertain aliases, effects
+and control boundaries retain conservative lowering. No TAC lifetime, frame
+home, ownership descriptor, cache, helper function or ABI is added; production
+C grows by 48 net lines. Tracker saves 58 bytes and 2.75% ordinary/shared RA
+cycles, with unchanged wrappers and 254-byte complete frame footprint.
+All other comparison kernels are byte-identical to the immediate parent.
+Each calculations-2 saves 44 used code bytes and 4320 boot cycles; each
+calculations-3 saves 58 bytes and 54676 boot cycles, without increasing RAM.
+See [step 2ap](Z80_CODEGEN_PLAN.md#2ap-exact-local-array-forwarding-and-scaled-index-reuse-completed)
+for typed/alias regressions, exact-parent costs and the independently reproduced
+pre-existing frame-offset test assertion.
+
 Normal RA now reuses byte comparison and counter emitters when the existing
 bounded known-bit query proves word values are 0..255. The query also accepts
 nearby scalar definitions and addition with a proven byte-sized maximum.

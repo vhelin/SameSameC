@@ -16,6 +16,128 @@ from ra_cpu import execute
 
 
 class BranchConditionsTests(unittest.TestCase):
+    def test_exact_local_array_forwarding(self):
+        forms = {
+            "direct": "data[index]=a+c; result=data[index];",
+            "constant": "data[3]=a+c; result=data[3];",
+            "repeat": "data[index]=a; data[index]=a+c; result=data[index];",
+            "wide": "data[index]=a*257+c; result=data[index];",
+            "changed_index": "data[index]=a+c; index=(index+1)&3; result=data[index];",
+            "changed_value": "data[index]=a+c; a^=b; result=data[index]+a;",
+            "other": "data[index]=a+c; other[index]=b; result=data[index]; result+=other[index];",
+            "call": "data[index]=a+c; b=array_forward_touch(b); result=data[index]+b;",
+            "asm": 'data[index]=a+c; __asm("NOP"); result=data[index];',
+            "escape": "pointer=data; data[index]=a+c; result=data[index]; result+=pointer[(index+1)&3];",
+            "partial": "byte_pointer=data; data[index]=a+c; byte_pointer[index*WIDTH]=b; result=data[index]; result+=byte_pointer[index*WIDTH];",
+            "branch": "data[index]=a+c; if(b&4) { data[index]=a; } result=data[index];",
+            "loop": "result=0; for(i=0;i<(b&3);i++) { data[index]=a+i+c; result+=data[index]; }",
+            "pressure": "u16 left=a+b; u16 right=b+c; u16 extra=a^c; data[index]=a+c; result=data[index]+left+right+extra;",
+            "far": "workspace[259]=a; data[index]=a+c; result=data[index]; result+=workspace[259];",
+            "byte_index": "u8 small=b&3; data[small]=a+c; result=data[small];",
+            "live_index": "data[index]=a+c; result=data[index]+index;",
+            "temporary_index": "data[b&3]=a+c; result=data[b&3];",
+            "global": "ra_buffer[index]=a; result=ra_buffer[index];",
+        }
+        programs = []
+        for kind in ("u8", "u16", "s8", "s16"):
+            width = 1 if kind.endswith("8") else 2
+            for name, body in forms.items():
+                source = (f"u16 array_forward_{kind}_{name}(u16 a,u16 b,u16 c) {{ "
+                          + ("u8 workspace[260]; " if name == "far" else "") +
+                          f"{kind} data[4]; {kind} other[4]; {kind} *pointer; u8 *byte_pointer; "
+                          "u16 index; u16 i; u16 result; "
+                          "data[0]=10; data[1]=20; data[2]=30; data[3]=40; " +
+                          ("index=b&3; " if name not in ("constant", "byte_index", "temporary_index") else "") +
+                          body.replace("WIDTH", str(width)) +
+                          f" for(i=0;i<4;i++) {{ ra_buffer[i*{width}]=data[i]; " +
+                          (f"ra_buffer[i*{width}+1]=data[i]>>8;" if width == 2 else "") +
+                          " } return result; }")
+                programs.append(Program(f"array_forward_{kind}_{name}", name, width, int(kind.startswith("s")),
+                                        [2, 2, 2], 2, [], source))
+
+        def oracle(program, a, b, c, initial):
+            data = [10, 20, 30, 40]
+            index = b&3
+            mask = 255 if program.variant == 1 else 65535
+            value = (a*257+c if program.family == "wide" else a+c)&mask
+            if program.family == "constant":
+                index = 3
+            if program.family not in ("loop", "global"):
+                data[index] = value
+            if program.family == "changed_index":
+                index = (index+1)&3
+            if program.family == "partial":
+                data[index] = (data[index]&0xff00 if program.variant == 2 else 0)|(b&255)
+            if program.family == "branch" and b&4:
+                data[index] = a&mask
+
+            def extend(value):
+                return (value-256 if program.constant and program.variant == 1 and value&128 else value)&65535
+
+            result = extend(data[index])
+            if program.family == "loop":
+                result = 0
+                for i in range(b&3):
+                    data[index] = (a+i+c)&mask
+                    result += extend(data[index])
+            if program.family == "global":
+                result = a&255
+            if program.family == "changed_value":
+                result += a^b
+            if program.family == "other":
+                result += extend(b&mask)
+            if program.family == "escape":
+                result += extend(data[(index+1)&3])
+            if program.family == "partial":
+                result += b&255
+            if program.family == "far":
+                result += a&255
+            if program.family == "live_index":
+                result += index
+            if program.family == "call":
+                result += (b+1)&65535
+            if program.family == "pressure":
+                result += ((a+b)&65535)+((b+c)&65535)+(a^c)
+            expected_buffer = bytearray(initial)
+            for i, value in enumerate(data):
+                expected_buffer[i*program.variant:(i+1)*program.variant] = value.to_bytes(program.variant, "little")
+            if program.family == "call":
+                expected_buffer[127] ^= b&255
+            return result&65535, expected_buffer
+
+        calls = 0
+        for policy in ("inline", "shared"):
+            for offset in range(0, len(programs), 15):
+                group = programs[offset:offset+15]
+                directory = self.output / "array-forwarding" / policy / f"batch-{offset}"
+                source = ("u8 ra_buffer[128];\nu16 array_forward_touch(u16 value) { ra_buffer[127]^=value; return value+1; }\n" +
+                          "\n".join(program.source for program in group) + "\nvoid main(void) {}\n")
+                images = compile_generated(directory, os.environ.get("SAMESAMECC") or "samesamecc",
+                                           os.environ.get("SAMESAMECL") or "samesamecl", group, source,
+                                           linker_flags=("-share-arithmetic",) if policy == "shared" else ())
+                for mode, image in images.items():
+                    assembly = (directory / mode / "main.asm").read_text()
+                    for program in group:
+                        body = assembly.split(f'.SECTION "{program.name}" FREE')[1].split(".ENDS")[0]
+                        selected = "preceding local-array" in body
+                        if program.constant or not mode.startswith("ra") or program.family in (
+                                "changed_index", "changed_value", "other", "call", "asm", "escape", "partial", "branch", "global"):
+                            self.assertFalse(selected, (policy, mode, program.name))
+                        elif program.family in ("direct", "constant", "repeat", "wide"):
+                            self.assertTrue(selected, (policy, mode, program.name))
+                        for a in (0, 1, 127, 128, 255, 256, 32767, 32768, 65535):
+                            for b in (0, 1, 2, 3, 4, 7, 255, 65535):
+                                c = (a*37+b)&65535
+                                initial = bytes((i*37+a+b+c)&255 for i in range(128))
+                                expected, buffer = oracle(program, a, b, c, initial)
+                                result = execute(image.rom, image.symbols[program.name], [a, b, c], [2, 2, 2],
+                                                 initial, image.symbols["ra_buffer"], 2, image.transfers, frame_bytes=2048)
+                                self.assertEqual((result["value"], result["buffer"], result["port_writes"],
+                                                  result["unmapped_instructions"]),
+                                                 (expected, buffer, [], 0), (policy, mode, program.name, a, b, c))
+                                calls += 1
+        print(f"Exact local-array forwarding oracle executions: {calls}", flush=True)
+
     def test_complementary_constant_word_shifts(self):
         from random import Random
         from z80 import Z80Machine

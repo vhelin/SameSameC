@@ -4978,34 +4978,120 @@ Qualification:
 Source-bound evidence and `qualification.json` are retained under
 `C:\cygwin64\tmp\constant-word-shifts-20261101`.
 
-### 2ap. Exact Local-Array Forwarding And Scaled-Index Reuse (Planned)
+### 2ap. Exact Local-Array Forwarding And Scaled-Index Reuse (Completed)
 
-Reuse 2z's bounded pure-expression reuse, existing def/use and alias facts,
-array-address materialization and location resolution. Start within one
-straight-line region with an identical unescaped local-array base, unchanged
-index and matching byte/word access. Forward a just-stored value to a proven
-same-element load, then reuse matching scaled-index/address work where its
-complete lifetime cost is profitable.
+Normal RA now reuses the existing array-write emitter's immediately preceding
+IY element-address witness inside `_generate_asm_array_read_z80`. A matching
+unsigned-word store whose source is an actual unsigned word in physical HL
+forwards HL directly into existing result packing. Other matching unsigned
+byte/word stores skip index/base reconstruction and reuse IY through the
+existing typed data read, extension and packing stages.
 
-Fresh SDCC Tracker assembly retains the updated `phase[channel]` value in
-registers across its store and feeds the following shift directly. SameSameC
-reconstructs addresses and reloads state. This is evidence for general
-store/load forwarding, not permission to recognize a phase array or mixer.
+The initial trace considered extending 2z's bounded pure-expression TAC reuse.
+Keeping a stored temporary alive through a later load could create new spill
+homes even when it removes a TAC. Instead, this reuses the existing byte
+comparison emitter's predecessor-proof pattern, location resolution,
+`_materialize_array_write_value` contracts and array-read/result emitters.
+There is no new helper function, cache, IR field, pass, ownership descriptor,
+register interval, frame home, flag or ABI; production C grows by 48 net lines.
 
-- End the proof at uncertain aliases, may-overlapping stores, base/index
-  mutation, calls, ASM, volatile/port effects or unsupported control boundaries.
-  Handle partial byte/word overlap conservatively; never reuse stale high bytes.
-- Preserve evaluation order, index scaling and source-width wraparound. Do not
-  narrow indices, extend a value across an unproved join or introduce pointer
-  spills merely to reduce TAC count.
-- Prefer existing values and address witnesses over new caches, temporaries or
-  analysis structures. Price register pressure, spills, calls and live-outs.
+Selection and safety:
 
-Acceptance: selected and rejected byte/word shapes, changed/aliased indices,
-partial overlaps, escaped storage, effects, control and pressure. Demonstrate
-the source/TAC/assembly cause and assembled whole-function/caller savings in
-Tracker and any other affected workloads, without changing benchmark sources.
-Keep immutable controls, full frame/access extents and paired RA modes intact.
+- Require normal RA, a named `LOC_STACK_LOCAL` array with unsigned byte/word
+  elements, no pointer base and no global/static/extern/address-taken flags.
+  Scan existing function TACs for ASM and address-taking of that array; either
+  rejects reuse even if it occurs outside the immediate pair.
+- Match the immediately preceding live same-function array write, its exact
+  base node and element type, and the index's operand kind, identity, actual
+  type and promoted type. Only DEAD TACs are skipped. Changed indices/bases,
+  intervening stores, calls, effects, declarations, labels and joins terminate
+  the predecessor proof.
+- Reject retained-store/reload prefixes on either TAC. Local-array writes
+  leave their exact scaled element address in IY; a physical unsigned-word HL
+  source also survives its two data stores. No other physical source is
+  treated as an HL value witness.
+- Preserve existing result-location validation and typed packing. Byte stores
+  retain truncation and the typed reread/zero extension; BC/frame/constant
+  word sources also retain their typed reread. Signed arrays, escaped storage,
+  partial aliases and unsupported shapes keep existing lowering.
+- No index narrowing, arithmetic rewrite, cross-edge reuse or additional
+  pressure is introduced. The proof concerns well-defined same-element
+  accesses, not out-of-bounds stores overlapping scalar/frame homes.
+
+Fresh SDCC Tracker assembly motivated the opportunity by retaining the updated
+`phase[channel]` across its store and feeding the following shift. The
+unchanged SameSameC source lowers to:
+
+```
+r72 = phase[channel] + step[channel]
+phase[channel] = r72
+r73 = phase[channel]
+r74 = r73 >> 3
+```
+
+The store leaves r72 in HL and its element address in IY. The following read
+now forwards HL rather than reconstructing the index/base and loading the same
+word. The same general matcher also improves Tracker's period/target setup and
+arpeggio byte store/read. It contains no array names, application dimensions,
+workload identifiers or source-shape special cases.
+
+Immediate-parent RA-only results against 2ao (`eb5c594`):
+
+| Workload / arithmetic | Kernel bytes before -> after | Aggregate kernel cycles before -> after |
+|---|---:|---:|
+| Tracker / ordinary | 3461 -> 3403 | 10834427 -> 10536077 (-2.754%) |
+| Tracker / shared | 3433 -> 3375 | 10849763 -> 10551413 (-2.750%) |
+
+Complete linked sections shrink 3586 -> 3528 ordinary and 3558 -> 3500 shared.
+Wrappers and all complete frame/access extents remain unchanged; the maximum
+frame footprint stays 254 bytes. Ordinary kernel stack reads decrease
+211722 -> 202940, with 93473 writes unchanged. Every individual guarded input
+is nonregressing, including cold paths. The other seventeen kernels and their
+34 ordinary/shared parent ROMs are byte-identical.
+
+Qualification:
+
+- The full eighteen-workload, eight-mode release comparison passes 144 builds,
+  2224 guarded calls and 216 calibrated independent timings. Traced/ASan
+  ordinary/shared RA repeats add 72 builds, 1112 calls and 108 timings.
+  All 108 external-control rows, eighteen corpus fingerprints and baselines
+  remain unchanged. All 556 per-input complete cycle, instruction, stack
+  traffic and frame/access comparisons are nonincreasing; 72 cross-build ROM
+  identities hold.
+- New independent full-buffer/return/guard models cover 76 shapes: unsigned
+  and signed byte/word arrays, constants, repeated/wide stores, changed values
+  and indices, other stores, calls, ASM, escapes, partial aliases, branches,
+  loops, pressure, far frames, byte/temporary/live-out indices and globals.
+  Both arithmetic policies and all five correctness modes pass 54720 calls
+  per release/traced/ASan run, 164160 total. Non-RA modes are numerical controls,
+  not performance comparisons. Fixtures use separate array declarations,
+  live pointer uses and explicit word accumulators to respect existing SSC
+  parsing, unused-local handling and byte-arithmetic width rules.
+- Exact-parent ordinary/shared RA controls add 25536 guarded executions.
+  All 176 function sizes and complete linked code sizes are non-growing;
+  every input's cycles and frame traffic are nonincreasing and frame sizes
+  are unchanged. Thirty-six functions improve, including constant/byte
+  indices, live-outs, nested scalar loops, pressure and far frames.
+- Eight directly related existing methods pass. Constant-array and biased
+  frame-window checks also pass in traced/ASan builds. Strict C89 allocation,
+  ownership, clobber and traced/untraced frame verifiers pass after supplying
+  the installed Cygwin runtime PATH; the initial missing-runtime log is kept.
+  The retained-word-frame-copy method passes its 13410 numerical calls but
+  fails its old `-130..-125` home-offset coverage assertion. Exact-parent RA
+  rebuilds of all three fixture families produce byte-identical candidate
+  ROMs and the same offsets, proving this is pre-existing; its assertion and
+  unrelated implementation are deliberately not changed.
+- All six unchanged SMS/Game Gear consoles pass reset/display, CRC, mapper,
+  palette/font and full RAM checks. Each calculations-2 saves 44 used code
+  bytes and 4320 boot cycles; each calculations-3 saves 58 bytes and 54676
+  boot cycles. RAM stays unchanged, including 4789 bytes for calculations-3.
+  Both calculations-1 ROMs are parent-identical.
+
+Source-bound reports, exact-parent binaries, fixture costs, rejected fixture
+attempts and qualification are retained privately under
+`C:\cygwin64\tmp\array-forwarding-20261101`. The unrelated 1911-byte tracked
+patch and all comparison/console sources remain unchanged. No push is made;
+2aq is next.
 
 ### 2aq. Proven Loop-Header Frame-Cache And Scalar Ownership (Planned)
 
