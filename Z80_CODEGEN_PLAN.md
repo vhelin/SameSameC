@@ -392,7 +392,7 @@ extraction.
   expressions to existing loop preheaders only when complete costs justify it.
 - [x] **2an. Live-third-argument frameless multiply leaves:** reuse existing
   word multiplication and leaf lowering without new ABI contracts or flags.
-- [ ] **2ao. Costed complementary constant-word shifts:** extend existing shift
+- [x] **2ao. Costed complementary constant-word shifts:** extend existing shift
   selection with profitable opposite-direction shifts, byte transfers and masks.
 - [ ] **2ap. Exact local-array forwarding and scaled-index reuse:** avoid proven
   redundant reloads and address calculations with existing alias/def-use machinery.
@@ -4892,41 +4892,91 @@ is mechanism research, not a claim to reproduce the pinned binary's source
 tree. Full reports, source/binary bindings, attribution and private scouts are
 retained under
 `C:\cygwin64\tmp\compiler-reprofile-20261024-after-2an-ra-only`.
-These steps are planned, not completed, and do not add SM83 prerequisites.
+Step 2ao is now completed below; 2ap-2ar remain planned. These follow-ups do
+not add SM83 prerequisites. Private scouts are not production qualification.
 
-### 2ao. Costed Complementary Constant-Word Shifts (Planned)
+### 2ao. Costed Complementary Constant-Word Shifts (Completed)
 
-Extend `_shift_hl_by_bc` in [pass_6_z80.c](compiler/pass_6_z80.c), reusing its
-constant/variable selection, register transfers and existing clobber/owner
-handling. Compare the current counted/unrolled sequences against equivalent
-opposite-direction shifts, byte transfers, rotates and masks. SDCC's retained
-selector and z88dk's constant-shift lowering provide prior art for costed
-alternatives; fresh SDCC/ZSDCC A* assembly uses unrolled shifts.
+Implemented and qualified on 2026-11-01 against immediate parent `faef3d1`.
+Extend the existing `_shift_hl_by_bc` in [pass_6_z80.c](compiler/pass_6_z80.c)
+with the source type and one bounded complementary-direction alternative.
+For unsigned-word literal right counts below eight, compare its
+`3 + 2*(8-count)` bytes against the existing unrolled/counted kernel budget.
+Only counts 6 and 7 satisfy the guard, and both are strictly faster.
 
-- Begin with unsigned literal word right shifts near a byte boundary, especially
-  counts 6 and 7. Select by operand/result locations, live registers, flags and
-  complete assembled cost, not workload names, map widths or source rewrites.
-- Preserve full-width results and the existing language behavior for zero,
-  oversized and variable counts. Unsupported signed/narrow/mixed forms keep
-  their existing lowering. Do not weaken a caller's byte or word contract.
-- Account explicitly for A, flags, BC and physical byte/pair overlap. Include
-  every required save/restore, transfer, helper call and stack byte in the
-  profitability decision; a shorter inner sequence is insufficient.
+Clear A, double HL `8-count` times while collecting carries with RLA, then
+transfer H into L and A into H. Full 16-bit results remain intact, including
+subsequent byte truncation. Signed and actual-byte inputs, left shifts, zero,
+other effective counts and variable-count paths keep their existing lowering.
+The existing 16-bit count masking and oversized/negative-count semantics are
+unchanged. No workload names, map dimensions, source
+rewrites or narrower source arithmetic participate in selection.
 
-A private generic scout scans all 36 ordinary/shared RA assemblies. Its
-unsigned `HL >> 6` alternative costs eight bytes / 46 T-states versus the
-existing eight-byte / 176-T-state counted loop. The count-6/count-7 primitives
-pass 131072 exhaustive word inputs; all 68 affected workload calls pass
-independent timing, numerical/buffer/stack checks. A* remains 2638 bytes while
-aggregate cycles fall 49604781 -> 46527161 (-6.20%); Path and Tracker also
-improve slightly. This is opportunity evidence, not production qualification:
-A/flags ownership and preservation costs still require compiler-level proof.
+The existing shift descriptor already clobbers A, flags, BC and HL. Framed,
+automatic and explicit native entries reuse that ownership contract; no new
+saves are required. The new sequence preserves BC entirely, plus DE, IX, IY
+and SP. It does not weaken the allocator's conservative clobber policy or
+create a flag-preservation promise. Existing materializers, result transfers,
+register-leaf schedules and legacy boundaries are unchanged.
+Production C grows by **eleven net lines**, with no new functions, IR fields,
+helper families, flags, cache or allocation framework.
 
-Acceptance: exhaustive eligible word inputs, all count boundaries and legal
-fallbacks, live scratch/flag and byte-pair pressure, caller/helper contracts
-and complete stack/frame costs. Run ordinary/shared RA corpus comparisons and
-all six unmodified console projects; report actual gains separately from the
-private estimate. Do not add a parallel arithmetic framework or new default.
+| Unsigned word shift kernel | Bytes, parent -> 2ao | T-states, parent -> 2ao |
+| --- | ---: | ---: |
+| Right by 6 | 8 -> 7 | 176 -> 42 |
+| Right by 7 | 8 -> 5 | 205 -> 27 |
+
+These exclude identical input/result transfers. The earlier private scout
+retained a redundant `LD B,A`, costing eight/six bytes and 46/31 cycles.
+Production proves BC need not be cleared, so the qualified gain is larger:
+
+| Kernel / mode | Kernel/dependency bytes, parent -> 2ao | Aggregate kernel T-states | Cycle change |
+| --- | ---: | ---: | ---: |
+| Path, ordinary/shared RA | 1027 -> 1026 | 4075529 -> 4072849 | -0.066% |
+| Tracker, ordinary RA | 3462 -> 3461 | 10848095 -> 10834427 | -0.126% |
+| Tracker, shared RA | 3434 -> 3433 | 10863431 -> 10849763 | -0.126% |
+| A*, ordinary/shared RA | 2638 -> 2635 | 49604781 -> 46432465 | -6.40% |
+
+All fifteen other kernels reproduce their immediate-parent ROMs exactly.
+Every complete linked section is non-growing. All 556 ordinary/shared input
+comparisons have nonincreasing complete/kernel cycles and stack/access/
+below-SP/frame extents; wrappers and maximum frame footprints are unchanged.
+There is no new cold-input tradeoff.
+
+Qualification:
+
+- Full RA-only eighteen-workload comparison: 144 builds, 2224 guarded calls
+  and 216 independent timings, with all 108 external controls and all immutable
+  source/oracle/layout fingerprints unchanged. Traced and ASan ordinary/shared
+  repeats add 72 builds, 1112 calls and 108 independent timings. All 72
+  cross-build SSC ROM identities pass.
+- The new 91-shape regression covers all word counts 0..17, large and negative
+  literals, signed/byte/narrow forms, live word/byte pressure, calls, aliases,
+  branches and loops. Both arithmetic policies and all five correctness modes
+  pass in release, traced and ASan: 57330 guarded calls. Compiled native leaves
+  additionally pass **786432 exhaustive executions**, with every word input,
+  varied initial A/flags, exact bytes/cycles and unchanged BC/DE/IX/IY/SP
+  contracts through RET. Allocator-off/all-spill modes are correctness controls
+  only, never performance comparisons.
+- Reuse the existing cross-object regression for both constants: 150 new
+  calls across all 25 caller/callee mode combinations. Eleven distinct targeted
+  methods pass, including power-of-two arithmetic, known-bit queries, pure
+  reuse, byte-factor multiplication, native/explicit calls and frame joins.
+  Strict C89 native allocator/owner/clobber/cost and traced/untraced frame-layout
+  verifiers pass.
+- Another 7812 guarded scalar/native parent/candidate calls use RA only.
+  All 390 function sizes and complete fixture sizes are non-growing; every
+  input's cycles are nonincreasing and frame sizes/traffic are unchanged.
+  Thirty-two callers improve, including complete one-argument shift calls:
+  count 6 takes 420 -> 286 T-states; count 7 takes 449 -> 271.
+- All six unchanged SMS/Game Gear projects pass full reset/display, CRC,
+  palette/font, mapper and RAM verification. Calculations-1 are unchanged;
+  each calculations-2 saves one used code byte and 134 boot cycles. Each
+  calculations-3 saves four used code bytes and 3173924 boot cycles, with RAM
+  unchanged at 4789 bytes. No benchmark or console source was modified.
+
+Source-bound evidence and `qualification.json` are retained under
+`C:\cygwin64\tmp\constant-word-shifts-20261101`.
 
 ### 2ap. Exact Local-Array Forwarding And Scaled-Index Reuse (Planned)
 
@@ -5210,10 +5260,10 @@ to this cross-compiler experiment.
    compiler source growth visible and remove superseded logic. Commit the batch
    locally with the validation summary; do not push.
 
-The recorded implementation batches through **2an** are complete, including
+The recorded implementation batches through **2ao** are complete, including
 the user-requested bounded sequence **2ak-2an**; adding the larger comparison
 applications was qualified separately from those optimizations. Steps
-**2ao-2ar** are the new, unimplemented RA-only profile follow-ups, in that
+**2ap-2ar** are the remaining unimplemented RA-only profile follow-ups, in that
 order. The initial SM83 backend remains the next backend target, not a reason
 to make every possible Z80 optimization mandatory. Keep qualified Z80 behavior
 and shared core coverage intact throughout.

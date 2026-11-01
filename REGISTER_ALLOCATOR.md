@@ -188,6 +188,20 @@ are unchanged; existing opaque application calls still require framed entries.
 See [step 2an](Z80_CODEGEN_PLAN.md#2an-live-third-argument-frameless-multiply-leaves-completed)
 for complete caller/stack costs, legacy compatibility and qualification.
 
+Unsigned-word literal right shifts now use costed complementary-direction
+lowering in the existing word-shift emitter. Counts 6/7 shrink from eight
+kernel bytes to seven/five and from 176/205 T-states to 42/27. Full word results
+and subsequent truncation are preserved. Existing shift ownership already
+permits A/flags clobbers; BC, DE, IX, IY and SP are preserved without new saves.
+Signed/byte inputs and other constant/variable paths retain their lowering.
+This applies in all Z80 modes without new functions, flags or ABI changes;
+production C grows by eleven net lines. RA A* improves 2638 -> 2635 bytes and
+6.40% in cycles; Path/Tracker also improve, without growing complete code or
+frame costs. All six unmodified consoles pass; each calculations-3 saves
+four used code bytes and 3173924 boot cycles.
+See [step 2ao](Z80_CODEGEN_PLAN.md#2ao-costed-complementary-constant-word-shifts-completed)
+for the cost proof, exhaustive tests, caller costs and full qualification.
+
 Normal RA now reuses byte comparison and counter emitters when the existing
 bounded known-bit query proves word values are 0..255. The query also accepts
 nearby scalar definitions and addition with a proven byte-sized maximum.

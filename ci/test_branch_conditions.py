@@ -9,13 +9,122 @@ import unittest
 from unittest.mock import patch
 
 from check_register_allocator import (
-    Program, buffer_symbol, compile_generated, generate_programs, generated_oracle, mapped_routine_image, read_image,
+    BYTE_SHIFT_COUNTS, Program, buffer_symbol, compile_generated, generate_programs, generated_oracle, mapped_routine_image, read_image,
     run,
 )
 from ra_cpu import execute
 
 
 class BranchConditionsTests(unittest.TestCase):
+    def test_complementary_constant_word_shifts(self):
+        from random import Random
+        from z80 import Z80Machine
+        from ra_cpu import step
+
+        counts = list(range(18)) + [n for n in BYTE_SHIFT_COUNTS if n not in range(18)] + [257, 65535]
+        cases = {}
+        for kind, operator in (("u16", ">>"), ("u16", "<<"), ("s16", ">>")):
+            for count in counts:
+                name = f"{kind}_{'right' if operator == '>>' else 'left'}_{count}".replace("-", "minus")
+                effective = count & 65535
+                cases[name] = (kind, f"return a{operator}({count});",
+                               lambda a, b, c, n=effective, op=operator:
+                               0 if n >= 16 else a >> n if op == ">>" else a << n,
+                               kind == "u16" and operator == ">>" and count in (6, 7))
+        for count in (6, 7):
+            cases.update({
+                f"byte_{count}": ("u8", f"return a>>{count};", lambda a, b, c, n=count: (a&255)>>n, False),
+                f"signed_byte_{count}": ("s8", f"return a>>{count};",
+                                        lambda a, b, c, n=count: ((a&255)-(256 if a&128 else 0)&65535)>>n, False),
+                f"narrow_{count}": ("u16", f"u8 value=a>>{count}; return value;",
+                                   lambda a, b, c, n=count: (a>>n)&255, True),
+                f"pressure_{count}": ("u16", f"u16 live=a+b; u8 byte=b^c; u16 value=a>>{count}; "
+                                     "return value+live+byte+c;",
+                                     lambda a, b, c, n=count: (a>>n)+((a+b)&65535)+((b^c)&255)+c, True),
+                f"branch_{count}": ("u16", f"if(b&1) {{ return (a>>{count})+c; }} return a+c;",
+                                   lambda a, b, c, n=count: (a>>n if b&1 else a)+c, True),
+                f"loop_{count}": ("u16", f"u16 i,result=c; for(i=0;i<(b&3);i++) {{ result+=(a+i)>>{count}; }} "
+                                 "return result;",
+                                 lambda a, b, c, n=count: c+sum(((a+i)&65535)>>n for i in range(b&3)), True),
+                f"alias_{count}": ("u16", f"u16 *p=&a; p[0]^=b; return (a>>{count})+c;",
+                                  lambda a, b, c, n=count: ((a^b)>>n)+c, True),
+                f"call_{count}": ("u16", f"u16 value=a>>{count}; return shift_touch(b)+value+c;",
+                                 lambda a, b, c, n=count: (a>>n)+b+c, True),
+            })
+        programs = [Program(f"constant_shift_caller_{name}", name, 0, 0, [2, 2, 2], 2, [],
+                            f"u16 constant_shift_caller_{name}(u16 a,u16 b,u16 c) {{ u16 saved=a^b^c; "
+                            f"return constant_shift_leaf_{name}(a,b,c)^saved; }}")
+                    for name in cases]
+        random = Random(0x2A0)
+        inputs = [(a, b, (a*37+b)&65535) for a, b in (
+            (0, 0), (1, 1), (127, 255), (128, 256), (255, 257), (256, 32768),
+            (32767, 65535), (32768, 32767), (65535, 3))]
+        inputs += [tuple(random.randrange(65536) for _ in range(3)) for _ in range(12)]
+        calls = 0
+        for policy in ("inline", "shared"):
+            for offset in range(0, len(programs), 24):
+                group = programs[offset:offset+24]
+                directory = self.output / "constant-word-shifts" / policy / f"batch-{offset}"
+                source = ("u8 ra_buffer[128];\nu16 shift_touch(u16 a) { ra_buffer[0]^=a; return a; }\n" +
+                          "\n".join(f"u16 constant_shift_leaf_{p.family}({cases[p.family][0]} a,u16 b,u16 c) "
+                                    f"{{ {cases[p.family][1]} }}" for p in group) +
+                          "\n" + "\n".join(p.source for p in group) + "\nvoid main(void) {}\n")
+                images = compile_generated(directory, os.environ.get("SAMESAMECC") or "samesamecc",
+                                           os.environ.get("SAMESAMECL") or "samesamecl", group, source,
+                                           linker_flags=("-share-arithmetic",) if policy == "shared" else ())
+                for mode, image in images.items():
+                    assembly = (directory / mode / "main.asm").read_text()
+                    for program in group:
+                        body = assembly.split(f'.SECTION "constant_shift_leaf_{program.family}" FREE')[1].split(".ENDS")[0]
+                        self.assertEqual("complementary constant word right shift" in body, cases[program.family][3],
+                                         (policy, mode, program.family))
+                        for a, b, c in inputs:
+                            initial = bytes((index*37+a+b+c)&255 for index in range(128))
+                            expected_buffer = bytearray(initial)
+                            if program.family.startswith("call_"):
+                                expected_buffer[0] ^= b&255
+                            expected = (cases[program.family][2](a, b, c)&65535)^a^b^c
+                            result = execute(image.rom, image.symbols[program.name], [a, b, c], [2, 2, 2],
+                                             initial, image.symbols["ra_buffer"], 2, image.transfers, frame_bytes=2048)
+                            self.assertEqual((result["value"], result["buffer"], result["port_writes"],
+                                              result["unmapped_instructions"]),
+                                             (expected, expected_buffer, [], 0), (policy, mode, program.family, a, b, c))
+                            calls += 1
+            native = [Program(f"shift_native_caller_{n}", "native", n, 0, [2], 2, [],
+                              f"u16 shift_native_caller_{n}(u16 a) {{ return shift_native_leaf_{n}(a); }}")
+                      for n in (6, 7)]
+            source = ("u8 ra_buffer[128];\n" +
+                      "\n".join(f"u16 shift_native_leaf_{n}(u16 a) {{ return a>>{n}; }}" for n in (6, 7)) +
+                      "\n" + "\n".join(p.source for p in native) + "\nvoid main(void) {}\n")
+            images = compile_generated(self.output / "constant-word-shifts" / policy / "native",
+                                       os.environ.get("SAMESAMECC") or "samesamecc",
+                                       os.environ.get("SAMESAMECL") or "samesamecl", native, source,
+                                       linker_flags=("-share-arithmetic",) if policy == "shared" else ())
+            for program in native:
+                count = program.variant
+                kernel = bytes([0x69, 0x60, 0xaf] + [0x29, 0x17]*(8-count) + [0x6c, 0x67, 0xc9])
+                for mode, image in images.items():
+                    entry = image.symbols[f"ssc.regleaf.shift_native_leaf_{count}"]
+                    self.assertEqual(image.rom[entry:entry+len(kernel)], kernel, (policy, mode, count))
+                    self.assertEqual(image.staticMetrics["functions"][f"shift_native_leaf_{count}"]["rom_bytes"],
+                                     len(kernel))
+                image = images["ra"]
+                machine = Z80Machine()
+                machine.memory[:len(image.rom)] = image.rom
+                machine.memory[0xdf00:0xdf02] = b"\xff\x7f"
+                for value in range(65536):
+                    machine.bc, machine.hl, machine.af = value, value ^ 0xffff, (value*37)&65535
+                    machine.de, machine.ix, machine.iy, machine.sp = 0x1234, 0x9876, 0x5432, 0xdf00
+                    machine.pc = image.symbols[f"ssc.regleaf.shift_native_leaf_{count}"]
+                    cycles = 0
+                    for _ in range(4 + 2*(8-count) + 2):
+                        cycles += step(machine)
+                    self.assertEqual((machine.hl, machine.bc, machine.de, machine.ix, machine.iy, machine.sp, machine.pc),
+                                     (value>>count, value, 0x1234, 0x9876, 0x5432, 0xdf02, 0x7fff),
+                                     (policy, count, value))
+                    self.assertEqual(cycles, 60 if count == 6 else 45)
+        print(f"Constant word shifts: {calls} guarded calls and 262144 exhaustive native leaf executions", flush=True)
+
     def test_frameless_multiply_leaves(self):
         from random import Random
 
@@ -1650,6 +1759,8 @@ static u16 pr_discard(u16 a,u16 b,u16 c) { ra_buffer[0]=a; return a+3*b+5*c; }
                         ("full", 3, "u16 a,u16 b,u16 c", "a+3*b+5*c", "a,b,7", lambda a, b: a+3*b+35),
                         ("sub", 2, "u16 a,u16 b", "a-b", "a,b", lambda a, b: a-b),
                         ("dead", 3, "u16 a,u16 b,u16 c", "a*b", "a,b,7", lambda a, b: a*b),
+                        ("right6", 2, "u16 a,u16 b", "a>>6", "a,b", lambda a, b: a>>6),
+                        ("right7", 2, "u16 a,u16 b", "a>>7", "a,b", lambda a, b: a>>7),
                         ("shift", 3, "u16 a,u16 b,u16 c", "(a<<b)>>b", "a,b&15,7",
                          lambda a, b: ((a<<(b&15))&65535)>>(b&15))):
                     work = self.output / f"automatic-objects-{caller_index}-{callee_index}-{kind}"
@@ -1664,7 +1775,8 @@ static u16 pr_discard(u16 a,u16 b,u16 c) { ra_buffer[0]=a; return a+3*b+5*c; }
                     run(linker, ["-lsms", "-v", "-o", "linked.sms", "caller.asm", "callee.asm"], work, "linker.log")
                     image = read_image(work)
                     self.assertNotIn("cross_leaf", image.symbols)
-                    selected = kind == "sub" or (kind in ("shift", "dead") and os.environ.get("RA_BASELINE") != "1")
+                    selected = kind in ("sub", "right6", "right7") or (
+                        kind in ("shift", "dead") and os.environ.get("RA_BASELINE") != "1")
                     self.assertEqual("ssc.regleaf.cross_leaf" in image.symbols, selected)
                     if selected:
                         self.assertEqual(image.staticMetrics["functions"]["cross_leaf"]["frame_bytes"], 0)

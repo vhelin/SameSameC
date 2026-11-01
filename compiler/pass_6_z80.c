@@ -1332,7 +1332,7 @@ static void _sign_extend_c_to_bc_preserving_a(FILE *file_out) {
 }
 
 
-static void _shift_hl_by_bc(const struct z80_location *location, int op, int bounded, FILE *file_out) {
+static void _shift_hl_by_bc(const struct z80_location *location, int op, int bounded, int value_type, FILE *file_out) {
 
   int count, bytes, loop, byte_shift = NO;
 
@@ -1343,6 +1343,17 @@ static void _shift_hl_by_bc(const struct z80_location *location, int op, int bou
     if (count >= 16) {
       _load_value_to_hl(0, file_out);
       return;
+    }
+    if (value_type == VARIABLE_TYPE_UINT16 && op == TAC_OP_SHIFT_RIGHT && count > 0 && count < 8) {
+      bytes = count * 4;
+      /* Capture the carry bits above H, then transfer the complementary byte. */
+      if (3 + 2 * (8 - count) <= (bytes > 11 ? 8 : bytes)) {
+        fprintf(file_out, "      ; complementary constant word right shift by %d\n      XOR A\n", count);
+        for (count = 8 - count; count > 0; count--)
+          fprintf(file_out, "      ADD HL,HL\n      RLA\n");
+        fprintf(file_out, "      LD  L,H\n      LD  H,A\n");
+        return;
+      }
     }
     if (count >= 8) {
       fprintf(file_out, "      LD  %c,%c\n", op == TAC_OP_SHIFT_LEFT ? 'H' : 'L', op == TAC_OP_SHIFT_LEFT ? 'L' : 'H');
@@ -5325,7 +5336,7 @@ static int _aaa_generate_asm_shift_left_right_z80_16bit(struct tac *t, FILE *fil
         bounded = YES;
     }
   }
-  _shift_hl_by_bc(&arg2_location, op, bounded, file_out);
+  _shift_hl_by_bc(&arg2_location, op, bounded, t->arg1_var_type, file_out);
 
   /******************************************************************************************************/
   /* target address -> ix */
