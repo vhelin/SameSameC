@@ -5446,7 +5446,7 @@ slot, reservation, IR field, ABI, candidate register or flag. DE/H/L expansion
 remains deferred. Evidence is retained under
 `C:\cygwin64\tmp\multi-value-allocation-20261101`.
 
-### 2at. General Address-Form Selection And Induction-Address Reuse (Planned)
+### 2at. General Address-Form Selection And Induction-Address Reuse (Completed)
 
 Reuse existing array/pointer TAC, typed locations, address materialization,
 ownership and transfer scheduling. This establishes shared address selection/
@@ -5477,6 +5477,103 @@ A*, QuickSort, Tracker, Sprite and Navigation. Cover local/global/pointer
 bases, byte/word elements, signed/unsigned indices, address boundaries, alias
 and register-pressure fallbacks. Measure complete functions/calls and all
 eighteen ordinary/shared RA workloads, not only isolated load timings.
+
+Implemented using the existing typed locations, frame/global address loaders,
+integer materialization, transfer costs and array emitters. One shared pure
+selector now chooses native HL addressing for available local/global/pointer
+byte and word accesses, while retaining indexed IY for BC word results that
+must preserve another HL owner and for physical word-store sources. DE remains
+the frame pointer; no additional allocatable pair, availability mask, address
+cache, reservation, IR field, ABI or flag is introduced.
+
+Word stores reuse the existing integer-to-BC materializer (renamed from its
+index-specific name), including signed extension and explicit constant-zero
+loading. Native stores use `LD (HL),C; INC HL; LD (HL),B`. The existing immediate
+unescaped-local store/read proof now reuses the actual selected HL/IY address
+and its scaled index, correcting the word store's high-byte position before
+rereading. Nearby constant indices advance that same HL address only when
+at most three increments/decrements beat frame-address reconstruction.
+Dynamic-index equality, signedness/type, escape, alias and retained-prefix
+guards are preserved. Existing advancing copy/fill/scaled-sum selection remains
+the sole induction-loop matcher; no second matcher or speculative reuse across
+intervening operations, joins or unrelated bases is added. Broader regional
+reuse remains 2au, and step 3 must consume these shared forms and existing
+induction proofs rather than duplicate them.
+
+Accurate BC producer costs exposed an isolated-placement problem: a later HL
+load looked cheaper than BC without counting the earlier compatible HL
+value's spill/reload. The existing cost observer now uses a bounded,
+same-block, target-transparency proof to credit the companion's avoidable
+transfers, including the first reload of a multiply-read companion. Existing
+transactions and the second scan perform the allocation. A trial role
+heuristic was removed; the final implementation retains 48 independently
+checked compatible pair selections rather than weakening the 2as assertions.
+
+Exact-parent ordinary RA results against 2as (`afde833`):
+
+| Kernel | Bytes before -> after | Aggregate kernel cycles before -> after | Cycle reduction |
+|---|---:|---:|---:|
+| Array | 1278 -> 1254 | 5409609 -> 5343369 | 1.22% |
+| Stencil | 1371 -> 1299 | 3547834 -> 3431914 | 3.27% |
+| Tile | 962 -> 957 | 1137802 -> 1135354 | 0.22% |
+| Path | 1026 -> 991 | 4072849 -> 3955721 | 2.88% |
+| Sprite | 3382 -> 3080 | 12551046 -> 11745711 | 6.42% |
+| Tracker | 3391 -> 3006 | 10377997 -> 10054331 | 3.12% |
+| Navigation | 2816 -> 2684 | 11227030 -> 10518213 | 6.31% |
+| A* | 2627 -> 2534 | 46432123 -> 44129237 | 4.96% |
+| QuickSort | 1786 -> 1642 | 26126702 -> 24196338 | 7.39% |
+
+Shared RA saves the same bytes and aggregate cycles in these nine kernels;
+its percentage reductions differ slightly where shared arithmetic changes
+the starting cost. The other nine kernels and eighteen parent RA/shared ROMs
+remain byte-identical. All complete code sections are non-growing; callers,
+wrappers and complete frame/access bounds are unchanged.
+
+Qualification:
+
+- Fresh final release/traced/ASan runs cover all eighteen ordinary/shared
+  workloads: 108 builds, 1668 guarded calls and 162 calibrated independent
+  timings. Every build passes all 556 exact-parent per-input complete/kernel
+  cycle, stack-traffic and frame/access comparisons. All eighteen corpus
+  fingerprints are unchanged and 72 cross-build workload ROM identities hold.
+  The 108 pinned competitor rows are reused explicitly, not claimed as freshly
+  rerun; an earlier superseded full-matrix attempt was stopped.
+- The new 160-shape address oracle passes 111040 guarded calls per host build
+  and 96 native/reused selections. It covers local/global/pointer bases, all
+  four byte/word element and index types, negative indices and modular address
+  wrap, zero stores, nearby strides, aliasing, live bases/indices, far frames,
+  loops and pressure fallbacks. The strengthened 42-shape word-pair oracle
+  passes 33600 calls and 48 simultaneous HL/BC selections per build.
+- Exact-parent RA-only fixture controls pass 57856 per-input comparisons
+  (115712 guarded cost calls), checking 418 complete function/policy rows.
+  Complete images/functions, frame bytes, cycles, frame reads and frame writes
+  never grow; 274 function rows shrink. Another eighty exact-parent builds
+  establish 120 default/no-RA/all-spill ROM identities. Four hundred cross-build
+  fixture ROM identities hold across all five numerical modes.
+- Native word reads replace two slow indexed loads with four short operations.
+  Instruction count therefore increases in 208 workload inputs and 19280
+  fixture inputs, despite nonincreasing complete T-states, bytes and traffic.
+  These are verified smaller/faster forms, not an instruction-count reduction.
+- Forwarding, constant-address, masked width/effect, nested/postincrement
+  copy/fill, call/control, forward-join and pointer-copy suites pass on all
+  three builds. All 13410 retained-frame-copy numerical calls pass too, but
+  that existing test's final frame-offset coverage assertion fails identically
+  on the exact parent (`-21,-13,-267,-139,-7`, not every offset -130..-125).
+  Its assertion is unchanged; this is not reported as an all-green test run.
+  Strict-C89 native allocation/ownership/clobber/frame contracts pass.
+- All six self-contained SMS/Game Gear consoles pass display, CRC, mapper,
+  palette/font and RAM controls. SMS calculations-1/2/3 save 293/478/1133 used
+  bytes and 67484/124769/2999782 boot cycles. GG calculations-1/2/3 save
+  77/478/1133 used bytes and 62698/123809/2999402 cycles. RAM is unchanged;
+  higher short-instruction counts are included in these complete boot costs.
+
+Production C grows by 111 net lines, with one extracted shared selector and
+reuse of the existing integer materializer and forwarding proof instead of
+parallel load/store/index helpers. No workload, dimension, benchmark source
+or oracle is recognized. Final source-bound evidence, exact-parent tools,
+failed scouts and the preserved unrelated 1911-byte patch are retained under
+`C:\cygwin64\tmp\address-selection-20261101`. Commit locally without pushing;
+2au is next.
 
 ### 2au. Memory-Aware Regional Reuse And Broader Invariant Motion (Planned)
 
@@ -5742,11 +5839,11 @@ to this cross-compiler experiment.
    compiler source growth visible and remove superseded logic. Commit the batch
    locally with the validation summary; do not push.
 
-The recorded implementation batches through **2as** are complete, including
+The recorded implementation batches through **2at** are complete, including
 the user-requested bounded sequence **2ak-2an**; adding the larger comparison
 applications was qualified separately from those optimizations. Steps
-**2at-2av** are the remaining planned RA-only profile follow-ups, in that order;
-**2at** is next. Step 3 must reuse 2at's address work, and any ordinary DE
+**2au-2av** are the remaining planned RA-only profile follow-ups, in that order;
+**2au** is next. Step 3 must reuse 2at's address work, and any ordinary DE
 expansion must wait for a compatible 2av frame policy. The initial SM83 backend
 remains the next backend target, not a reason
 to make every possible Z80 optimization mandatory. Keep qualified Z80 behavior

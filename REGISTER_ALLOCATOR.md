@@ -264,6 +264,24 @@ seventy used bytes without changing RAM or display controls. See
 [step 2as](Z80_CODEGEN_PLAN.md#2as-lowering-aware-multi-value-register-allocation-and-scheduling-completed)
 for the actual instruction forms, exact-parent cost controls and qualification.
 
+Normal RA now shares native HL versus indexed IY array-address selection across
+reads, writes and immediate local forwarding. Word stores reuse the existing
+integer-to-BC materializer; exact scaled addresses and nearby constant strides
+reuse the existing escape/type/alias proof. BC results still preserve unrelated
+HL owners. Bounded companion-transfer costing retains compatible word pairs
+without a role heuristic or new allocation machinery. Existing induction-loop
+proofs and emitters remain shared; DE stays the frame pointer.
+All nine array-heavy kernels shrink and run faster: ordinary Sprite/Navigation/
+A*/QuickSort improve 6.42%/6.31%/4.96%/7.39%, with unchanged callers and frames.
+All eighteen ordinary/shared workloads are nonregressing per input; all six
+consoles save bytes and boot cycles without changing RAM. Short native loads
+can execute more instructions while taking fewer T-states. Production C grows
+by 111 net lines with one extracted shared selector. The new address/pair oracles,
+exact-parent controls and native verifier pass; an existing final frame-offset
+coverage assertion still fails identically on the parent and is unchanged.
+See [step 2at](Z80_CODEGEN_PLAN.md#2at-general-address-form-selection-and-induction-address-reuse-completed)
+for complete measurements, instruction-count tradeoffs and qualification.
+
 Normal RA now reuses byte comparison and counter emitters when the existing
 bounded known-bit query proves word values are 0..255. The query also accepts
 nearby scalar definitions and addition with a proven byte-sized maximum.

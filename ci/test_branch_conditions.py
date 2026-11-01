@@ -16,6 +16,163 @@ from ra_cpu import execute
 
 
 class BranchConditionsTests(unittest.TestCase):
+    def test_general_array_address_forms(self):
+        indices = {
+            "u8": (0, 1, 3, 7, 127, 128, 255),
+            "s8": (0, 1, 3, -4, -1, -128, 127),
+            "u16": (0, 1, 3, 7, 128, 32768, 65535, 0x6010, 0x6011, 0xC021),
+            "s16": (0, 1, 3, -4, -1, -128, -32768, 32767, -8191),
+        }
+        pointer_forms = {
+            "ptr_read": "out=p[idx];",
+            "ptr_write": "p[idx]=a; out=a;",
+            "ptr_read_write": "p[idx]=a; out=p[idx];",
+            "ptr_alias": "out=p[idx]; p[idx]=a;",
+            "ptr_loop": "out=0; for(i=0;i<(a&7);i++) { out+=p[idx+i]; }",
+            "ptr_pressure": "u16 held=a+17; out=p[idx]; out+=held+(a^1234);",
+            "ptr_live_base": "INDEX next=idx; next+=1; p[idx]=a; out=p[next]; out+=p[idx];",
+        }
+        local_forms = {
+            "local_const": "data[3]=0x9234; out=data[3];",
+            "local_zero": "data[3]=0; out=data[3];",
+            "local_next": "data[3]=0x9234; out=data[4];",
+            "local_previous": "data[3]=0; out=data[2];",
+            "local_write_read": "data[j]=a; out=data[j];",
+            "local_live_index": "data[j]=a; out=data[j]; out+=j;",
+            "local_far": "data[3]=0; out=data[j]; out+=padding[259];",
+        }
+        global_forms = {
+            "global_read": "out=ra_buffer[j+16];",
+            "global_write_read": "ra_buffer[j+16]=a; out=ra_buffer[j+16];",
+            "global_zero": "ra_buffer[3]=0; out=ra_buffer[3];",
+            "global_pressure": "u16 held=a+17; out=ra_buffer[j+16]; out+=held+(a^idx);",
+        }
+        calls = selections = expected_cases = 0
+        for kind in ("u8", "s8", "u16", "s16"):
+            width = 1 if kind.endswith("8") else 2
+            programs = []
+            for index_kind, cases in indices.items():
+                forms = dict(pointer_forms)
+                if index_kind == "u16":
+                    forms.update(local_forms)
+                    forms["partial"] = "u8 *bytes=ra_buffer; bytes[32]=a; out=p[idx]; out+=bytes[32];"
+                if index_kind == "s16":
+                    forms.update(global_forms)
+                for family, body in forms.items():
+                    name = f"address_{kind}_{index_kind}_{family}"
+                    prefix = "u16 out; u16 i; u16 j=idx&7; "
+                    suffix = ""
+                    if family.startswith("local"):
+                        prefix += f"{kind} data[8]; "
+                        if family == "local_far":
+                            prefix += "u8 padding[260]; padding[259]=a; "
+                        prefix += "for(i=0;i<8;i++) { data[i]=a+i*257; } "
+                        suffix = "for(i=0;i<8;i++) { ra_buffer[i]=data[i]; } "
+                    source = (f"u16 {name}({kind} *p,{index_kind} idx,u16 a) {{ "
+                              + prefix + body.replace("INDEX", "s16" if index_kind.startswith("s") else "u16")
+                              + suffix + " return out; }")
+                    programs.append(Program(name, family, width, int(kind.startswith("s")),
+                                            [2, 1 if index_kind.endswith("8") else 2, 2], 2, [], source))
+                    expected_cases += len(cases)*8
+            for policy in ("inline", "shared"):
+                for offset in range(0, len(programs), 12):
+                    group = programs[offset:offset+12]
+                    directory = self.output / "address-forms" / kind / policy / f"batch-{offset}"
+                    source = (f"{kind} ra_buffer[{128//width}];\n" +
+                              "\n".join(program.source for program in group) + "\nvoid main(void) {}\n")
+                    images = compile_generated(
+                        directory, os.environ.get("SAMESAMECC") or "samesamecc",
+                        os.environ.get("SAMESAMECL") or "samesamecl", group, source,
+                        linker_flags=("-share-arithmetic",) if policy == "shared" else ())
+                    for mode, image in images.items():
+                        assembly = (directory / mode / "main.asm").read_text()
+                        for program in group:
+                            index_kind = program.name.split("_")[2]
+                            body = assembly.split(f'.SECTION "{program.name}" FREE')[1].split(".ENDS")[0]
+                            if mode in ("ra", "ra_quiet"):
+                                if program.family in ("local_const", "local_zero", "local_next", "local_previous") and not program.constant:
+                                    self.assertIn("reuse preceding local-array store address in HL", body)
+                                    if program.family == "local_next":
+                                        self.assertIn("INC HL", body)
+                                    elif width == 2 or program.family == "local_previous":
+                                        self.assertIn("DEC HL", body)
+                                    selections += 1
+                                elif program.family == "ptr_read":
+                                    self.assertRegex(body, r"LD  [ACL],\(HL\)")
+                                    selections += 1
+                            for index in indices[index_kind]:
+                                for a in (0, 1, 7, 127, 128, 255, 32768, 65535):
+                                    initial = bytes((i*37+a+index)&255 for i in range(128))
+                                    buffer = bytearray(initial)
+                                    mask = (1 << (width*8))-1
+
+                                    def extend(value):
+                                        return value-(mask+1) if program.constant and value&(mask+1)//2 else value
+
+                                    def cell(byte):
+                                        return extend(int.from_bytes(buffer[byte:byte+width], "little"))
+
+                                    j = index&7
+                                    expected = cell(32)
+                                    if program.family in ("ptr_write", "ptr_read_write", "ptr_alias", "ptr_live_base"):
+                                        buffer[32:32+width] = (a&mask).to_bytes(width, "little")
+                                        if program.family == "ptr_write":
+                                            expected = a
+                                        elif program.family == "ptr_read_write":
+                                            expected = cell(32)
+                                        elif program.family == "ptr_live_base":
+                                            expected = cell(32+width)+cell(32)
+                                    elif program.family == "ptr_loop":
+                                        expected = sum(cell(32+i*width) for i in range(a&7))
+                                    elif program.family == "ptr_pressure":
+                                        expected += ((a+17)&65535)+(a^1234)
+                                    elif program.family == "partial":
+                                        buffer[32] = a&255
+                                        expected = cell(32)+(a&255)
+                                    elif program.family.startswith("local"):
+                                        data = [(a+i*257)&mask for i in range(8)]
+                                        if program.family in ("local_const", "local_next"):
+                                            data[3] = 0x9234&mask
+                                        elif program.family in ("local_zero", "local_far", "local_previous"):
+                                            data[3] = 0
+                                        else:
+                                            data[j] = a&mask
+                                        expected = extend(data[3] if program.family in ("local_const", "local_zero") else data[j])
+                                        if program.family == "local_next":
+                                            expected = extend(data[4])
+                                        elif program.family == "local_previous":
+                                            expected = extend(data[2])
+                                        if program.family == "local_live_index":
+                                            expected += j
+                                        elif program.family == "local_far":
+                                            expected += a&255
+                                        for i, value in enumerate(data):
+                                            buffer[i*width:(i+1)*width] = value.to_bytes(width, "little")
+                                    elif program.family.startswith("global"):
+                                        byte = (j+16)*width
+                                        if program.family == "global_zero":
+                                            byte = 3*width
+                                            buffer[byte:byte+width] = bytes(width)
+                                        elif program.family == "global_write_read":
+                                            buffer[byte:byte+width] = (a&mask).to_bytes(width, "little")
+                                        expected = cell(byte)
+                                        if program.family == "global_pressure":
+                                            expected += ((a+17)&65535)+((a^index)&65535)
+                                    pointer = (image.symbols["ra_buffer"]+32-width*index)&65535
+                                    result = execute(
+                                        image.rom, image.symbols[program.name], [pointer, index, a], program.widths,
+                                        initial, image.symbols["ra_buffer"], 2, image.transfers,
+                                        frame_bytes=2048, instruction_limit=100000)
+                                    self.assertEqual(
+                                        (result["value"], result["buffer"], result["port_writes"],
+                                         result["unmapped_instructions"]),
+                                        (expected&65535, buffer, [], 0),
+                                        (policy, mode, program.name, index, a))
+                                    calls += 1
+        self.assertEqual(calls, expected_cases*10)
+        self.assertEqual(selections, 96)
+        print(f"General address forms: {calls} guarded calls; {selections} native/reused selections", flush=True)
+
     def test_lowering_aware_word_array_pairs(self):
         operations = {
             "add": ("+", lambda x, y: x+y),
@@ -75,7 +232,8 @@ class BranchConditionsTests(unittest.TestCase):
                     assembly = (directory / mode / "main.asm").read_text()
                     for program in group:
                         body = assembly.split(f'.SECTION "{program.name}" FREE')[1].split(".ENDS")[0]
-                        if mode in ("ra", "ra_quiet") and program.variant == 2 and program.family in operations:
+                        if mode in ("ra", "ra_quiet") and program.variant == 2 and (
+                                program.family in operations or program.family == "multi_read"):
                             reads = [part for part in body.split("; TAC:")[1:]
                                      if ":=" in part.splitlines()[0] and
                                      "[" in part.splitlines()[0].split(":=", 1)[1]]
@@ -139,7 +297,7 @@ class BranchConditionsTests(unittest.TestCase):
                                     (expected&65535, buffer, [], 0),
                                     (policy, mode, program.name, a, b))
                                 calls += 1
-        self.assertEqual(selected, 40)
+        self.assertEqual(selected, 48)
         self.assertEqual(calls, len(programs)*80*10)
         print(f"Word-array pairs: {len(programs)} shapes, {calls} guarded calls, "
               f"{selected} simultaneous HL/BC selections", flush=True)

@@ -6550,6 +6550,63 @@ static void _observe_register_allocator_transition_preparation(void *context,
       costs[choice][0] -= 4;
       costs[choice][1]--;
     }
+    if (physical_register == Z80_PHY_BC && g_tacs[producer].op == TAC_OP_ARRAY_READ &&
+        g_tacs[producer].arg1_node != NULL &&
+        (g_tacs[producer].arg1_node->flags & TREE_NODE_FLAG_ARRAY) != 0 &&
+        !((g_tacs[producer].arg1_node->flags & TREE_NODE_FLAG_GLOBAL) != 0 &&
+          g_tacs[producer].arg2_type == TAC_ARG_TYPE_CONSTANT)) {
+      int element_bytes = get_variable_type_size(get_array_item_variable_type(g_tacs[producer].arg1_node)) / 8;
+      int global = (g_tacs[producer].arg1_node->flags & TREE_NODE_FLAG_GLOBAL) != 0;
+      if (element_bytes == 1 || element_bytes == 2) {
+        costs[choice][0] -= (global == YES ? move_cycles : address_cycles - frame_address_cycles) +
+          element_bytes * indexed_cycles - (element_bytes == 1 ? 7 : 24);
+        costs[choice][1] -= (global == YES ? 1 : address_bytes - frame_address_bytes) +
+          element_bytes * indexed_bytes - (element_bytes == 1 ? 1 : 4);
+        if (g_tacs[producer].arg2_type != TAC_ARG_TYPE_CONSTANT) {
+          costs[choice][0] -= element_bytes * move_cycles;
+          costs[choice][1] -= element_bytes;
+        }
+      }
+    }
+    if (physical_register == Z80_PHY_BC && g_tacs[producer].op == TAC_OP_ARRAY_READ &&
+        g_tacs[consumer].arg1_type == TAC_ARG_TYPE_TEMP &&
+        g_tacs[consumer].arg2_type == TAC_ARG_TYPE_TEMP &&
+        (int)g_tacs[consumer].arg2_d == temp_index &&
+        (g_tacs[consumer].op == TAC_OP_ADD || g_tacs[consumer].op == TAC_OP_SUB ||
+         g_tacs[consumer].op == TAC_OP_AND || g_tacs[consumer].op == TAC_OP_OR || g_tacs[consumer].op == TAC_OP_XOR)) {
+      struct temp_register *companion = _find_temp_register_info(transition_context->function_node,
+        (int)g_tacs[consumer].arg1_d);
+      int scan, compatible = YES;
+      if (companion != NULL && companion != temp && companion->size == 16 &&
+          companion->read_count >= 1 && companion->write_count == 1 &&
+          companion->live_start >= 0 && companion->live_start < producer &&
+          consumer - companion->live_start <= 256 &&
+          (companion->physical_register == Z80_PHY_NONE || companion->physical_register == Z80_PHY_HL) &&
+          _is_register_allocator_candidate_allowed_for_physical_register(&g_tacs[companion->live_start],
+            &g_tacs[consumer], companion, Z80_PHY_HL, TAC_USE_ARG1) == YES) {
+        for (scan = companion->live_start + 1; scan < consumer; scan++) {
+          struct tac effect = g_tacs[scan];
+          if (effect.op == TAC_OP_DEAD || effect.op == TAC_OP_CREATE_VARIABLE)
+            continue;
+          if (scan == producer)
+            effect.result_physical_register = Z80_PHY_BC;
+          if (_tac_reads_temp_register(&effect, companion->register_index) == YES ||
+              effect.function_node != transition_context->function_node || effect.op == TAC_OP_LABEL ||
+              _is_register_allocator_jump_op(effect.op) == YES ||
+              _get_register_allocator_target_policy()->is_tac_transparent_for_physical_register(&effect, Z80_PHY_HL) == NO) {
+            compatible = NO;
+            break;
+          }
+        }
+        if (compatible == YES) {
+          int transfers = companion->read_count == 1 ? 4 : 2;
+          costs[choice][0] += transfers * indexed_cycles;
+          costs[choice][1] += transfers * indexed_bytes;
+          RA_TRACE((stderr, "register_allocator: compatible_word_group function=%s producer=%d consumer=%d companion=r%d phy=HL|BC spill_reload_saved=yes\n",
+            transition_context->function_node->children[1]->label, producer, consumer, companion->register_index));
+        }
+      }
+    }
     if (byte_count == 1 && physical_register != Z80_PHY_A) {
       costs[choice][0] -= move_cycles;
       costs[choice][1]--;
