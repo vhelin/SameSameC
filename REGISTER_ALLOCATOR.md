@@ -249,6 +249,21 @@ boot cycles without changing RAM; calculations-1/2 are unchanged.
 See [step 2ar](Z80_CODEGEN_PLAN.md#2ar-broader-bounded-nested-copyfill-selection-completed)
 for the actual blockers, general safety proof, complete costs and qualification.
 
+Normal RA now selects compatible word-array producers using existing consumer
+roles and a second invocation of the same bounded basic-block scan. Proven
+native BC word loads leave another HL owner intact, eliminating indexed
+spill/reload pairs. Existing transactions, costs, ownership, CFG joins/latches
+and split placement are reused; no new scheduler, helper, register, frame slot,
+ABI or flag is added. Byte widening still uses its old emitter and is charged
+for necessary transfers; pointer/conflict/prefix fallbacks remain conservative.
+Production C grows by 48 net lines. Sprite improves 3.41% and Tracker 1.50% in
+ordinary RA cycles, saving 56 and twelve kernel bytes; Array and A* also shrink.
+All eighteen ordinary/shared workloads are nonregressing per input, with
+unchanged wrappers and full frame bounds. Each calculations-2/3 saves seventeen/
+seventy used bytes without changing RAM or display controls. See
+[step 2as](Z80_CODEGEN_PLAN.md#2as-lowering-aware-multi-value-register-allocation-and-scheduling-completed)
+for the actual instruction forms, exact-parent cost controls and qualification.
+
 Normal RA now reuses byte comparison and counter emitters when the existing
 bounded known-bit query proves word values are 0..255. The query also accepts
 nearby scalar definitions and addition with a proven byte-sized maximum.

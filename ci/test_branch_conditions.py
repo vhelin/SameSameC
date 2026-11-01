@@ -16,6 +16,134 @@ from ra_cpu import execute
 
 
 class BranchConditionsTests(unittest.TestCase):
+    def test_lowering_aware_word_array_pairs(self):
+        operations = {
+            "add": ("+", lambda x, y: x+y),
+            "sub": ("-", lambda x, y: x-y),
+            "and": ("&", lambda x, y: x&y),
+            "or": ("|", lambda x, y: x|y),
+            "xor": ("^", lambda x, y: x^y),
+        }
+        forms = {
+            **{name: f"out=left[p]{op}right[q];" for name, (op, _) in operations.items()},
+            "pressure": "u16 extra=a+b; out=left[p]+right[q]+extra+(a^b);",
+            "multi_read": "u16 held=left[p]; out=held+right[q]+held;",
+            "live_indices": "out=left[p]+right[q]+p+q;",
+            "biased": "lp=&left[4]; rp=&right[4]; out=lp[p-4]+rp[q-4];",
+            "signed_index": "s16 index=p; out=left[index]+right[q];",
+            "absolute": "out=left[p]-ra_buffer[3]; out+=ra_buffer[6]+right[q];",
+            "overlap": "u16 held=left[p]; left[q]=b; out=held+left[q];",
+            "branch": "out=left[p]+right[q]; if(a&256) { out=left[q]^right[p]; }",
+            "nested_call": "out=left[p]+pair_wrap(right[q]);",
+            "assembly": 'u16 held=left[p]; __asm("LD HL,0"); out=held+right[q];',
+            "multiple_latches": (
+                "out=0; for(i=0;i<(b&7);i++) { if(i&1) { "
+                "out+=left[i]+right[(i+1)&7]; continue; } "
+                "out+=left[(i+1)&7]-right[i]; }"),
+        }
+        programs = []
+        for kind in ("u16", "s16", "u8", "s8"):
+            for family, body in forms.items():
+                if kind.endswith("8") and family not in operations:
+                    continue
+                name = f"word_pair_{kind}_{family}"
+                if kind.endswith("8"):
+                    body = ("u16 wide_left=left[p]; u16 wide_right=right[q]; "
+                            f"out=wide_left{operations[family][0]}wide_right;")
+                source = (f"u16 {name}(u16 a,u16 b) {{ {kind} left[8]; {kind} right[8]; "
+                          f"{kind} *lp; {kind} *rp; u16 i; u16 p=a&7; u16 q=b&7; u16 out; "
+                          "for(i=0;i<8;i++) { left[i]=a+i*257; "
+                          + ("right[i]=b^(i*4660); " if family != "overlap" else "") + "} "
+                          + body + " return out; }")
+                programs.append(Program(name, family, 1 if kind.endswith("8") else 2,
+                                        int(kind.startswith("s")), [2, 2], 2, [], source))
+
+        calls = selected = 0
+        for policy in ("inline", "shared"):
+            for offset in range(0, len(programs), 12):
+                group = programs[offset:offset+12]
+                directory = self.output / "word-array-pairs" / policy / f"batch-{offset}"
+                source = ("u16 ra_buffer[64];\n"
+                          "u16 pair_touch(u16 value) { ra_buffer[63]^=value; return value+1; }\n"
+                          "u16 pair_wrap(u16 value) { return pair_touch(value)+1; }\n" +
+                          "\n".join(program.source for program in group) + "\nvoid main(void) {}\n")
+                images = compile_generated(
+                    directory, os.environ.get("SAMESAMECC") or "samesamecc",
+                    os.environ.get("SAMESAMECL") or "samesamecl", group, source,
+                    linker_flags=("-share-arithmetic",) if policy == "shared" else ())
+                for mode, image in images.items():
+                    assembly = (directory / mode / "main.asm").read_text()
+                    for program in group:
+                        body = assembly.split(f'.SECTION "{program.name}" FREE')[1].split(".ENDS")[0]
+                        if mode in ("ra", "ra_quiet") and program.variant == 2 and program.family in operations:
+                            reads = [part for part in body.split("; TAC:")[1:]
+                                     if ":=" in part.splitlines()[0] and
+                                     "[" in part.splitlines()[0].split(":=", 1)[1]]
+                            left = next(part for part in reads if "_left_" in part.splitlines()[0])
+                            right = next(part for part in reads if "_right_" in part.splitlines()[0])
+                            self.assertIn("; retained result in HL", left, (policy, mode, program.name))
+                            self.assertNotRegex(left, r"LD\s+\(IX[+-]\d+\),[LH]")
+                            self.assertIn("LD  C,(IY+0)", right, (policy, mode, program.name))
+                            self.assertIn("LD  B,(IY+1)", right)
+                            self.assertIn("; retained result in BC", right)
+                            self.assertNotIn("LD  L,(IY+0)", right)
+                            selected += 1
+                        if mode in ("ra", "ra_quiet") and program.family == "absolute":
+                            self.assertRegex(body, r"LD  BC,\(ra_buffer\s*\+\s*(?:6|12)&65535\)")
+                        for a in (0, 1, 7, 127, 128, 255, 256, 32767, 32768, 65535):
+                            for b in (0, 1, 7, 255, 256, 32768, 0x9234, 65535):
+                                initial = bytes((i*37+a+b)&255 for i in range(128))
+                                mask = (1 << (program.variant*8))-1
+                                left = [(a+i*257)&mask for i in range(8)]
+                                right = [(b^(i*4660))&mask for i in range(8)]
+
+                                def extend(value):
+                                    return value-(mask+1) if program.constant and value&(mask+1)//2 else value
+
+                                p, q = a&7, b&7
+                                x, y = extend(left[p]), extend(right[q])
+                                expected = x+y
+                                if program.family in operations:
+                                    expected = operations[program.family][1](x, y)
+                                elif program.family == "pressure":
+                                    expected += ((a+b)&65535)+(a^b)
+                                elif program.family == "multi_read":
+                                    expected += x
+                                elif program.family == "live_indices":
+                                    expected += p+q
+                                elif program.family == "absolute":
+                                    expected -= int.from_bytes(initial[6:8], "little")
+                                    expected += int.from_bytes(initial[12:14], "little")
+                                elif program.family == "overlap":
+                                    expected = x+extend(b&mask)
+                                elif program.family == "branch" and a&256:
+                                    expected = extend(left[q])^extend(right[p])
+                                elif program.family == "nested_call":
+                                    expected += 2
+                                elif program.family == "multiple_latches":
+                                    expected = sum(
+                                        extend(left[i])+extend(right[(i+1)&7]) if i&1 else
+                                        extend(left[(i+1)&7])-extend(right[i])
+                                        for i in range(b&7))
+                                buffer = bytearray(initial)
+                                if program.family == "nested_call":
+                                    buffer[126] ^= y&255
+                                    buffer[127] ^= (y>>8)&255
+                                result = execute(
+                                    image.rom, image.symbols[program.name], [a, b], [2, 2],
+                                    initial, image.symbols["ra_buffer"], 2, image.transfers,
+                                    frame_bytes=2048, instruction_limit=100000)
+                                self.assertEqual(
+                                    (result["value"], result["buffer"], result["port_writes"],
+                                     result["unmapped_instructions"]),
+                                    (expected&65535, buffer, [], 0),
+                                    (policy, mode, program.name, a, b))
+                                calls += 1
+        self.assertEqual(selected, 40)
+        self.assertEqual(calls, len(programs)*80*10)
+        print(f"Word-array pairs: {len(programs)} shapes, {calls} guarded calls, "
+              f"{selected} simultaneous HL/BC selections", flush=True)
+
     def test_nested_copy_fill_loops(self):
         forms = {
             "copy": "dst[i]=src[i];",

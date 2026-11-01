@@ -4505,7 +4505,7 @@ static int _generate_asm_array_read_z80(struct tac *t, FILE *file_out, struct tr
   struct z80_location arg1_location;
   struct z80_location arg2_location;
   char address_label[MAX_NAME_LENGTH + 32];
-  int constant_address = NO, byte_offset;
+  int constant_address = NO, byte_offset, result_materialized = NO;
   int var_type, result_needs_16_bit, ix_offset = 0, base_memory_pointer_load = NO, arg2_is_zero = NO, base_materialized = NO, base_in_hl;
 
   /* OVERRIDE for __z80_in */
@@ -4725,7 +4725,21 @@ static int _generate_asm_array_read_z80(struct tac *t, FILE *file_out, struct tr
   else {
     if (var_type == VARIABLE_TYPE_INT16 || var_type == VARIABLE_TYPE_UINT16) {
       /* 16-bit */
-      if (constant_address == YES && arg1_location.kind == LOC_GLOBAL)
+      if (result_location.kind == LOC_PHY_BC) {
+        if (constant_address == YES && arg1_location.kind == LOC_GLOBAL)
+          fprintf(file_out, "      LD  BC,(%s)\n", arg1_location.label);
+        else if (base_in_hl == YES) {
+          fprintf(file_out, "      LD  C,(HL)\n");
+          _inc_hl(file_out);
+          fprintf(file_out, "      LD  B,(HL)\n");
+        }
+        else {
+          _load_from_iy_to_c(0, file_out);
+          _load_from_iy_to_b(1, file_out);
+        }
+        result_materialized = YES;
+      }
+      else if (constant_address == YES && arg1_location.kind == LOC_GLOBAL)
         fprintf(file_out, "      LD  HL,(%s)\n", arg1_location.label);
       else if (base_in_hl == YES) {
         fprintf(file_out, "      LD  A,(HL)\n");
@@ -4799,7 +4813,7 @@ static int _generate_asm_array_read_z80(struct tac *t, FILE *file_out, struct tr
               _get_z80_physical_register_name(result_location.phy));
       return FAILED;
     }
-    if (_store_from_hl(&result_location, ix_offset, file_out) == FAILED)
+    if (result_materialized == NO && _store_from_hl(&result_location, ix_offset, file_out) == FAILED)
       return FAILED;
     fprintf(file_out, "      ; retained result in %s\n", _get_z80_physical_register_name(result_location.phy));
     return SUCCEEDED;

@@ -5351,7 +5351,7 @@ The SDCC study source is a retained public snapshot, not a claimed exact build
 tree for the pinned binary; selected-code evidence comes from the fresh
 competitor assembly.
 
-### 2as. Lowering-Aware Multi-Value Register Allocation And Scheduling (Planned)
+### 2as. Lowering-Aware Multi-Value Register Allocation And Scheduling (Completed)
 
 Extend the existing allocator, not a parallel allocation framework. Reuse
 CFG/liveness, byte/pair ownership, target-policy clobbers, transactional join/
@@ -5382,6 +5382,69 @@ all eighteen ordinary/shared RA workloads nonregressing under existing gates.
 Exercise simultaneous live values, byte/pair overlap, unequal joins, multiple
 latches, nested calls and conservative fallbacks. Preserve complete caller/
 callee frame bounds; report compiler source growth and remove superseded logic.
+
+Implemented the bounded compatible-word-pair improvement, not a new global
+instruction scheduler. Word array producers reuse the existing consumer-role
+selector; a second invocation of the same basic-block linear scan reconciles
+earlier intervals with already selected later lowering. Existing active-slot
+transactions, costs, byte/pair ownership, CFG/join/latch handling and split
+placement remain authoritative. No TAC reordering or new allocation framework.
+
+Word results assigned BC now load there directly, reusing the existing IY-to-B/C
+emitters, an ordinary HL-address form or an absolute BC load. A fixed-array
+producer with proven native BC lowering and no destructive prefix can preserve
+another HL owner. Pointer/address materialization, conflicting ownership,
+signed/byte widening and retained prefixes keep their existing clobber/fallback
+contracts. The preference is restricted to actual word elements, not merely
+word-sized results; the cost observer charges the old HL-to-BC moves for widened
+byte elements and the extra one byte/four T-states of absolute BC versus HL
+loads. An initial widened-byte placement slowdown was rejected against the
+exact parent, then fixed at this shared type/cost boundary.
+
+The representative complete word-pair addition, including array initialization,
+shrinks 241 -> 229 bytes and 7287 -> 7211 T-states, with frame 47 unchanged and
+two fewer frame-byte reads/writes per call. Subtraction saves fourteen bytes
+and 84 T-states. Tracker's phase/step pair now keeps the first word in HL,
+loads the second directly into BC and adds without the first word's indexed
+spill/reload. These are ordinary typed producer/consumer rules, not workload
+names, dimensions or source-pattern exceptions.
+
+Immediate-parent ordinary RA results (shared saves the same bytes/T-states):
+
+| Workload | Kernel bytes, before -> after | Aggregate kernel T-states, before -> after | Change |
+| --- | --- | --- | --- |
+| Array | 1280 -> 1278 | 5411609 -> 5409609 | -0.037% |
+| Sprite | 3438 -> 3382 | 12994566 -> 12551046 | -3.413% |
+| Tracker | 3403 -> 3391 | 10536077 -> 10377997 | -1.500% |
+| A* | 2629 -> 2627 | 46432291 -> 46432123 | less than -0.001% |
+
+The other fourteen kernels have unchanged measurements in both policies;
+thirteen remain ROM-identical. Stencil swaps equivalent HL/BC load/add operand
+roles without changing code size, timing or traffic.
+Every measured complete/kernel input's cycles, instructions, frame reads/writes
+and frame/access extents are nonincreasing; wrappers and full frame bounds are
+unchanged. Each calculations-2 saves seventeen used bytes and 6256 boot
+T-states; each calculations-3 saves seventy bytes and 62616 T-states.
+Calculations-1, all display/CRC/palette/mapper controls and console RAM are
+unchanged.
+
+Qualification: fresh full eight-configuration comparison, 144 builds / 2224
+guarded calls / 216 calibrated independent timings; all eighteen fingerprints
+and 108 external rows unchanged. Trace-enabled and address-sanitized repeats
+cover all 36 RA/shared rows, yielding 72 identical target ROMs. The new regression
+exercises 42 signed/unsigned word and explicitly widened byte shapes across
+both policies/all five numerical modes: 33600 guarded calls and forty explicit
+simultaneous HL/BC selections per build, plus native absolute BC selection.
+Pressure, live indices, biased pointers, overlapping writes, unequal branches,
+multiple latches, nested calls and HL-clobbering assembly are included.
+Related width/address/forwarding/control/join suites and the native strict-C89
+ownership/clobber/frame verifier pass. Exact-parent fixture controls compare
+13440 RA inputs and ninety complete functions, with no growth in code/frame
+bytes or per-input cycles/instructions/frame reads/writes. All six self-contained
+console projects pass. Production C grows by 48 net lines, with no new function,
+slot, reservation, IR field, ABI, candidate register or flag. DE/H/L expansion
+remains deferred. Evidence is retained under
+`C:\cygwin64\tmp\multi-value-allocation-20261101`.
 
 ### 2at. General Address-Form Selection And Induction-Address Reuse (Planned)
 
@@ -5679,12 +5742,12 @@ to this cross-compiler experiment.
    compiler source growth visible and remove superseded logic. Commit the batch
    locally with the validation summary; do not push.
 
-The recorded implementation batches through **2ar** are complete, including
+The recorded implementation batches through **2as** are complete, including
 the user-requested bounded sequence **2ak-2an**; adding the larger comparison
 applications was qualified separately from those optimizations. Steps
-**2as-2av** are the new planned RA-only profile follow-ups, in that order;
-**2as** is next. Step 3 must reuse 2at's address work, and any DE expansion in
-2as must wait for a compatible 2av frame policy. The initial SM83 backend
+**2at-2av** are the remaining planned RA-only profile follow-ups, in that order;
+**2at** is next. Step 3 must reuse 2at's address work, and any ordinary DE
+expansion must wait for a compatible 2av frame policy. The initial SM83 backend
 remains the next backend target, not a reason
 to make every possible Z80 optimization mandatory. Keep qualified Z80 behavior
 and shared core coverage intact throughout.

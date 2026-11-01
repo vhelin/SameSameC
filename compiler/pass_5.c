@@ -5037,7 +5037,15 @@ int is_z80_register_allocator_byte_transparent_tac(struct tac *t, int physical_r
   }
 
   /* Byte operands can use the byte emitter and preserve the full word result without touching HL. */
-  if (physical_register == Z80_PHY_HL)
+  if (physical_register == Z80_PHY_HL) {
+    if (t->op == TAC_OP_ARRAY_READ && t->result_physical_register == Z80_PHY_BC &&
+        t->arg1_type == TAC_ARG_TYPE_LABEL && t->arg1_node != NULL &&
+        (t->arg1_node->flags & TREE_NODE_FLAG_ARRAY) != 0 &&
+        t->arg1_physical_register == Z80_PHY_NONE && t->arg2_physical_register != Z80_PHY_HL &&
+        t->store_retained_to_spill_operand == -1 && t->reload_spill_to_physical_operand == -1 &&
+        (get_array_item_variable_type(t->arg1_node) == VARIABLE_TYPE_UINT16 ||
+         get_array_item_variable_type(t->arg1_node) == VARIABLE_TYPE_INT16))
+      return YES;
     return g_allocator_enabled == YES && g_allocator_force_all_spill == NO &&
       (t->op == TAC_OP_AND || t->op == TAC_OP_OR || t->op == TAC_OP_XOR ||
        (t->op == TAC_OP_SUB && t->arg2_physical_register != Z80_PHY_A && t->arg2_physical_register != Z80_PHY_BC &&
@@ -5048,6 +5056,7 @@ int is_z80_register_allocator_byte_transparent_tac(struct tac *t, int physical_r
       t->result_var_type == VARIABLE_TYPE_UINT16 &&
       (t->arg1_type != TAC_ARG_TYPE_CONSTANT || (t->arg1_d >= 0.0 && t->arg1_d <= 255.0)) &&
       (t->arg2_type != TAC_ARG_TYPE_CONSTANT || (t->arg2_d >= 0.0 && t->arg2_d <= 255.0)) ? YES : NO;
+  }
 
   if (t->op != TAC_OP_ASSIGNMENT && t->op != TAC_OP_ADD && t->op != TAC_OP_SUB && t->op != TAC_OP_AND && t->op != TAC_OP_OR && t->op != TAC_OP_XOR)
     return NO;
@@ -6524,9 +6533,22 @@ static void _observe_register_allocator_transition_preparation(void *context,
     costs[choice][1] = byte_count * indexed_bytes;
     if (physical_register == Z80_PHY_BC && g_tacs[producer].op != TAC_OP_COMPLEMENT &&
       g_tacs[producer].op != TAC_OP_AND && g_tacs[producer].op != TAC_OP_OR && g_tacs[producer].op != TAC_OP_XOR &&
-        (_is_first_allocator_producer(g_tacs[producer].op) == YES || g_tacs[producer].op == TAC_OP_DIV)) {
+        (_is_first_allocator_producer(g_tacs[producer].op) == YES || g_tacs[producer].op == TAC_OP_DIV ||
+         (g_tacs[producer].op == TAC_OP_ARRAY_READ &&
+          get_variable_type_size(g_tacs[producer].arg1_node != NULL ?
+            get_array_item_variable_type(g_tacs[producer].arg1_node) : g_tacs[producer].arg1_var_type) == 8))) {
       costs[choice][0] -= 2 * move_cycles;
       costs[choice][1] -= 2;
+    }
+    if (physical_register == Z80_PHY_BC && g_tacs[producer].op == TAC_OP_ARRAY_READ &&
+        g_tacs[producer].arg1_node != NULL &&
+        (g_tacs[producer].arg1_node->flags & (TREE_NODE_FLAG_ARRAY | TREE_NODE_FLAG_GLOBAL)) ==
+        (TREE_NODE_FLAG_ARRAY | TREE_NODE_FLAG_GLOBAL) &&
+        g_tacs[producer].arg2_type == TAC_ARG_TYPE_CONSTANT &&
+        get_variable_type_size(get_array_item_variable_type(g_tacs[producer].arg1_node)) == 16) {
+      /* Absolute BC loads cost one byte/four cycles more than absolute HL loads. */
+      costs[choice][0] -= 4;
+      costs[choice][1]--;
     }
     if (byte_count == 1 && physical_register != Z80_PHY_A) {
       costs[choice][0] -= move_cycles;
@@ -10750,6 +10772,14 @@ static int _run_basic_block_linear_scan(struct tree_node *function_node,
         continue;
 
       next_use = candidate.consumer_instruction;
+      if (producer->op == TAC_OP_ARRAY_READ && temp_register->size == 16 &&
+          get_variable_type_size(producer->arg1_node != NULL ?
+            get_array_item_variable_type(producer->arg1_node) : producer->arg1_var_type) == 16) {
+        int preferred = _get_register_allocator_split_reload_physical_register(
+          &g_tacs[next_use], candidate.consumer_operand, temp_register->size);
+        if (preferred != Z80_PHY_NONE)
+          physical_register = preferred;
+      }
       first_candidate = candidate;
       if (candidate.has_single_read == NO &&
           _is_register_allocator_candidate_allowed_for_physical_register(producer, &g_tacs[next_use], temp_register,
@@ -11382,6 +11412,10 @@ static int _scan_register_allocator_basic_blocks(struct tree_node *function_node
       path_state_entries, path_state_count) == FAILED) {
     goto cleanup;
   }
+  /* Reconcile earlier candidates against the now-known lowering of later producers. */
+  if (_run_basic_block_linear_scan(function_node, blocks, block_count, edges, edge_count,
+      path_state_entries, path_state_count) == FAILED)
+    goto cleanup;
   if (_place_split_spill_reloads(function_node, blocks, block_count,
       edges, edge_count) == FAILED) {
     goto cleanup;
