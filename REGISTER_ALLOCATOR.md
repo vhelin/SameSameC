@@ -304,6 +304,27 @@ coverage assertion remains disclosed. Production C grows by 191 net lines.
 See [step 2au](Z80_CODEGEN_PLAN.md#2au-memory-aware-regional-reuse-and-broader-invariant-motion-completed)
 for lifetime/forwarding blockers, complete costs and qualification.
 
+Normal RA now keeps proven hot scalar windows across large-frame loops using
+the existing bounded-counter proof, exact incoming-edge witnesses and IX
+materializer. A bounded list of eight latch indices keeps restoration
+obligations separate from the unchanged witness FIFO: neither can evict the
+other. Restoration is emitted only when needed and charged against the removed
+header setup. Unknown/unequal entries, nonzero preferred header bias and full
+latch frontiers retain fallback. Ten nested loops with ten inner forward joins
+exercise eight pending obligations without losing ordinary join facts.
+DE, physical homes, cold-array HL/IY addressing,
+ownership, ASM/call/recursive/banked ABI and full storage remain unchanged.
+No new production helper or address cache is added; production C grows 20 net lines.
+Six large-frame applications shrink and run faster; ordinary Navigation/A*
+save 48/eighteen bytes and 5.49%/2.30% cycles. All eighteen ordinary/shared
+workloads are nonregressing per input, with unchanged callers and frames.
+The new self-contained oracle covers 120 shapes/58800 calls per host;
+23520 exact-parent fixture comparisons pass without code/traffic/frame growth.
+All six consoles and the native verifier pass. The unchanged parent final
+frame-offset coverage assertion remains disclosed rather than weakened.
+See [step 2av](Z80_CODEGEN_PLAN.md#2av-stable-large-frame-addressing-and-register-roles-completed)
+for actual setup counts, cache/bias guards, complete costs and qualification.
+
 Normal RA now reuses byte comparison and counter emitters when the existing
 bounded known-bit query proves word values are 0..255. The query also accepts
 nearby scalar definitions and addition with a proven byte-sized maximum.

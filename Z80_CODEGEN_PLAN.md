@@ -5696,36 +5696,105 @@ exact-parent controls and rejected scouts are retained under
 `C:\cygwin64\tmp\regional-reuse-20261102`. Commit locally without pushing;
 2av is next.
 
-### 2av. Stable Large-Frame Addressing And Register Roles (Planned)
+### 2av. Stable Large-Frame Addressing And Register Roles (Completed)
 
-Extend the existing hot-frame layout, address-window cache and exact edge
-witnesses. Steps 2aq and 2ar are already implemented; this is a general
-large/biased-frame policy, not another small-header special case.
+Normal RA extends the existing bounded memory-counter/header proof to large
+frames while preserving DE as the frame pointer. The existing hot scalar/spill
+layout and 2at's native HL/indexed IY cold-array forms remain unchanged.
 
-- Keep the hot scalar window stable across large loops and joins while cold
-  array addresses use other legal forms. Track actual frame origin/bias on
-  every incoming edge; unknown or disagreeing witnesses require safe setup.
-- The current bounded loop-header proof excludes full frames beyond 128
-  bytes. Tracker, Navigation, A*, QuickSort and Sprite all exceed that limit.
-  Pinned SDCC uses IX as its frame pointer here and HL/DE/SP-relative array
-  addressing, avoiding repeated destruction of the scalar frame base.
-- Evaluate either extending proven cache states to large/biased frames or an
-  explicit internal function/region register-role policy. Charge setup,
-  preservation, window changes and cold accesses before selecting a policy.
-- Any DE availability must be reflected consistently in frame-location
-  resolution, ownership, all emitters and call clobbers before 2as uses it.
-  Do not silently alter caller/callee assumptions or external, banked,
-  recursive, cross-file, indirect and assembly-facing ABI contracts.
-- Reuse 2at's address forms and existing frame helpers. Preserve physical
-  home identities, escaped addresses and full reserved/accessed frame bounds;
-  do not obtain a timing win by allocating hidden storage below SP.
+- Entry must already establish actual `IX = DE`; every other incoming edge
+  must agree through an exact recorded witness. Missing, unequal, future or
+  evicted observations still force normal setup. The selection marker is now
+  emitted only after the complete incoming-edge proof succeeds.
+- Large-frame selection additionally requires a zero preferred header bias
+  and spare capacity in a bounded eight-index latch frontier.
+  The existing unsigned bounded-counter, memory-home, word-span, spill and
+  ownership proofs remain mandatory. No application or array-dimension
+  recognizer replaces them.
+- A selected future latch is a mandatory canonical-origin obligation. Its
+  instruction index is kept separately from the existing address witnesses:
+  FIFO recording cannot evict obligations, and obligations cannot crowd out
+  ordinary joins. Eight nested latches can be pending; further selections
+  fall back until an emitted latch frees a slot. The original witness FIFO
+  remains unchanged.
+- Before that unconditional backedge, the existing IX setup helper restores
+  origin zero only if needed. This makes the header assumption true even when
+  the body/counter update reused a nonzero window. Merely deleting the old
+  full-frame guard would have been unsound.
+- The zero-bias header would otherwise need its ordinary six-byte/29-T-state
+  setup. Restoration costs zero, a two/four-byte 10/20-T-state adjustment, or
+  that same six-byte/29-T-state setup. No A/BC/HL preservation, stack traffic or
+  hidden slot is introduced. Complete-function and per-input costs below
+  charge actual cold accesses, changes of window and restoration.
 
-Acceptance: reduce measured frame-address setup in at least two large-frame
-applications with smaller/faster complete code and non-growing full storage.
-Exercise displacement/window boundaries, large arrays, nested loops,
-multiple/unequal entries and latches, calls, recursion, ASM and escapes.
-Run existing biased-window/ownership contracts, all eighteen ordinary/shared
-RA workloads and all six self-contained console qualifications.
+No new production helper, address cache, allocator, register role, ABI or flag
+is added. The eight pending instruction indices use 32 bytes of compiler-host
+metadata, not Z80 storage. Physical homes, escaped addresses and full
+reserved/accessed storage are unchanged. Calls, recursion,
+banked/cross-file/indirect and assembly-facing contracts retain their existing
+emitters and conservative proofs. Source ASM still disables frame joins.
+Production C grows by **20 net lines**.
+
+Rejected: storing obligations in the existing witness slots passed the first
+cohort, but ten forward diamonds inside ten nested loops exposed lost join
+facts: a complete 149-byte-frame function grew **787 -> 847 bytes** and slowed
+**9269 -> 9994 cycles**. Separating the bounded index frontier fixes that
+general resource conflict and removes ten production lines from the prototype;
+the same pressure is now part of the paired-cost oracle.
+
+Exact-parent results against `46ca494ac733b7201cd687e38ed6b4f82f4ce159`:
+
+| Kernel | RA bytes | RA kernel cycles | Shared bytes | Shared kernel cycles | Executed frame setups, either policy |
+|---|---:|---:|---:|---:|---:|
+| Path | 991 -> 979 | 3955721 -> 3877421 | 991 -> 979 | 3955721 -> 3877421 | 9520 -> 6820 |
+| Sprite | 3046 -> 3004 | 11716623 -> 11485899 | 3018 -> 2976 | 11724399 -> 11493675 | 11268 -> 3312 |
+| Tracker | 2986 -> 2956 | 10047765 -> 9868835 | 2958 -> 2928 | 10063101 -> 9884171 | 11808 -> 5638 |
+| Navigation | 2684 -> 2636 | 10518213 -> 9940417 | 2592 -> 2544 | 10520589 -> 9942793 | 24183 -> 4259 |
+| A* | 2534 -> 2516 | 44129237 -> 43112816 | 2534 -> 2516 | 44129237 -> 43112816 | 44315 -> 9266 |
+| QuickSort | 1642 -> 1630 | 24196338 -> 24062242 | 1642 -> 1630 | 24196338 -> 24062242 | 40555 -> 35931 |
+
+These six applications have full frames of 182..3652 bytes. Ordinary
+Navigation/A* cycles improve 5.49%/2.30%. The other twelve kernels remain
+byte-identical in both policies. Complete sections, callers, individual-input
+cycles/instructions/stack reads/writes and full storage do not grow in any of
+the eighteen ordinary/shared workloads. Dynamic setup counts execute the
+actual `ADD IX,DE` instructions, not just assembly-pattern counts. Every
+per-input cycle/instruction saving is exactly 29 T-states/two instructions
+per removed setup; executed INC/DEC IX counts are unchanged.
+
+Qualification:
+
+- Release/traced/ASan: **108 fresh workload builds**, **1668 guarded calls**,
+  **162 independent timings**, **556 exact-parent comparisons per host** and
+  **72 cross-build workload ROM identities**.
+- The new self-contained oracle covers **120 shapes and 58800 guarded calls
+  per host**, all five numerical modes and inline/shared arithmetic. It
+  exercises **512 header selections and 96 nonzero latch restorations**.
+  Cases include window boundaries through 1024-byte arrays, diamonds,
+  continue, ten nested loops with eight protected obligations and ten inner
+  forward joins, full witness caches, late/unequal entries, multiple latches,
+  counter overwrites,
+  escaped homes, recursion, calls, ASM, output ports and full buffer guards.
+  The ten-level case executes four bodies rather than an exponential workload.
+- **23520 exact-parent fixture comparisons / 47040 paired guarded calls**:
+  no growing complete function, cycle, instruction count, individual stack
+  read/write count or frame. **122 of 330 complete function rows shrink**;
+  every frame is unchanged. **60 parent numerical-control builds** establish
+  **90 default/no-RA/all-spill ROM identities**.
+- Seventeen existing loop/window/ownership/address/ABI contracts run on each
+  host, alongside the new oracle. Strict-C89 emitter syntax and the native
+  allocation/frame verifier pass. The unchanged parent final offset-coverage
+  assertion in `test_retained_word_frame_copies` remains:
+  `('ra', {-21, -13, -267, -139, -7})`, after all **13410 numerical calls**.
+  It is not weakened or counted as a green method.
+- All six independent consoles pass with unchanged display, mapper, palette,
+  font, globals and full RAM use. Each calculations-2 saves **36 used bytes
+  and 8671 boot cycles**; each calculations-3 saves **150 bytes and 1125403
+  cycles**. Calculations-1 is unchanged.
+
+Evidence and exact-parent tools are preserved under
+`C:\cygwin64\tmp\large-frame-20261102`; final reports, paired controls and
+cross-build identities are checked by its qualification seal.
 
 ### 3. Maintain Induction Addresses And Select Z80 Loops
 

@@ -758,7 +758,7 @@ void main(void) {}
                         body = assembly.split(f'.SECTION "{program.name}" FREE')[1].split(".ENDS")[0]
                         reused = "; proven loop-header frame address IX = DE" in body
                         frame = int(re.search(r"allocate space for the stack frame bytes=(\d+)", body)[1])
-                        if not mode.startswith("ra") or frame > 127 or program.family in (
+                        if not mode.startswith("ra") or program.family in (
                                 "call", "asm", "escape", "overwrite", "entry", "byte_counter", "signed_counter"):
                             self.assertFalse(reused, (policy, mode, program.name, frame))
                         elif program.family != "word_bound":
@@ -780,6 +780,149 @@ void main(void) {}
         self.assertGreater(selected, 0)
         self.assertEqual(calls, 59840)
         print(f"Loop-header frame oracle executions: {calls}; selected shapes: {selected}", flush=True)
+
+    def test_large_frame_loop_windows(self):
+        forms = {
+            "stable": "total+=a+i;",
+            "diamond": "if(i&1) { total+=a+i; } else { total^=c; }",
+            "nested": "for(j=0;j<3;j++) { total+=a+i+j; }",
+            "continue": "if(i&1) { continue; } total+=a+i;",
+            "call": "total=large_window_touch(total+a+i,0);",
+            "recursive": "total=large_window_touch(total+a+i,2);",
+            "asm": '__asm("LD IX,4660"); total+=a+i;',
+            "escape": "total+=a+i;",
+            "overwrite": "if(i==2) { i+=2; } total+=a+i;",
+            "far": "far+=a+i; total+=far;",
+            "cache": "total+=a+i;",
+            "deep": "",
+            "late_entry": "",
+            "latches": "",
+            "ports": "total+=a+i; __z80_out[0xBE]=total;",
+        }
+        programs = []
+        for size in (116, 128, 136, 224, 240, 256, 512, 1024):
+            for family, body in forms.items():
+                name = f"large_window_{size}_{family}"
+                prefix = "u16 total=c; u8 count=b&7; u16 i,j; "
+                if family == "deep":
+                    prefix += "u16 k0,k1,k2,k3,k4,k5,k6,k7,k8,k9; "
+                prefix += f"u8 workspace[{size}]; workspace[{size-1}]=a; "
+                if family == "escape":
+                    prefix += "u16 *pointer=&i; "
+                elif family == "far":
+                    prefix += "u16 far=a; large_window_escape(&far); "
+                elif family == "cache":
+                    prefix += " ".join(
+                        f"if(a&{1<<bit}) {{ ra_buffer[{32+bit}]=a+{bit}; }} else {{ ra_buffer[{32+bit}]=c+{bit}; }}"
+                        for bit in range(10))
+                elif family == "late_entry":
+                    prefix += "ra_buffer[120]=a&1; "
+                loop = "for(i=0;i<count;i++) { " + body + " } "
+                if family == "deep":
+                    loop = (" ".join(f"for(k{level}=0;k{level}<{2 if level in (0, 9) else 1};k{level}++) {{"
+                                     for level in range(10))
+                            + " ".join(f"if(a&{1<<bit}) {{ ra_buffer[{42+bit}]=a; }} "
+                                       f"else {{ ra_buffer[{42+bit}]=c; }}" for bit in range(10))
+                            + " total+=a; " + "} " * 10 + "i=0; ")
+                elif family in ("late_entry", "latches"):
+                    loop = (f"i=0; {name}_head: if(i>=count) {{ goto {name}_done; }} "
+                            + (f"if(i&1) {{ total^=c; i++; goto {name}_head; }} " if family == "latches" else "")
+                            + f"total+=a+i; i++; goto {name}_head; {name}_done: "
+                            + (f"if(ra_buffer[120]!=0) {{ ra_buffer[120]=0; goto {name}_head; }} "
+                               if family == "late_entry" else ""))
+                tail = ("total+=pointer[0]; " if family == "escape" else "")
+                tail += (f"ra_buffer[0]=i; ra_buffer[1]=i>>8; ra_buffer[2]=total; ra_buffer[3]=total>>8; "
+                         f"return total+i+workspace[{size-1}];")
+                programs.append(Program(name, family, size, 0, [2, 2, 2], 2, [],
+                                        f"u16 {name}(u16 a,u16 b,u16 c) {{ {prefix}{loop}{tail} }}"))
+
+        calls = selected = restored = 0
+        for policy in ("inline", "shared"):
+            for offset in range(0, len(programs), 8):
+                group = programs[offset:offset+8]
+                directory = self.output / "large-frame-loops" / policy / f"batch-{offset}"
+                source = ("u8 ra_buffer[128];\nvoid large_window_escape(u16 *p) { p[0]^=3; }\n"
+                          "u16 large_window_touch(u16 value,u8 depth) { ra_buffer[127]^=value; "
+                          "if(depth!=0) { return large_window_touch(value+1,depth-1)+1; } return value+1; }\n"
+                          + "\n".join(p.source for p in group) + "\nvoid main(void) {}\n")
+                images = compile_generated(directory, os.environ.get("SAMESAMECC") or "samesamecc",
+                                           os.environ.get("SAMESAMECL") or "samesamecl", group, source,
+                                           linker_flags=("-share-arithmetic",) if policy == "shared" else ())
+                for mode, image in images.items():
+                    assembly = (directory / mode / "main.asm").read_text()
+                    for program in group:
+                        section = assembly.split(f'.SECTION "{program.name}" FREE')[1].split(".ENDS")[0]
+                        frame = int(re.search(r"allocate space for the stack frame bytes=(\d+)", section)[1])
+                        reused = section.count("; proven loop-header frame address IX = DE")
+                        restored += section.count("; restore proven loop-latch frame address IX = DE")
+                        if not mode.startswith("ra") or program.family in (
+                                "call", "recursive", "asm", "escape", "overwrite", "late_entry", "latches"
+                        ):
+                            self.assertEqual(reused, 0, (policy, mode, program.name))
+                        elif program.family in ("stable", "diamond", "nested", "continue", "ports", "cache"):
+                            self.assertGreater(reused, 0, (policy, mode, program.name))
+                        elif program.family == "deep" and frame > 128:
+                            self.assertEqual(reused, 8, (policy, mode, program.name))
+                        selected += reused
+                        for a in (0, 1, 128, 255, 256, 32768, 65535):
+                            for b in (0, 1, 2, 3, 7, 8, 65535):
+                                c = (a*37+b)&65535
+                                total, index, far = c, 0, a^3
+                                expected = bytearray((p*37+a+b+c)&255 for p in range(128))
+                                initial = bytes(expected)
+                                ports = []
+                                if program.family == "cache":
+                                    for bit in range(10):
+                                        expected[32+bit] = ((a if a&(1<<bit) else c)+bit)&255
+                                elif program.family == "late_entry":
+                                    expected[120] = 0
+                                if program.family == "deep":
+                                    total = (total+a*4)&65535
+                                    for bit in range(10):
+                                        expected[42+bit] = (a if a&(1<<bit) else c)&255
+                                else:
+                                    while index < (b&7):
+                                        if program.family == "overwrite" and index == 2:
+                                            index += 2
+                                        if program.family == "continue" and index&1:
+                                            index += 1
+                                            continue
+                                        if ((program.family == "diamond" and not index&1) or
+                                                (program.family == "latches" and index&1)):
+                                            total ^= c
+                                        elif program.family == "nested":
+                                            total += sum(a+index+j for j in range(3))
+                                        elif program.family in ("call", "recursive"):
+                                            value = (total+a+index)&65535
+                                            depth = 2 if program.family == "recursive" else 0
+                                            for level in range(depth+1):
+                                                expected[127] ^= (value+level)&255
+                                            total = value+depth*2+1
+                                        elif program.family == "far":
+                                            far = (far+a+index)&65535
+                                            total += far
+                                        else:
+                                            total += a+index
+                                        total &= 65535
+                                        if program.family == "ports":
+                                            ports.append([0xBE, total&255])
+                                        index += 1
+                                if program.family == "escape":
+                                    total = (total+index)&65535
+                                expected[:4] = index.to_bytes(2, "little")+total.to_bytes(2, "little")
+                                result = execute(image.rom, image.symbols[program.name], [a, b, c], program.widths,
+                                                 initial, image.symbols["ra_buffer"], 2, image.transfers,
+                                                 ports_allowed=program.family == "ports",
+                                                 frame_bytes=2048)
+                                self.assertEqual((result["value"], result["buffer"], result["port_writes"],
+                                                  result["unmapped_instructions"]),
+                                                 ((total+index+(a&255))&65535, expected, ports, 0),
+                                                 (policy, mode, program.name, a, b, c))
+                                calls += 1
+        self.assertGreater(selected, 0)
+        self.assertGreater(restored, 0)
+        self.assertEqual(calls, 58800)
+        print(f"Large-frame loop executions: {calls}; headers: {selected}; latch restores: {restored}", flush=True)
 
     def test_exact_local_array_forwarding(self):
         forms = {

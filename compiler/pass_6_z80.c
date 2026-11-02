@@ -8965,6 +8965,8 @@ int generate_asm_z80(FILE *file_out) {
       int function_start = i, frame_joins = g_allocator_enabled == YES && g_allocator_force_all_spill == NO;
       struct { int instruction, offset; } frame_edges[2][8];
       int frame_edge_count[2] = { 0, 0 }, frame_edge_next[2] = { 0, 0 }, edge_kind;
+      /* Future latch obligations must not evict observed incoming edges. */
+      int frame_latches[8], frame_latch_count = 0;
       int frame_fallthrough = YES;
       int frame_bias, frame_region_end = i;
       int j, argument_mask = 0, argument_homes = 0;
@@ -9178,7 +9180,8 @@ int generate_asm_z80(FILE *file_out) {
               previous--;
             if (g_ix_frame_offset == 0 && g_tacs[previous].op == TAC_OP_ASSIGNMENT &&
                 function_node->local_variables != NULL &&
-                function_node->local_variables->offset_to_fp_total >= -128 &&
+                (function_node->local_variables->offset_to_fp_total >= -128 ||
+                 (g_ix_frame_bias == 0 && frame_latch_count < 8)) &&
                 (is_z80_bounded_counter(&g_tacs[previous], function_node, 65535, NO) == YES ||
                  is_z80_bounded_counter(&g_tacs[previous], function_node, 255, NO) == YES)) {
               for (j = i + 1; j < g_tacs_count && g_tacs[j].function_node == function_node; j++) {
@@ -9193,7 +9196,7 @@ int generate_asm_z80(FILE *file_out) {
                   if (_resolve_tac_location(&g_tacs[update], TAC_USE_ARG1, function_node, &source) == FAILED ||
                       _resolve_tac_location(&g_tacs[update], TAC_USE_RESULT, function_node, &target) == FAILED)
                     return FAILED;
-                  /* The memory counter update establishes IX = DE on every backedge. */
+                  /* The counter fits the canonical window; large-frame latches may need restoration. */
                   if ((source.kind == LOC_STACK_LOCAL || source.kind == LOC_STACK_SPILL) &&
                       target.kind == source.kind && source.offset == target.offset &&
                       source.size == 2 && target.size == 2 &&
@@ -9210,12 +9213,8 @@ int generate_asm_z80(FILE *file_out) {
               if (branch->op < TAC_OP_JUMP || branch->op > TAC_OP_JUMP_GTE ||
                   strcmp(branch->result_s, t->result_s) != 0)
                 continue;
-              if (j == loop_latch && g_ix_frame_offset == 0) {
-                fprintf(file_out, "      ; proven loop-header frame address IX = DE\n");
-                RA_TRACE((stderr, "register_allocator: loop_header_frame function=%s header=%d latch=%d offset=0 counter=memory entry=agrees ownership=unchanged\n",
-                  function_node->children[1]->label, i, loop_latch));
+              if (j == loop_latch && g_ix_frame_offset == 0)
                 continue;
-              }
               edge_kind = branch->op == TAC_OP_JUMP ? 0 : 1;
               for (edge = 0; edge < frame_edge_count[edge_kind]; edge++) {
                 if (frame_edges[edge_kind][edge].instruction == j)
@@ -9231,6 +9230,14 @@ int generate_asm_z80(FILE *file_out) {
             }
             if (frame_fallthrough == NO)
               g_ix_frame_offset = Z80_GLOBAL_OFFSET;
+            if (loop_latch >= 0 && g_ix_frame_offset == 0) {
+              if (function_node->local_variables->offset_to_fp_total < -128) {
+                frame_latches[frame_latch_count++] = loop_latch;
+              }
+              fprintf(file_out, "      ; proven loop-header frame address IX = DE\n");
+              RA_TRACE((stderr, "register_allocator: loop_header_frame function=%s header=%d latch=%d offset=0 counter=memory entry=agrees ownership=unchanged\n",
+                function_node->children[1]->label, i, loop_latch));
+            }
           }
         }
 
@@ -9409,8 +9416,21 @@ int generate_asm_z80(FILE *file_out) {
           if (_generate_asm_mul_div_mod_z80(t, file_out, function_node, op) == FAILED)
             return FAILED;
         }
-        else if (op == TAC_OP_JUMP)
+        else if (op == TAC_OP_JUMP) {
+          for (j = 0; j < frame_latch_count; j++) {
+            if (frame_latches[j] == i) {
+              if (g_ix_frame_offset != 0) {
+                fprintf(file_out, "      ; restore proven loop-latch frame address IX = DE\n");
+                RA_TRACE((stderr, "register_allocator: loop_latch_frame function=%s latch=%d previous=%d offset=0 ownership=unchanged\n",
+                  function_node->children[1]->label, i, g_ix_frame_offset));
+              }
+              _load_de_with_offset_to_ix(0, file_out);
+              frame_latches[j] = frame_latches[--frame_latch_count];
+              break;
+            }
+          }
           _jump_to(t->result_s, file_out);
+        }
         else if (op == TAC_OP_JUMP_EQ || op == TAC_OP_JUMP_LT || op == TAC_OP_JUMP_GT || op == TAC_OP_JUMP_NEQ ||
                  op == TAC_OP_JUMP_LTE || op == TAC_OP_JUMP_GTE) {
           if (_generate_asm_jump_eq_lt_gt_neq_lte_gte_z80(t, file_out, function_node, op) == FAILED)
