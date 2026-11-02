@@ -5575,7 +5575,7 @@ failed scouts and the preserved unrelated 1911-byte patch are retained under
 `C:\cygwin64\tmp\address-selection-20261101`. Commit locally without pushing;
 2au is next.
 
-### 2au. Memory-Aware Regional Reuse And Broader Invariant Motion (Planned)
+### 2au. Memory-Aware Regional Reuse And Broader Invariant Motion (Completed)
 
 Extend immediate local-array forwarding, bounded pure-expression reuse and
 the existing loop hoister. Reuse escape/type/alias facts, CFG definitions,
@@ -5607,6 +5607,94 @@ Test equal/unequal joins, index changes, partial/overlapping stores, escaped
 locals, unknown calls, nested/zero-trip loops and observable memory order.
 All eighteen ordinary/shared RA workloads and caller/frame gates must hold;
 an aggregate gain must not hide a local regression.
+
+Implemented bounded regional memory reuse inside the existing loop-invariant
+planner, sharing its CFG blocks, edges, reverse worklist and allocation/error
+handling. An exact earlier local-array read or store must reach the consumer
+on every incoming path. The base, typed index and snapshot must remain stable;
+different fixed-object stores are allowed, while same-array/unknown pointer
+stores, changed definitions, escapes, calls, ASM and ports retain fallback.
+Search is bounded to 128 preceding TACs and 256 visited operations. No load is
+speculated or moved onto a skipped or zero-trip path.
+
+Single-definition TEMP reads require an already-existing later use: eliminating
+a load must not create a new retained lifetime and spill slot. Store snapshots
+may extend within one basic block; cross-block snapshots also require the
+existing lifetime. Stable named scalar homes and width-correct constants use
+the same rewrite. Constants retain element truncation/sign extension; the
+backend's different signed-byte-to-unsigned-word scalar conversion keeps its
+original array-read fallback. Immediate store/read pairs are left to 2at's
+already-free emitter forwarding instead of turning them into extra spills.
+
+The existing bounded pure-expression CSE and regional reuse share one extracted
+TAC-result rewrite. After an actual regional change, the existing IL optimizer
+removes the resulting copies before compaction/allocation. Function metadata is
+bound through the whole function even when ASM prevents reuse, so the existing
+unused-local cleanup cannot mistake the ASM boundary for the function end.
+That cleanup also retains declarations referenced by remaining array stores,
+even when reuse eliminates their last read; the existing forwarding oracle
+exercises this coupled case without changing its assertions.
+The same planner still performs the existing guarded, costed invariant hoist
+after compaction; no speculative hoist, conditional refresh cache, standalone
+optimizer, SSA framework, ABI, register reservation or hidden frame storage is
+introduced.
+
+Rejected scouts matter: extending short-lived scan values across control flow
+grew frames and slowed QuickSort; replacing already-forwarded immediate reads
+also made Tracker worse. A later scout reduced bytes/cycles but grew some
+fixture frames by two bytes. Those rewrites were rejected, not qualified by
+aggregate gains or hidden by changing the workloads.
+
+Exact-parent ordinary/shared results versus
+`1e914c84ad80fbc1fa27fdb2716bf5354a222c36`:
+
+| Kernel | RA bytes | RA kernel cycles | Shared bytes | Shared kernel cycles |
+|---|---:|---:|---:|---:|
+| Array | 1254 -> 1232 | 5343369 -> 5264433 | 1186 -> 1164 | 5417889 -> 5338953 |
+| Sprite | 3080 -> 3046 | 11745711 -> 11716623 | 3052 -> 3018 | 11753487 -> 11724399 |
+| Tracker | 3006 -> 2986 | 10054331 -> 10047765 | 2978 -> 2958 | 10069667 -> 10063101 |
+
+These eliminate one/two/two static array reads respectively, including their
+address calculations. Array's full frame shrinks 86 -> 84 bytes ordinary and
+88 -> 86 shared; the other frames and all wrappers are unchanged. The other
+fifteen kernels remain byte-identical. Sprite and Tracker satisfy the two-large-
+application acceptance without recognizing their identities or algorithms.
+
+Qualification:
+
+- Release, traced and ASan hosts: 108 fresh ordinary/shared workload builds,
+  1668 guarded calls and 162 independent timings. Each host passes all 556
+  exact-parent per-input complete/kernel-cycle, stack-traffic and full-frame
+  checks; every complete section is non-growing. There are 72 cross-build
+  workload ROM identities and no instruction-count regressions.
+- A self-contained 100-shape oracle runs 49000 guarded calls per host across
+  all five numerical modes and inline/shared arithmetic, requiring 96 actual
+  regional selections. It checks equal/unequal joins, changed sources/indices,
+  disjoint/same/partial stores, escaped/pointer aliases, calls, ASM, ordered
+  ports, signed/unsigned conversions and nested/zero-trip/skipped paths.
+- Eighteen exact-parent fixture groups provide 19600 per-input comparisons
+  (39200 guarded paired calls): complete images/functions, cycles, individual
+  frame reads/writes and frame sizes never grow. Of 236 complete function rows,
+  72 shrink and eighteen shrink their frames. Thirty-six parent default/all-
+  spill builds prove 54 unchanged default/no-RA/all-spill ROM controls.
+- Fourteen related methods run on each host. The sole existing final
+  retained-word offset-coverage assertion still fails identically on the exact
+  parent after all 13410 numerical calls; it is not weakened. Address forms,
+  compatible word pairs, immediate forwarding, typed/effect/CFG/call contexts,
+  nested loops, existing hoisting and object boundaries remain covered.
+  Windows WLA process-start failures during parallel validation are recovered
+  with focused serial reruns, not compiler or assertion workarounds.
+- The strict-C89 native allocator/frame verifier passes. All six independent
+  SMS/Game Gear consoles pass their display, CRC, mapper, palette/font and full
+  RAM controls. Each calculations-2/3 saves 57/54 used bytes and 8521/3831 boot
+  cycles; calculations-1 and all RAM footprints are unchanged.
+
+Production C grows by 191 net lines, with one extracted shared rewrite rather
+than new caches or parallel optimizers. The unrelated pre-existing C89
+initializer change remains outside this step's commit. Source-bound evidence,
+exact-parent controls and rejected scouts are retained under
+`C:\cygwin64\tmp\regional-reuse-20261102`. Commit locally without pushing;
+2av is next.
 
 ### 2av. Stable Large-Frame Addressing And Register Roles (Planned)
 

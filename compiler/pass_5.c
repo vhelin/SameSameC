@@ -46,7 +46,7 @@ static struct label *g_removed_jump_destinations_first = NULL, *g_removed_jump_d
 static int g_register_reads_and_writes_count = 0, g_local_variable_running_index = 1;
 
 static int _promote_register_allocator_local_values(void);
-static int _hoist_register_allocator_loop_values(void);
+static int _reuse_register_allocator_regional_values(int *rewritten);
 static int _allocate_local_variable_metadata(struct tree_node *function_node, int local_variables_count, int arguments_count, int used_registers);
 static int _is_register_allocator_jump_op(int op);
 static int _is_first_allocator_producer(int op);
@@ -57,6 +57,8 @@ static int _tac_reads_temp_register(struct tac *t, int register_index);
 static void _debug_register_allocator_temp_compaction_stage(char *stage);
 
 int pass_5(void) {
+
+  int reused = NO;
 
 #ifdef SAMESAMEC_TRACE
   g_register_allocator_trace = g_quiet == NO;
@@ -83,6 +85,10 @@ int pass_5(void) {
       g_backend == BACKEND_Z80 &&
       (propagate_operand_types() == FAILED || _promote_register_allocator_local_values() == FAILED))
     return FAILED;
+  if (g_allocator_enabled == YES && g_allocator_force_all_spill == NO && g_backend == BACKEND_Z80 &&
+      (_reuse_register_allocator_regional_values(&reused) == FAILED ||
+       (reused == YES && optimize_il() == FAILED)))
+    return FAILED;
   /* make life easier for reuse_registers() */
   if (g_register_allocator_trace) {
   _debug_register_allocator_temp_compaction_stage("before_first_compress");
@@ -107,7 +113,7 @@ int pass_5(void) {
   if (compress_register_names() == FAILED)
     return FAILED;
   if (g_allocator_enabled == YES && g_allocator_force_all_spill == NO && g_backend == BACKEND_Z80 &&
-      _hoist_register_allocator_loop_values() == FAILED)
+      _reuse_register_allocator_regional_values(NULL) == FAILED)
     return FAILED;
   if (g_register_allocator_trace) {
   _debug_register_allocator_temp_compaction_stage("after_second_compress");
@@ -2038,6 +2044,30 @@ static int _optimize_il_23(int *optimizations_counter) {
 }
 
 
+static int _reuse_tac_result(struct tac *candidate, struct tac *producer) {
+
+  if (tac_set_arg1(candidate, producer->result_type, producer->result_d, producer->result_s) == FAILED)
+    return FAILED;
+  if (producer->result_type != TAC_ARG_TYPE_LABEL) {
+    free(candidate->arg1_s);
+    candidate->arg1_s = NULL;
+  }
+  candidate->arg1_node = producer->result_node;
+  candidate->arg1_var_type = producer->result_var_type;
+  candidate->arg1_var_type_promoted = producer->result_var_type_promoted;
+  candidate->op = TAC_OP_ASSIGNMENT;
+  candidate->arg2_type = TAC_ARG_TYPE_CONSTANT;
+  candidate->arg2_d = 0;
+  candidate->arg2_original_register_index = -1;
+  candidate->arg2_var_type = VARIABLE_TYPE_NONE;
+  candidate->arg2_var_type_promoted = VARIABLE_TYPE_NONE;
+  candidate->arg2_node = NULL;
+  free(candidate->arg2_s);
+  candidate->arg2_s = NULL;
+  return SUCCEEDED;
+}
+
+
 static int _optimize_il_25(int *optimizations_counter) {
 
   /*
@@ -2255,22 +2285,8 @@ static int _optimize_il_25(int *optimizations_counter) {
             }
             if (match == NO)
               continue;
-            if (tac_set_arg1(candidate, TAC_ARG_TYPE_TEMP, producer->result_d, NULL) == FAILED)
+            if (_reuse_tac_result(candidate, producer) == FAILED)
               return FAILED;
-            free(candidate->arg1_s);
-            candidate->arg1_s = NULL;
-            candidate->arg1_node = NULL;
-            candidate->arg1_var_type = producer->result_var_type;
-            candidate->arg1_var_type_promoted = producer->result_var_type_promoted;
-            candidate->op = TAC_OP_ASSIGNMENT;
-            candidate->arg2_type = TAC_ARG_TYPE_CONSTANT;
-            candidate->arg2_d = 0;
-            candidate->arg2_original_register_index = -1;
-            candidate->arg2_var_type = VARIABLE_TYPE_NONE;
-            candidate->arg2_var_type_promoted = VARIABLE_TYPE_NONE;
-            candidate->arg2_node = NULL;
-            free(candidate->arg2_s);
-            candidate->arg2_s = NULL;
             (*optimizations_counter)++;
             RA_TRACE((stderr, "register_allocator: pure_expression_reuse function=%s producer_tac=%d reused_tac=%d op=%d scope=bounded_block\n",
                       g_tacs[start].function_node->children[1]->label, current, scan, producer->op));
@@ -3186,6 +3202,12 @@ static int _optimize_il_1001(int *optimizations_counter) {
           else if (g_tacs[next].arg2_type == g_tacs[current].result_type && ((g_tacs[current].result_type == TAC_ARG_TYPE_TEMP && (int)g_tacs[current].result_d == (int)g_tacs[next].arg2_d) ||
                                                                              (g_tacs[current].result_type == TAC_ARG_TYPE_LABEL && g_tacs[current].result_node == g_tacs[next].arg2_node))) {
             /* we cannot search past reads from the variable */
+            next = -1;
+            break;
+          }
+          else if (g_tacs[next].op == TAC_OP_ARRAY_WRITE &&
+                   g_tacs[next].result_type == TAC_ARG_TYPE_LABEL &&
+                   g_tacs[next].result_node == g_tacs[current].result_node) {
             next = -1;
             break;
           }
@@ -5348,7 +5370,7 @@ static int _tac_writes_temp_register(struct tac *t, int register_index) {
 }
 
 
-static int _hoist_register_allocator_loop_values(void) {
+static int _reuse_register_allocator_regional_values(int *rewritten) {
 
   int start;
 
@@ -5357,25 +5379,27 @@ static int _hoist_register_allocator_loop_values(void) {
     struct register_allocator_control_flow_storage storage;
     struct register_allocator_basic_block *blocks;
     struct register_allocator_cfg_edge *edges;
-    int *work, block_count, edge_count, end, i, header, changed = NO, status = SUCCEEDED, calls = NO;
+    int *work, block_count, edge_count, end, i, header, changed = NO, status = SUCCEEDED, calls = NO, assembly = NO;
     char *seen;
 
     if (g_tacs[start].op != TAC_OP_LABEL || g_tacs[start].is_function != YES)
       continue;
     function = g_tacs[start].function_node;
-    if ((function->flags & TREE_NODE_FLAG_Z80_REGCALL) != 0 ||
-        get_variable_type_size(tree_node_get_max_var_type(function->children[0])) != 16)
+    if ((function->flags & TREE_NODE_FLAG_PUREASM) != 0 ||
+        strcmp(function->children[1]->label, "mainmain") == 0)
       continue;
     for (end = start + 1; end < g_tacs_count &&
         (g_tacs[end].op != TAC_OP_LABEL || g_tacs[end].is_function != YES); end++) {
       g_tacs[end].function_node = function;
       if (g_tacs[end].op == TAC_OP_ASM)
-        break;
+        assembly = YES;
       if (g_tacs[end].op == TAC_OP_FUNCTION_CALL || g_tacs[end].op == TAC_OP_FUNCTION_CALL_USE_RETURN_VALUE)
         calls = YES;
     }
-    /* Calls exclude automatic register entries, whose return address occupies this scratch byte. */
-    if (calls == NO || (end < g_tacs_count && g_tacs[end].op == TAC_OP_ASM))
+    /* Only legacy call frames leave the return scratch byte free for hoisting. */
+    if (assembly == YES || (rewritten == NULL &&
+        (calls == NO || (function->flags & TREE_NODE_FLAG_Z80_REGCALL) != 0 ||
+         get_variable_type_size(tree_node_get_max_var_type(function->children[0])) != 16)))
       continue;
     if (_count_and_allocate_register_usage(start, end - 1) == FAILED ||
         register_allocator_plan_control_flow_storage(function->children[1]->label, g_tacs_count, &storage) == FAILED)
@@ -5385,7 +5409,7 @@ static int _hoist_register_allocator_loop_values(void) {
     work = calloc(storage.max_blocks, sizeof(*work));
     seen = calloc(storage.max_blocks, sizeof(*seen));
     if (blocks == NULL || edges == NULL || work == NULL || seen == NULL) {
-      fprintf(stderr, "register_allocator: out of memory while planning loop invariants.\n");
+      fprintf(stderr, "register_allocator: out of memory while planning regional values.\n");
       status = FAILED;
       goto hoist_cleanup;
     }
@@ -5394,6 +5418,173 @@ static int _hoist_register_allocator_loop_values(void) {
       status = FAILED;
       goto hoist_cleanup;
     }
+    if (rewritten == NULL)
+      goto hoist_loop_values;
+    for (i = start + 1; i < end; i++) {
+      struct tac *candidate = &g_tacs[i];
+      struct tree_node *base = candidate->arg1_node, *index = candidate->arg2_node;
+      int earlier, scan, block, candidate_block, stable = YES;
+
+      if (candidate->op != TAC_OP_ARRAY_READ || candidate->arg1_type != TAC_ARG_TYPE_LABEL ||
+          base == NULL || (base->flags & TREE_NODE_FLAG_ARRAY) == 0 ||
+          (base->flags & (TREE_NODE_FLAG_GLOBAL | TREE_NODE_FLAG_STATIC | TREE_NODE_FLAG_EXTERN |
+                         TREE_NODE_FLAG_ADDRESS_TAKEN)) != 0 ||
+          (candidate->result_var_type != VARIABLE_TYPE_UINT8 && candidate->result_var_type != VARIABLE_TYPE_INT8 &&
+           candidate->result_var_type != VARIABLE_TYPE_UINT16 && candidate->result_var_type != VARIABLE_TYPE_INT16) ||
+          (candidate->arg2_type != TAC_ARG_TYPE_CONSTANT && candidate->arg2_type != TAC_ARG_TYPE_TEMP &&
+           (candidate->arg2_type != TAC_ARG_TYPE_LABEL || index == NULL ||
+            (index->flags & (TREE_NODE_FLAG_GLOBAL | TREE_NODE_FLAG_STATIC | TREE_NODE_FLAG_EXTERN |
+                            TREE_NODE_FLAG_ADDRESS_TAKEN)) != 0 || index->children[0]->value_double != 0.0)))
+        continue;
+      for (scan = start + 1; scan < end; scan++) {
+        struct tac *effect = &g_tacs[scan];
+        if ((effect->op == TAC_OP_GET_ADDRESS || effect->op == TAC_OP_GET_ADDRESS_ARRAY) &&
+            (effect->arg1_node == base || (index != NULL && effect->arg1_node == index)))
+          stable = NO;
+      }
+      if (stable == NO)
+        continue;
+      for (candidate_block = 0; candidate_block < block_count; candidate_block++)
+        if (blocks[candidate_block].start_tac <= i && blocks[candidate_block].end_tac >= i)
+          break;
+      if (candidate_block == block_count)
+        continue;
+      for (earlier = i - 1; earlier > start && i - earlier <= 128; earlier--) {
+        struct tac *producer = &g_tacs[earlier];
+        struct tac source = *producer;
+        int head = 0, tail = 0, visited = 0, eligible = YES;
+        if (producer->op == TAC_OP_ARRAY_WRITE) {
+          int element_type = get_array_item_variable_type(base);
+          if (_find_next_living_tac(earlier + 1) == i ||
+              producer->result_type != TAC_ARG_TYPE_LABEL || producer->result_node != base ||
+              (producer->arg1_type != TAC_ARG_TYPE_CONSTANT && producer->arg1_var_type != element_type &&
+               (get_variable_type_size(producer->arg1_var_type) != 16 || get_variable_type_size(element_type) != 16)))
+            continue;
+          source.result_type = producer->arg1_type;
+          source.result_d = producer->arg1_d;
+          source.result_s = producer->arg1_s;
+          source.result_node = producer->arg1_node;
+          source.result_var_type = element_type;
+          source.result_var_type_promoted = candidate->result_var_type_promoted;
+          if (source.result_type == TAC_ARG_TYPE_CONSTANT) {
+            int bits = get_variable_type_size(element_type), value = (int)source.result_d;
+            value &= bits == 8 ? 255 : 65535;
+            if ((element_type == VARIABLE_TYPE_INT8 || element_type == VARIABLE_TYPE_INT16) &&
+                (value & (1 << (bits - 1))) != 0)
+              value -= 1 << bits;
+            source.result_d = value;
+          }
+        }
+        else if (producer->op != TAC_OP_ARRAY_READ ||
+            producer->arg1_type != candidate->arg1_type || producer->arg1_node != base ||
+            producer->arg1_var_type != candidate->arg1_var_type ||
+            producer->arg1_var_type_promoted != candidate->arg1_var_type_promoted ||
+            ((producer->result_var_type != candidate->result_var_type ||
+              producer->result_var_type_promoted != candidate->result_var_type_promoted) &&
+             (producer->result_var_type != get_array_item_variable_type(base) ||
+              producer->result_var_type_promoted != producer->result_var_type)))
+          continue;
+        if ((source.result_type != TAC_ARG_TYPE_CONSTANT && source.result_type != TAC_ARG_TYPE_TEMP &&
+             (source.result_type != TAC_ARG_TYPE_LABEL || source.result_node == NULL ||
+              (source.result_node->flags & (TREE_NODE_FLAG_GLOBAL | TREE_NODE_FLAG_STATIC | TREE_NODE_FLAG_EXTERN |
+                                           TREE_NODE_FLAG_ADDRESS_TAKEN)) != 0)) ||
+            producer->arg2_type != candidate->arg2_type ||
+            producer->arg2_var_type != candidate->arg2_var_type ||
+            producer->arg2_var_type_promoted != candidate->arg2_var_type_promoted ||
+            (candidate->arg2_type == TAC_ARG_TYPE_LABEL ? producer->arg2_node != index :
+             producer->arg2_d != candidate->arg2_d))
+          continue;
+        /* Scalar signed-byte assignments to unsigned words use a different extension. */
+        if (source.result_type != TAC_ARG_TYPE_CONSTANT && source.result_var_type == VARIABLE_TYPE_INT8 &&
+            candidate->result_var_type == VARIABLE_TYPE_UINT16)
+          continue;
+        if (source.result_type == TAC_ARG_TYPE_TEMP) {
+          if (g_register_writes[(int)source.result_d] != 1)
+            continue;
+          /* A reused load must already be live; stores may use a local snapshot. */
+          for (scan = i + 1; scan < end; scan++)
+            if (_tac_reads_temp_register(&g_tacs[scan], (int)source.result_d) == YES)
+              break;
+          if (scan == end && (producer->op != TAC_OP_ARRAY_WRITE ||
+              earlier < blocks[candidate_block].start_tac))
+            continue;
+        }
+        for (scan = start + 1; scan < end; scan++)
+          if (source.result_type == TAC_ARG_TYPE_LABEL &&
+              (g_tacs[scan].op == TAC_OP_GET_ADDRESS || g_tacs[scan].op == TAC_OP_GET_ADDRESS_ARRAY) &&
+              g_tacs[scan].arg1_node == source.result_node)
+            eligible = NO;
+        if (eligible == NO)
+          continue;
+        memset(seen, 0, block_count);
+        work[tail++] = candidate_block;
+        seen[candidate_block] = YES;
+        while (head < tail && eligible == YES) {
+          int reached = NO, predecessors = 0, edge;
+          block = work[head++];
+          for (scan = block == candidate_block ? i - 1 : blocks[block].end_tac;
+               scan >= blocks[block].start_tac; scan--) {
+            struct tac *effect = &g_tacs[scan];
+            if (scan == earlier) {
+              reached = YES;
+              break;
+            }
+            if (effect->op == TAC_OP_DEAD || effect->op == TAC_OP_CREATE_VARIABLE || effect->op == TAC_OP_LABEL)
+              continue;
+            if (++visited > 256 || scan < earlier ||
+                effect->op == TAC_OP_FUNCTION_CALL || effect->op == TAC_OP_FUNCTION_CALL_USE_RETURN_VALUE ||
+                effect->op == TAC_OP_ASM ||
+                (effect->op == TAC_OP_ARRAY_READ && effect->arg1_type == TAC_ARG_TYPE_LABEL &&
+                 effect->arg1_s != NULL && strcmp(effect->arg1_s, "__z80_in") == 0) ||
+                (effect->op == TAC_OP_ARRAY_WRITE && effect->result_type == TAC_ARG_TYPE_LABEL &&
+                 effect->result_s != NULL && strcmp(effect->result_s, "__z80_out") == 0) ||
+                (source.result_type == TAC_ARG_TYPE_TEMP &&
+                 _tac_writes_temp_register(effect, (int)source.result_d) == YES) ||
+                (source.result_type == TAC_ARG_TYPE_LABEL && effect->op != TAC_OP_ARRAY_WRITE &&
+                 effect->result_type == TAC_ARG_TYPE_LABEL && effect->result_node == source.result_node) ||
+                (candidate->arg2_type == TAC_ARG_TYPE_TEMP &&
+                 _tac_writes_temp_register(effect, (int)candidate->arg2_d) == YES) ||
+                (candidate->arg2_type == TAC_ARG_TYPE_LABEL && effect->op != TAC_OP_ARRAY_WRITE &&
+                 effect->result_type == TAC_ARG_TYPE_LABEL && effect->result_node == index) ||
+                (effect->op == TAC_OP_ARRAY_WRITE &&
+                 (effect->result_type != TAC_ARG_TYPE_LABEL || effect->result_node == NULL ||
+                  (effect->result_node->flags & TREE_NODE_FLAG_ARRAY) == 0 || effect->result_node == base))) {
+              eligible = NO;
+              break;
+            }
+          }
+          if (reached == YES || eligible == NO)
+            continue;
+          for (edge = 0; edge < edge_count; edge++) {
+            if (edges[edge].to_block != block)
+              continue;
+            predecessors++;
+            if (edges[edge].from_block == candidate_block) {
+              eligible = NO;
+              break;
+            }
+            if (seen[edges[edge].from_block] == NO) {
+              seen[edges[edge].from_block] = YES;
+              work[tail++] = edges[edge].from_block;
+            }
+          }
+          if (predecessors == 0)
+            eligible = NO;
+        }
+        if (eligible == YES) {
+          if (_reuse_tac_result(candidate, &source) == FAILED) {
+            status = FAILED;
+            goto hoist_cleanup;
+          }
+          RA_TRACE((stderr, "register_allocator: regional_array_reuse function=%s producer=%d consumer=%d paths=all memory=stable\n",
+            function->children[1]->label, earlier, i));
+          *rewritten = YES;
+          break;
+        }
+      }
+    }
+    goto hoist_cleanup;
+hoist_loop_values:
     for (i = start + 1; i < end && changed == NO; i++) {
       struct tac *first = &g_tacs[i], *mask, *last;
       int indices[3] = {i, 0, 0}, count = 1, use, other, other_temp, definition, block_start;

@@ -282,6 +282,28 @@ coverage assertion still fails identically on the parent and is unchanged.
 See [step 2at](Z80_CODEGEN_PLAN.md#2at-general-address-form-selection-and-induction-address-reuse-completed)
 for complete measurements, instruction-count tradeoffs and qualification.
 
+Normal RA now reuses exact local-array values across bounded regions and joins
+using the existing invariant planner's CFG/worklist and escape/type/effect
+proofs. All incoming paths must reach the same stable read/store snapshot.
+Different fixed-object stores are allowed; possible aliases, changed indices
+or values, escapes, calls, ASM and ports retain fallback. Reused TEMP loads
+must already be live; cross-block store snapshots cannot add a lifetime.
+Immediate forwarding and signed-byte/unsigned-word conversion fallbacks are
+preserved. Existing pure-expression CSE shares the extracted result rewrite,
+and existing copy propagation runs before allocation only after a reuse.
+Unused-local cleanup preserves declarations still referenced by array stores.
+No speculative load motion, value-cache framework, ABI or hidden slot is added.
+Array/Sprite/Tracker save 22/34/20 ordinary and shared bytes and improve ordinary
+cycles by 1.48%/0.25%/0.07%; Array's frame shrinks two bytes. The other fifteen
+kernels remain byte-identical, with unchanged callers and non-growing frames.
+All eighteen ordinary/shared workloads pass per-input cost gates on three host
+builds. The new self-contained oracle covers 100 shapes and 49000 calls per host;
+19600 exact-parent fixture comparisons also pass without frame/traffic growth.
+All six consoles and the native verifier pass; the unchanged parent frame-offset
+coverage assertion remains disclosed. Production C grows by 191 net lines.
+See [step 2au](Z80_CODEGEN_PLAN.md#2au-memory-aware-regional-reuse-and-broader-invariant-motion-completed)
+for lifetime/forwarding blockers, complete costs and qualification.
+
 Normal RA now reuses byte comparison and counter emitters when the existing
 bounded known-bit query proves word values are 0..255. The query also accepts
 nearby scalar definitions and addition with a proven byte-sized maximum.

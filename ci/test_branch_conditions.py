@@ -16,6 +16,172 @@ from ra_cpu import execute
 
 
 class BranchConditionsTests(unittest.TestCase):
+    def test_regional_local_array_reuse(self):
+        forms = {
+            "straight": "other[index]=b; result=data[index];",
+            "join": "if(b&4) { other[0]+=1; } else { other[1]+=2; } result=data[index];",
+            "nested": "if(b&4) { if(b&2) { other[0]+=1; } else { other[1]+=2; } } result=data[index];",
+            "constant": "data[index]=0x92FF; other[index]=b; result=data[index];",
+            "stored": "KIND saved=a; data[index]=saved; other[index]=b; result=data[index];",
+            "stored_join": "KIND saved=a; data[index]=saved; if(b&4) { other[0]+=1; } result=data[index]; result+=saved;",
+            "changed_index": "index=(index+1)&3; other[index]=b; result=data[index];",
+            "changed_source": "first+=1; other[index]=b; result=data[index];",
+            "same_array": "data[(index+1)&3]=b; result=data[index];",
+            "changed_join": "if(b&4) { data[index]=b; } result=data[index];",
+            "unequal": "if(b&4) { first=data[index]; } else { first=a; } result=data[index];",
+            "equal_stores": "if(b&4) { data[index]=b; } else { data[index]=b; } result=data[index];",
+            "escape": "pointer=data; other[index]=b; result=data[index]; result+=pointer[(index+1)&3];",
+            "partial": "bytes=data; bytes[index*WIDTH]=b; result=data[index]; result+=bytes[index*WIDTH];",
+            "pointer_store": "pointer=other; pointer[index]=b; result=data[index]; result+=pointer[index];",
+            "call": "b=regional_touch(b); result=data[index];",
+            "asm": '__asm("NOP"); result=data[index];',
+            "output": "__z80_out[0xBE]=a; result=data[index];",
+            "input": "result=__z80_in[0xBE]; result+=data[index];",
+            "zero_loop": "result=0; for(i=0;i<(b&3);i++) { other[i]=b+i; result+=data[index]; }",
+            "nested_loop": "u16 j; result=0; for(i=0;i<(b&3);i++) { for(j=0;j<(a&3);j++) { other[j]=b+i+j; result+=data[index]; } }",
+            "changed_loop": "result=0; for(i=0;i<(b&3);i++) { data[index]+=i+1; result+=data[index]; }",
+            "skipped": "if(b&4) { first=data[index]; other[index]=b; result=data[index]; } else { result=b; }",
+            "byte_index": "u8 small=b&3; first=data[small]; other[small]=b; result=data[small];",
+            "unsigned": "other[index]=b; u16 widened=data[index]; result=widened;",
+        }
+        selected = {"straight", "join", "nested", "constant", "stored", "stored_join"}
+        fallback = {"changed_index", "changed_source", "same_array", "changed_join", "unequal",
+                    "equal_stores", "escape", "partial", "pointer_store", "call", "asm", "output", "input"}
+        programs = []
+        for kind in ("u8", "s8", "u16", "s16"):
+            width = 1 if kind.endswith("8") else 2
+            for name, body in forms.items():
+                source = (
+                    f"u16 regional_{kind}_{name}(u16 a,u16 b) {{ "
+                    f"{kind} data[4]; {kind} other[4]; {kind} first; {kind} *pointer; u8 *bytes; "
+                    f"u16 index=b&3; u16 i; {'s16' if kind == 's8' else 'u16'} result; "
+                    "for(i=0;i<4;i++) { data[i]=a+i*257; other[i]=b+i*13; } "
+                    + ("first=a; " if name in ("unequal", "skipped", "byte_index") else "first=data[index]; ")
+                    + body.replace("KIND", kind).replace("WIDTH", str(width))
+                    + f" for(i=0;i<4;i++) {{ ra_buffer[i*{width}]=data[i]; "
+                    + (f"ra_buffer[i*{width}+1]=data[i]>>8; " if width == 2 else "")
+                    + f"ra_buffer[16+i*{width}]=other[i]; "
+                    + (f"ra_buffer[17+i*{width}]=other[i]>>8; " if width == 2 else "")
+                    + "} return result+first; }"
+                )
+                programs.append(Program(f"regional_{kind}_{name}", name, width, int(kind.startswith("s")),
+                                        [2, 2], 2, [], source))
+
+        calls = selections = 0
+        for policy in ("inline", "shared"):
+            for offset in range(0, len(programs), 12):
+                group = programs[offset:offset+12]
+                directory = self.output / "regional-reuse" / policy / f"batch-{offset}"
+                source = ("u8 ra_buffer[128];\n"
+                          "u16 regional_touch(u16 value) { ra_buffer[127]^=value; return value+1; }\n"
+                          + "\n".join(program.source for program in group) + "\nvoid main(void) {}\n")
+                images = compile_generated(
+                    directory, os.environ.get("SAMESAMECC") or "samesamecc",
+                    os.environ.get("SAMESAMECL") or "samesamecl", group, source,
+                    linker_flags=("-share-arithmetic",) if policy == "shared" else ())
+                baseline_reads = {}
+                for mode, image in images.items():
+                    assembly = (directory / mode / "main.asm").read_text()
+                    for program in group:
+                        body = assembly.split(f'.SECTION "{program.name}" FREE')[1].split(".ENDS")[0]
+                        output_loop = list(re.finditer(r"; TAC: _i_\d+\..* := 0\.", body))[-1].start()
+                        body = body[:output_loop]
+                        reads = len(re.findall(r"; TAC: .* := _data_\d+\..*\[", body))
+                        if mode == "default":
+                            baseline_reads[program.name] = reads
+                        elif mode in ("ra", "ra_quiet"):
+                            if program.family in selected:
+                                self.assertLess(reads, baseline_reads[program.name], (policy, mode, program.name))
+                                selections += 1
+                            elif program.family in fallback or program.family == "unsigned" and program.constant and program.variant == 1:
+                                self.assertEqual(reads, baseline_reads[program.name], (policy, mode, program.name))
+                        for a in (0, 127, 128, 255, 256, 32768, 65535):
+                            for b in (0, 1, 2, 3, 4, 7, 65535):
+                                width = program.variant
+                                mask = (1 << (width*8))-1
+                                data = [(a+i*257)&mask for i in range(4)]
+                                other = [(b+i*13)&mask for i in range(4)]
+                                index = b&3
+                                first = data[index]
+                                result = None
+                                name = program.family
+
+                                def extend(value):
+                                    return value-(mask+1) if program.constant and value&(mask+1)//2 else value
+
+                                if name in ("straight", "constant", "stored", "changed_index", "changed_source",
+                                            "escape", "pointer_store", "skipped", "byte_index", "unsigned"):
+                                    if name == "constant":
+                                        data[index] = 0x92FF&mask
+                                    if name == "changed_index":
+                                        index = (index+1)&3
+                                    if name == "changed_source":
+                                        first = (first+1)&mask
+                                    if name == "skipped":
+                                        first = data[index] if b&4 else a&mask
+                                    if name != "skipped" or b&4:
+                                        other[index] = b&mask
+                                if name == "join":
+                                    other[0 if b&4 else 1] = (other[0 if b&4 else 1]+(1 if b&4 else 2))&mask
+                                if name == "nested" and b&4:
+                                    other[0 if b&2 else 1] = (other[0 if b&2 else 1]+(1 if b&2 else 2))&mask
+                                if name == "stored_join" and b&4:
+                                    other[0] = (other[0]+1)&mask
+                                if name in ("stored", "stored_join"):
+                                    data[index] = a&mask
+                                if name == "same_array":
+                                    data[(index+1)&3] = b&mask
+                                if name == "partial":
+                                    data[index] = (data[index]&0xff00 if width == 2 else 0)|(b&255)
+                                if name == "equal_stores" or name == "changed_join" and b&4:
+                                    data[index] = b&mask
+                                if name == "unequal" and not b&4:
+                                    first = a&mask
+                                if name in ("zero_loop", "nested_loop", "changed_loop"):
+                                    result = 0
+                                    for i in range(b&3):
+                                        if name == "nested_loop":
+                                            for j in range(a&3):
+                                                other[j] = (b+i+j)&mask
+                                                result += extend(data[index])
+                                        else:
+                                            if name == "changed_loop":
+                                                data[index] = (data[index]+i+1)&mask
+                                            else:
+                                                other[i] = (b+i)&mask
+                                            result += extend(data[index])
+                                if result is None:
+                                    result = extend(data[index])
+                                if name == "stored_join":
+                                    result += extend(a&mask)
+                                if name == "escape":
+                                    result += extend(data[(index+1)&3])
+                                if name == "partial":
+                                    result += b&255
+                                if name == "pointer_store":
+                                    result += extend(other[index])
+                                if name == "skipped" and not b&4:
+                                    result = b
+                                initial = bytes((i*37+a+b)&255 for i in range(128))
+                                buffer = bytearray(initial)
+                                for i in range(4):
+                                    buffer[i*width:(i+1)*width] = data[i].to_bytes(width, "little")
+                                    buffer[16+i*width:16+(i+1)*width] = other[i].to_bytes(width, "little")
+                                if name == "call":
+                                    buffer[127] ^= b&255
+                                ports = [[0xBE, a&255]] if name == "output" else []
+                                actual = execute(image.rom, image.symbols[program.name], [a, b], [2, 2],
+                                                 initial, image.symbols["ra_buffer"], 2, image.transfers,
+                                                 frame_bytes=2048, instruction_limit=100000,
+                                                 ports_allowed=name == "output")
+                                self.assertEqual((actual["value"], actual["buffer"], actual["port_writes"],
+                                                  actual["unmapped_instructions"]),
+                                                 ((result+extend(first))&65535, buffer, ports, 0),
+                                                 (policy, mode, program.name, a, b))
+                                calls += 1
+        self.assertEqual((calls, selections), (49000, 96))
+        print(f"Regional array reuse: 100 shapes, {calls} guarded calls, {selections} selections", flush=True)
+
     def test_general_array_address_forms(self):
         indices = {
             "u8": (0, 1, 3, 7, 127, 128, 255),
