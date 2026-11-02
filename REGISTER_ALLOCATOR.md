@@ -325,6 +325,29 @@ frame-offset coverage assertion remains disclosed rather than weakened.
 See [step 2av](Z80_CODEGEN_PLAN.md#2av-stable-large-frame-addressing-and-register-roles-completed)
 for actual setup counts, cache/bias guards, complete costs and qualification.
 
+Normal RA now promotes mutable word assignments and unit-step updates through
+CFG definition/use webs, reusing existing liveness, ownership, costs and
+transactions. Incoming definitions stay connected; independent counter resets
+get separate webs. Missing definitions, narrow/arbitrary updates, escapes and
+ASM retain conservative homes. Existing live-out analysis also prevents local
+consumers from dropping required backedge writebacks. Simple recurrences and
+larger CFG webs use the same promoter on opposite sides of invariant motion,
+preserving skipped-body profitability. Real in-place increment costs and
+first-use ordering of equal-sized spill homes avoid slower or deeper fallbacks.
+The existing native loop lowerer accepts proven promoted operands and recovers
+DE from unchanged SP; BC-indexed word stores preserve their live index.
+No new allocator, register class, ABI or hidden slot is added.
+Array/Tile/Path/Sprite save 19/19/eight/fifteen kernel bytes; six kernels run
+faster and four applications shrink their frames. All eighteen ordinary/shared
+workloads pass per-input code/cycle/traffic/storage gates on three host builds.
+The 54-shape oracle runs 42120 calls per host; 16848 exact-parent scalar and
+8816 related-oracle comparisons pass. All six consoles and the native verifier
+pass; three unchanged parent selection/offset assertions remain disclosed.
+Production grows 156 net C lines plus one header declaration.
+See [step 2aw](Z80_CODEGEN_PLAN.md#2aw-general-cfg-scalar-promotion-for-mutable-loop-state-completed)
+for actual removed scalar transfers, phase-order guards, complete measurements
+and qualification. QuickSort/A* costs remain unchanged; 2ax is next.
+
 Normal RA now reuses byte comparison and counter emitters when the existing
 bounded known-bit query proves word values are 0..255. The query also accepts
 nearby scalar definitions and addition with a proven byte-sized maximum.

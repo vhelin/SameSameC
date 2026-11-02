@@ -45,7 +45,8 @@ int *g_register_reads = NULL, *g_register_writes = NULL;
 static struct label *g_removed_jump_destinations_first = NULL, *g_removed_jump_destinations_last = NULL;
 static int g_register_reads_and_writes_count = 0, g_local_variable_running_index = 1;
 
-static int _promote_register_allocator_local_values(void);
+static int _promote_register_allocator_local_values(int complex_cfg);
+static int _collect_register_allocator_scalar_webs(struct tree_node *function, struct tree_node *variable, int start, int end, int *next_temp, int **mapping);
 static int _reuse_register_allocator_regional_values(int *rewritten);
 static int _allocate_local_variable_metadata(struct tree_node *function_node, int local_variables_count, int arguments_count, int used_registers);
 static int _is_register_allocator_jump_op(int op);
@@ -83,7 +84,7 @@ int pass_5(void) {
     return FAILED;
   if (g_allocator_enabled == YES && g_allocator_force_all_spill == NO &&
       g_backend == BACKEND_Z80 &&
-      (propagate_operand_types() == FAILED || _promote_register_allocator_local_values() == FAILED))
+      (propagate_operand_types() == FAILED || _promote_register_allocator_local_values(NO) == FAILED))
     return FAILED;
   if (g_allocator_enabled == YES && g_allocator_force_all_spill == NO && g_backend == BACKEND_Z80 &&
       (_reuse_register_allocator_regional_values(&reused) == FAILED ||
@@ -112,8 +113,10 @@ int pass_5(void) {
   /* reuse_registers() might have removed some registers, so let's compress again */
   if (compress_register_names() == FAILED)
     return FAILED;
+  /* Do not broaden speculative invariant motion with newly split scalar webs. */
   if (g_allocator_enabled == YES && g_allocator_force_all_spill == NO && g_backend == BACKEND_Z80 &&
-      _reuse_register_allocator_regional_values(NULL) == FAILED)
+      (_reuse_register_allocator_regional_values(NULL) == FAILED ||
+       _promote_register_allocator_local_values(YES) == FAILED || compress_register_names() == FAILED))
     return FAILED;
   if (g_register_allocator_trace) {
   _debug_register_allocator_temp_compaction_stage("after_second_compress");
@@ -144,7 +147,7 @@ int pass_5(void) {
 }
 
 
-static int _promote_register_allocator_local_values(void) {
+static int _promote_register_allocator_local_values(int complex_cfg) {
 
   int producer_index, instruction_index, next_temp = 0;
   int function_start = 0, function_end = 0;
@@ -174,8 +177,8 @@ static int _promote_register_allocator_local_values(void) {
     struct tac *producer;
     struct tree_node *variable;
     int reads = 0, uses = 0, crossed_barrier = NO, eligible = YES, pointer_base;
-    int definitions = 1, control_flow = NO, word_definitions = YES;
-    int first_read = g_tacs_count, last_definition = -1, loop_definitions = NO;
+    int definitions = 1, control_flow = NO, word_definitions = YES, cfg_definitions;
+    int *mapping = NULL, promoted_temp;
 
     producer = &g_tacs[producer_index];
     if (producer->op == TAC_OP_LABEL && producer->is_function == YES) {
@@ -184,9 +187,11 @@ static int _promote_register_allocator_local_values(void) {
       for (function_end = function_start; function_end < g_tacs_count; function_end++) {
         if (g_tacs[function_end].op == TAC_OP_LABEL && g_tacs[function_end].is_function == YES)
           break;
+        g_tacs[function_end].function_node = function_node;
       }
     }
     pointer_base = producer->op == TAC_OP_GET_ADDRESS || producer->op == TAC_OP_GET_ADDRESS_ARRAY;
+    cfg_definitions = producer->op == TAC_OP_ASSIGNMENT;
     if (_is_register_allocator_linear_scan_producer(producer) == NO ||
         producer->op == TAC_OP_FUNCTION_CALL_USE_RETURN_VALUE ||
         producer->result_type != TAC_ARG_TYPE_LABEL || function_node == NULL ||
@@ -251,8 +256,6 @@ static int _promote_register_allocator_local_values(void) {
             if (pointer_base == YES || instruction_index <= producer_index || crossed_barrier == YES)
               eligible = NO;
             else {
-              if (instruction_index < first_read)
-                first_read = instruction_index;
               reads++;
               uses++;
             }
@@ -280,8 +283,6 @@ static int _promote_register_allocator_local_values(void) {
       if ((instruction->arg1_type == TAC_ARG_TYPE_LABEL && instruction->arg1_node == variable) ||
           (pointer_base == NO && instruction->arg2_type == TAC_ARG_TYPE_LABEL && instruction->arg2_node == variable)) {
         /* Named division inputs preserve the existing quotient/remainder sharing. */
-        if (instruction_index < first_read)
-          first_read = instruction_index;
         if ((pointer_base == YES ? (instruction->op != TAC_OP_ARRAY_READ &&
             (instruction->op != TAC_OP_ASSIGNMENT || instruction->result_type != TAC_ARG_TYPE_TEMP ||
             instruction_index + 1 >= function_end || g_tacs[instruction_index + 1].op != TAC_OP_GET_ADDRESS_ARRAY ||
@@ -290,9 +291,10 @@ static int _promote_register_allocator_local_values(void) {
             (instruction->op != TAC_OP_ASSIGNMENT && instruction->op != TAC_OP_COMPLEMENT &&
             (_is_first_allocator_consumer(instruction->op) == NO ||
              instruction->op == TAC_OP_DIV || instruction->op == TAC_OP_MOD) &&
+            instruction->op != TAC_OP_ARRAY_WRITE &&
             _is_register_allocator_jump_op(instruction->op) == NO &&
             !(instruction->arg2_node == variable && (instruction->op == TAC_OP_ARRAY_READ ||
-            instruction->op == TAC_OP_ARRAY_WRITE || instruction->op == TAC_OP_GET_ADDRESS_ARRAY)))) ||
+            instruction->op == TAC_OP_GET_ADDRESS_ARRAY)))) ||
             instruction_index <= producer_index || crossed_barrier == YES ||
             (pointer_base == NO && instruction->arg1_node == variable && instruction->arg2_node == variable))
           eligible = NO;
@@ -305,8 +307,7 @@ static int _promote_register_allocator_local_values(void) {
           instruction->op != TAC_OP_CREATE_VARIABLE &&
           get_variable_type_size(get_max_variable_type_4(instruction->arg1_var_type, instruction->arg2_var_type,
             instruction->arg1_var_type_promoted, instruction->arg2_var_type_promoted)) != 16 &&
-          !(instruction == producer && instruction->op == TAC_OP_ASSIGNMENT &&
-            instruction->arg1_type == TAC_ARG_TYPE_CONSTANT))
+          !(instruction->op == TAC_OP_ASSIGNMENT && instruction->arg1_type == TAC_ARG_TYPE_CONSTANT))
         word_definitions = NO;
       if (instruction->result_type == TAC_ARG_TYPE_LABEL && instruction->result_node == variable &&
           instruction != producer && instruction->op != TAC_OP_CREATE_VARIABLE) {
@@ -315,7 +316,11 @@ static int _promote_register_allocator_local_values(void) {
             (instruction->op == TAC_OP_ASSIGNMENT || _is_first_allocator_producer(instruction->op) == YES ||
              instruction->op == TAC_OP_MUL || instruction->op == TAC_OP_DIV || instruction->op == TAC_OP_MOD)) {
           definitions++;
-          last_definition = instruction_index;
+          if (instruction->op != TAC_OP_ASSIGNMENT &&
+              ((instruction->op != TAC_OP_ADD && instruction->op != TAC_OP_SUB) ||
+               instruction->arg1_type != TAC_ARG_TYPE_LABEL || instruction->arg1_node != variable ||
+               instruction->arg2_type != TAC_ARG_TYPE_CONSTANT || instruction->arg2_d != 1.0))
+            cfg_definitions = NO;
         }
         else if (pointer_base == NO || instruction->op != TAC_OP_ARRAY_WRITE || instruction_index <= producer_index || crossed_barrier == YES)
           eligible = NO;
@@ -327,42 +332,31 @@ static int _promote_register_allocator_local_values(void) {
       if (eligible == NO)
         break;
     }
-    if (eligible == YES && control_flow == YES && definitions == 2 &&
-        producer->op == TAC_OP_ASSIGNMENT && variable->children[0]->value == VARIABLE_TYPE_UINT16 &&
-        last_definition >= 0 && g_tacs[last_definition].op == TAC_OP_ADD &&
-        g_tacs[last_definition].arg1_type == TAC_ARG_TYPE_LABEL && g_tacs[last_definition].arg1_node == variable &&
-        g_tacs[last_definition].arg2_type == TAC_ARG_TYPE_CONSTANT && g_tacs[last_definition].arg2_d == 1.0) {
-      int jump_index = last_definition + 1;
-      while (jump_index < function_end && g_tacs[jump_index].op == TAC_OP_DEAD)
-        jump_index++;
-      if (jump_index < function_end && g_tacs[jump_index].op == TAC_OP_JUMP) {
-        for (instruction_index = producer_index + 1; instruction_index < last_definition; instruction_index++) {
-          if (g_tacs[instruction_index].op == TAC_OP_LABEL && first_read >= instruction_index &&
-              strcmp(g_tacs[instruction_index].result_s, g_tacs[jump_index].result_s) == 0)
-            loop_definitions = YES;
-        }
-      }
-    }
     if (eligible == NO || (word_definitions == NO && (definitions > 1 ||
         (pointer_base == NO && producer->op != TAC_OP_ASSIGNMENT && producer->op != TAC_OP_ARRAY_READ &&
          _is_first_allocator_producer(producer->op) == NO))) ||
-        (definitions > 1 && control_flow == YES && loop_definitions == NO) ||
+        (definitions > 1 && control_flow == YES && cfg_definitions == NO) ||
+        ((definitions > 2 && control_flow == YES) != complex_cfg) ||
         (pointer_base == YES ? reads < 2 : reads < 1))
       continue;
     if (next_temp == INT_MAX)
       return FAILED;
+    promoted_temp = next_temp;
+    if (definitions > 1 && control_flow == YES) {
+      if (_collect_register_allocator_scalar_webs(function_node, variable,
+          function_start, function_end, &next_temp, &mapping) == FAILED)
+        return FAILED;
+      if (mapping == NULL)
+        continue;
+    }
 
     RA_TRACE((stderr, "register_allocator: %s_promotion function=%s variable=%s temp=r%d reads=%d uses=%d scope=%s status=complete\n",
-      pointer_base == YES ? "pointer_base" : "scalar_copy", function_node->children[1]->label, producer->result_s, next_temp, reads, uses,
+      pointer_base == YES ? "pointer_base" : "scalar_copy", function_node->children[1]->label, producer->result_s, promoted_temp, reads, uses,
       pointer_base == YES ? "single_block" : definitions > 1 ?
       (control_flow == YES ? "cfg_definitions" : "linear_definitions") : "function_value"));
-    if (definitions > 1 && producer->op == TAC_OP_ASSIGNMENT &&
-        producer->arg1_type == TAC_ARG_TYPE_CONSTANT)
-      producer->arg1_var_type_promoted = variable->children[0]->value;
-    if (definitions > 1 && control_flow == YES)
-      producer->arg1_var_type_promoted = VARIABLE_TYPE_UINT16;
     for (instruction_index = function_start; instruction_index < function_end; instruction_index++) {
       struct tac *instruction;
+      int temp = mapping == NULL ? promoted_temp : mapping[instruction_index];
 
       instruction = &g_tacs[instruction_index];
       if (instruction->op == TAC_OP_DEAD)
@@ -380,32 +374,37 @@ static int _promote_register_allocator_local_values(void) {
           instruction->arguments[argument_index].label = NULL;
           instruction->arguments[argument_index].node = NULL;
           instruction->arguments[argument_index].type = TAC_ARG_TYPE_TEMP;
-          instruction->arguments[argument_index].value = (double)next_temp;
+          instruction->arguments[argument_index].value = (double)temp;
         }
       }
       if (instruction->arg1_type == TAC_ARG_TYPE_LABEL && instruction->arg1_node == variable) {
         free(instruction->arg1_s);
         instruction->arg1_s = NULL;
-        tac_set_arg1(instruction, TAC_ARG_TYPE_TEMP, (double)next_temp, NULL);
+        tac_set_arg1(instruction, TAC_ARG_TYPE_TEMP, (double)temp, NULL);
         if (pointer_base == NO)
           instruction->arg1_node = NULL;
       }
       if (pointer_base == NO && instruction->arg2_type == TAC_ARG_TYPE_LABEL && instruction->arg2_node == variable) {
         free(instruction->arg2_s);
         instruction->arg2_s = NULL;
-        tac_set_arg2(instruction, TAC_ARG_TYPE_TEMP, (double)next_temp, NULL);
+        tac_set_arg2(instruction, TAC_ARG_TYPE_TEMP, (double)temp, NULL);
         instruction->arg2_node = NULL;
       }
       if (instruction->result_type == TAC_ARG_TYPE_LABEL && instruction->result_node == variable) {
+        if (definitions > 1 && instruction->op == TAC_OP_ASSIGNMENT &&
+            instruction->arg1_type == TAC_ARG_TYPE_CONSTANT)
+          instruction->arg1_var_type_promoted = variable->children[0]->value;
         free(instruction->result_s);
         instruction->result_s = NULL;
-        tac_set_result(instruction, TAC_ARG_TYPE_TEMP, (double)next_temp, NULL);
+        tac_set_result(instruction, TAC_ARG_TYPE_TEMP, (double)temp, NULL);
         instruction->result_node = pointer_base == NO ? variable : NULL;
         if (pointer_base == NO)
           instruction->result_var_type = variable->children[0]->value;
       }
     }
-    next_temp++;
+    if (mapping == NULL)
+      next_temp++;
+    free(mapping);
   }
 
   return SUCCEEDED;
@@ -5370,6 +5369,114 @@ static int _tac_writes_temp_register(struct tac *t, int register_index) {
 }
 
 
+static int _collect_register_allocator_scalar_webs(struct tree_node *function, struct tree_node *variable, int start, int end, int *next_temp, int **mapping) {
+
+  struct register_allocator_control_flow_storage storage;
+  struct register_allocator_basic_block *blocks;
+  struct register_allocator_cfg_edge *edges;
+  int *webs, *work, block_count, edge_count, i, j, status = FAILED;
+  char *seen;
+
+  *mapping = NULL;
+  if (register_allocator_plan_control_flow_storage(function->children[1]->label, g_tacs_count, &storage) == FAILED)
+    return FAILED;
+  blocks = calloc(1, storage.block_bytes);
+  edges = calloc(1, storage.edge_bytes);
+  webs = calloc(g_tacs_count, sizeof(*webs));
+  work = calloc((size_t)storage.max_blocks + 1, sizeof(*work));
+  seen = calloc(storage.max_blocks, sizeof(*seen));
+  if (blocks == NULL || edges == NULL || webs == NULL || work == NULL || seen == NULL) {
+    fprintf(stderr, "register_allocator: out of memory while collecting scalar definitions.\n");
+    goto cleanup;
+  }
+  if (_collect_register_allocator_basic_blocks(function, blocks, storage.max_blocks, storage.instruction_bytes, &block_count) == FAILED ||
+      _collect_register_allocator_cfg_edges(function, blocks, block_count, edges, storage.max_edges, storage.instruction_bytes, &edge_count) == FAILED)
+    goto cleanup;
+  for (i = start; i < end; i++)
+    webs[i] = i;
+  for (i = start; i < end; i++) {
+    struct tac *t = &g_tacs[i];
+    int block, head = 0, tail = 0;
+
+    if (t->op == TAC_OP_DEAD ||
+        !((t->arg1_type == TAC_ARG_TYPE_LABEL && t->arg1_node == variable) ||
+          (t->arg2_type == TAC_ARG_TYPE_LABEL && t->arg2_node == variable) ||
+          ((t->op == TAC_OP_FUNCTION_CALL || t->op == TAC_OP_FUNCTION_CALL_USE_RETURN_VALUE) &&
+           _bbb_get_argument_index_in_function_call_arguments_with_tree_node(t, variable) >= 0)))
+      continue;
+    for (block = 0; block < block_count; block++)
+      if (blocks[block].start_tac <= i && blocks[block].end_tac >= i)
+        break;
+    if (block == block_count) {
+      fprintf(stderr, "register_allocator: scalar_web function=%s tac=%d status=missing_block\n", function->children[1]->label, i);
+      goto cleanup;
+    }
+    memset(seen, NO, (size_t)block_count);
+    work[tail++] = block;
+    while (head < tail) {
+      int definition, incoming = 0;
+      block = work[head++];
+      /* The first visit stops before the use; a back edge sees the full block. */
+      for (definition = head == 1 ? i - 1 : blocks[block].end_tac;
+          definition >= blocks[block].start_tac; definition--) {
+        struct tac *producer = &g_tacs[definition];
+        if (producer->op != TAC_OP_DEAD && producer->op != TAC_OP_CREATE_VARIABLE &&
+            producer->result_type == TAC_ARG_TYPE_LABEL && producer->result_node == variable)
+          break;
+      }
+      if (definition >= blocks[block].start_tac) {
+        int from = webs[i], to = webs[definition];
+        if (from != to)
+          for (j = start; j < end; j++)
+            if (webs[j] == from)
+              webs[j] = to;
+        continue;
+      }
+      for (j = 0; j < edge_count; j++) {
+        if (edges[j].to_block != block)
+          continue;
+        incoming++;
+        if (seen[edges[j].from_block] == NO) {
+          seen[edges[j].from_block] = YES;
+          work[tail++] = edges[j].from_block;
+        }
+      }
+      if (incoming == 0) {
+        RA_TRACE((stderr, "register_allocator: scalar_web function=%s variable=%s tac=%d action=preserve_stack reason=missing_definition status=complete\n",
+            function->children[1]->label, variable->children[1]->label, i));
+        status = SUCCEEDED;
+        goto cleanup;
+      }
+    }
+  }
+  for (i = 0; i < g_tacs_count; i++)
+    work[i] = -1;
+  for (i = start; i < end; i++) {
+    struct tac *t = &g_tacs[i];
+    if (t->op == TAC_OP_DEAD || t->op == TAC_OP_CREATE_VARIABLE ||
+        t->result_type != TAC_ARG_TYPE_LABEL || t->result_node != variable || work[webs[i]] >= 0)
+      continue;
+    if (*next_temp == INT_MAX) {
+      fprintf(stderr, "register_allocator: scalar_web function=%s status=temp_index_overflow\n", function->children[1]->label);
+      goto cleanup;
+    }
+    work[webs[i]] = (*next_temp)++;
+  }
+  for (i = start; i < end; i++)
+    webs[i] = work[webs[i]];
+  *mapping = webs;
+  webs = NULL;
+  status = SUCCEEDED;
+cleanup:
+  free(seen);
+  free(work);
+  free(webs);
+  free(edges);
+  free(blocks);
+  return status;
+}
+
+
 static int _reuse_register_allocator_regional_values(int *rewritten) {
 
   int start;
@@ -5596,26 +5703,6 @@ hoist_loop_values:
           g_register_reads[(int)first->result_d] != 1 || g_register_writes[(int)first->result_d] != 1 ||
           (first->arg2_type == TAC_ARG_TYPE_CONSTANT && (first->arg2_d < 2 || first->arg2_d > 15)))
         continue;
-      if (first->arg2_type != TAC_ARG_TYPE_CONSTANT) {
-        int initial;
-        if (first->arg2_type != TAC_ARG_TYPE_TEMP)
-          continue;
-        for (initial = start + 1; initial < i; initial++) {
-          if (_tac_writes_temp_register(&g_tacs[initial], (int)first->arg2_d) == YES)
-            break;
-        }
-        if (initial == i || is_z80_bounded_counter(&g_tacs[initial], function, 15, YES) == NO)
-          continue;
-      }
-      if (first->arg1_type == TAC_ARG_TYPE_TEMP) {
-        int initial;
-        for (initial = start + 1; initial < i; initial++) {
-          if (_tac_writes_temp_register(&g_tacs[initial], (int)first->arg1_d) == YES)
-            break;
-        }
-        if (initial == i || is_z80_bounded_counter(&g_tacs[initial], function, 65535, YES) == NO)
-          continue;
-      }
       indices[1] = _find_next_living_tac(i + 1);
       if (indices[1] < 0 || indices[1] >= end)
         continue;
@@ -5711,13 +5798,22 @@ hoist_loop_values:
 
           if (type == TAC_ARG_TYPE_CONSTANT)
             continue;
-          if (type != TAC_ARG_TYPE_TEMP && (type != TAC_ARG_TYPE_LABEL || node == NULL ||
+          if (type != TAC_ARG_TYPE_TEMP && (operand == 1 || type != TAC_ARG_TYPE_LABEL || node == NULL ||
               node->type != TREE_NODE_TYPE_CREATE_VARIABLE_FUNCTION_ARGUMENT ||
               node->children[0]->value_double != 0.0 ||
               (node->flags & (TREE_NODE_FLAG_GLOBAL | TREE_NODE_FLAG_STATIC | TREE_NODE_FLAG_EXTERN |
                               TREE_NODE_FLAG_ADDRESS_TAKEN)) != 0)) {
             eligible = NO;
             break;
+          }
+          if (type == TAC_ARG_TYPE_TEMP) {
+            for (scan = start + 1; scan < i; scan++)
+              if (_tac_writes_temp_register(&g_tacs[scan], value) == YES)
+                break;
+            if (scan == i || is_z80_bounded_counter(&g_tacs[scan], function, operand == 1 ? 15 : 65535, YES) == NO) {
+              eligible = NO;
+              break;
+            }
           }
           for (scan = start + 1; scan < end; scan++) {
             struct tac *t = &g_tacs[scan];
@@ -6101,7 +6197,6 @@ static int _is_z80_basic_block_transparent_tac_for_physical_register(struct tac 
 
   if (t->op == TAC_OP_DEAD || t->op == TAC_OP_CREATE_VARIABLE)
     return YES;
-
   read_units = _get_z80_register_allocator_physical_register_units(t->arg1_physical_register) |
     _get_z80_register_allocator_physical_register_units(t->arg2_physical_register);
   written_units = t->op == TAC_OP_ARRAY_WRITE ? RA_Z80_UNIT_NONE :
@@ -6209,6 +6304,12 @@ static int _is_basic_block_transparent_tac_for_physical_register(struct tac *t, 
     return NO;
 
   is_transparent = target_policy->is_tac_transparent_for_physical_register(t, physical_register);
+  if (is_transparent == YES && t->op == TAC_OP_ASSIGNMENT &&
+      t->arg1_type == TAC_ARG_TYPE_CONSTANT && t->arg1_d == 0.0) {
+    int start = (int)(t - g_tacs), end = start;
+    if (generate_asm_bounded_loop_z80(&end, NULL, t->function_node, NO) == FAILED || end > start)
+      is_transparent = NO;
+  }
 
   RA_TRACE((stderr, "register_allocator: target_transparency function=%s tac=%d op=%s phy=%s transparent=%s\n",
       t->function_node->children[1]->label, (int)(t - g_tacs), _get_first_allocator_op_name(t->op),
@@ -6722,6 +6823,18 @@ static void _observe_register_allocator_transition_preparation(void *context,
     byte_count = temp->size / 8;
     costs[choice][0] = byte_count * indexed_cycles;
     costs[choice][1] = byte_count * indexed_bytes;
+    if (byte_count == 2 && g_tacs[producer].op == TAC_OP_ADD &&
+        g_tacs[producer].arg2_type == TAC_ARG_TYPE_CONSTANT && g_tacs[producer].arg2_d == 1.0 &&
+        g_tacs[producer].arg1_type == TAC_ARG_TYPE_TEMP &&
+        g_tacs[producer].arg1_d == g_tacs[producer].result_d &&
+        g_tacs[producer].arg1_physical_register == Z80_PHY_NONE &&
+        get_variable_type_size(g_tacs[producer].arg1_var_type) == 16 &&
+        get_variable_type_size(g_tacs[producer].result_var_type) == 16) {
+      int bounded = is_z80_bounded_counter(&g_tacs[producer], transition_context->function_node, 255, NO);
+      /* Compare against the in-place memory increment, not a full load/store. */
+      costs[choice][0] -= 2 * byte_count * indexed_cycles + 6 - (bounded == YES ? 23 : 35);
+      costs[choice][1] -= 2 * byte_count * indexed_bytes + 1 - (bounded == YES ? 3 : 8);
+    }
     if (physical_register == Z80_PHY_BC && g_tacs[producer].op != TAC_OP_COMPLEMENT &&
       g_tacs[producer].op != TAC_OP_AND && g_tacs[producer].op != TAC_OP_OR && g_tacs[producer].op != TAC_OP_XOR &&
         (_is_first_allocator_producer(g_tacs[producer].op) == YES || g_tacs[producer].op == TAC_OP_DIV ||
@@ -7290,7 +7403,7 @@ static void _debug_print_register_allocator_temp_set(struct tree_node *function_
 }
 
 
-static int _debug_register_allocator_liveness(struct tree_node *function_node, struct register_allocator_basic_block *blocks, int block_count, struct register_allocator_cfg_edge *edges, int edge_count, int verify) {
+static int _analyze_register_allocator_liveness(struct tree_node *function_node, struct register_allocator_basic_block *blocks, int block_count, struct register_allocator_cfg_edge *edges, int edge_count, int verify, char **live_out_result) {
 
   struct register_allocator_liveness_storage storage;
   char *live_use;
@@ -7302,6 +7415,10 @@ static int _debug_register_allocator_liveness(struct tree_node *function_node, s
   int block_index;
   int status;
 
+  if (live_out_result != NULL) {
+    free(*live_out_result);
+    *live_out_result = NULL;
+  }
   temp_count = function_node->local_variables->temp_registers_count;
 
   if (block_count <= 0 || temp_count <= 0)
@@ -7375,12 +7492,18 @@ static int _debug_register_allocator_liveness(struct tree_node *function_node, s
 
     RA_TRACE((stderr, "register_allocator: liveness_iterations function=%s iterations=%d\n", function_node->children[1]->label, iterations));
     for (block_index = 0; block_index < block_count; block_index++) {
-      int set_index;
+      int set_index, temp_index;
 
       if (register_allocator_resolve_liveness_index(
           function_node->children[1]->label, block_count, temp_count, &storage,
           block_index, 0, &set_index) == FAILED)
         goto verified;
+      for (temp_index = 0; temp_index < temp_count; temp_index++) {
+        struct temp_register *temp = &function_node->local_variables->temp_registers[temp_index];
+        if (temp->write_count > 1 && live_out[set_index + temp_index] != NO &&
+            temp->live_end < blocks[block_index].end_tac)
+          temp->live_end = blocks[block_index].end_tac;
+      }
       RA_TRACE((stderr, "register_allocator: liveness function=%s block=%d use=", function_node->children[1]->label, block_index));
       _debug_print_register_allocator_temp_set(function_node, live_use + set_index);
       fprintf(stderr, " def=");
@@ -7565,6 +7688,10 @@ static int _debug_register_allocator_liveness(struct tree_node *function_node, s
   }
 
 verified:
+  if (status == SUCCEEDED && live_out_result != NULL) {
+    *live_out_result = live_out;
+    live_out = NULL;
+  }
   free(live_use);
   free(live_def);
   free(live_in);
@@ -8656,11 +8783,6 @@ static int _debug_register_allocator_join_retention_preflight(
         block_facts[block_index].path_transparent = YES;
         block_path_start = blocks[block_index].start_tac;
         block_path_end = blocks[block_index].end_tac;
-        if (block_index == sites[path_index].predecessor_block)
-          block_path_end = sites[path_index].placement ==
-              RA_JOIN_SPILL_BEFORE_ANCHOR ?
-              sites[path_index].anchor_instruction - 1 :
-              sites[path_index].anchor_instruction;
         for (scan_index = block_path_end; scan_index >= block_path_start;
             scan_index--) {
           if (_register_allocator_instruction_writes_temp(function_node,
@@ -8712,10 +8834,7 @@ static int _debug_register_allocator_join_retention_preflight(
           reaching_definition.path_transparent;
     }
     else {
-      path_end = sites[path_index].placement ==
-          RA_JOIN_SPILL_BEFORE_ANCHOR ?
-          sites[path_index].anchor_instruction - 1 :
-          sites[path_index].anchor_instruction;
+      path_end = sites[path_index].anchor_instruction;
       for (scan_index = definition_index + 1; scan_index <= path_end;
           scan_index++) {
         if (_is_basic_block_transparent_tac_for_physical_register(
@@ -10866,7 +10985,7 @@ static int _run_basic_block_linear_scan(struct tree_node *function_node,
   struct register_allocator_basic_block *blocks, int block_count,
   struct register_allocator_cfg_edge *edges, int edge_count,
   struct register_allocator_join_path_state_entry *path_state_entries,
-  int path_state_count) {
+  int path_state_count, const char *live_out) {
 
   struct register_allocator_active_slot *active_slots;
   int byte_candidate_registers[3];
@@ -10874,7 +10993,7 @@ static int _run_basic_block_linear_scan(struct tree_node *function_node,
   int physical_register_roles[5];
   int active_slot_roles[5];
   size_t active_slot_bytes;
-  int block_index;
+  int block_index, native_start = -1, native_end = -1;
   int active_slot_count;
   int byte_candidate_count;
   int word_candidate_count;
@@ -10988,6 +11107,12 @@ static int _run_basic_block_linear_scan(struct tree_node *function_node,
 
       if (register_allocator_expire_active_slots(function_node->children[1]->label, block_index, tac_index, active_slots, active_slot_count) == FAILED)
         goto cleanup;
+      if (g_backend == BACKEND_Z80 && tac_index > native_end) {
+        native_start = tac_index;
+        native_end = tac_index;
+        if (generate_asm_bounded_loop_z80(&native_end, NULL, function_node, YES) == FAILED)
+          goto cleanup;
+      }
 
       if (register_allocator_discover_candidate(function_node->children[1]->label, tac_index,
           blocks[block_index].end_tac, g_tacs_count, function_node,
@@ -11001,6 +11126,9 @@ static int _run_basic_block_linear_scan(struct tree_node *function_node,
       register_index = candidate.temp_index;
       temp_register = _find_temp_register_info(function_node, register_index);
       if (temp_register == NULL)
+        continue;
+      if (native_end > native_start && tac_index <= native_end &&
+          (temp_register->live_start < native_start || temp_register->live_end >= native_end))
         continue;
 
       if (producer->op == TAC_OP_FUNCTION_CALL_USE_RETURN_VALUE) {
@@ -11027,6 +11155,17 @@ static int _run_basic_block_linear_scan(struct tree_node *function_node,
           &g_tacs[next_use], candidate.consumer_operand, temp_register->size);
         if (preferred != Z80_PHY_NONE)
           physical_register = preferred;
+      }
+      if (live_out[block_index * function_node->local_variables->temp_registers_count +
+          (temp_register - function_node->local_variables->temp_registers)] != NO) {
+        int definition;
+        for (definition = tac_index + 1; definition <= blocks[block_index].end_tac; definition++)
+          if (_tac_writes_temp_register(&g_tacs[definition], register_index) == YES)
+            break;
+        if (definition > blocks[block_index].end_tac) {
+          candidate.has_single_read = NO;
+          extend_reads = NO;
+        }
       }
       first_candidate = candidate;
       if (candidate.has_single_read == NO &&
@@ -11448,6 +11587,7 @@ static int _scan_register_allocator_basic_blocks(struct tree_node *function_node
   struct register_allocator_join_path_state_storage resized_path_state_storage;
   struct register_allocator_fixed_point_step fixed_point_step;
   struct register_allocator_target_policy *target_policy;
+  char *live_out = NULL;
   int block_count;
   int edge_count;
   int max_edges;
@@ -11551,7 +11691,7 @@ static int _scan_register_allocator_basic_blocks(struct tree_node *function_node
   _debug_register_allocator_cfg_edges(function_node, edges, edge_count);
   }
 
-  if (_debug_register_allocator_liveness(function_node, blocks, block_count, edges, edge_count, NO) == FAILED) {
+  if (_analyze_register_allocator_liveness(function_node, blocks, block_count, edges, edge_count, NO, &live_out) == FAILED) {
     goto cleanup;
   }
   reconciliation_pass = 0;
@@ -11602,8 +11742,8 @@ static int _scan_register_allocator_basic_blocks(struct tree_node *function_node
       break;
     if (_rebuild_register_allocator_control_flow(function_node, &blocks,
         &edges, &block_count, &edge_count) == FAILED ||
-        _debug_register_allocator_liveness(function_node, blocks, block_count,
-        edges, edge_count, NO) == FAILED) {
+        _analyze_register_allocator_liveness(function_node, blocks, block_count,
+        edges, edge_count, NO, &live_out) == FAILED) {
       goto cleanup;
     }
     RA_TRACE((stderr, "register_allocator: post_mutation_control_flow function=%s instructions=%d blocks=%d edges=%d status=complete\n",
@@ -11657,12 +11797,12 @@ static int _scan_register_allocator_basic_blocks(struct tree_node *function_node
       function_node->children[1]->label, path_state_storage.entry_capacity,
       path_state_count));
   if (_run_basic_block_linear_scan(function_node, blocks, block_count, edges, edge_count,
-      path_state_entries, path_state_count) == FAILED) {
+      path_state_entries, path_state_count, live_out) == FAILED) {
     goto cleanup;
   }
   /* Reconcile earlier candidates against the now-known lowering of later producers. */
   if (_run_basic_block_linear_scan(function_node, blocks, block_count, edges, edge_count,
-      path_state_entries, path_state_count) == FAILED)
+      path_state_entries, path_state_count, live_out) == FAILED)
     goto cleanup;
   if (_place_split_spill_reloads(function_node, blocks, block_count,
       edges, edge_count) == FAILED) {
@@ -11672,8 +11812,8 @@ static int _scan_register_allocator_basic_blocks(struct tree_node *function_node
   if ((g_tacs_count != reconciliation_start_instruction_count &&
       _rebuild_register_allocator_control_flow(function_node, &blocks,
       &edges, &block_count, &edge_count) == FAILED) ||
-      _debug_register_allocator_liveness(function_node, blocks, block_count,
-      edges, edge_count, YES) == FAILED)
+      _analyze_register_allocator_liveness(function_node, blocks, block_count,
+      edges, edge_count, YES, NULL) == FAILED)
     goto cleanup;
 
   status = SUCCEEDED;
@@ -11686,6 +11826,7 @@ cleanup:
       status == SUCCEEDED ? "complete" : "failed");
   free(path_state_entries);
   free(resized_path_state_entries);
+  free(live_out);
   free(edges);
   free(blocks);
 
@@ -12144,13 +12285,14 @@ static int assign_spill_slot_offsets(struct tree_node *function_node, int *offse
     struct temp_register *temp_register;
     int temp_index = j, temp_size;
 
-    /* Preserve fixed owners; pack the shareable suffix largest-first. */
+    /* Preserve fixed owners; pack the suffix largest-first, then by first use. */
     if (order != NULL) {
       int candidate;
       for (candidate = j + 1; *offset < fixed_limit && candidate < count; candidate++) {
         struct temp_register *current = &function_node->local_variables->temp_registers[order[j]];
         struct temp_register *next = &function_node->local_variables->temp_registers[order[candidate]];
-        if (next->spill_required == YES && (current->spill_required == NO || next->size > current->size)) {
+        if (next->spill_required == YES && (current->spill_required == NO || next->size > current->size ||
+            (next->size == current->size && next->live_start < current->live_start))) {
           int previous = order[j];
           order[j] = order[candidate];
           order[candidate] = previous;

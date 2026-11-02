@@ -5859,40 +5859,114 @@ Keep source growth visible: extend/refactor existing promotion, CFG, location
 and emission machinery, removing superseded special cases when proofs subsume
 them rather than adding parallel allocators, optimizers or caches.
 
-### 2aw. General CFG Scalar Promotion For Mutable Loop State
+### 2aw. General CFG Scalar Promotion For Mutable Loop State (Completed)
 
-**Status: planned; next implementation step.** Extend the existing local-value
-promoter in [pass_5.c](compiler/pass_5.c), reusing CFG/liveness, definition,
-ownership, join/latch and transfer-cost machinery in
-[register_allocator.c](compiler/register_allocator.c).
+Normal RA extends the existing local-value promoter with function-local
+definition/use webs, using the existing CFG builders, liveness, ownership,
+transactions and transfer-cost observer. The lexical two-definition unsigned
+increment exception is removed rather than duplicated.
 
-- Generalize regional promotion of mutable nonescaping scalars across branches
-  and loops. The existing whole-function rules reject most multiple-definition
-  control flow except a narrow two-definition unsigned increment loop.
-  Signed scan positions, reused counters and branch-updated state must not
-  remain frame-backed merely because that lexical shape does not match.
-- Prove reaching definitions and incoming/outgoing values at every relevant
-  edge. Preserve declared widths, truncation/sign extension, initialization,
-  live-outs and ownership through unequal joins, nested loops and calls.
-  Address-taking, aliases, ASM and unsupported edges retain conservative homes.
-- Charge complete lowered producer/consumer schedules, edge copies, spills,
-  reloads and call preservation before accepting a promoted region. Reuse
-  existing transactions and cost observers, not a second SSA allocator.
-- Pinned zsdcc QuickSort keeps scan state in DE and uses INC/DEC DE where
-  SameSameC repeatedly loads/stores scalar homes. SDCC's
-  `instruction_cost`/`dryZ80iCode` coupling is prior art for costing real
-  assignments and surviving registers, not code to copy.
-- Start with existing candidates. DE still owns the frame pointer after 2av;
-  ordinary DE or H/L byte allocation needs explicit frame-role, alias-unit,
-  clobber and ABI proofs, not simply another enabled enum.
+- Full-width signed/unsigned word assignments and in-place `+1`/`-1` updates
+  can share a TEMP across joins, nested loops and multiple latches. Backward
+  CFG searches join all reaching definitions; disconnected resets get separate
+  webs. Missing incoming definitions preserve the named home. Literal
+  assignments retain the declared word width.
+- Simple recurrences are promoted before existing invariant motion; larger
+  CFG webs use the same promoter afterwards. This does not retry rejected
+  simple values or let newly split counters silently authorize speculative
+  hoists on skipped-body paths. The hoister's two source-counter checks now
+  share its existing operand loop.
+- The existing liveness analysis transfers its computed live-out buffer to
+  both basic-block scans, rather than solving again. A final definition live
+  out of its block is not a single-read value just because its next lexical
+  consumer is local. Existing split preservation writes it back, including
+  read-before-write backedges; killed earlier definitions need no extra spill.
+- The existing cost observer compares an in-place memory increment with the
+  actual retained schedule, including preservation, instead of assuming a
+  removed full-word load/store. Unprofitable retention keeps the existing
+  memory update. Equal-sized shareable spill homes use first-use order after
+  the existing largest-first rule; fixed owners remain unchanged.
+- Array-store values reuse normal scalar operand rewriting. The shared native
+  loop lowerer accepts promoted snapshots, stable TEMP bounds/fill values and
+  backed counter homes. It rejects changing fill values and protects selected
+  regions from surrounding owners through structural/ownership dry queries.
+  Position-sensitive queries stay outside the policy callback used with
+  synthetic TAC copies. The shared array-address selector keeps BC-indexed
+  word stores on their existing BC-preserving schedule.
+- Copy/reduction loops recover DE from their proven unchanged SP instead of
+  searching for a scratch home and saving/reloading DE through memory. No
+  new frame slot, register class, edge-copy framework, ABI or allocator is added.
 
-Acceptance: remove actual scalar-frame accesses and produce smaller/faster
-complete code in at least two large applications. Exercise signed/unsigned
-updates, multiple definitions/latches, reused counters, zero-trip loops,
-unequal joins, escaped locals, calls and ASM. All eighteen ordinary/shared
-workloads must remain non-growing in complete code, per-input cycles and full
-storage; report instructions and separate reads/writes as well as caller costs.
-Remove promotion special cases only when the general proof covers them.
+Mutable byte state, narrow word definitions, arbitrary arithmetic recurrences,
+escapes, ASM, duplicate inputs, named division/remainder sharing and existing
+return barriers retain conservative fallbacks. Promotion does not promise a
+register-only home: the existing costs still choose spills when cheaper.
+DE remains the frame pointer. QuickSort/A* costs are unchanged; broader signed
+scan arithmetic and maintained induction addresses remain future work.
+
+Exact-parent results versus `129d739b072863e17098ae40329f0c2bed3ca7c8`
+(kernel cycles sum the same guarded inputs):
+
+| Kernel | RA bytes | RA cycles | Shared bytes | Shared cycles | RA full frame |
+|---|---:|---:|---:|---:|---:|
+| Array | 1232 -> 1213 | 5264433 -> 5261944 | 1164 -> 1145 | 5338953 -> 5336464 | 84 -> 84 |
+| Tile | 957 -> 938 | 1135354 -> 1123160 | 957 -> 938 | 1135354 -> 1123160 | 124 -> 122 |
+| Path | 979 -> 971 | 3877421 -> 3876661 | 979 -> 971 | 3877421 -> 3876661 | 182 -> 180 |
+| Copy | 83 -> 76 | 27390 -> 26625 | 83 -> 76 | 27390 -> 26625 | 25 -> 25 |
+| Sprite | 3004 -> 2989 | 11485899 -> 11481271 | 2976 -> 2961 | 11493675 -> 11489047 | 322 -> 322 |
+| Tracker | 2956 -> 2956 | 9868835 -> 9867179 | 2928 -> 2928 | 9884171 -> 9882515 | 254 -> 252 |
+| Navigation | 2636 -> 2636 | 9940417 -> 9940417 | 2544 -> 2544 | 9942793 -> 9942793 | 1014 -> 1012 |
+
+Actual scalar-frame accesses disappear in Array and Sprite: native loop exits
+no longer write dead named `i` homes after independent reset webs are separated.
+Their DE scratch transfers also disappear. Ordinary RA reads/writes change
+77304/44852 -> 77226/44774 and 294703/91019 -> 294599/90811 respectively.
+Tile changes 26294/10030 -> 26090/9458, Path 88808/25320 -> 88808/25280,
+and Copy 222/132 -> 192/102; Tracker/Navigation traffic is unchanged.
+Ordinary instruction totals are Array 468961 -> 468862, Tile 94142 -> 93672,
+Path 322048 -> 322008, Copy 1750 -> 1735, Sprite 906856 -> 906700 and
+Tracker 813171 -> 812919. Navigation and the other eleven kernels have unchanged
+recorded instruction totals. Shared variants have the same instruction/traffic
+deltas, with unchanged complete caller sections and caller cycles.
+
+Qualification:
+
+- Release, traced and ASan hosts cover all eighteen ordinary/shared workloads:
+  108 builds, 1668 guarded calls and 162 independent timings. Every complete
+  section, individual input's cycles/reads/writes and full storage bounds are
+  non-growing, with no instruction-growth inputs and 72 cross-build ROM identities.
+- The new self-contained oracle covers 54 shapes and 42120 executions per host,
+  all five numerical modes and inline/shared arithmetic, requiring 72 actual
+  word-state promotions. It covers signed/unsigned updates, unequal joins,
+  multiple latches, resets, nesting, zero trips, calls, ASM, escapes, narrowing,
+  missing definitions and BC-indexed word stores. Its 16848 exact-parent
+  comparisons have no code, cycle, separate frame-traffic, instruction or frame
+  growth; 24 default/no-RA/all-spill ROM controls remain identical.
+- A further 8816 exact-parent comparisons cover complete CRC, scaled-reduction
+  and invariant-motion oracles, including skipped-body inputs. Reused/live-out
+  counters and pressure reductions now have explicit positive native-selection
+  assertions. The invariant-pressure fallback is preserved, not reclassified
+  after its rejected slower scout.
+- Focused allocator, window, addressing, copy/fill, call, recursive/banked and
+  cross-object/assembly ABI contracts run on all three hosts. Existing CRC/scaled
+  `far` selection assertions and the retained-word offset-coverage assertion
+  also fail on the exact parent; they are not weakened or counted as green.
+  The separate paired oracles continue beyond the known `far` assertions.
+  Final focused suites run serially on unchanged binaries; an earlier parallel
+  run exhausted host memory and its interrupted logs/artifacts are preserved.
+- Strict C89 checks of the staged source and exact parent both reject only
+  the unchanged nonconstant aggregate initializer. Checks pass with the
+  pre-existing working-tree initializer fix, which remains outside this commit.
+  The immutable native allocation verifier and frame-boundary controls pass.
+  All six SMS/Game Gear consoles preserve numerical output,
+  display, mapper, palette/font and full RAM controls. Each calculations-2/3
+  saves 54/15 used bytes and 1913/494 boot cycles; calculations-1 is unchanged.
+
+Production grows by **156 net C lines plus one header declaration**, with one
+CFG-web collector and no parallel allocator or cache. The unrelated existing
+C89 initializer and file-mode changes remain outside the commit. Source-bound
+evidence, per-input costs and rejected scouts are retained under
+`C:\cygwin64\tmp\cfg-scalars-20261102`. Commit locally without pushing; 2ax is next.
 
 ### 2ax. Maintained Induction Addresses Across Loop Iterations
 

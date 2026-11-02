@@ -2017,7 +2017,7 @@ void main(void) {}
             "signed_sum": False, "signed_counter": False, "byte_counter": False,
             "pointer_word": False, "reverse": False, "stride": False, "row": False,
             "write": False, "call": False, "branch": False, "continue": False,
-            "break": False, "escaped": False, "assembly": False, "pressure": False,
+            "break": False, "escaped": False, "assembly": False, "pressure": True,
             "far": False, "changing_bound": False, "full_word": False,
         }
         fixed_counts = {"zero": 0, "one": 1, "two": 2, "sixteen": 16,
@@ -3196,7 +3196,7 @@ u16 rc_four(u16 a,u16 b,u16 c,u16 d) { return a+b+c+d; }
             "break": (8, 0x1021, False), "continue": (8, 0x1021, False),
             "counter_read": (8, 0x1021, False), "variable": (8, 0x1021, False),
             "outer_word": (8, 0x1021, True), "outer_word_bound": (256, 0x8005, True),
-            "outer_live_counter": (8, 0x1021, False), "outer_call": (8, 0x1021, True),
+            "outer_live_counter": (8, 0x1021, True), "outer_call": (8, 0x1021, True),
             "outer_escaped": (8, 0x1021, False), "outer_assembly": (8, 0x1021, False),
             "outer_break": (8, 0x1021, False), "outer_variable": (8, 0x1021, False),
             "partial_owner": (8, 0x1021, False),
@@ -3728,6 +3728,116 @@ u16 rc_four(u16 a,u16 b,u16 c,u16 d) { return a+b+c+d; }
                 ):
                     self.assertEqual(body.count("LD  IX,"), 2 if program.family in ("evict9", "terminal9") else 1,
                                      (program.name, mode))
+
+    def test_cfg_mutable_scalar_webs(self):
+        forms = {
+            "up": "for(k=0;k<n;k++) { state++; total+=state; }",
+            "down": "for(k=0;k<n;k++) { state--; total+=state; }",
+            "latches": "k=0; while(k<n) { k++; if(k&1) { state++; total+=state; continue; } state--; total+=state; }",
+            "reset": "for(k=0;k<n;k++) { state++; total+=state; } state=b; for(k=0;k<n;k++) { state--; total+=state; }",
+            "join": "if(n&1) { state=b; } for(k=0;k<n;k++) { state++; total+=state; }",
+            "conditional": "if(n&1) { state=a; } else { state=b; } for(k=0;k<n;k++) { state--; total+=state; }",
+            "nested": "for(k=0;k<n;k++) { for(j=0;j<(n&3);j++) { state++; total+=state; } }",
+            "word_stores": "u16 data[8]; for(k=0;k<8;k++) { data[k]=0; } for(k=0;k<n;k++) { data[k]=b; state++; total+=state; } for(j=0;j<n;j++) { total+=data[j]; }",
+            "escape": "scalar_web_escape_KIND(&state,b); for(k=0;k<n;k++) { state++; total+=state; }",
+            "call": "for(k=0;k<n;k++) { state++; total+=scalar_web_touch(state); }",
+            "asm": 'for(k=0;k<n;k++) { __asm("NOP"); state++; total+=state; }',
+            "narrow": "for(k=0;k<n;k++) { state=small; total+=state; }",
+            "arithmetic": "for(k=0;k<n;k++) { state+=b; total+=state; }",
+            "missing": "if(n) { state=a; } else if(a) { state=b; } if(n||a) { return state^257; } return 0;",
+        }
+        selected = set(forms) - {"escape", "asm", "narrow", "arithmetic", "missing"}
+        programs = []
+        for kind in ("u8", "s8", "u16", "s16"):
+            width = 1 if kind.endswith("8") else 2
+            for family, body in forms.items():
+                if width == 1 and family == "narrow":
+                    continue
+                name = f"scalar_web_{kind}_{family}"
+                initializer = "" if family in ("conditional", "missing") else "=a"
+                tail = ("" if family == "missing" else
+                        "u16 final=state; ra_buffer[0]=final; ra_buffer[1]=final>>8; "
+                        "ra_buffer[2]=total; ra_buffer[3]=total>>8; return final^total;")
+                source = (f"u16 {name}({kind} a,{kind} b,u16 n) {{ {kind} state{initializer}; "
+                          f"u16 k; u16 j; {'s16' if kind.startswith('s') else 'u16'} total=0; u8 small=b; n&=7; "
+                          + body.replace("KIND", kind) + tail + " }")
+                programs.append(Program(name, family, width, int(kind.startswith("s")),
+                                        [width, width, 2], 2, [], source))
+        helpers = "\n".join(f"void scalar_web_escape_{kind}({kind} *p,{kind} value) {{ p[0]=value; }}"
+                            for kind in ("u8", "s8", "u16", "s16"))
+        pairs = [(value, (value*137+0x8001)&65535)
+                 for value in (0, 1, 127, 128, 255, 256, 32767, 32768, 65534, 65535)]
+        pairs += [(0, 0), (65535, 0), (32768, 65535)]
+        calls = selections = 0
+        for policy in ("inline", "shared"):
+            for offset in range(0, len(programs), len(forms)):
+                group = programs[offset:offset+len(forms)]
+                directory = self.output / "scalar-webs" / policy / f"batch-{offset}"
+                source = ("u8 ra_buffer[128];\n" + helpers +
+                          "\nu16 scalar_web_touch(u16 value) { ra_buffer[127]+=1; return value+7; }\n" +
+                          "\n".join(program.source for program in group) + "\nvoid main(void) {}\n")
+                images = compile_generated(
+                    directory, os.environ.get("SAMESAMECC") or "samesamecc",
+                    os.environ.get("SAMESAMECL") or "samesamecl", group, source,
+                    linker_flags=("-share-arithmetic",) if policy == "shared" else ())
+                for mode, image in images.items():
+                    assembly = (directory / mode / "main.asm").read_text()
+                    for program in group:
+                        body = assembly.split(f'.SECTION "{program.name}" FREE')[1].split(".ENDS")[0]
+                        if os.environ.get("RA_BASELINE") != "1":
+                            promoted = (mode in ("ra", "ra_quiet") and program.variant == 2
+                                        and program.family in selected)
+                            self.assertEqual('; TAC: variable "_state_' not in body, promoted,
+                                             (program.name, policy, mode))
+                            selections += int(promoted)
+                        mask = (1 << (8*program.variant))-1
+
+                        def scalar(value):
+                            value &= mask
+                            return value-(mask+1) if program.constant and value&(mask+1)//2 else value
+
+                        for a, b in pairs:
+                            for count in (0, 1, 2, 3, 7, 65535):
+                                n, total, state = count&7, 0, scalar(a)
+                                family = program.family
+                                initial = bytes((index*37+a+b+count)&255 for index in range(128))
+                                expected_buffer = bytearray(initial)
+                                if family == "missing":
+                                    expected = ((scalar(a) if n else scalar(b))^257) if n or scalar(a) else 0
+                                else:
+                                    if family == "escape" or family == "join" and n&1:
+                                        state = scalar(b)
+                                    elif family == "conditional":
+                                        state = scalar(a if n&1 else b)
+                                    for phase in range(2 if family == "reset" else 1):
+                                        if phase:
+                                            state = scalar(b)
+                                        iterations = n*(n&3) if family == "nested" else n
+                                        for index in range(iterations):
+                                            step = (-1 if family in ("down", "conditional") or phase else
+                                                    1 if family != "latches" or (index+1)&1 else -1)
+                                            state = scalar(b&255 if family == "narrow" else
+                                                           state+scalar(b) if family == "arithmetic" else state+step)
+                                            total = (total+state+(7 if family == "call" else 0))&65535
+                                            if family == "call":
+                                                expected_buffer[127] = (expected_buffer[127]+1)&255
+                                    final = state&65535
+                                    if family == "word_stores":
+                                        total = (total+n*scalar(b))&65535
+                                    expected_buffer[:4] = final.to_bytes(2, "little")+total.to_bytes(2, "little")
+                                    expected = final^total
+                                with self.subTest(program=program.name, policy=policy, mode=mode, a=a, b=b, count=count):
+                                    result = execute(image.rom, image.symbols[program.name], [a&mask, b&mask, count],
+                                                     program.widths, initial, image.symbols["ra_buffer"], 2,
+                                                     image.transfers, frame_bytes=512)
+                                    self.assertEqual((result["value"], result["buffer"], result["port_writes"]),
+                                                     (expected&65535, expected_buffer, []))
+                                    self.assertEqual(result["unmapped_instructions"], 0)
+                                calls += 1
+        self.assertEqual(calls, len(programs)*len(pairs)*6*5*2)
+        if os.environ.get("RA_BASELINE") != "1":
+            self.assertEqual(selections, len(selected)*2*2*2)
+        print(f"CFG scalar web oracle: {len(programs)} shapes, {calls} executions", flush=True)
 
     def test_scalar_load_promotion(self):
         bodies = {

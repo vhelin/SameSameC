@@ -36,7 +36,7 @@ static int check_verification(struct tree_node *function, struct tac *instructio
   memcpy(temps_before, function->local_variables->temp_registers, sizeof(temps_before));
   g_tacs = instructions;
   g_tacs_count = count;
-  status = _debug_register_allocator_liveness(function, blocks, block_count, edges, edge_count, YES);
+  status = _analyze_register_allocator_liveness(function, blocks, block_count, edges, edge_count, YES, NULL);
   if (status != expected || memcmp(before, instructions, (size_t)count * sizeof(*instructions)) != 0 ||
       memcmp(temps_before, function->local_variables->temp_registers, sizeof(temps_before)) != 0) {
     fprintf(stderr, "allocation_verify_test: case=%s status=failed\n", name);
@@ -834,6 +834,7 @@ int main(int argc, char **argv) {
     fprintf(stderr, "allocation_cost_test: split_reload_overlap_controls=4 status=complete\n");
     for (index = 0; index < 3; index++) {
       int instruction_index;
+      char live_out[4] = {NO, NO, NO, NO};
       blocks[0].end_tac = index == 2 ? 3 : 1 + index;
       blocks[1].start_tac = 2 + index;
       blocks[1].end_tac = 3;
@@ -853,7 +854,7 @@ int main(int argc, char **argv) {
         ranking[3].arg2_d = 0;
         ranking[3].op = TAC_OP_XOR;
       }
-      if (_run_basic_block_linear_scan(&function, blocks, index == 2 ? 1 : 2, NULL, 0, NULL, 0) == FAILED ||
+      if (_run_basic_block_linear_scan(&function, blocks, index == 2 ? 1 : 2, NULL, 0, NULL, 0, live_out) == FAILED ||
           ranking[0].result_physical_register != Z80_PHY_HL ||
           ranking[1].arg1_physical_register != (index == 2 ? Z80_PHY_NONE : Z80_PHY_HL) ||
           (index == 2 && (ranking[1].result_physical_register != Z80_PHY_BC ||

@@ -88,6 +88,8 @@ static int _use_hl_array_base(struct tac *t, struct z80_location *base, struct z
        var_type != VARIABLE_TYPE_UINT16 && var_type != VARIABLE_TYPE_INT16))
     return NO;
   if (t->op == TAC_OP_ARRAY_WRITE) {
+    if (get_variable_type_size(var_type) == 16 && t->arg2_physical_register == Z80_PHY_BC)
+      return NO;
     if (value->kind != LOC_CONST && value->kind != LOC_GLOBAL &&
         value->kind != LOC_STACK_LOCAL && value->kind != LOC_STACK_SPILL &&
         !(get_variable_type_size(var_type) == 8 && value->kind == LOC_PHY_A))
@@ -3124,11 +3126,11 @@ int is_z80_bounded_counter(struct tac *t, struct tree_node *function_node, int m
       }
       counter = &unallocated;
     }
-    if (counter == NULL || counter->write_count != 2 || counter->live_start < 0 ||
+    if (counter == NULL || (t->op != TAC_OP_ASSIGNMENT && counter->write_count != 2) || counter->live_start < 0 ||
         counter->live_end >= g_tacs_count || counter->live_end <= counter->live_start)
       return NO;
-    initial = &g_tacs[counter->live_start];
-    last = counter->live_end;
+    initial = t->op == TAC_OP_ASSIGNMENT ? t : &g_tacs[counter->live_start];
+    last = t->op == TAC_OP_ASSIGNMENT ? g_tacs_count - 1 : counter->live_end;
   }
   else {
     struct tree_node *node = t->op == TAC_OP_ASSIGNMENT ? t->result_node : t->arg1_node;
@@ -3175,22 +3177,22 @@ int is_z80_bounded_counter(struct tac *t, struct tree_node *function_node, int m
     else if (bound == NULL) {
       if (current->op != TAC_OP_JUMP_GTE || current->arg1_type != initial->result_type ||
           (counter != NULL ? (int)current->arg1_d != index : current->arg1_node != initial->result_node) ||
-          (counter == NULL && current->arg2_node == initial->result_node) ||
+          (current->arg2_type == initial->result_type &&
+           (counter != NULL ? (int)current->arg2_d == index : current->arg2_node == initial->result_node)) ||
           current->arg1_var_type != VARIABLE_TYPE_UINT16 ||
           current->arg1_var_type_promoted != VARIABLE_TYPE_UINT16 ||
           current->arg2_var_type_promoted != VARIABLE_TYPE_UINT16 ||
           (maximum < 255 && current->arg2_type != TAC_ARG_TYPE_CONSTANT) ||
           (current->arg2_type == TAC_ARG_TYPE_CONSTANT ?
            (current->arg2_d < 0.0 || current->arg2_d > maximum || current->arg2_d != (int)current->arg2_d) :
-           ((current->arg2_type != TAC_ARG_TYPE_LABEL &&
-             (maximum != 255 || current->arg2_type != TAC_ARG_TYPE_TEMP)) ||
+           ((current->arg2_type != TAC_ARG_TYPE_LABEL && current->arg2_type != TAC_ARG_TYPE_TEMP) ||
             (current->arg2_var_type != VARIABLE_TYPE_UINT16 &&
              (maximum != 255 || current->arg2_var_type != VARIABLE_TYPE_UINT8)) ||
             (maximum == 255 && (_get_z80_known_zero_bits(current, TAC_USE_ARG2, 3, initial) & 65280) != 65280))))
         return NO;
       bound = current;
     }
-    else if (counter == NULL && current->op == TAC_OP_JUMP &&
+    else if (current->op == TAC_OP_JUMP &&
              strcmp(current->result_s, header->result_s) == 0)
       break;
     else if (current->op != TAC_OP_ARRAY_WRITE && current->result_type == initial->result_type &&
@@ -3228,6 +3230,9 @@ int is_z80_bounded_counter(struct tac *t, struct tree_node *function_node, int m
     if (current->function_node != function_node || current->op == TAC_OP_DEAD)
       continue;
     if (current->op == TAC_OP_ASM ||
+        (bound->arg2_type == TAC_ARG_TYPE_TEMP && current > bound && current < exit &&
+         current->op != TAC_OP_ARRAY_WRITE && current->result_type == TAC_ARG_TYPE_TEMP &&
+         current->result_d == bound->arg2_d) ||
         (maximum == 255 && bound->arg2_type == TAC_ARG_TYPE_LABEL &&
          bound->arg2_var_type != VARIABLE_TYPE_UINT8 &&
          (((current->op == TAC_OP_GET_ADDRESS || current->op == TAC_OP_GET_ADDRESS_ARRAY) &&
@@ -8126,7 +8131,7 @@ static int _copy_non_const_array_constants(struct tac *t, struct tree_node *node
 }
 
 
-static int _generate_asm_bounded_loop_z80(int *tac_index, FILE *file_out, struct tree_node *function_node) {
+int generate_asm_bounded_loop_z80(int *tac_index, FILE *file_out, struct tree_node *function_node, int check_ownership) {
 
   struct tac *sequence[16], *access[2] = {NULL, NULL}, *base[2], *bound, *initial, *exit;
   struct tac *reduction = NULL, *accumulator = NULL;
@@ -8135,7 +8140,7 @@ static int _generate_asm_bounded_loop_z80(int *tac_index, FILE *file_out, struct
   struct temp_register *counter = NULL;
   struct tree_node *nodes[4];
   int indices[16], operands[2], displacements[2] = {0, 0};
-  int i, j, k, count = 0, end, scratch = 0, offset, constant_count, reload_count = NO;
+  int i, j, k, count = 0, end, offset, constant_count, reload_count = NO;
   int loop_id, copied = NO, crc_loop = NO, scaled_sum = NO, node_count = 3;
   char loop_label[48];
 
@@ -8259,14 +8264,18 @@ static int _generate_asm_bounded_loop_z80(int *tac_index, FILE *file_out, struct
     struct tac *t = sequence[i];
     if (i > 3 && t->op == TAC_OP_ADD && post_increment == NULL &&
         sequence[i - 1]->op == TAC_OP_ASSIGNMENT &&
-        sequence[i - 1]->arg1_type == TAC_ARG_TYPE_LABEL &&
-        sequence[i - 1]->arg1_node != NULL && sequence[i - 1]->result_type == TAC_ARG_TYPE_TEMP &&
+        sequence[i - 1]->arg1_type == t->result_type &&
+        sequence[i - 1]->result_type == TAC_ARG_TYPE_TEMP &&
         sequence[i - 1]->arg1_var_type == VARIABLE_TYPE_UINT16 &&
         sequence[i - 1]->arg1_var_type_promoted == VARIABLE_TYPE_UINT16 &&
         sequence[i - 1]->result_var_type == VARIABLE_TYPE_UINT16 &&
         sequence[i - 1]->result_var_type_promoted == VARIABLE_TYPE_UINT16 &&
-        t->arg1_type == TAC_ARG_TYPE_LABEL && t->result_type == TAC_ARG_TYPE_LABEL &&
-        t->arg1_node == sequence[i - 1]->arg1_node && t->result_node == t->arg1_node &&
+        t->arg1_type == t->result_type &&
+        (t->result_type == TAC_ARG_TYPE_LABEL ?
+         t->result_node != NULL && t->arg1_node == t->result_node &&
+         sequence[i - 1]->arg1_node == t->result_node :
+         t->result_type == TAC_ARG_TYPE_TEMP && t->arg1_d == t->result_d &&
+         sequence[i - 1]->arg1_d == t->result_d) &&
         t->arg1_var_type == VARIABLE_TYPE_UINT16 && t->arg1_var_type_promoted == VARIABLE_TYPE_UINT16 &&
         t->result_var_type == VARIABLE_TYPE_UINT16 && t->result_var_type_promoted == VARIABLE_TYPE_UINT16 &&
         t->arg2_type == TAC_ARG_TYPE_CONSTANT && t->arg2_d == 1.0 &&
@@ -8276,8 +8285,9 @@ static int _generate_asm_bounded_loop_z80(int *tac_index, FILE *file_out, struct
       continue;
     }
     if (t->op == TAC_OP_ASSIGNMENT) {
-      if (t->result_type != TAC_ARG_TYPE_TEMP || t->arg1_type != TAC_ARG_TYPE_LABEL ||
-          t->arg1_node == NULL || t->result_var_type != VARIABLE_TYPE_UINT16)
+      if (t->result_type != TAC_ARG_TYPE_TEMP ||
+          (t->arg1_type != TAC_ARG_TYPE_TEMP && (t->arg1_type != TAC_ARG_TYPE_LABEL || t->arg1_node == NULL)) ||
+          t->result_var_type != VARIABLE_TYPE_UINT16)
         return SUCCEEDED;
     }
     else if (t->op == TAC_OP_ADD) {
@@ -8334,6 +8344,14 @@ static int _generate_asm_bounded_loop_z80(int *tac_index, FILE *file_out, struct
          get_variable_type_size(access[1]->result_var_type) != 8)))
       return SUCCEEDED;
     copied = access[1] != NULL;
+    if (copied == NO && access[0]->arg1_type == TAC_ARG_TYPE_TEMP) {
+      for (i = 0; i < count; i++) {
+        if (sequence[i]->op != TAC_OP_ARRAY_WRITE &&
+            sequence[i]->result_type == TAC_ARG_TYPE_TEMP &&
+            sequence[i]->result_d == access[0]->arg1_d)
+          return SUCCEEDED;
+      }
+    }
   }
   if (post_increment != NULL && (reduction != NULL || access[0]->arg2_type != TAC_ARG_TYPE_TEMP ||
       access[0]->arg2_d != index_snapshot->result_d))
@@ -8391,8 +8409,8 @@ check_access_bases:
   if (post_increment != NULL) {
     nodes[3] = post_increment->result_node;
     node_count = 4;
-    if (nodes[3] == nodes[0] || nodes[3] == nodes[1] || nodes[3] == nodes[2] ||
-        nodes[3] == initial->result_node)
+    if (nodes[3] != NULL && (nodes[3] == nodes[0] || nodes[3] == nodes[1] ||
+        nodes[3] == nodes[2] || nodes[3] == initial->result_node))
       return SUCCEEDED;
   }
   if (scaled_sum == YES) {
@@ -8405,7 +8423,7 @@ check_access_bases:
   if (nodes[1] == NULL || (copied == YES && nodes[2] == NULL) ||
       (reduction == NULL && copied == NO && access[0]->arg1_type == TAC_ARG_TYPE_LABEL && nodes[2] == NULL) ||
       (reduction == NULL && copied == NO && access[0]->arg1_type != TAC_ARG_TYPE_LABEL &&
-       access[0]->arg1_type != TAC_ARG_TYPE_CONSTANT) ||
+       access[0]->arg1_type != TAC_ARG_TYPE_CONSTANT && access[0]->arg1_type != TAC_ARG_TYPE_TEMP) ||
       (reduction != NULL && (nodes[2] == NULL || nodes[0] == nodes[2])))
     return SUCCEEDED;
   for (i = 0; i < node_count; i++) {
@@ -8430,13 +8448,16 @@ check_access_bases:
       return SUCCEEDED;
   }
 check_loop_ownership:
+  if (file_out == NULL && check_ownership == NO) {
+    *tac_index = end;
+    return SUCCEEDED;
+  }
   for (i = 0; i < function_node->local_variables->temp_registers_count; i++) {
     struct temp_register *temp = &function_node->local_variables->temp_registers[i];
     if (initial->result_type == TAC_ARG_TYPE_TEMP && temp->register_index == (int)initial->result_d)
       counter = temp;
     else if (temp->live_start < *tac_index && temp->live_end >= *tac_index) {
-      if ((crc_loop == NO && reduction != NULL) ||
-          temp->spill_required != YES || temp->physical_register != Z80_PHY_NONE)
+      if (temp->spill_required != YES || temp->physical_register != Z80_PHY_NONE)
         return SUCCEEDED;
       /* Exclude retained prefixes; later reloads can use the unchanged home. */
       for (j = temp->live_start; j <= temp->live_end && j <= end; j++) {
@@ -8454,20 +8475,14 @@ check_loop_ownership:
     }
     for (j = 3; j < count - 3; j++) {
       if (sequence[j]->op == TAC_OP_ARRAY_WRITE || sequence[j]->result_type != TAC_ARG_TYPE_TEMP ||
-          sequence[j]->result_d != temp->register_index)
+          sequence[j]->result_d != temp->register_index || sequence[j] == post_increment)
         continue;
       if (temp->live_start < *tac_index || temp->live_end >= end || temp->write_count != 1)
         return SUCCEEDED;
-      if (temp->size == 16 && temp->spill_required == YES &&
-          temp->offset_to_fp >= -128 && temp->offset_to_fp <= 126)
-        scratch = temp->offset_to_fp;
     }
   }
-  if (initial->result_type == TAC_ARG_TYPE_TEMP &&
-      (counter == NULL || counter->live_start != *tac_index || counter->write_count != 2))
+  if (initial->result_type == TAC_ARG_TYPE_TEMP && counter == NULL)
     return SUCCEEDED;
-  if (counter != NULL && counter->spill_required == YES && counter->offset_to_fp >= -128 && counter->offset_to_fp <= 126)
-    scratch = counter->offset_to_fp;
   for (i = 0; i < g_tacs_count; i++) {
     struct tac *t = &g_tacs[i];
     if (t->function_node != function_node || t->op == TAC_OP_DEAD)
@@ -8487,6 +8502,10 @@ check_loop_ownership:
         return SUCCEEDED;
     }
   }
+  if (file_out == NULL) {
+    *tac_index = end;
+    return SUCCEEDED;
+  }
   if (_resolve_tac_location(bound, TAC_USE_ARG2, function_node, &locations[0]) == FAILED ||
       _resolve_tac_location(base[0], operands[0], function_node, &locations[1]) == FAILED ||
       _resolve_tac_location(reduction != NULL && scaled_sum == NO ? (accumulator == NULL ? reduction : accumulator) :
@@ -8504,30 +8523,26 @@ check_loop_ownership:
   if (counter_location.kind != final_location.kind || counter_location.phy != final_location.phy ||
       counter_location.offset != final_location.offset)
     return SUCCEEDED;
-  /* The lowered byte-copy body no longer reads the unescaped counter home. */
-  if (copied == YES && reduction == NULL && scratch == 0 &&
-      counter_location.kind == LOC_STACK_LOCAL && counter_location.size == 2 &&
-      counter_location.offset >= -128 && counter_location.offset <= 126)
-    scratch = counter_location.offset;
-  if (copied == YES && scratch == 0)
-    return SUCCEEDED;
   for (i = 0; i < node_count; i++) {
     if (locations[i].kind != LOC_CONST && locations[i].kind != LOC_STACK_LOCAL &&
-        !(i > 0 && nodes[i]->value > 0 && locations[i].kind == LOC_GLOBAL))
+        !(locations[i].kind == LOC_STACK_SPILL && (i == 0 ||
+          (i == 2 && reduction == NULL && copied == NO) || (i == 3 && post_increment != NULL))) &&
+        !(i > 0 && nodes[i] != NULL && nodes[i]->value > 0 && locations[i].kind == LOC_GLOBAL))
       return SUCCEEDED;
-    if (locations[i].kind == LOC_STACK_LOCAL && nodes[i]->value == 0 &&
+    if ((locations[i].kind == LOC_STACK_LOCAL || locations[i].kind == LOC_STACK_SPILL) &&
+        (nodes[i] == NULL || nodes[i]->value == 0) &&
         (locations[i].offset < -128 || locations[i].offset + locations[i].size > 128))
       return SUCCEEDED;
   }
   if (reduction != NULL && accumulator == NULL &&
       (locations[node_count - 1].kind != LOC_STACK_LOCAL || locations[node_count - 1].size != 2))
     return SUCCEEDED;
-  if (post_increment != NULL && (locations[3].kind != LOC_STACK_LOCAL || locations[3].size != 2))
+  if (post_increment != NULL &&
+      ((locations[3].kind != LOC_STACK_LOCAL && locations[3].kind != LOC_STACK_SPILL) || locations[3].size != 2))
     return SUCCEEDED;
   if (post_increment != NULL && copied == NO && locations[0].kind != LOC_CONST &&
       ((counter_location.kind != LOC_STACK_LOCAL && counter_location.kind != LOC_STACK_SPILL) ||
-       counter_location.size != 2 || counter_location.offset < -128 || counter_location.offset > 126 ||
-       (counter != NULL && counter->live_end <= indices[count - 1])))
+       counter_location.size != 2 || counter_location.offset < -128 || counter_location.offset > 126))
     return SUCCEEDED;
 
   constant_count = locations[0].kind == LOC_CONST ? locations[0].value : 0;
@@ -8568,8 +8583,6 @@ check_loop_ownership:
     fprintf(file_out, "      LD  A,B\n      OR  C\n");
     fprintf(file_out, "      JP  Z,%s\n", exit->result_s);
   }
-  if (copied == YES)
-    fprintf(file_out, "      LD  (IX%+d),E\n      LD  (IX%+d),D\n", scratch, scratch + 1);
   if (accumulator != NULL) {
     if (nodes[2]->value == 0) {
       _load_from_ix_to_l(locations[2].offset, file_out);
@@ -8647,8 +8660,6 @@ check_loop_ownership:
     if (accumulator == NULL) {
       fprintf(file_out, "      LD  (IX%+d),L\n      LD  (IX%+d),H\n", offset, offset + 1);
     }
-    if (scaled_sum == YES)
-      fprintf(file_out, "      LD  E,(IX%+d)\n      LD  D,(IX%+d)\n", scratch, scratch + 1);
   }
   else if (copied == YES) {
     if (constant_count == 1 || constant_count == 2) {
@@ -8658,8 +8669,6 @@ check_loop_ownership:
     }
     else
       fprintf(file_out, "      LDIR\n");
-    _load_from_ix_to_e(scratch, file_out);
-    _load_from_ix_to_d(scratch + 1, file_out);
   }
   else {
     if (constant_count > 3 && constant_count <= 256)
@@ -8686,6 +8695,11 @@ check_loop_ownership:
         fprintf(file_out, "      DEC C\n      JR  NZ,%s\n", loop_label);
       fprintf(file_out, "      DJNZ %s\n", loop_label);
     }
+  }
+  if (copied == YES) {
+    /* No instruction in the selected loop changes SP. */
+    _load_value_to_hl(-function_node->local_variables->offset_to_fp_total - 1, file_out);
+    fprintf(file_out, "      ADD HL,SP\n      EX  DE,HL\n");
   }
   if (post_increment != NULL) {
     /* The zero-count edge skips this update; all positive paths restored DE. */
@@ -8723,7 +8737,7 @@ loop_done:
   RA_TRACE((stderr, "register_allocator: byte_loop function=%s kind=%s count=%s frame_save=%d instructions=%d target=z80 status=complete\n",
     function_node->children[1]->label, crc_loop == YES ? "crc" : scaled_sum == YES ? "scaled_sum" :
     reduction != NULL ? (accumulator == NULL ? "sum" : "sum_store") : copied == YES ? "copy" : "fill",
-    constant_count == 0 ? "word" : "constant", copied == YES ? scratch : 0, count));
+    constant_count == 0 ? "word" : "constant", 0, count));
   *tac_index = end;
   return SUCCEEDED;
 }
@@ -9363,7 +9377,7 @@ int generate_asm_z80(FILE *file_out) {
               continue;
             }
           }
-          if (_generate_asm_bounded_loop_z80(&i, file_out, function_node) == FAILED)
+          if (generate_asm_bounded_loop_z80(&i, file_out, function_node, YES) == FAILED)
             return FAILED;
           if (i != previous_index) {
             frame_fallthrough = YES;
