@@ -16,6 +16,160 @@ from ra_cpu import execute
 
 
 class BranchConditionsTests(unittest.TestCase):
+    def test_maintained_induction_addresses(self):
+        read = "total+=left[at]; total^=right[at]; total+=third[at];"
+        forms = {
+            "reads": "for(i=0;i<8;i++) { u16 at=i; READ }",
+            "stores": "for(i=0;i<8;i++) { left[i]=a+i; right[i]=b-i; third[i]=left[i]^right[i]; narrow[i]=(a+i)*(b-i); }",
+            "global": "for(i=0;i<8;i++) { total+=ra_buffer[i]; total^=ra_buffer[i]; total+=ra_buffer[i]; }",
+            "pointer": "for(i=0;i<8;i++) { total+=p[i]; total^=p[i]; total+=p[i]; }",
+            "overlap": "for(i=0;i<7;i++) { p[i+1]=p[i]; total+=p[i+1]; }",
+            "zero": "for(i=0;i<(n&7);i++) { u16 at=i; READ }",
+            "signed": "for(i=7;i>=0;i--) { u16 at=i; READ }",
+            "down": "for(i=8;i>0;i--) { u16 at=i-1; READ }",
+            "stride": "i=0; while(i<8) { u16 at=i; READ i+=2; }",
+            "latches": "for(i=0;i<8;i++) { if(i&1) { total+=left[i]; continue; } u16 at=i; READ }",
+            "nested": "for(j=0;j<2;j++) { for(i=0;i<8;i++) { u16 at=i; READ } }",
+            "skipped": "i=0; if(n&1) { for(i=0;i<8;i++) { u16 at=i; READ } }",
+            "call": "for(i=0;i<8;i++) { total=induction_touch(total); u16 at=i; READ }",
+            "asm": 'for(i=0;i<8;i++) { __asm("LD IY,4660"); u16 at=i; READ }',
+            "ports": "for(i=0;i<8;i++) { __z80_out[0xBE]=a+i; u16 at=i; READ }",
+            "pressure": "for(i=0;i<8;i++) { total+=v0+v1+v2+v3+v4+v5; u16 at=i; READ }",
+            "bigframe": "for(i=0;i<8;i++) { u16 at=i; READ }",
+            "wrap": "for(i=65534;i!=1;i++) { u16 at=i&7; READ }",
+        }
+        positive = {"reads", "global", "nested", "skipped", "ports", "bigframe"}
+        fallback = {"pointer", "overlap", "zero", "signed", "down", "stride", "latches", "call", "asm", "wrap"}
+        calls = selections = 0
+        for kind in ("u8", "s8", "u16", "s16"):
+            width = 1 if kind.endswith("8") else 2
+            mask = (1 << (width*8))-1
+            signed = kind.startswith("s")
+
+            def scalar(value):
+                value &= mask
+                return value-mask-1 if signed and value & (mask+1)//2 else value
+
+            programs = []
+            for family, form in forms.items():
+                name = f"induction_{kind}_{family}"
+                initialize = " ".join(
+                    f"left[{index}]=a+{index*257}; right[{index}]=b-{index*131}; third[{index}]=a^b^{index};"
+                    for index in range(8))
+                output = " ".join(f"ra_buffer[{base+index}]={array}[{index}];"
+                                  for array, base in (("left", 0), ("right", 16), ("third", 32))
+                                  for index in range(8))
+                if family == "stores":
+                    output += " ".join(f"ra_buffer[{48+index}]=narrow[{index}];" for index in range(8))
+                pressure = ("u16 v0=a+1; u16 v1=b+2; u16 v2=a+3; u16 v3=b+4; u16 v4=a+5; u16 v5=b+6; "
+                            if family == "pressure" else "")
+                padding = "u8 padding[300]; padding[299]=b; " if family == "bigframe" else ""
+                source = (f"u16 {name}(u16 a,u16 b,u16 n) {{ {kind} left[8]; {kind} right[8]; {kind} third[8]; "
+                          f"{kind} *p=&ra_buffer[40]; {'s16' if family == 'signed' else 'u16'} i; "
+                          f"u16 j; u16 total=a; {'u8 narrow[8];' if family == 'stores' else ''} {pressure}{padding}{initialize}"
+                          + form.replace("READ", read)
+                          + ("total^=padding[299]; " if family == "bigframe" else "")
+                          + output + " ra_buffer[60]=total; ra_buffer[61]=i; return total^i; }")
+                programs.append(Program(name, family, width, int(signed), [2, 2, 2], 2, [], source))
+            for policy in ("inline", "shared"):
+                for offset in range(0, len(programs), 6):
+                    group = programs[offset:offset+6]
+                    directory = self.output / "induction-addresses" / kind / policy / f"batch-{offset}"
+                    source = (f"{kind} ra_buffer[{128//width}];\n"
+                              "u16 induction_touch(u16 value) { ra_buffer[63]+=1; return value+7; }\n"
+                              + "\n".join(program.source for program in group) + "\nvoid main(void) {}\n")
+                    images = compile_generated(
+                        directory, os.environ.get("SAMESAMECC") or "samesamecc",
+                        os.environ.get("SAMESAMECL") or "samesamecl", group, source,
+                        linker_flags=("-share-arithmetic",) if policy == "shared" else ())
+                    for mode, image in images.items():
+                        assembly = (directory / mode / "main.asm").read_text()
+                        for program in group:
+                            body = assembly.split(f'.SECTION "{program.name}" FREE')[1].split(".ENDS")[0]
+                            selected = "; maintain loop induction address;" in body
+                            if os.environ.get("RA_BASELINE") != "1":
+                                if mode not in ("ra", "ra_quiet") or program.family in fallback:
+                                    self.assertFalse(selected, (program.name, policy, mode))
+                                elif program.family in positive:
+                                    self.assertTrue(selected, (program.name, policy, mode))
+                                    selections += 1
+                                if mode in ("ra", "ra_quiet") and program.family == "stores" and width == 2:
+                                    self.assertTrue(selected, (program.name, policy, mode))
+                                    narrow_store = next(tac for tac in body.split("; TAC:")
+                                                        if re.match(r" _narrow_\d+\.u8 .*\[", tac))
+                                    self.assertIn("LD  A,L", narrow_store)
+                            for a in (0, 1, 127, 128, 255, 256, 32768, 65535):
+                                b = (a*137+0x8001)&65535
+                                for n in (0, 1, 2, 65535):
+                                    initial = bytes((index*37+a+b+n)&255 for index in range(128))
+                                    expected = bytearray(initial)
+
+                                    def item(index):
+                                        return scalar(int.from_bytes(expected[index*width:(index+1)*width], "little"))
+
+                                    def store(index, value):
+                                        expected[index*width:(index+1)*width] = (value&mask).to_bytes(width, "little")
+
+                                    left = [scalar(a+index*257) for index in range(8)]
+                                    right = [scalar(b-index*131) for index in range(8)]
+                                    third = [scalar(a^b^index) for index in range(8)]
+                                    family = program.family
+                                    indices = (list(range(7, -1, -1)) if family in ("signed", "down") else
+                                               list(range(0, 8, 2)) if family == "stride" else
+                                               list(range(n&7)) if family == "zero" else
+                                               list(range(8))*2 if family == "nested" else
+                                               [] if family == "skipped" and not n&1 else
+                                               [6, 7, 0] if family == "wrap" else
+                                               list(range(7)) if family == "overlap" else list(range(8)))
+                                    total, ports = a, []
+                                    for index in indices:
+                                        if family == "stores":
+                                            left[index], right[index] = scalar(a+index), scalar(b-index)
+                                            third[index] = scalar(left[index]^right[index])
+                                            store(48+index, ((a+index)*(b-index))&255)
+                                            continue
+                                        if family == "global" or family == "pointer":
+                                            value = item(index+(40 if family == "pointer" else 0))
+                                            total = ((total+value)^value)+value
+                                        elif family == "overlap":
+                                            store(41+index, item(40+index))
+                                            total += item(41+index)
+                                        elif family == "latches" and index&1:
+                                            total += left[index]
+                                        else:
+                                            if family == "call":
+                                                total += 7
+                                                store(63, item(63)+1)
+                                            if family == "ports":
+                                                ports.append([0xBE, (a+index)&255])
+                                            if family == "pressure":
+                                                total += sum((value+add)&65535 for value, add in
+                                                             ((a, 1), (b, 2), (a, 3), (b, 4), (a, 5), (b, 6)))
+                                            total = ((total+left[index])^right[index])+third[index]
+                                        total &= 65535
+                                    final = (65535 if family == "signed" else 0 if family == "down" else
+                                             1 if family == "wrap" else n&7 if family == "zero" else
+                                             0 if family == "skipped" and not n&1 else 7 if family == "overlap" else 8)
+                                    if family == "bigframe":
+                                        total ^= b&255
+                                    for values, base in ((left, 0), (right, 16), (third, 32)):
+                                        for index, value in enumerate(values):
+                                            store(base+index, value)
+                                    store(60, total)
+                                    store(61, final)
+                                    with self.subTest(program=program.name, policy=policy, mode=mode, a=a, n=n):
+                                        result = execute(image.rom, image.symbols[program.name], [a, b, n],
+                                                         program.widths, initial, image.symbols["ra_buffer"], 2,
+                                                         image.transfers, ports_allowed=True, frame_bytes=1024)
+                                        self.assertEqual((result["value"], result["buffer"], result["port_writes"]),
+                                                         ((total^final)&65535, expected, ports))
+                                        self.assertEqual(result["unmapped_instructions"], 0)
+                                    calls += 1
+        self.assertEqual(calls, len(forms)*4*2*5*8*4)
+        if os.environ.get("RA_BASELINE") != "1":
+            self.assertEqual(selections, len(positive)*4*2*2)
+        print(f"Maintained induction oracle: {len(forms)*4} shapes, {calls} executions", flush=True)
+
     def test_regional_local_array_reuse(self):
         forms = {
             "straight": "other[index]=b; result=data[index];",

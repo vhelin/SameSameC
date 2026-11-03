@@ -346,7 +346,31 @@ pass; three unchanged parent selection/offset assertions remain disclosed.
 Production grows 156 net C lines plus one header declaration.
 See [step 2aw](Z80_CODEGEN_PLAN.md#2aw-general-cfg-scalar-promotion-for-mutable-loop-state-completed)
 for actual removed scalar transfers, phase-order guards, complete measurements
-and qualification. QuickSort/A* costs remain unchanged; 2ax is next.
+and qualification. QuickSort/A* costs remain unchanged.
+
+Normal RA now carries a proven bounded loop's fixed local/global array address
+in IY, sharing nearby same-width local arrays through signed displacements.
+The existing counter proof, resolved locations and array value emitters are
+reused; original unsigned-word counter homes/live-outs and memory order stay
+intact. Setup forms no speculative memory access. Complete setup/update/scratch
+costs reject new stack-write schedules, preserve free word-store forwarding
+and reuse existing IX/HL fast paths, including final-use HL-to-A byte stores.
+No frame home, ABI, register class or flag is added. Dynamic/zero bounds,
+pointer bases, signed/down/wider/wrapping counters, internal branches, calls,
+ASM and unsupported schedules keep fallback; eligible inner loops can still
+optimize. This is bounded address carriage, not unrestricted CFG induction.
+Sprite/Tracker save 27/32 bytes and 28884/11508 cycles over twelve inputs in
+ordinary and shared modes, with fewer reads and unchanged writes/full storage.
+Executed reconstruction counts, including setup, fall by 35/11 per call.
+All eighteen workload gates pass on three hosts; the 72-shape mixed-width
+oracle runs 23040 executions per host and 9216 exact-parent costs pass.
+All six consoles preserve controls; calculations-3 saves 59 used bytes and
+3366 boot cycles per platform. Three known parent focused assertions and the
+regional test's parent/current named-counter regex error remain disclosed.
+Production grows 254 net C lines with three target-local helpers.
+See [step 2ax](Z80_CODEGEN_PLAN.md#2ax-maintained-induction-addresses-across-loop-iterations-completed)
+for the bounded scope, executed-address proof, complete costs and qualification.
+QuickSort/A* are unchanged; 2ay is next.
 
 Normal RA now reuses byte comparison and counter emitters when the existing
 bounded known-bit query proves word values are 0..255. The query also accepts

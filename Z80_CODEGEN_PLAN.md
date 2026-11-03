@@ -5968,9 +5968,10 @@ C89 initializer and file-mode changes remain outside the commit. Source-bound
 evidence, per-input costs and rejected scouts are retained under
 `C:\cygwin64\tmp\cfg-scalars-20261102`. Commit locally without pushing; 2ax is next.
 
-### 2ax. Maintained Induction Addresses Across Loop Iterations
+### 2ax. Maintained Induction Addresses Across Loop Iterations (Completed)
 
-**Status: planned; follows 2aw.** Build on 2at's native address forms and bounded
+**Status: completed for proven bounded straight-line loops; follows 2aw.**
+Build on 2at's native address forms and bounded
 reuse, consuming the same counter/base/stride and location proofs as step 3.
 This is the general loop-address implementation for step 3, not another
 array-loop matcher or a repeat of already completed native-load selection.
@@ -5998,6 +5999,91 @@ in a load fragment. Cover byte/word elements, local/global/pointer bases,
 signed/unsigned strides, nested/zero-trip loops, wrap boundaries, overlaps and
 pressure fallbacks. Keep all eighteen ordinary/shared caller, per-input and
 full-storage gates; retire local logic only where the shared proof subsumes it.
+
+Implementation reuses `is_z80_bounded_counter`, resolved operand locations and
+the existing array value/load/store emitters. Normal `-ra` can carry one actual
+local/global fixed-array address in IY through a constant, nonempty unit-step
+loop. Nearby same-width local arrays share signed displacements, including
+room for a word's high byte. The original unsigned word counter, its home and
+all live-outs remain intact. Setup only forms an address; memory operations
+retain their original paths and order. Independently eligible inner loops can
+optimize without selecting their outer loop.
+
+The planner charges setup, every byte/word update and scratch preservation,
+and declines schedules that would add stack writes. Existing register-base
+copies use stack-free transport while the carried IY is saved, replacing
+rather than adding a transient stack word. Existing IX assignment fast paths
+need no save. A final-use retained-HL byte store can stage L in A and reuse the
+ordinary HL address schedule; this requires an unsigned-word index and the
+existing single-definition/single-read temporary metadata. Existing full-word
+store-to-read forwarding stays free and receives no fictional savings.
+No ABI, physical register class, allocator, frame home or source flag is added.
+
+This is not unrestricted CFG/dynamic induction. Pointer bases, dynamic or zero
+bounds, signed/descending/wider-stride counters, modular-wrap loops, internal
+branches/multiple latches, calls, ASM and incompatible ownership/scratch
+schedules retain fallback. Mixed-width traffic may still optimize when the
+other width has an independently safe ordinary schedule. Arithmetic helpers
+preserve IY; ports keep their existing emitters. A*/QuickSort are unchanged.
+
+Exact-parent complete-kernel results versus
+`a7622e0b941c0ae7994c4f3722d37952d9e13302`
+(cycles sum twelve inputs; shared arithmetic has the same savings):
+
+| Kernel | RA bytes | RA cycles | Shared bytes | Shared cycles | RA full frame |
+|---|---:|---:|---:|---:|---:|
+| Sprite | 2989 -> 2962 | 11481271 -> 11452387 | 2961 -> 2934 | 11489047 -> 11460163 | 322 -> 322 |
+| Tracker | 2956 -> 2924 | 9867179 -> 9855671 | 2928 -> 2896 | 9882515 -> 9871007 | 252 -> 252 |
+
+Sprite ordinary reads/writes change 294599/90811 -> 293735/90811;
+Tracker changes 198584/89313 -> 198296/89313. Ordinary instruction totals
+change 906700 -> 904996 and 812919 -> 812079 respectively. Shared traffic and
+instruction savings match; all complete caller sections/cycles and full
+storage bounds are unchanged. The other sixteen kernels retain identical ROMs.
+
+Executed-instruction attribution, not an assembly-text proxy, counts complete
+array-TAC base reconstruction pairs (`LD HL|IY,offset; ADD HL|IY,DE`).
+Sprite changes 37073 -> 36641 and Tracker 20241 -> 20097 per mode over the
+twelve inputs, adding only twelve carried-address initializations each.
+That is 35/11 fewer reconstructions per call including setup, with 144/96
+executed byte increments respectively. Both ordinary/shared variants improve
+on every input. All eight annotated parent/current ROMs are byte-identical to
+their originals; 96 numerical executions also match independent timings.
+Arithmetic-sharing regions remain unannotated so labels cannot defeat sharing.
+
+Qualification:
+
+- Release, traced and ASan hosts pass all eighteen ordinary/shared workload
+  gates: 108 builds, 1668 calls, 162 independent timings, 72 cross-build ROM
+  identities and no instruction-growth inputs. Complete sections, individual
+  cycles, separate reads/writes, callers and full storage are non-growing.
+  Earlier scouts with stack-footprint/write growth were rejected, not averaged
+  away or accepted by weakening a traffic gate.
+- The new 72-shape oracle runs 23040 executions per host in five modes and
+  inline/shared arithmetic, requiring 96 core positive selections and eight
+  mixed-width schedules. It covers byte/
+  word signedness, local/global/pointer bases, mixed-width stores, live-out
+  counters, nesting/skips/zero trips, stride/wrap, overlap, multiple latches,
+  calls, ASM, ports, large frames and pressure. Mixed word-array/byte stores
+  explicitly require the final-use HL-to-A schedule. Its 9216 exact-parent
+  per-input comparisons have no image/function/frame, cycle, separate-traffic,
+  instruction or dynamic-depth growth; 72 allocator-off/all-spill ROM controls
+  stay identical.
+- Focused addressing, ownership, copy/fill, window and ABI suites retain the
+  three exact-parent CRC/scaled-selection and retained-word-offset assertion
+  failures; these are neither weakened nor reported green. The additional
+  regional-array test also raises its unchanged named-counter regex
+  `IndexError` on both current and exact-parent compilers.
+- Strict C89 of the changed emitter and unchanged native allocation/frame
+  verifier controls pass. All six SMS/Game Gear consoles preserve numerical,
+  display, mapper, palette/font and full RAM controls. Calculations-3 saves
+  59 used bytes and 3366 boot cycles on each platform; calculations-1/2
+  remain unchanged.
+
+Production grows by **254 net C lines**, with three target-local helpers,
+reusing the loop proof and array/assignment/address emitters instead of another
+loop matcher or value cache. Evidence and rejected scouts remain under
+`C:\cygwin64\tmp\induction-20261103`. Commit locally without pushing; 2ay is next.
 
 ### 2ay. Allocation-Aware Loop-Exit And Conditional Value Reuse
 

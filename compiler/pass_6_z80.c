@@ -62,6 +62,14 @@ struct z80_location {
   struct tree_node *node;
 };
 
+static struct {
+  struct tac *initial;
+  struct tree_node *base;
+  int end, offset, bytes, kind;
+} g_induction;
+
+static struct temp_register *_find_z80_temp_register(struct tree_node *function_node, int register_index);
+
 
 static int _get_z80_call_frame_prefix(int *frame_end, int *return_sp_offset, int *saved_fp_low_offset, int *saved_fp_high_offset) {
 
@@ -79,6 +87,7 @@ static int _get_z80_call_frame_prefix(int *frame_end, int *return_sp_offset, int
 
 static int _use_hl_array_base(struct tac *t, struct z80_location *base, struct z80_location *value, int memory_pointer_load) {
 
+  struct temp_register *temporary = NULL;
   int var_type = t->op == TAC_OP_ARRAY_WRITE ? t->result_var_type :
     (t->arg1_node != NULL ? get_array_item_variable_type(t->arg1_node) : t->arg1_var_type);
   int memory_base = base->kind == LOC_GLOBAL || base->kind == LOC_STACK_LOCAL || base->kind == LOC_STACK_SPILL;
@@ -90,9 +99,14 @@ static int _use_hl_array_base(struct tac *t, struct z80_location *base, struct z
   if (t->op == TAC_OP_ARRAY_WRITE) {
     if (get_variable_type_size(var_type) == 16 && t->arg2_physical_register == Z80_PHY_BC)
       return NO;
+    if (g_induction.initial != NULL && value->kind == LOC_PHY_HL &&
+        get_variable_type_size(var_type) == 8 && t->arg1_type == TAC_ARG_TYPE_TEMP &&
+        t->arg2_var_type == VARIABLE_TYPE_UINT16)
+      temporary = _find_z80_temp_register(t->function_node, (int)t->arg1_d);
     if (value->kind != LOC_CONST && value->kind != LOC_GLOBAL &&
         value->kind != LOC_STACK_LOCAL && value->kind != LOC_STACK_SPILL &&
-        !(get_variable_type_size(var_type) == 8 && value->kind == LOC_PHY_A))
+        !(get_variable_type_size(var_type) == 8 && value->kind == LOC_PHY_A) &&
+        !(temporary != NULL && temporary->read_count == 1 && temporary->write_count == 1))
       return NO;
   }
   else if (value->kind == LOC_PHY_BC && memory_pointer_load == NO && base->kind != LOC_PHY_HL)
@@ -399,8 +413,12 @@ static void _load_value_to_iy(int value, FILE *file_out) {
 
 static void _load_bc_to_iy(FILE *file_out) {
 
-  fprintf(file_out, "      PUSH BC\n");
-  fprintf(file_out, "      POP IY\n");
+  if (g_induction.initial != NULL)
+    fprintf(file_out, "      LD  IY,0\n      ADD IY,BC\n");
+  else {
+    fprintf(file_out, "      PUSH BC\n");
+    fprintf(file_out, "      POP IY\n");
+  }
 }
 
 
@@ -4371,8 +4389,12 @@ static int _materialize_array_base(struct tac *tac, struct z80_location *base_lo
   }
 
   if (materialized_hl == YES && keep_hl == NO) {
-    fprintf(file_out, "      PUSH HL\n");
-    fprintf(file_out, "      POP IY\n");
+    if (g_induction.initial != NULL)
+      fprintf(file_out, "      EX  DE,HL\n      LD  IY,0\n      ADD IY,DE\n      EX  DE,HL\n");
+    else {
+      fprintf(file_out, "      PUSH HL\n");
+      fprintf(file_out, "      POP IY\n");
+    }
   }
 
   return SUCCEEDED;
@@ -4532,6 +4554,177 @@ static int _transfer_array_base_spill(struct tac *t, struct tree_node *function_
 }
 
 
+static int _get_z80_array_iy_scratch_depth(struct tac *t, struct tree_node *function_node) {
+
+  struct z80_location base, value;
+  int write = t->op == TAC_OP_ARRAY_WRITE, operand = write == YES ? TAC_USE_RESULT : TAC_USE_ARG1;
+  if ((write == YES && t->result_type == TAC_ARG_TYPE_LABEL && strcmp(t->result_s, "__z80_out") == 0) ||
+      (write == NO && t->arg1_type == TAC_ARG_TYPE_LABEL && strcmp(t->arg1_s, "__z80_in") == 0))
+    return NO;
+  if (_resolve_tac_location(t, operand, function_node, &base) == FAILED ||
+      _resolve_tac_location(t, write == YES ? TAC_USE_ARG1 : TAC_USE_RESULT, function_node, &value) == FAILED)
+    return YES;
+  if (_use_hl_array_base(t, &base, &value, _base_needs_memory_pointer_load(
+      write == YES ? t->result_type : t->arg1_type, write == YES ? t->result_node : t->arg1_node, &base)) == YES)
+    return NO;
+  /* A register-base copy already spends one transient stack word. */
+  return base.kind == LOC_PHY_BC || base.kind == LOC_PHY_HL ? -1 : YES;
+}
+
+
+static int _get_z80_induction_displacement(struct tac *t, struct tree_node *function_node) {
+
+  struct z80_location base, index;
+  struct tac *initial = g_induction.initial;
+  int write = t->op == TAC_OP_ARRAY_WRITE, bytes, offset;
+  struct tree_node *node = write == YES ? t->result_node : t->arg1_node;
+
+  if (initial == NULL || (t->op != TAC_OP_ARRAY_READ && write == NO) ||
+      node == NULL || node->value <= 0 ||
+      strcmp(node->children[1]->label, "__z80_in") == 0 || strcmp(node->children[1]->label, "__z80_out") == 0 ||
+      (write == YES ? t->result_type : t->arg1_type) != TAC_ARG_TYPE_LABEL ||
+      t->arg2_type != initial->result_type || t->arg2_physical_register != Z80_PHY_NONE ||
+      t->arg2_var_type != VARIABLE_TYPE_UINT16 || t->arg2_var_type_promoted != VARIABLE_TYPE_UINT16 ||
+      (t->arg2_type == TAC_ARG_TYPE_TEMP ? t->arg2_d != initial->result_d :
+       t->arg2_node != initial->result_node))
+    return Z80_GLOBAL_OFFSET;
+  bytes = get_variable_type_size(get_array_item_variable_type(node)) / 8;
+  if (bytes != g_induction.bytes ||
+      _resolve_tac_location(t, write == YES ? TAC_USE_RESULT : TAC_USE_ARG1, function_node, &base) == FAILED ||
+      _resolve_tac_location(t, TAC_USE_ARG2, function_node, &index) == FAILED ||
+      (index.kind != LOC_STACK_LOCAL && index.kind != LOC_STACK_SPILL) ||
+      base.kind != g_induction.kind ||
+      (base.kind == LOC_GLOBAL && node != g_induction.base))
+    return Z80_GLOBAL_OFFSET;
+  offset = base.kind == LOC_GLOBAL ? 0 : base.offset - g_induction.offset;
+  return offset >= -128 && offset + bytes - 1 <= 127 ? offset : Z80_GLOBAL_OFFSET;
+}
+
+
+static int _plan_z80_induction_address(struct tac *initial, struct tree_node *function_node) {
+
+  struct tac *bound;
+  struct tree_node *best_base = NULL;
+  int header, finish, i, candidate, best = 0, best_offset = 0, best_bytes = 0, best_kind = 0, trips;
+
+  if (g_induction.initial != NULL || is_z80_bounded_counter(initial, function_node, 65535, NO) == NO)
+    return NO;
+  header = (int)(initial - g_tacs) + 1;
+  while (g_tacs[header].op == TAC_OP_DEAD)
+    header++;
+  i = header + 1;
+  while (g_tacs[i].op == TAC_OP_DEAD)
+    i++;
+  bound = &g_tacs[i];
+  if (bound->arg2_type != TAC_ARG_TYPE_CONSTANT || bound->arg2_d <= initial->arg1_d)
+    return NO;
+  trips = (int)(bound->arg2_d - initial->arg1_d);
+  for (finish = i + 1; finish < g_tacs_count; finish++) {
+    struct tac *t = &g_tacs[finish];
+    if (t->op == TAC_OP_JUMP && strcmp(t->result_s, g_tacs[header].result_s) == 0)
+      break;
+    if ((t->op >= TAC_OP_JUMP && t->op <= TAC_OP_JUMP_GTE) ||
+        t->op == TAC_OP_FUNCTION_CALL || t->op == TAC_OP_FUNCTION_CALL_USE_RETURN_VALUE ||
+        t->op == TAC_OP_RETURN || t->op == TAC_OP_RETURN_VALUE || t->op == TAC_OP_ASM ||
+        t->op == TAC_OP_CREATE_VARIABLE)
+      return NO;
+  }
+  for (candidate = i + 1; candidate < finish; candidate++) {
+    struct tac *t = &g_tacs[candidate];
+    struct z80_location base;
+    struct tree_node *node = t->op == TAC_OP_ARRAY_WRITE ? t->result_node : t->arg1_node;
+    int scan, cycles = 0, bytes = 0, hits = 0, previous = -1;
+    if ((t->op != TAC_OP_ARRAY_READ && t->op != TAC_OP_ARRAY_WRITE) || node == NULL || node->value <= 0 ||
+        _resolve_tac_location(t, t->op == TAC_OP_ARRAY_WRITE ? TAC_USE_RESULT : TAC_USE_ARG1,
+          function_node, &base) == FAILED || (base.kind != LOC_STACK_LOCAL && base.kind != LOC_GLOBAL))
+      continue;
+    g_induction.initial = initial;
+    g_induction.base = node;
+    g_induction.kind = base.kind;
+    g_induction.offset = base.kind == LOC_GLOBAL ? 0 : base.offset;
+    g_induction.bytes = get_variable_type_size(get_array_item_variable_type(node)) / 8;
+    if (g_induction.bytes != 1 && g_induction.bytes != 2) {
+      g_induction.initial = NULL;
+      continue;
+    }
+    for (scan = i + 1; scan < finish; scan++) {
+      struct tac *use = &g_tacs[scan];
+      int displacement;
+      if (use->op == TAC_OP_DEAD)
+        continue;
+      displacement = _get_z80_induction_displacement(use, function_node);
+      if ((use->op == TAC_OP_ARRAY_READ || use->op == TAC_OP_ARRAY_WRITE) &&
+          displacement == Z80_GLOBAL_OFFSET && _get_z80_array_iy_scratch_depth(use, function_node) > 0) {
+        hits = 0;
+        break;
+      }
+      if (use->op == TAC_OP_ASSIGNMENT && use->arg1_type != TAC_ARG_TYPE_CONSTANT &&
+          use->arg1_physical_register == Z80_PHY_NONE) {
+        struct z80_location source, target;
+        if (_resolve_tac_location(use, TAC_USE_ARG1, function_node, &source) == FAILED ||
+            _resolve_tac_location(use, TAC_USE_RESULT, function_node, &target) == FAILED ||
+            (target.kind != LOC_PHY_HL && target.kind != LOC_PHY_BC) ||
+            source.size != 2 || target.size != 2 ||
+            use->reload_spill_to_physical_operand != -1 ||
+            get_variable_type_size(use->arg1_var_type) != 16 ||
+            get_variable_type_size(use->result_var_type) != 16 ||
+            get_register_allocator_address_materialization_mode(source.kind, RA_ADDRESS_TARGET_IX,
+              source.offset) != RA_ADDRESS_MODE_FRAME_DISPLACEMENT) {
+          hits = 0;
+          break;
+        }
+      }
+      if (use->op == TAC_OP_ARRAY_READ && previous >= 0 &&
+          g_tacs[previous].op == TAC_OP_ARRAY_WRITE && g_tacs[previous].result_node == use->arg1_node) {
+        if (use->arg1_var_type != VARIABLE_TYPE_UINT16 ||
+            g_tacs[previous].arg1_var_type != VARIABLE_TYPE_UINT16 ||
+            g_tacs[previous].arg1_physical_register != Z80_PHY_HL) {
+          hits = 0;
+          break;
+        }
+        previous = scan;
+        continue;
+      }
+      if (displacement != Z80_GLOBAL_OFFSET) {
+        cycles += (g_induction.bytes == 1 ? 46 : 56) - (g_induction.kind == LOC_GLOBAL ? 11 : 0);
+        bytes += (g_induction.bytes == 1 ? 8 : 9) - (g_induction.kind == LOC_GLOBAL ? 1 : 0);
+        hits++;
+      }
+      else if (use->op == TAC_OP_ARRAY_READ || use->op == TAC_OP_ARRAY_WRITE) {
+        int depth = _get_z80_array_iy_scratch_depth(use, function_node);
+        if (depth > 0) {
+          hits = 0;
+          break;
+        }
+        cycles -= depth < 0 ? 41 : 4;
+        bytes -= depth < 0 ? 8 : 1;
+      }
+      previous = scan;
+    }
+    /* No new home: charge IY setup, every update and all scratch preservation. */
+    cycles -= 10 * g_induction.bytes;
+    bytes -= 2 * g_induction.bytes + 6;
+    if (hits > 0 && bytes > 0 && cycles >= (29 + trips - 1) / trips && bytes > best) {
+      best = bytes;
+      best_offset = g_induction.offset;
+      best_bytes = g_induction.bytes;
+      best_base = node;
+      best_kind = base.kind;
+    }
+    g_induction.initial = NULL;
+  }
+  if (best == 0)
+    return NO;
+  g_induction.initial = initial;
+  g_induction.end = finish;
+  g_induction.offset = best_offset;
+  g_induction.bytes = best_bytes;
+  g_induction.base = best_base;
+  g_induction.kind = best_kind;
+  return YES;
+}
+
+
 static int _generate_asm_array_read_z80(struct tac *t, FILE *file_out, struct tree_node *function_node) {
 
   struct z80_location result_location;
@@ -4539,6 +4732,9 @@ static int _generate_asm_array_read_z80(struct tac *t, FILE *file_out, struct tr
   struct z80_location arg2_location;
   char address_label[MAX_NAME_LENGTH + 32];
   int constant_address = NO, byte_offset, result_materialized = NO;
+  int iy_offset = _get_z80_induction_displacement(t, function_node);
+  int preserve_iy = g_induction.initial != NULL && iy_offset == Z80_GLOBAL_OFFSET &&
+    _get_z80_array_iy_scratch_depth(t, function_node) != NO;
   int var_type, result_needs_16_bit, ix_offset = 0, base_memory_pointer_load = NO, arg2_is_zero = NO, base_materialized = NO, base_in_hl;
 
   /* OVERRIDE for __z80_in */
@@ -4550,6 +4746,8 @@ static int _generate_asm_array_read_z80(struct tac *t, FILE *file_out, struct tr
     snprintf(g_error_message, sizeof(g_error_message), "_generate_arm_array_read_z80(): You cannot read from \"__z80_out\"!\n");
     return print_error_using_tac(g_error_message, ERROR_ERR, t);
   }
+  if (preserve_iy == YES)
+    fprintf(file_out, "      PUSH IY\n");
 
   /* result */
 
@@ -4633,6 +4831,8 @@ static int _generate_asm_array_read_z80(struct tac *t, FILE *file_out, struct tr
           fprintf(file_out, "      ; forward preceding local-array word store in HL\n");
           goto array_read_store_value;
         }
+        if (g_induction.initial != NULL)
+          goto array_read_materialize_address;
         /* Up to three HL steps cost less than rematerializing a frame address. */
         while (base_in_hl == YES && adjustment != 0) {
           if (adjustment < 0) {
@@ -4651,6 +4851,12 @@ static int _generate_asm_array_read_z80(struct tac *t, FILE *file_out, struct tr
   }
 
  array_read_materialize_address:
+  if (iy_offset != Z80_GLOBAL_OFFSET) {
+    base_in_hl = NO;
+    fprintf(file_out, "      ; maintained induction address IY%+d\n", iy_offset);
+    goto array_read_load_value;
+  }
+  iy_offset = 0;
   if (base_memory_pointer_load == NO && arg2_location.kind == LOC_CONST &&
       (arg1_location.kind == LOC_GLOBAL || arg1_location.kind == LOC_STACK_LOCAL) &&
       (var_type == VARIABLE_TYPE_UINT8 || var_type == VARIABLE_TYPE_INT8 ||
@@ -4790,8 +4996,8 @@ static int _generate_asm_array_read_z80(struct tac *t, FILE *file_out, struct tr
           fprintf(file_out, "      LD  B,(HL)\n");
         }
         else {
-          _load_from_iy_to_c(0, file_out);
-          _load_from_iy_to_b(1, file_out);
+          _load_from_iy_to_c(iy_offset, file_out);
+          _load_from_iy_to_b(iy_offset + 1, file_out);
         }
         result_materialized = YES;
       }
@@ -4804,8 +5010,8 @@ static int _generate_asm_array_read_z80(struct tac *t, FILE *file_out, struct tr
         fprintf(file_out, "      LD  L,A\n");
       }
       else {
-        _load_from_iy_to_l(0, file_out);
-        _load_from_iy_to_h(1, file_out);
+        _load_from_iy_to_l(iy_offset, file_out);
+        _load_from_iy_to_h(iy_offset + 1, file_out);
       }
     }
     else {
@@ -4813,7 +5019,7 @@ static int _generate_asm_array_read_z80(struct tac *t, FILE *file_out, struct tr
       if (base_in_hl == YES)
         fprintf(file_out, "      LD  L,(HL)\n");
       else
-        _load_from_iy_to_l(0, file_out);
+        _load_from_iy_to_l(iy_offset, file_out);
 
       /* sign extend 8-bit -> 16-bit? */
       if (var_type == VARIABLE_TYPE_INT8 && result_needs_16_bit) {
@@ -4861,6 +5067,8 @@ static int _generate_asm_array_read_z80(struct tac *t, FILE *file_out, struct tr
       RA_TRACE((stderr, "register_allocator: array_read_physical_result function=%s result_phy=B value_bytes=1 via=L store=B status=complete\n",
               function_node->children[1]->label));
 #endif
+    if (preserve_iy == YES)
+      fprintf(file_out, "      POP IY\n");
     return SUCCEEDED;
   }
   if (result_location.kind == LOC_PHY_HL || result_location.kind == LOC_PHY_BC) {
@@ -4872,6 +5080,8 @@ static int _generate_asm_array_read_z80(struct tac *t, FILE *file_out, struct tr
     if (result_materialized == NO && _store_from_hl(&result_location, ix_offset, file_out) == FAILED)
       return FAILED;
     fprintf(file_out, "      ; retained result in %s\n", _get_z80_physical_register_name(result_location.phy));
+    if (preserve_iy == YES)
+      fprintf(file_out, "      POP IY\n");
     return SUCCEEDED;
   }
 
@@ -4893,6 +5103,8 @@ static int _generate_asm_array_read_z80(struct tac *t, FILE *file_out, struct tr
     _load_l_into_ix(ix_offset, file_out);
   }
 
+  if (preserve_iy == YES)
+    fprintf(file_out, "      POP IY\n");
   return SUCCEEDED;
 }
 
@@ -4986,7 +5198,7 @@ static int _generate_asm_z80_out_write_z80(struct tac *t, FILE *file_out, struct
 }
 
 
-static int _materialize_array_write_value(struct tac *tac, struct z80_location *arg1_location, int var_type, int ix_offset, int base_in_hl, struct tree_node *function_node, FILE *file_out) {
+static int _materialize_array_write_value(struct tac *tac, struct z80_location *arg1_location, int var_type, int ix_offset, int base_in_hl, int iy_offset, struct tree_node *function_node, FILE *file_out) {
 
   int value;
   int value_bytes;
@@ -5034,34 +5246,34 @@ static int _materialize_array_write_value(struct tac *tac, struct z80_location *
 
   if (arg1_location->kind == LOC_CONST) {
     value = arg1_location->value;
-    _load_value_into_iy(value & 0xff, 0, file_out);
+    _load_value_into_iy(value & 0xff, iy_offset, file_out);
     if (value_bytes == 2)
-      _load_value_into_iy((value >> 8) & 0xff, 1, file_out);
+      _load_value_into_iy((value >> 8) & 0xff, iy_offset + 1, file_out);
 
     return SUCCEEDED;
   }
   else if (arg1_location->kind == LOC_PHY_A) {
-    _load_a_into_iy(0, file_out);
+    _load_a_into_iy(iy_offset, file_out);
     if (value_bytes == 2) {
       if (tac->arg1_var_type == VARIABLE_TYPE_INT8)
-        _sign_extend_a_into_iy(1, file_out);
+        _sign_extend_a_into_iy(iy_offset + 1, file_out);
       else
-        _load_value_into_iy(0, 1, file_out);
+        _load_value_into_iy(0, iy_offset + 1, file_out);
     }
     fprintf(file_out, "      ; retained arg1 in A\n");
     return SUCCEEDED;
   }
   else if (arg1_location->kind == LOC_PHY_HL) {
-    _load_l_into_iy(0, file_out);
+    _load_l_into_iy(iy_offset, file_out);
     if (value_bytes == 2)
-      _load_h_into_iy(1, file_out);
+      _load_h_into_iy(iy_offset + 1, file_out);
     fprintf(file_out, "      ; retained arg1 in HL\n");
     return SUCCEEDED;
   }
   else if (arg1_location->kind == LOC_PHY_BC) {
-    _load_c_into_iy(0, file_out);
+    _load_c_into_iy(iy_offset, file_out);
     if (value_bytes == 2)
-      _load_b_into_iy(1, file_out);
+      _load_b_into_iy(iy_offset + 1, file_out);
     fprintf(file_out, "      ; retained arg1 in BC\n");
     return SUCCEEDED;
   }
@@ -5089,11 +5301,11 @@ static int _materialize_array_write_value(struct tac *tac, struct z80_location *
   }
 
   if (value_bytes == 2) {
-    _load_l_into_iy(0, file_out);
-    _load_h_into_iy(1, file_out);
+    _load_l_into_iy(iy_offset, file_out);
+    _load_h_into_iy(iy_offset + 1, file_out);
   }
   else {
-    _load_l_into_iy(0, file_out);
+    _load_l_into_iy(iy_offset, file_out);
   }
 
   return SUCCEEDED;
@@ -5107,6 +5319,9 @@ static int _generate_asm_array_write_z80(struct tac *t, FILE *file_out, struct t
   struct z80_location arg2_location;
   int var_type, arg2_is_zero, preserve_a_for_arg1, ix_offset = 0, result_materialized = NO;
   int base_in_hl, base_memory_pointer_load;
+  int iy_offset = _get_z80_induction_displacement(t, function_node), status;
+  int preserve_iy = g_induction.initial != NULL && iy_offset == Z80_GLOBAL_OFFSET &&
+    _get_z80_array_iy_scratch_depth(t, function_node) != NO;
 
   /* OVERRIDE for __z80_out */
   if (t->result_type == TAC_ARG_TYPE_LABEL && strcmp(t->result_s, "__z80_out") == 0)
@@ -5117,6 +5332,8 @@ static int _generate_asm_array_write_z80(struct tac *t, FILE *file_out, struct t
     snprintf(g_error_message, sizeof(g_error_message), "_generate_arm_array_assignment_z80(): You cannot write to \"__z80_in\"!\n");
     return print_error_using_tac(g_error_message, ERROR_ERR, t);
   }
+  if (preserve_iy == YES)
+    fprintf(file_out, "      PUSH IY\n");
 
   /* result */
 
@@ -5133,6 +5350,20 @@ static int _generate_asm_array_write_z80(struct tac *t, FILE *file_out, struct t
   if (_resolve_tac_location(t, TAC_USE_ARG2, function_node, &arg2_location) == FAILED)
     return FAILED;
 
+  var_type = t->result_var_type;
+  if (iy_offset != Z80_GLOBAL_OFFSET) {
+    base_in_hl = NO;
+    fprintf(file_out, "      ; maintained induction address IY%+d\n", iy_offset);
+    goto array_write_source;
+  }
+  iy_offset = 0;
+  if (g_induction.initial != NULL && arg1_location.kind == LOC_PHY_HL &&
+      _use_hl_array_base(t, &result_location, &arg1_location,
+        _base_needs_memory_pointer_load(t->result_type, t->result_node, &result_location)) == YES) {
+    fprintf(file_out, "      LD  A,L\n");
+    arg1_location.kind = LOC_PHY_A;
+    arg1_location.size = 1;
+  }
   arg2_is_zero = NO;
   if (arg2_location.kind == LOC_CONST && arg2_location.value == 0)
     arg2_is_zero = YES;
@@ -5240,6 +5471,7 @@ static int _generate_asm_array_write_z80(struct tac *t, FILE *file_out, struct t
   /* source address (arg1) -> ix */
   /******************************************************************************************************/
 
+ array_write_source:
   ix_offset = 0;
 
   if (arg1_location.kind == LOC_GLOBAL || arg1_location.kind == LOC_STACK_LOCAL || arg1_location.kind == LOC_STACK_SPILL) {
@@ -5247,7 +5479,10 @@ static int _generate_asm_array_write_z80(struct tac *t, FILE *file_out, struct t
       return FAILED;
   }
 
-  return _materialize_array_write_value(t, &arg1_location, var_type, ix_offset, base_in_hl, function_node, file_out);
+  status = _materialize_array_write_value(t, &arg1_location, var_type, ix_offset, base_in_hl, iy_offset, function_node, file_out);
+  if (preserve_iy == YES)
+    fprintf(file_out, "      POP IY\n");
+  return status;
 }
 
 
@@ -9000,6 +9235,7 @@ int generate_asm_z80(FILE *file_out) {
         function_node->local_variables->offset_to_fp_total >= -254 &&
         function_node->local_variables->offset_to_fp_total < -128 ? -126 : 0;
       g_ix_frame_bias = 0;
+      g_induction.initial = NULL;
 
       if ((function_node->flags & TREE_NODE_FLAG_ORG_DEFINED) == TREE_NODE_FLAG_ORG_DEFINED) {
         fprintf(file_out, "  .ORG $%x\n", (unsigned int)function_node->value_double);
@@ -9149,6 +9385,8 @@ int generate_asm_z80(FILE *file_out) {
       for (i = i + 1; i < g_tacs_count; i++) {
         t = &g_tacs[i];
         op = t->op;
+        if (g_induction.initial != NULL && i > g_induction.end)
+          g_induction.initial = NULL;
 
         if (op == TAC_OP_DEAD)
           continue;
@@ -9401,6 +9639,18 @@ int generate_asm_z80(FILE *file_out) {
         else if (op == TAC_OP_ASSIGNMENT) {
           if (_generate_asm_assignment_z80(t, file_out, function_node) == FAILED)
             return FAILED;
+          if (_plan_z80_induction_address(t, function_node) == YES) {
+            int offset = (g_induction.offset + (int)t->arg1_d * g_induction.bytes) & 65535;
+            if (offset > 32767)
+              offset -= 65536;
+            fprintf(file_out, "      ; maintain loop induction address; stride=%d\n", g_induction.bytes);
+            if (g_induction.kind == LOC_GLOBAL)
+              fprintf(file_out, "      LD  IY,%s+%d&65535\n", g_induction.base->children[1]->label, offset);
+            else {
+              _load_value_to_iy(offset, file_out);
+              _add_de_to_iy(file_out);
+            }
+          }
         }
         else if (op == TAC_OP_ADD || op == TAC_OP_SUB || op == TAC_OP_OR || op == TAC_OP_AND || op == TAC_OP_XOR) {
           if (_generate_asm_add_sub_or_xor_and_z80(t, file_out, function_node, op, &i) == FAILED)
@@ -9431,6 +9681,10 @@ int generate_asm_z80(FILE *file_out) {
             return FAILED;
         }
         else if (op == TAC_OP_JUMP) {
+          if (g_induction.initial != NULL && i == g_induction.end) {
+            for (j = 0; j < g_induction.bytes; j++)
+              fprintf(file_out, "      INC IY\n");
+          }
           for (j = 0; j < frame_latch_count; j++) {
             if (frame_latches[j] == i) {
               if (g_ix_frame_offset != 0) {
