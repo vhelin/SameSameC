@@ -6085,9 +6085,10 @@ reusing the loop proof and array/assignment/address emitters instead of another
 loop matcher or value cache. Evidence and rejected scouts remain under
 `C:\cygwin64\tmp\induction-20261103`. Commit locally without pushing; 2ay is next.
 
-### 2ay. Allocation-Aware Loop-Exit And Conditional Value Reuse
+### 2ay. Allocation-Aware Loop-Exit And Conditional Value Reuse (Completed)
 
-**Status: planned; follows the promotion/address work in 2aw-2ax.** Extend the
+**Status: completed for allocation-frozen spill snapshots; follows 2aw-2ax.**
+Extend the
 existing regional planner in [pass_5.c](compiler/pass_5.c), not a parallel
 memory-value cache. 2au already performs bounded all-path reuse; its deliberate
 already-live TEMP restriction is the remaining boundary to examine.
@@ -6117,6 +6118,97 @@ frame growth. Exercise equal/unequal joins, changed indices/memory, multiple
 exits/latches, nested and zero-trip loops, calls and pressure cases. Compare all
 eighteen ordinary/shared workloads and individual inputs against the exact
 parent; do not hide a local regression behind aggregate gains.
+
+Implementation extends the same regional planner a final time after allocation
+and spill-slot placement. The early already-live guard stays intact. Only an
+identically typed, single-definition array-read TEMP already materialized in a
+real spill home can gain consumers. The existing all-predecessor CFG/worklist,
+local-array escape/effect/index proof and ordinary result-to-assignment rewrite
+are reused. No new producer store, competing allocation, edge transfer, frame
+byte or physical-register reservation is requested.
+
+An allocated home is not automatically a valid snapshot: spill slots are
+shared. Every intervening path must preserve the actual byte span. A stack
+result with any overlapping owner invalidates it, including partial overlap;
+fixed spill operations and transition annotations conservatively stop reuse.
+Index/value definitions, possible aliasing, same-array writes, calls, ASM,
+ports and escaping objects retain the original barriers. Consumers require a
+memory-backed word index and a nearby existing snapshot home; constants,
+register-backed indices and partially/register-retained producers keep their
+old schedules rather than charging fictional reconstruction savings. Exact
+result/promoted types preserve signed extension and truncation. No load or
+store moves to a different control-flow path.
+
+This permits newly extended snapshot lifetimes through joins, guarded uses and
+eligible loop exits, including zero-work loops, without repeating the old
+uncosted lifetime-extension mistake. A first ownership scout rejected every
+globally shared home; checking actual path writers instead enables reuse
+without changing frame layout. Unproven homes remain fallbacks. General new
+register/phi snapshots and refreshable derived expressions are not implemented.
+QuickSort's scan snapshots and A*'s selected-index changes remain outside this
+bounded proof; their complete ROMs and timings are unchanged.
+
+Exact-parent complete-kernel results versus
+`dce635c50cc9b7f8709bc362d9c4a6e2e1c8cd4f`
+(cycles sum the same twelve inputs):
+
+| Kernel | RA bytes | RA cycles | Shared bytes | Shared cycles | RA full frame |
+|---|---:|---:|---:|---:|---:|
+| Sprite | 2962 -> 2910 | 11452387 -> 11013037 | 2934 -> 2882 | 11460163 -> 11020813 | 322 -> 322 |
+| Tracker | 2924 -> 2904 | 9855671 -> 9846559 | 2896 -> 2876 | 9871007 -> 9861895 | 252 -> 252 |
+
+Sprite saves 3.84% ordinary cycles. Its ordinary reads/writes change
+293735/90811 -> 283175/90811; Tracker changes 198296/89313 -> 198024/89313.
+Ordinary instruction totals change 904996 -> 868462 and 812079 -> 810991.
+Shared variants have identical savings, unchanged writes and unchanged full
+frame bounds (Sprite shared remains 324). All complete caller sections/cycles
+are unchanged; the other sixteen kernels retain byte-identical ROMs.
+
+Executed-instruction attribution proves the mechanism, not just fewer static
+loads. Sprite executes 36275 -> 30995 array-read TACs and 36641 -> 31361
+array-base reconstruction pairs over twelve inputs; Tracker changes
+18702 -> 18566 and 20097 -> 19961. These remove 5280/136 real array reads and
+reconstructions per mode, with 10560/272 fewer index additions. Carried-address
+setup/updates are unchanged. Individual inputs never grow; skipped consumers
+need not improve. Eight annotated parent/current ROMs are byte-identical to
+their originals, with 96 numerical executions and independent timings.
+
+Qualification:
+
+- All eighteen ordinary/shared workloads pass on release, traced and ASan:
+  108 builds, 1668 guarded calls and 162 independent timings, with 72 cross-build
+  ROM identities. Complete sections, each input's cycles/separate reads/writes,
+  caller costs and all full-storage bounds are non-growing. No input grows its
+  instruction count.
+- The new 88-shape oracle runs 24640 executions per host in five modes and
+  inline/shared arithmetic, requiring 80 positive reuse selections. It covers
+  signed/unsigned byte/word elements, equal/unequal incoming definitions,
+  nested joins, guards, loop exits, nested/zero-trip loops, multiple latches,
+  changed indices/memory, pressure/shared-home collisions, calls, ASM, ports
+  and escapes. Its 9856 exact-parent per-input comparisons have no complete
+  image/function/frame, cycle, separate-traffic, instruction or dynamic-depth
+  growth; 144 default/no-RA/all-spill ROM controls remain identical.
+- Existing focused ownership, addressing, window, copy/fill, banked/recursive
+  and cross-object/assembly ABI contracts run on all three hosts, including
+  the 2ax induction oracle. The CRC/scaled `far` selection assertions and the
+  retained-word offset-coverage assertion still fail on the exact parent and
+  remain unchanged, not counted as green. The older regional-array test's
+  named-counter regex `IndexError` is also reproduced on current and exact
+  parent compilers, independently of the new self-contained oracle.
+- Strict C89 passes with the unrelated pre-existing initializer fix in the
+  working tree; that fix remains outside this commit. Exact-parent and staged
+  source checks reject only that same nonconstant initializer, with no other
+  diagnostics. Unchanged native
+  allocation/frame verifier controls pass. All six SMS/Game Gear consoles
+  preserve numerical output, display, mapper, palette/font and full RAM.
+  Calculations-3 saves 72 used bytes and 34230 boot cycles per platform;
+  calculations-1/2 remain unchanged.
+
+Production grows by **52 net C lines, with no new helper functions**. The
+planner, proof, rewrite and assignment emitter remain shared; there is no
+parallel memory cache, allocator, ABI or optimization flag. Evidence and
+conservative scouts remain under `C:\cygwin64\tmp\exit-reuse-20261104`.
+Commit locally without pushing; 2az is next.
 
 ### 2az. Narrow-Value Facts Across Small Leaf Calls
 

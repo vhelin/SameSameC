@@ -16,6 +16,154 @@ from ra_cpu import execute
 
 
 class BranchConditionsTests(unittest.TestCase):
+    def test_allocated_regional_snapshots(self):
+        forms = {
+            "straight": "other[index]=total; result=data[index];",
+            "join": "if(n&1) { other[0]+=1; } else { other[1]+=2; } result=data[index];",
+            "nested": "if(n&1) { if(n&2) { other[0]+=1; } else { other[1]+=2; } } result=data[index];",
+            "guarded": "if(n&1) { result=data[index]; } else { result=b; }",
+            "zero": "result=0; for(i=0;i<(n&3);i++) { result+=data[index]; }",
+            "nested_loop": "result=0; for(i=0;i<(n&3);i++) { for(j=0;j<(a&3);j++) { result+=data[index]; } }",
+            "latches": "result=0; for(i=0;i<(n&3);i++) { if(i&1) { result+=data[index]; continue; } result^=data[index]; }",
+            "changed_index": "index=(index+1)&3; result=data[index];",
+            "changed_store": "data[index]=b; result=data[index];",
+            "changed_join": "if(n&1) { data[index]=b; } result=data[index];",
+            "changed_loop": "for(i=0;i<(n&3);i++) { data[index]+=i+1; } result=data[index];",
+            "pressure": "u16 v0=a*b; u16 v1=(a+1)*(b+3); total+=v0+v1; other[index]=v0^v1; result=data[index];",
+            "call": "total=regional_snapshot_touch(total); result=data[index];",
+            "asm": '__asm("LD HL,4660"); __asm("LD BC,22136"); __asm("XOR A"); result=data[index];',
+            "port": "__z80_out[0xBE]=total; result=data[index];",
+            "escape": "KIND *pointer=data; pointer[index]=b; result=data[index];",
+            "shifts_straight": "other[index]=total; result=data[index];",
+            "shifts_join": "if(n&1) { other[0]+=1; } else { other[1]+=2; } result=data[index];",
+            "shifts_exit": "for(i=0;i<(n&3);i++) { other[i]+=1; } result=data[index];",
+            "shifts_guarded": "if(n&1) { result=data[index]; } else { result=b; }",
+            "equal": "other[index]=total; result=data[index];",
+            "unequal": "other[index]=total; result=data[index];",
+        }
+        calls = selections = 0
+        for kind in ("u8", "s8", "u16", "s16"):
+            width = 1 if kind.endswith("8") else 2
+            mask = (1 << (width*8))-1
+            signed = kind.startswith("s")
+
+            def scalar(value):
+                value &= mask
+                return value-mask-1 if signed and value & (mask+1)//2 else value
+
+            programs = []
+            for family, form in forms.items():
+                name = f"snapshot_{kind}_{family}"
+                initialize = " ".join(
+                    f"data[{i}]=a+{i*257}; other[{i}]=b-{i*131};" for i in range(4))
+                output = " ".join(f"ra_buffer[{base+i*2}]={array}[{i}]; ra_buffer[{base+i*2+1}]="
+                                  + (f"{array}[{i}]>>8;" if width == 2 else "0;")
+                                  for array, base in (("data", 0), ("other", 16)) for i in range(4))
+                snapshot = (f" {'s16' if signed else 'u16'} saved;"
+                            + (" if(n&1) { saved=data[index]; } else { saved="
+                               + ("a;" if family == "unequal" else "data[index];") + " } "
+                               if family in ("equal", "unequal") else " saved=data[index]; "))
+                source = (f"u16 {name}(u16 a,u16 b,u16 n) {{ {kind} data[4]; {kind} other[4]; "
+                          f"u16 index=b&3; u16 i; u16 j; u16 total; {'s16' if signed else 'u16'} result; "
+                          + initialize + snapshot
+                          + ("total=saved>>3; total+=saved>>5; " if family.startswith("shifts_") else
+                             "total=saved+other[index]; total^=saved; ")
+                          + form.replace("KIND", kind) + output + " return total^result; }")
+                programs.append(Program(name, family, width, int(signed), [2, 2, 2], 2, [], source))
+            for policy in ("inline", "shared"):
+                for offset in range(0, len(programs), 4):
+                    group = programs[offset:offset+4]
+                    directory = self.output / "allocated-snapshots" / kind / policy / f"batch-{offset}"
+                    source = ("u8 ra_buffer[128];\n"
+                              "u16 regional_snapshot_touch(u16 x) { ra_buffer[127]^=x; return x+7; }\n"
+                              + "\n".join(program.source for program in group) + "\nvoid main(void) {}\n")
+                    images = compile_generated(
+                        directory, os.environ.get("SAMESAMECC") or "samesamecc",
+                        os.environ.get("SAMESAMECL") or "samesamecl", group, source,
+                        linker_flags=("-share-arithmetic",) if policy == "shared" else ())
+                    baseline_reads = {}
+                    for mode, image in images.items():
+                        assembly = (directory / mode / "main.asm").read_text()
+                        for program in group:
+                            body = assembly.split(f'.SECTION "{program.name}" FREE')[1].split(".ENDS")[0]
+                            reads = len(re.findall(r"; TAC: .* := _data_\d+\..*\[",
+                                                   body.split("; TAC: ra_buffer", 1)[0]))
+                            if mode == "default":
+                                baseline_reads[program.name] = reads
+                            elif mode in ("ra", "ra_quiet") and os.environ.get("RA_BASELINE") != "1":
+                                if program.family.startswith("shifts_") or kind == "u8" and program.family in (
+                                        "straight", "join", "nested", "guarded"):
+                                    self.assertLess(reads, baseline_reads[program.name], (program.name, policy, mode))
+                                    selections += 1
+                                elif program.family in ("changed_index", "changed_store", "changed_join",
+                                                        "changed_loop", "pressure", "call", "asm", "port", "escape",
+                                                        "equal", "unequal"):
+                                    self.assertEqual(reads, baseline_reads[program.name], (program.name, policy, mode))
+                            for a in (0, 127, 128, 255, 256, 32768, 65535):
+                                b = (a*137+0x8001)&65535
+                                for n in (0, 1, 2, 3):
+                                    data = [scalar(a+i*257) for i in range(4)]
+                                    other = [scalar(b-i*131) for i in range(4)]
+                                    index = b&3
+                                    saved = a if program.family == "unequal" and not n&1 else data[index]
+                                    shifted = program.family.startswith("shifts_")
+                                    total = ((((saved&65535)>>3)+((saved&65535)>>5)) if shifted else
+                                             ((saved+other[index])^saved))&65535
+                                    initial = bytes((i*37+a+n)&255 for i in range(128))
+                                    expected = bytearray(initial)
+                                    family = program.family.removeprefix("shifts_")
+                                    ports = []
+                                    if family in ("straight", "equal", "unequal"):
+                                        other[index] = scalar(total)
+                                    elif family == "join":
+                                        lane, add = (0, 1) if n&1 else (1, 2)
+                                        other[lane] = scalar(other[lane]+add)
+                                    elif family == "nested" and n&1:
+                                        lane, add = (0, 1) if n&2 else (1, 2)
+                                        other[lane] = scalar(other[lane]+add)
+                                    elif family == "changed_index":
+                                        index = (index+1)&3
+                                    elif family in ("changed_store", "escape") or family == "changed_join" and n&1:
+                                        data[index] = scalar(b)
+                                    elif family == "changed_loop":
+                                        for i in range(n&3):
+                                            data[index] = scalar(data[index]+i+1)
+                                    elif family == "exit":
+                                        for i in range(n&3):
+                                            other[i] = scalar(other[i]+1)
+                                    elif family == "pressure":
+                                        v0, v1 = (a*b)&65535, ((a+1)*(b+3))&65535
+                                        total = (total+v0+v1)&65535
+                                        other[index] = scalar(v0^v1)
+                                    elif family == "call":
+                                        expected[127] ^= total&255
+                                        total = (total+7)&65535
+                                    elif family == "port":
+                                        ports.append([0xBE, total&255])
+                                    result = (b if family == "guarded" and not n&1 else data[index])&65535
+                                    if family in ("zero", "nested_loop", "latches"):
+                                        result = 0
+                                        for i in range(n&3):
+                                            for _ in range((a&3) if family == "nested_loop" else 1):
+                                                result = ((result^data[index]) if family == "latches" and not i&1
+                                                          else (result+data[index]))&65535
+                                    for array, base in ((data, 0), (other, 16)):
+                                        for i, value in enumerate(array):
+                                            expected[base+i*2] = value&255
+                                            expected[base+i*2+1] = (value>>8)&255 if width == 2 else 0
+                                    with self.subTest(program=program.name, policy=policy, mode=mode, a=a, n=n):
+                                        actual = execute(image.rom, image.symbols[program.name], [a, b, n],
+                                                         program.widths, initial, image.symbols["ra_buffer"], 2,
+                                                         image.transfers, ports_allowed=True, frame_bytes=1024)
+                                        self.assertEqual((actual["value"], actual["buffer"], actual["port_writes"]),
+                                                         ((total^result)&65535, expected, ports))
+                                        self.assertEqual(actual["unmapped_instructions"], 0)
+                                    calls += 1
+        self.assertEqual(calls, len(forms)*4*2*5*7*4)
+        if os.environ.get("RA_BASELINE") != "1":
+            self.assertEqual(selections, 80)
+        print(f"Allocated snapshot oracle: {len(forms)*4} shapes, {calls} executions", flush=True)
+
     def test_maintained_induction_addresses(self):
         read = "total+=left[at]; total^=right[at]; total+=third[at];"
         forms = {

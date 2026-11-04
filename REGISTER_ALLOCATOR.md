@@ -370,7 +370,32 @@ regional test's parent/current named-counter regex error remain disclosed.
 Production grows 254 net C lines with three target-local helpers.
 See [step 2ax](Z80_CODEGEN_PLAN.md#2ax-maintained-induction-addresses-across-loop-iterations-completed)
 for the bounded scope, executed-address proof, complete costs and qualification.
-QuickSort/A* are unchanged; 2ay is next.
+QuickSort/A* are unchanged.
+
+Normal RA now extends the existing regional reuse proof after final allocation
+and spill placement. A single-definition, identically typed array-read
+snapshot can gain consumers only in an already materialized nearby spill home,
+without new producer writes, edge transfers, allocation changes or frame bytes.
+All incoming paths must preserve both the memory value/index and the actual
+spill-byte span; writes by overlapping shared-slot owners invalidate reuse.
+The early already-live guard, escape/type/effect barriers and free immediate
+forwarding stay intact. Register/partially retained producers, free/constant
+indices and unsupported transfers keep fallback. No operations move onto
+skipped paths; eligible joins, guarded consumers and loop exits can reuse.
+Sprite/Tracker save 52/20 ordinary/shared bytes and 439350/9112 cycles over
+twelve inputs; Sprite improves 3.84%. Reads decrease, while writes, callers and
+full storage remain unchanged. Actual array reads/reconstructions fall by
+5280/136 per mode; the other sixteen workload ROMs are unchanged.
+All eighteen workload gates pass on three hosts. The 88-shape oracle runs
+24640 executions per host, and 9856 exact-parent cost comparisons pass.
+All six consoles preserve controls; calculations-3 saves 72 used bytes and
+34230 boot cycles per platform. Known parent focused assertions and the older
+regional test's named-counter regex error remain disclosed. Production grows
+52 net C lines with no new helpers, cache, allocator or ABI.
+See [step 2ay](Z80_CODEGEN_PLAN.md#2ay-allocation-aware-loop-exit-and-conditional-value-reuse-completed)
+for ownership/fallback bounds, executed-load attribution and complete costs.
+New register/phi snapshots and refreshed derived expressions remain future
+work; QuickSort/A* are unchanged. Step 2az is next.
 
 Normal RA now reuses byte comparison and counter emitters when the existing
 bounded known-bit query proves word values are 0..255. The query also accepts

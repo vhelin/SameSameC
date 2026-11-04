@@ -47,7 +47,7 @@ static int g_register_reads_and_writes_count = 0, g_local_variable_running_index
 
 static int _promote_register_allocator_local_values(int complex_cfg);
 static int _collect_register_allocator_scalar_webs(struct tree_node *function, struct tree_node *variable, int start, int end, int *next_temp, int **mapping);
-static int _reuse_register_allocator_regional_values(int *rewritten);
+static int _reuse_register_allocator_regional_values(int *rewritten, int allocated);
 static int _allocate_local_variable_metadata(struct tree_node *function_node, int local_variables_count, int arguments_count, int used_registers);
 static int _is_register_allocator_jump_op(int op);
 static int _is_first_allocator_producer(int op);
@@ -87,7 +87,7 @@ int pass_5(void) {
       (propagate_operand_types() == FAILED || _promote_register_allocator_local_values(NO) == FAILED))
     return FAILED;
   if (g_allocator_enabled == YES && g_allocator_force_all_spill == NO && g_backend == BACKEND_Z80 &&
-      (_reuse_register_allocator_regional_values(&reused) == FAILED ||
+      (_reuse_register_allocator_regional_values(&reused, NO) == FAILED ||
        (reused == YES && optimize_il() == FAILED)))
     return FAILED;
   /* make life easier for reuse_registers() */
@@ -115,7 +115,7 @@ int pass_5(void) {
     return FAILED;
   /* Do not broaden speculative invariant motion with newly split scalar webs. */
   if (g_allocator_enabled == YES && g_allocator_force_all_spill == NO && g_backend == BACKEND_Z80 &&
-      (_reuse_register_allocator_regional_values(NULL) == FAILED ||
+      (_reuse_register_allocator_regional_values(NULL, NO) == FAILED ||
        _promote_register_allocator_local_values(YES) == FAILED || compress_register_names() == FAILED))
     return FAILED;
   if (g_register_allocator_trace) {
@@ -123,6 +123,9 @@ int pass_5(void) {
   }
 
   if (collect_and_preprocess_local_variables_inside_functions() == FAILED)
+    return FAILED;
+  if (g_allocator_enabled == YES && g_allocator_force_all_spill == NO && g_backend == BACKEND_Z80 &&
+      _reuse_register_allocator_regional_values(&reused, YES) == FAILED)
     return FAILED;
   if (delete_function_prototype_tacs() == FAILED)
     return FAILED;
@@ -5477,7 +5480,7 @@ cleanup:
 }
 
 
-static int _reuse_register_allocator_regional_values(int *rewritten) {
+static int _reuse_register_allocator_regional_values(int *rewritten, int allocated) {
 
   int start;
 
@@ -5560,6 +5563,7 @@ static int _reuse_register_allocator_regional_values(int *rewritten) {
         struct tac *producer = &g_tacs[earlier];
         struct tac source = *producer;
         int head = 0, tail = 0, visited = 0, eligible = YES;
+        struct temp_register *snapshot = NULL;
         if (producer->op == TAC_OP_ARRAY_WRITE) {
           int element_type = get_array_item_variable_type(base);
           if (_find_next_living_tac(earlier + 1) == i ||
@@ -5612,9 +5616,35 @@ static int _reuse_register_allocator_regional_values(int *rewritten) {
           for (scan = i + 1; scan < end; scan++)
             if (_tac_reads_temp_register(&g_tacs[scan], (int)source.result_d) == YES)
               break;
-          if (scan == end && (producer->op != TAC_OP_ARRAY_WRITE ||
+          if (allocated == NO && scan == end && (producer->op != TAC_OP_ARRAY_WRITE ||
               earlier < blocks[candidate_block].start_tac))
             continue;
+        }
+        /* Freeze allocation: extend only a proven existing home, without producer or edge traffic. */
+        if (allocated == YES) {
+          if (producer->op != TAC_OP_ARRAY_READ || source.result_type != TAC_ARG_TYPE_TEMP ||
+              source.result_var_type != candidate->result_var_type ||
+              source.result_var_type_promoted != candidate->result_var_type_promoted ||
+              producer->result_physical_register != Z80_PHY_NONE ||
+              candidate->arg2_type == TAC_ARG_TYPE_CONSTANT ||
+              candidate->arg2_physical_register != Z80_PHY_NONE ||
+              get_variable_type_size(candidate->arg2_var_type) != 16 ||
+              producer->store_retained_to_spill_operand >= 0 ||
+              producer->reload_spill_to_physical_operand >= 0 ||
+              candidate->store_retained_to_spill_operand >= 0 ||
+              candidate->reload_spill_to_physical_operand >= 0)
+            continue;
+          snapshot = _find_temp_register_info(function, (int)source.result_d);
+          if (snapshot == NULL || snapshot->spill_required != YES || snapshot->physical_register != Z80_PHY_NONE ||
+              get_register_allocator_address_materialization_mode(RA_LOCATION_STACK_SPILL, RA_ADDRESS_TARGET_IX,
+                snapshot->offset_to_fp) != RA_ADDRESS_MODE_FRAME_DISPLACEMENT)
+            continue;
+          /* Only replace a reconstructed memory index, not an already free address. */
+          if (candidate->arg2_type == TAC_ARG_TYPE_TEMP) {
+            struct temp_register *counter = _find_temp_register_info(function, (int)candidate->arg2_d);
+            if (counter == NULL || counter->spill_required != YES || counter->physical_register != Z80_PHY_NONE)
+              continue;
+          }
         }
         for (scan = start + 1; scan < end; scan++)
           if (source.result_type == TAC_ARG_TYPE_LABEL &&
@@ -5638,7 +5668,21 @@ static int _reuse_register_allocator_regional_values(int *rewritten) {
             }
             if (effect->op == TAC_OP_DEAD || effect->op == TAC_OP_CREATE_VARIABLE || effect->op == TAC_OP_LABEL)
               continue;
+            if (allocated == YES &&
+                effect->op != TAC_OP_ARRAY_WRITE && effect->result_type == TAC_ARG_TYPE_TEMP &&
+                effect->result_physical_register == Z80_PHY_NONE) {
+              struct temp_register *owner = _find_temp_register_info(function, (int)effect->result_d);
+              if (owner != NULL && owner->spill_required == YES &&
+                  owner->offset_to_fp < snapshot->offset_to_fp + snapshot->size / 8 &&
+                  snapshot->offset_to_fp < owner->offset_to_fp + owner->size / 8) {
+                eligible = NO;
+                break;
+              }
+            }
             if (++visited > 256 || scan < earlier ||
+                (allocated == YES && (effect->store_retained_to_spill_operand >= 0 ||
+                 effect->reload_spill_to_physical_operand >= 0)) ||
+                (allocated == YES && effect->op == TAC_OP_REGISTER_SPILL) ||
                 effect->op == TAC_OP_FUNCTION_CALL || effect->op == TAC_OP_FUNCTION_CALL_USE_RETURN_VALUE ||
                 effect->op == TAC_OP_ASM ||
                 (effect->op == TAC_OP_ARRAY_READ && effect->arg1_type == TAC_ARG_TYPE_LABEL &&
@@ -5683,8 +5727,16 @@ static int _reuse_register_allocator_regional_values(int *rewritten) {
             status = FAILED;
             goto hoist_cleanup;
           }
-          RA_TRACE((stderr, "register_allocator: regional_array_reuse function=%s producer=%d consumer=%d paths=all memory=stable\n",
-            function->children[1]->label, earlier, i));
+          if (allocated == YES) {
+            candidate->arg1_physical_register = Z80_PHY_NONE;
+            candidate->arg1_original_register_index = producer->result_original_register_index;
+            candidate->arg2_physical_register = Z80_PHY_NONE;
+            snapshot->read_count++;
+            if (snapshot->live_end < i)
+              snapshot->live_end = i;
+          }
+          RA_TRACE((stderr, "register_allocator: regional_array_reuse function=%s producer=%d consumer=%d paths=all memory=stable allocated=%s\n",
+            function->children[1]->label, earlier, i, allocated == YES ? "yes" : "no"));
           *rewritten = YES;
           break;
         }
