@@ -408,14 +408,22 @@ extraction.
   stable local-array values without uncosted lifetime or frame growth.
 - [x] **2av. Stable large-frame addressing and register roles:** preserve proven
   hot IX windows across large loops while keeping DE as the frame pointer.
-- [ ] **2aw. General CFG scalar promotion for mutable loop state:** extend the
+- [x] **2aw. General CFG scalar promotion for mutable loop state:** extend the
   existing promoter with regional definition/join proofs and complete costs.
-- [ ] **2ax. Maintained induction addresses across loop iterations:** build on
+- [x] **2ax. Maintained induction addresses across loop iterations:** build on
   2at's forms and reuse the step 3 loop/address machinery, not another matcher.
-- [ ] **2ay. Allocation-aware loop-exit and conditional value reuse:** extend
+- [x] **2ay. Allocation-aware loop-exit and conditional value reuse:** extend
   2au only when complete allocation proves new retained lifetimes profitable.
 - [ ] **2az. Narrow-value facts across small leaf calls:** reuse byte-factor and
   register-leaf lowering through costed inlining or specialization.
+- [ ] **2ba. Regional allocation with flexible register/frame roles:** jointly
+  select hot scalar, pointer and scratch roles through a compatible frame policy.
+- [ ] **2bb. Shared expression-DAG lowering and actual emission costs:** avoid
+  needless materialization and consolidate location, clobber and cost planning.
+- [ ] **2bc. General loop-aware redundancy elimination and induction:** extend
+  value/memory version proofs to conditional refresh, dynamic scans and exits.
+- [ ] **2bd. Whole-expression value facts across pure calls:** extend 2az with
+  shared CFG ranges/known bits and costed pure-call inlining or specialization.
 - [ ] **3. Initial SM83 backend:** establish correct Game Boy code generation,
   target-specific addressing/spills/calls and execution tests. Use actual
   requirements to identify reusable code; do not assume IX/IY, `DJNZ` or `LDIR`.
@@ -6244,6 +6252,204 @@ callers, retained external entries, nested calls and shared-helper accounting.
 Keep complete caller/callee storage, all eighteen ordinary/shared workloads
 and per-input numerical/cycle gates; record helper/clone bytes and source growth.
 
+### Profile-Guided Structural Follow-ups After 2ay (2026-11-05)
+
+The fresh comparison at `d7c7610` passes **144 builds, 2224 guarded calls and
+216 independent timings** across all eighteen workloads and eight modes.
+Against the previous full comparison at `a1da0b8`, workload fingerprints,
+external tool hashes and all 108 rival executable images/results are unchanged.
+All 36 ordinary/shared SameSameC ROMs reproduce final 2ay qualification.
+Across 556 matched SameSameC inputs, complete/kernel cycles, instructions,
+individual stack reads/writes and full storage never grow; callers are unchanged.
+
+Geometric-mean code size improves about 1.0% and cycles about 0.47% since that
+full profile. Array, Tile, Path, copyBytes, Sprite and Tracker improve size/speed;
+the other twelve kernels retain identical sizes/cycle totals. A*, QuickSort and
+Navigation still expose large structural gaps:
+
+| Workload | Excess ordinary-RA kernel bytes | Extra kernel cycles | Hot-sample scalar/spill frame cycles | Hot-sample frame setup cycles |
+|---|---:|---:|---:|---:|
+| Tracker | 1031 | 61.3% | 31.2% | 7.4% |
+| Navigation | 770 | 43.5% | 50.4% | 9.9% |
+| A* | 805 | 34.9% | 58.7% | 4.9% |
+| QuickSort | 512 | 28.7% | 45.9% | 11.1% |
+| Sprite | 886 | 15.0% | 51.0% | 8.5% |
+| Array | 448 | 10.1% | 17.6% | 3.1% |
+
+Size and cycle gaps choose the best rival configuration independently; kernel
+costs include dependencies/helpers and exclude separately measured callers/data.
+Attribution uses each kernel's highest-cycle input, not the whole-profile
+distribution. Six byte-identical annotated ROMs pass numerical and independent
+timing checks; an additional byte-identical A* run counts actual selected-index
+definitions and loads. These costs identify opportunities, not a removable
+overhead budget or a forecast of optimization gains.
+
+Reports, all-test tables/CSV, per-input metrics, exact linked competitor code
+and attribution are retained under
+`C:\cygwin64\tmp\ra-profile-20261105-after-2ay`.
+SDCC's retained public study snapshot and current upstream PRE/value-analysis
+sources are mechanism references, not asserted build-matching sources for the
+pinned binaries. The inspected z88dk integer runtime is selected by the actual
+Tracker link map.
+
+Prioritize **2ba and 2bb as the coupled structural project**, then 2bc; 2bd
+extends rather than duplicates the still-planned 2az. These optional Z80 projects
+are not new prerequisites for initial SM83 support. Keep implementation batches
+bounded and locally committed, but do not call a structural project complete
+after another tiny fixture win. Target hundreds of emitted bytes saved and
+meaningful cycle reductions in multiple complete large applications.
+
+For each project, use independent numerical/boundary/fallback fixtures and the
+existing exact-parent eighteen-workload ordinary/shared per-input gates. Keep
+complete caller/callee/helper sizes, cycles, separate reads/writes and full
+storage visible; do not hide a regression behind aggregates or shared helpers.
+Qualify pinned competitors, traced/quiet/sanitizer builds, native allocation/frame
+verification and all six SMS/Game Gear consoles under the existing batch gates.
+Record compiler-source growth and remove superseded logic only when the shared
+proof covers its behavior. Never recognize benchmark names or algorithm shapes.
+
+### 2ba. Regional Allocation With Flexible Register/Frame Roles
+
+**Status: planned; builds on 2as, 2av and 2aw, sharing role/cost contracts with
+2bb.** Move beyond short supported fragments to costed hot-region lifetimes.
+
+- Jointly plan scalar, pointer and scratch locations through existing CFG,
+  definition webs, liveness, split/rejoin transfers and ownership transactions.
+  Keep loop state resident where profitable instead of repeatedly staging it
+  through frame homes at individual consumers.
+- The current target policy offers HL/BC for words and A/B/C for bytes; ordinary
+  DE remains the frame pointer. Exact linked zsdcc QuickSort scans retain indices
+  in DE and advance them with INC/DEC DE, whereas SameSameC reloads and updates
+  their frame homes. Evaluate a compatible per-function frame strategy that can
+  release DE where profitable, then expose additional legal byte/pair units
+  through the existing target policy.
+- This is not an enum-only register expansion or an unconditional frame-pointer
+  substitution. Charge deep-frame addressing, setup/teardown, calls, saved
+  values, edge transfers and pair/byte overlap before selecting a role plan.
+  Preserve legacy, cross-file, banked, recursive and ASM-facing frame/call
+  contracts; unsupported or unprofitable functions retain their current policy.
+  Do not assume unsupported index-half-register instructions.
+- Reuse [register_allocator.c](compiler/register_allocator.c),
+  [register_allocator.h](compiler/register_allocator.h), frame packing and
+  promotion in [pass_5.c](compiler/pass_5.c), and location/frame/call lowering in
+  [pass_6_z80.c](compiler/pass_6_z80.c). Consolidate superseded role restrictions
+  once their safety and emitted behavior are covered; do not add a second
+  allocator or competing frame cache.
+
+Acceptance: substantial complete-program size/cycle reductions in at least two
+large workloads, including a scan/control-heavy application. Prove eliminated
+executed scalar/spill traffic, not merely more promoted TACs. Cover mixed byte/pair
+pressure, signed updates, nested loops/calls, joins, spills, deep frames, escapes,
+ASM/ports and legacy/banked entries. Apply the structural completion and
+whole-program qualification requirements above.
+
+### 2bb. Shared Expression-DAG Lowering And Actual Emission Costs
+
+**Status: planned; develops 2as's lowering-aware selection alongside 2ba.**
+Avoid unnecessary materialization even when values must remain spilled.
+
+- Plan connected producer/consumer expressions with existing typed TAC and
+  resolved locations. Fold legal loads into arithmetic/comparison operands and
+  keep intermediates virtual until a real consumer requires materialization.
+  Select address formation, result locations and surviving registers together.
+- SameSameC's word-comparison lowering still materializes many frame operands
+  into HL/BC. Exact linked competitor scans use direct byte-borrow comparisons
+  against frame operands, reducing copies and preserving useful registers.
+  Generalize memory/register operand planning rather than adding another
+  comparison-only recognizer.
+- Feed profitability from the actual selected emission plan, including address
+  setup, width/sign extension, preservation, result stores and transfers.
+  SDCC's `ralloc2.cc` assigns candidate operands/surviving registers and calls
+  `dryZ80iCode` to price real instruction emission. Reuse/consolidate existing
+  emitters and cost observers rather than duplicating instruction selection in
+  another heuristic table; dry planning must not mutate committed compiler state.
+- Reuse [pass_5.c](compiler/pass_5.c) candidate/transition handling and
+  [pass_6_z80.c](compiler/pass_6_z80.c) location, arithmetic and branch emitters.
+  Preserve carry/borrow, signed overflow, full-word equality, evaluation order,
+  aliases, observable memory/port effects and every retained live-out. Only the
+  selected legal schedule may change clobber/ownership annotations.
+
+Acceptance: measured complete-code improvements in at least two large
+applications with fewer executed copies/materializations and truthful emission
+costs. Include signed/unsigned byte/word operations, memory/memory and
+memory/register operands, frame-window boundaries, live companion values,
+shared arithmetic and pressure fallbacks. A shorter instruction fragment or
+more optimistic cost estimate is not completion; use the common project gates.
+
+### 2bc. General Loop-Aware Redundancy Elimination And Induction
+
+**Status: planned; extends 2au, 2ax and 2ay after 2ba/2bb's resource and lowering
+contracts.** Replace bounded-scope limits with shared CFG/value/memory proofs,
+not weaker safety guards.
+
+- Add costed partial redundancy elimination for value-versioned expressions,
+  including loop-carried derived values refreshed only on input-defining paths.
+  Extend index/address induction to profitable dynamic/zero bounds, signed or
+  descending updates, internal branches and supported multiple latches/exits.
+  Share scaled indices across related bases where the selected registers survive.
+- In A*'s hot measured input, selected-element loads execute 10378 times per
+  array while the selected index changes 2481 times, plus 818 initializations.
+  Refreshing selected values and derived scores on defining paths is a general
+  opportunity. This does not claim rivals already remove every best-score
+  recomputation or that all initializations should perform speculative loads.
+  QuickSort's exiting scan values/addresses are another resource-dependent case.
+- SDCC's `loopInduction` moves derived arithmetic to preheaders and inserts
+  updates; [its lifetime-aware PRE](https://svn.code.sf.net/p/sdcc/code/trunk/sdcc/src/SDCClospre.cc)
+  models expressions, invalidating definitions/effects and safe control-flow
+  placement. Use these as mechanism references, not code to vendor.
+- Reuse regional worklists, definition webs, alias/escape analysis, loop proofs,
+  location handling and allocation transactions in
+  [pass_5.c](compiler/pass_5.c), [register_allocator.c](compiler/register_allocator.c)
+  and [pass_6_z80.c](compiler/pass_6_z80.c). Prove all incoming paths, typed memory
+  versions, index wrap/sign behavior and original live-outs. Do not move reads
+  onto skipped paths; charge initializations, conditional refreshes, phi/edge
+  copies, spills, competing lifetimes and full frame layout. Earlier uncosted
+  lifetime extension regressed QuickSort and must not be repeated.
+
+Acceptance: substantial whole-application wins in at least two large
+scan/selection/array workloads, including previously unselected control flow.
+Count actual executed redundant loads, score/index/address reconstructions and
+refreshes in byte-identical annotated images. Cover zero trips, conditional
+updates, equal/unequal joins, descending/wrapping indices, aliasing and partial
+stores, calls/ASM/ports, multiple latches/exits and pressure fallbacks. Keep the
+common per-input and full-storage gates; fewer TACs alone are not acceptance.
+
+### 2bd. Whole-Expression Value Facts Across Pure Calls
+
+**Status: planned; broadens 2az and complements 2bb/2bc without duplicating their
+lowering or value-version machinery.** Expose facts across connected expressions
+and supported pure calls, not only one leaf-call shape.
+
+- Share CFG range/known-bit facts through typed producer/consumer networks,
+  preserving declared widths, signedness, modular arithmetic and wide results.
+  Use costed pure-call inlining or specialization to expose narrow operands,
+  constant arguments/divisors and redundant computations across call boundaries.
+  Unsupported or unknown facts keep the existing execution path.
+- Tracker's hottest input spends 22.5% in dependencies and 6.2% in call
+  transport; its multiply leaf still executes sixteen iterations. The actually
+  linked z88dk small multiply runtime has an eight-iteration byte-multiplicand
+  path. Array's hottest input spends 51.8% in dependencies. These identify
+  broader expression/call opportunities, not guaranteed removable costs.
+- [SDCC's generalized value analysis](https://svn.code.sf.net/p/sdcc/code/trunk/sdcc/src/SDCCgenconstprop.cc)
+  tracks ranges/known bits, invalidates escaped/global facts and narrows
+  connected operation networks. Reuse 2ad/2af's fact queries, 2an/2az's leaf/call
+  handling, and typed TAC/location/emission machinery in
+  [pass_4.c](compiler/pass_4.c), [pass_5.c](compiler/pass_5.c) and
+  [pass_6_z80.c](compiler/pass_6_z80.c). Existing quotient/remainder sharing is
+  already implemented and must be reused, not added again.
+- Price complete caller/callee images, retained public/legacy entries, clones,
+  helpers, transport and clobbers. Avoid unconditional wide-input dispatch costs,
+  silent ABI changes and hidden size/speed tradeoffs. Preserve division-by-zero,
+  shift-count, signed/full-width, alias and observable-effect contracts; do not
+  substitute mathematical identities without proving the actual typed semantics.
+
+Acceptance: substantial complete call-heavy improvements in Tracker and a
+second independent large workload, with mixed-width/constant/range facts and
+wide/signed fallbacks. Test multiple callers, retained external/banked/ASM
+entries, nested/recursive calls, shared helpers and invalidated facts. Report
+all clone/helper bytes and full caller/callee storage under the common gates;
+removing a call or shortening one multiply listing alone is not completion.
+
 ### 3. Maintain Induction Addresses And Select Z80 Loops
 
 Reuse existing array/pointer TAC and Z80 address emitters. Introduce a narrowly
@@ -6444,14 +6650,16 @@ to this cross-compiler experiment.
    compiler source growth visible and remove superseded logic. Commit the batch
    locally with the validation summary; do not push.
 
-The recorded implementation batches through **2av** are complete, including
+The recorded implementation batches through **2ay** are complete, including
 the user-requested bounded sequence **2ak-2an**; adding the larger comparison
 applications was qualified separately from those optimizations. Steps
-**2aw-2az** are the next planned RA-only profile follow-ups, in that order;
-**2aw** is next. Step 2ax and step 3 must share the same induction/address
-implementation; 2az must reuse steps 4-5's call/arithmetic machinery.
-2av preserves DE as the frame pointer: ordinary DE expansion still requires
-an explicit compatible frame-role policy. The initial SM83 backend remains
+**2az and 2ba-2bd** remain planned; **2az** is next in the existing sequence.
+Among the larger new projects, prioritize the coupled **2ba/2bb** work before
+**2bc**; **2bd** extends 2az. Step 2ax and step 3 share induction/address
+machinery; 2az/2bd must reuse steps 4-5's call/arithmetic handling.
+2av preserves DE as the frame pointer: 2ba's ordinary DE expansion requires
+an explicit compatible frame-role policy, not an enum-only change.
+The initial SM83 backend remains
 the next backend target, not a reason
 to make every possible Z80 optimization mandatory. Keep qualified Z80 behavior
 and shared core coverage intact throughout.
