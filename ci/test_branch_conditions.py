@@ -16,6 +16,243 @@ from ra_cpu import execute
 
 
 class BranchConditionsTests(unittest.TestCase):
+    def test_narrow_register_leaf_arguments(self):
+        from random import Random
+
+        names = ("a", "b", "c")
+        cases = {}
+        for count in (1, 2, 3):
+            for left in range(count):
+                for right in range(count):
+                    for narrow in sorted({left, right}):
+                        for addend in (None, *range(count)):
+                            family = f"{count}_{left}_{right}_{narrow}_{addend}"
+                            product = f"{names[left]}*{names[right]}"
+                            body = f"return {product}"+(f"+{names[addend]};" if addend is not None else ";")
+                            arguments = ",".join(f"({name}&255)" if i == narrow else name
+                                                 for i, name in enumerate(names[:count]))
+                            cases[family] = (count, body, arguments, "", True,
+                                             lambda v, initial, l=left, r=right, n=narrow, s=addend:
+                                             (v[l]&255 if l == n else v[l])*(v[r]&255 if r == n else v[r])
+                                             +(0 if s is None else v[s]&255 if s == n else v[s]))
+        for family, prefix, arguments, oracle, narrow in (
+            ("byte", "u8 value=a;", "value,b,c", lambda v, m: (v[0]&255)*v[1]+v[2], True),
+            ("array", "", "a,ra_buffer[b&127],c", lambda v, m: v[0]*m[v[1]&127]+v[2], True),
+            ("word_copy", "u16 value=a&255;", "value,b,c", lambda v, m: (v[0]&255)*v[1]+v[2], True),
+            ("word_shift", "", "a,b>>8,c", lambda v, m: v[0]*(v[1]>>8)+v[2], True),
+            ("signed_byte", "s8 value=a;", "value,b,c",
+             lambda v, m: ((v[0]&255)-(256 if v[0]&128 else 0))*v[1]+v[2], False),
+            ("wide", "", "a,b,c", lambda v, m: v[0]*v[1]+v[2], False),
+            ("masked_wide", "", "a,b&511,c", lambda v, m: v[0]*(v[1]&511)+v[2], False),
+        ):
+            cases[family] = (3, "return a*b+c;", arguments, prefix, narrow, oracle)
+        random = Random(0x2A2)
+        values = [(0, 0, 0), (1, 65535, 0x8000), (127, 128, 255), (255, 256, 257),
+                  (256, 255, 65535), (0x8000, 65535, 1), (65535, 65535, 65535)]
+        values += [tuple(random.randrange(65536) for _ in names) for _ in range(17)]
+        calls = selections = 0
+        families = list(cases)
+        for policy in ("inline", "shared"):
+            for offset in range(0, len(families), 8):
+                group = families[offset:offset+8]
+                helpers, programs = [], []
+                for family in group:
+                    count, body, arguments, prefix, _, _ = cases[family]
+                    parameters = ",".join(f"u16 {name}" for name in names[:count])
+                    helpers.append(f"u16 narrow_leaf_{family}({parameters}) {{ {body} }}")
+                    source = (f"u16 narrow_caller_{family}(u16 a,u16 b,u16 c) {{ "
+                              f"u16 saved=a^b^c; {prefix} return narrow_leaf_{family}({arguments})^saved; }}")
+                    programs.append(Program(f"narrow_caller_{family}", family, 0, 0, [2, 2, 2], 2, [], source))
+                directory = self.output / "narrow-leaves" / policy / f"batch-{offset}"
+                images = compile_generated(
+                    directory, os.environ.get("SAMESAMECC") or "samesamecc",
+                    os.environ.get("SAMESAMECL") or "samesamecl", programs,
+                    "u8 ra_buffer[128];\n"+"\n".join(helpers+[p.source for p in programs])+"\nvoid main(void) {}\n",
+                    linker_flags=("-share-arithmetic",) if policy == "shared" else ())
+                for mode, image in images.items():
+                    assembly = (directory / mode / "linked.sms.combined.asm").read_text()
+                    for program in programs:
+                        selected = bool(re.search(
+                            rf"\.DEFINE ssc\.bytearg\.v1\.a\d\.narrow_leaf_{program.family} 1", assembly))
+                        if os.environ.get("RA_BASELINE") != "1":
+                            if policy == "inline" and mode in ("ra", "ra_quiet") or not cases[program.family][4]:
+                                self.assertEqual(selected, cases[program.family][4], (policy, mode, program.family))
+                            selections += selected
+                        self.assertEqual(image.staticMetrics["functions"][f"narrow_leaf_{program.family}"]["frame_bytes"], 0)
+                        exhaustive = (tuple((byte<<8)|byte if i == int(program.family.split("_")[3]) else value for i in range(3))
+                                      for value in (257, 32768, 65535) for byte in range(256)) if program.family in (
+                                          "1_0_0_0_None", "3_0_1_0_2", "3_0_1_1_2", "3_0_2_0_1", "3_1_2_1_0") else ()
+                        for args in (*values, *exhaustive):
+                            initial = bytes((i*37+sum(args))&255 for i in range(128))
+                            expected = (cases[program.family][5](args, initial)&65535)^args[0]^args[1]^args[2]
+                            result = execute(image.rom, image.symbols[program.name], args, [2, 2, 2], initial,
+                                             image.symbols["ra_buffer"], 2, image.transfers, frame_bytes=2048)
+                            self.assertEqual((result["value"], result["buffer"], result["port_writes"],
+                                              result["unmapped_instructions"]), (expected, initial, [], 0),
+                                             (policy, mode, program.family, args))
+                            calls += 1
+        print(f"Narrow leaf arguments: {len(cases)} shapes, {calls} guarded calls, {selections} selections", flush=True)
+
+    def test_narrow_register_leaf_boundaries(self):
+        compiler, linker = os.environ.get("SAMESAMECC") or "samesamecc", os.environ.get("SAMESAMECL") or "samesamecl"
+        contracts = ("native", "banked", "old_callee", "old_caller", "v1_caller", "mixed",
+                     "opposite", "escape", "opaque", "explicit", "explicit_opaque", "nested", "signed",
+                     "multiple_same", "multiple_wide", "recursive")
+        calls = 0
+        for policy in ("inline", "shared"):
+            for contract in contracts:
+                for mode, flags in (("default", ()), ("ra", ("-ra",)), ("forced", ("-ra-all-spill",))):
+                    directory = self.output / "narrow-boundaries" / policy / f"{contract}-{mode}"
+                    directory.mkdir(parents=True)
+                    annotation = " __z80_regcall" if contract.startswith("explicit") else ""
+                    first_type = "s16" if contract == "signed" else "u16"
+                    signature = f"u16 boundary_leaf({first_type} a,u16 b,u16 c){annotation}"
+                    extra = ("u16 boundary_inner(u16 a,u16 b) { return a*b; }\n"
+                             if contract == "nested" else "")
+                    definition = extra+signature+(
+                        " { return boundary_inner(a,b)+c; }\n" if contract == "nested" else
+                        " { if(c==0) { return a*b; } return boundary_leaf(a,b,c-1)+1; }\n"
+                        if contract == "recursive" else " { return a*b+c; }\n")
+                    escape = "u16 address=&boundary_leaf;" if contract == "escape" else ""
+                    second = ("+boundary_leaf(a,b,c)" if contract == "mixed" else
+                              "+boundary_leaf(a,b&255,c)" if contract == "opposite" else "")
+                    noise = '__asm("NOP");' if contract in ("opaque", "explicit_opaque") else ""
+                    source = ("u8 ra_buffer[128];\n"+signature+";\n"
+                              f"u16 boundary_caller(u16 a,u16 b,u16 c) {{ {escape} {noise} "
+                              "u16 saved=a^b^c; u8 small=a; return ((boundary_leaf(small,b,"
+                              + ("c&3" if contract == "recursive" else "c")+f"){second})^saved)"
+                              + ("+(address!=0);" if escape else ";")+" }\nvoid main(void) {}\n")
+                    for unit, text in (("caller", source), ("callee", definition)):
+                        (directory / f"{unit}.ssc").write_text(text)
+                        bank = ("-b", "3", "-s", "2") if contract == "banked" and unit == "callee" else ()
+                        run(compiler, ["-mz80", "-rs", "3", *bank, *flags, "-o", f"{unit}.asm", f"{unit}.ssc"],
+                            directory, f"{unit}.compiler.log")
+                    if contract in ("old_callee", "old_caller", "v1_caller"):
+                        path = directory / ("callee.asm" if contract == "old_callee" else "caller.asm")
+                        text = path.read_text()
+                        if contract == "v1_caller":
+                            text = re.sub(r"; ssc_regcalls 2 2 ([0-3]) ([01]) (\w+) [0-7]",
+                                          r"; ssc_regcalls 1 2 \1 \2 \3", text)
+                        else:
+                            text = re.sub(r"^\s*; ssc_regcalls[^\n]*\n", "", text, flags=re.M)
+                        path.write_text(text)
+                    units = ["caller.asm", "callee.asm"]
+                    if contract.startswith("multiple_"):
+                        other = (signature+";\nu16 other_caller(u16 a,u16 b,u16 c) { u8 small=a; "
+                                 "return boundary_leaf("+("small" if contract == "multiple_same" else "a")+",b,c); }\n")
+                        (directory / "other.ssc").write_text(other)
+                        run(compiler, ["-mz80", "-rs", "3", *flags, "-o", "other.asm", "other.ssc"],
+                            directory, "other.compiler.log")
+                        units.append("other.asm")
+                    run(linker, ["-lsms", "-ro", "4", "-v", *(("-share-arithmetic",) if policy == "shared" else ()),
+                                 "-o", "linked.sms", *units], directory, "linker.log")
+                    image = read_image(directory)
+                    if contract == "banked":
+                        image = mapped_routine_image("narrow", "ssc.autocall.v1.w3.boundary_leaf", mode, image)
+                    assembly = (directory / "linked.sms.combined.asm").read_text()
+                    narrow = bool(re.search(r"\.DEFINE ssc\.bytearg\.v1\.a0\.boundary_leaf 1", assembly))
+                    if os.environ.get("RA_BASELINE") != "1":
+                        self.assertEqual(narrow, contract in ("native", "banked", "signed", "multiple_same"),
+                                         (policy, contract, mode))
+                    if contract in ("signed", "nested", "recursive"):
+                        self.assertNotIn("ssc.regleaf.boundary_leaf", image.symbols)
+                    for args in ((0, 0, 0), (127, 255, 0x8000), (128, 32768, 255),
+                                 (255, 65535, 1), (256, 257, 65535), (65535, 65535, 65535)):
+                        a, b, c = args
+                        expected = (a&255)*b+c
+                        if contract == "recursive":
+                            expected = (a&255)*b+(c&3)
+                        if contract == "mixed":
+                            expected += a*b+c
+                        elif contract == "opposite":
+                            expected += a*(b&255)+c
+                        expected = ((expected&65535)^a^b^c)+(contract == "escape")
+                        initial = bytes(128)
+                        result = execute(image.rom, image.symbols["boundary_caller"], args, [2, 2, 2], initial,
+                                         image.symbols["ra_buffer"], 2, image.transfers, frame_bytes=2048)
+                        self.assertEqual((result["value"], result["buffer"], result["port_writes"],
+                                          result["unmapped_instructions"]), (expected&65535, initial, [], 0),
+                                         (policy, contract, mode, args))
+                        calls += 1
+                        if contract.startswith("multiple_"):
+                            expected = ((a&255) if contract == "multiple_same" else a)*b+c
+                            result = execute(image.rom, image.symbols["other_caller"], args, [2, 2, 2], initial,
+                                             image.symbols["ra_buffer"], 2, image.transfers, frame_bytes=2048)
+                            self.assertEqual((result["value"], result["buffer"], result["port_writes"],
+                                              result["unmapped_instructions"]), (expected&65535, initial, [], 0),
+                                             (policy, contract, mode, args))
+                            calls += 1
+        print(f"Narrow leaf boundaries: {len(contracts)} contracts, {calls} guarded calls", flush=True)
+
+    def test_narrow_call_reduction(self):
+        source = (
+            "u8 ra_buffer[128];\n"
+            "u16 reduction_leaf(u16 a,u16 b,u16 c) { return a*b+c; }\n"
+            "u16 reduction_workload(u16 a,u16 b,u16 n) { u16 i; u16 total=a; u16 saved=b^n; "
+            "for(i=0;i<(n&31);i++) { total=reduction_leaf(b,ra_buffer[i],total); } "
+            "return total^saved; }\nvoid main(void) {}\n")
+        program = Program("reduction_workload", "reduction", 0, 0, [2, 2, 2], 2, [], source)
+        for policy in ("inline", "shared"):
+            directory = self.output / "narrow-reduction" / policy
+            images = compile_generated(
+                directory, os.environ.get("SAMESAMECC") or "samesamecc",
+                os.environ.get("SAMESAMECL") or "samesamecl", [program], source,
+                linker_flags=("-share-arithmetic",) if policy == "shared" else ())
+            for mode, image in images.items():
+                assembly = (directory / mode / "linked.sms.combined.asm").read_text()
+                if os.environ.get("RA_BASELINE") != "1":
+                    self.assertIn(".DEFINE ssc.bytearg.v1.a1.reduction_leaf 1", assembly)
+                for n in (0, 1, 2, 7, 31, 32, 65535):
+                    for a, b in ((0, 0), (255, 256), (32768, 65535), (65535, 0x8000)):
+                        initial = bytes((i*37+n)&255 for i in range(128))
+                        total = (a+b*sum(initial[:n&31]))&65535
+                        result = execute(image.rom, image.symbols[program.name], [a, b, n], [2, 2, 2], initial,
+                                         image.symbols["ra_buffer"], 2, image.transfers, frame_bytes=2048)
+                        self.assertEqual((result["value"], result["buffer"], result["port_writes"],
+                                          result["unmapped_instructions"]), (total^b^n, initial, [], 0),
+                                         (policy, mode, a, b, n))
+
+    def test_narrow_leaf_sharing_profitability(self):
+        for family in ("uniform", "split", "merge"):
+            second_type = "u8" if family == "merge" else "u16"
+            helpers = ("u8 ra_buffer[128];\n"
+                       "u16 sharing_first(u16 a,u16 b,u16 c) { return a*b+c; }\n"
+                       f"u16 sharing_second({second_type} a,u16 b,u16 c) {{ return a*b+c; }}\n")
+            programs = [
+                Program("sharing_caller_0", "first", 0, 0, [2, 2, 2], 2, [],
+                        "u16 sharing_caller_0(u16 a,u16 b,u16 c) { u8 small=b; return sharing_first(a,small,c); }"),
+                Program("sharing_caller_1", "second", 0, 0, [2, 2, 2], 2, [],
+                        "u16 sharing_caller_1(u16 a,u16 b,u16 c) { u8 small="
+                        + ("b; return sharing_second(a,small,c); }" if family == "uniform" else
+                           "a; return sharing_second(small,b,c); }")),
+            ]
+            if family == "merge":
+                programs.append(Program("sharing_second", "unaffected", 0, 0, [1, 2, 2], 2, [], ""))
+            directory = self.output / "narrow-sharing" / family
+            images = compile_generated(
+                directory, os.environ.get("SAMESAMECC") or "samesamecc",
+                os.environ.get("SAMESAMECL") or "samesamecl", programs,
+                helpers+"\n".join(program.source for program in programs)+"\nvoid main(void) {}\n",
+                linker_flags=("-share-arithmetic",))
+            for mode, image in images.items():
+                assembly = (directory / mode / "linked.sms.combined.asm").read_text()
+                if os.environ.get("RA_BASELINE") != "1":
+                    selected = bool(re.search(r"\.DEFINE ssc\.bytearg\.v1\.a1\.sharing_first 1", assembly))
+                    self.assertEqual(selected, family == "uniform", (family, mode))
+                self.assertEqual(sum(name.startswith("ssc.arithmetic_") for name in image.symbols),
+                                 int(family != "merge"), (family, mode))
+                for program in programs:
+                    for a, b, c in ((0, 0, 0), (127, 255, 32768), (255, 256, 65535),
+                                    (256, 255, 1), (32768, 65535, 255), (65535, 65535, 65535)):
+                        expected = (a*(b&255) if program.family == "first" or family == "uniform" else
+                                    (a&255)*b)+c
+                        initial = bytes(128)
+                        result = execute(image.rom, image.symbols[program.name], [a, b, c], program.widths,
+                                         initial, image.symbols["ra_buffer"], 2, image.transfers, frame_bytes=2048)
+                        self.assertEqual((result["value"], result["buffer"], result["port_writes"],
+                                          result["unmapped_instructions"]), (expected&65535, initial, [], 0),
+                                         (family, mode, program.name, a, b, c))
+
     def test_allocated_regional_snapshots(self):
         forms = {
             "straight": "other[index]=total; result=data[index];",
@@ -3185,6 +3422,12 @@ static u16 pr_discard(u16 a,u16 b,u16 c) { ra_buffer[0]=a; return a+3*b+5*c; }
             header+"      ; ssc_regcalls 1 1 1 0 invalid.name\n",
             header+"      ; ssc_regcalls 1 2 2 1 leaf\n",
             header+"      ; ssc_regcalls 1 1 1 0 leaf\n",
+            header+"      ; ssc_regcalls 2 2 1 1 leaf\n",
+            header+"      ; ssc_regcalls 2 2 1 1 leaf 2\n",
+            header+"      ; ssc_regcalls 2 2 1 1 leaf 4294967297\n",
+            header+"      ; ssc_regcalls 2 2 1 1 leaf -1\n",
+            header+"      ; ssc_regcalls 2 2 1 1 leaf 1 trailing\n",
+            header+"      ; ssc_regcalls 2 1 1 0 leaf 1\n",
         )):
             (work / "main.asm").write_text(original.replace(header, replacement, 1))
             completed = subprocess.run([linker, "-lsms", "-o", "linked.sms", "main.asm"],
@@ -4558,7 +4801,8 @@ u16 rc_four(u16 a,u16 b,u16 c,u16 d) { return a+b+c+d; }
             self.assertEqual(image.rom, inline[mode].rom)
             self.assertFalse(any(name.startswith("ssc.arithmetic_") for name in image.symbols))
         assembly = (directory / "shared" / "ra" / "main.asm").read_text()
-        self.assertEqual(len(re.findall("ssc_arithmetic_begin", assembly)), 5)
+        # The two guarded narrow leaf alternatives have no callers and remain unlinked.
+        self.assertEqual(len(re.findall("ssc_arithmetic_begin", assembly)), 7)
         for index, (prefix, opening, closing) in enumerate((
             (".DEFINE user_guard 1\n", ".IFDEF user_guard", ".ENDIF"),
             ("", ".IFNDEF user_guard", ".ENDIF"),

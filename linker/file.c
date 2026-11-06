@@ -196,21 +196,22 @@ int file_write_all_asm_files_into_tmp_file(FILE *fp) {
 
   struct register_call {
     char name[MAX_NAME_LENGTH + 1];
-    int arguments, defined, calls, used_calls, escaped, explicit_call, selected, legacy, frameless;
+    int arguments, defined, calls, used_calls, escaped, explicit_call, selected, legacy, frameless, byte_arguments;
     struct register_call *next;
   } *register_calls = NULL, *regcall, *next_regcall;
   struct arithmetic_body {
     struct file *file;
     char *start, *body, *end;
     int kind, bank, slot, length, uses, id;
-    struct arithmetic_body *helper, *next;
-  } *bodies = NULL, *last = NULL, *body, *match, *next;
+    struct arithmetic_body *helper, *narrow_helper, *next;
+  } *bodies = NULL, *wide_bodies = NULL, *wide, *last = NULL, *body, *match, *next;
   const char *begin_marker = "      ; ssc_arithmetic_begin ";
   const char *end_marker = "      ; ssc_arithmetic_end";
   const char *call_marker = "      ; ssc_regcalls ";
   char *cursor, *start, *end, *code, *guards = NULL;
   char name[MAX_NAME_LENGTH + 1];
-  int kind, bank, slot, consumed, version, arguments, value, header, opaque = NO, id = 0, status = FAILED;
+  int kind, bank, slot, consumed, version, arguments, value, byte_arguments, header, opaque = NO, id = 0, status = FAILED;
+  int width_plan, width_plans = 1, reject_narrowing = NO;
   struct file *f;
 
   for (f = g_files_first; f != NULL; f = f->next) {
@@ -230,8 +231,18 @@ int file_write_all_asm_files_into_tmp_file(FILE *fp) {
         goto invalid_regcall;
       while (cursor < end && strchr(" \t\r", *cursor) != NULL)
         cursor++;
-      if (cursor != end || version != 1 || kind < 0 || kind > 4 ||
+      byte_arguments = 0;
+      if (version == 2) {
+        if (kind != 2 || cursor >= end || sscanf(cursor, "%1d%n", &byte_arguments, &consumed) != 1)
+          goto invalid_regcall;
+        cursor += consumed;
+        while (cursor < end && strchr(" \t\r", *cursor) != NULL)
+          cursor++;
+      }
+      if (cursor != end || (version != 1 && version != 2) || kind < 0 || kind > 4 ||
           arguments < 0 || arguments > 3 || value < 0 || value > 1)
+        goto invalid_regcall;
+      if (byte_arguments < 0 || byte_arguments >= (1 << arguments))
         goto invalid_regcall;
       cursor = end + 1;
       if (kind == 0) {
@@ -279,6 +290,7 @@ int file_write_all_asm_files_into_tmp_file(FILE *fp) {
         regcall->explicit_call = kind == 4;
       }
       else {
+        regcall->byte_arguments = regcall->calls == 0 ? byte_arguments : regcall->byte_arguments & byte_arguments;
         regcall->calls++;
         regcall->used_calls += value;
       }
@@ -297,9 +309,16 @@ int file_write_all_asm_files_into_tmp_file(FILE *fp) {
     fprintf(fp, "  .DEFINE ssc.auto.v1.w%d.%s 1\n", regcall->arguments, regcall->name);
     if (legacy)
       fprintf(fp, "  .DEFINE ssc.legacy.v1.w%d.%s 1\n", regcall->arguments, regcall->name);
+    if (legacy == YES || opaque == YES || regcall->explicit_call == YES)
+      regcall->byte_arguments = 0;
+    if (regcall->byte_arguments != 0)
+      width_plans = 2;
   }
 
   if (g_share_arithmetic == YES) {
+    for (width_plan = 0; width_plan < width_plans; width_plan++) {
+    for (regcall = register_calls; regcall != NULL; regcall = regcall->next)
+      regcall->frameless = NO;
     for (f = g_files_first; f != NULL; f = f->next) {
       char *line = f->data;
       int depth = 0, active = YES;
@@ -336,12 +355,17 @@ int file_write_all_asm_files_into_tmp_file(FILE *fp) {
                   selector = 2;
                 else if (sscanf(symbol, "ssc.frameless.%256s", name) == 1)
                   selector = 3;
+                else if (sscanf(symbol, "ssc.bytearg.v1.a%d.%256s", &arguments, name) == 2)
+                  selector = 4;
                 if (selector != 0) {
                   evaluated = NO;
                   for (regcall = register_calls; regcall != NULL; regcall = regcall->next) {
                     if (strcmp(regcall->name, name) == 0 &&
-                        (selector == 3 || regcall->arguments == arguments)) {
-                      evaluated = selector == 3 ? regcall->frameless :
+                        (selector >= 3 || regcall->arguments == arguments)) {
+                      evaluated = selector == 4 ?
+                        width_plan != 0 && regcall->selected && arguments >= 0 && arguments < regcall->arguments &&
+                        (regcall->byte_arguments & (1 << arguments)) != 0 :
+                        selector == 3 ? regcall->frameless :
                         regcall->selected && (selector == 1 || regcall->legacy);
                       break;
                     }
@@ -431,6 +455,46 @@ int file_write_all_asm_files_into_tmp_file(FILE *fp) {
       free(guards);
       guards = NULL;
     }
+    if (width_plan == 0 && width_plans == 2) {
+      wide_bodies = bodies;
+      bodies = last = NULL;
+      id = 0;
+    }
+    }
+    if (width_plans == 2) {
+      /* Keep shared groups intact, without adding calls to unchanged arithmetic. */
+      for (wide = wide_bodies, body = bodies; wide != NULL && body != NULL; wide = wide->next, body = body->next) {
+        if (wide->helper->uses >= 2) {
+          if (wide->helper->narrow_helper == NULL)
+            wide->helper->narrow_helper = body->helper;
+          else if (wide->helper->narrow_helper != body->helper)
+            reject_narrowing = YES;
+        }
+        else if (body->helper->uses >= 2 && wide->length == body->length &&
+                 memcmp(wide->body, body->body, wide->length) == 0)
+          reject_narrowing = YES;
+      }
+      if (wide != NULL || body != NULL) {
+        fprintf(stderr, "FILE_WRITE_ALL_ASM_FILES_INTO_TMP_FILE: Incompatible narrow arithmetic alternatives.\n");
+        goto cleanup;
+      }
+      if (reject_narrowing == YES) {
+        for (body = bodies; body != NULL; body = next) {
+          next = body->next;
+          free(body);
+        }
+        bodies = wide_bodies;
+        wide_bodies = NULL;
+        for (regcall = register_calls; regcall != NULL; regcall = regcall->next)
+          regcall->byte_arguments = 0;
+      }
+    }
+  }
+  for (regcall = register_calls; regcall != NULL; regcall = regcall->next) {
+    for (arguments = 0; regcall->selected == YES && arguments < regcall->arguments; arguments++) {
+      if ((regcall->byte_arguments & (1 << arguments)) != 0)
+        fprintf(fp, "  .DEFINE ssc.bytearg.v1.a%d.%s 1\n", arguments, regcall->name);
+    }
   }
 
   f = g_files_first;
@@ -487,6 +551,10 @@ cleanup:
     free(regcall);
   }
   for (body = bodies; body != NULL; body = next) {
+    next = body->next;
+    free(body);
+  }
+  for (body = wide_bodies; body != NULL; body = next) {
     next = body->next;
     free(body);
   }

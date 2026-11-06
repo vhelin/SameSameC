@@ -395,7 +395,28 @@ regional test's named-counter regex error remain disclosed. Production grows
 See [step 2ay](Z80_CODEGEN_PLAN.md#2ay-allocation-aware-loop-exit-and-conditional-value-reuse-completed)
 for ownership/fallback bounds, executed-load attribution and complete costs.
 New register/phi snapshots and refreshed derived expressions remain future
-work; QuickSort/A* are unchanged. Step 2az is next.
+work; QuickSort/A* are unchanged.
+
+Supported pure frameless multiply/product-add leaves now preserve proven
+0..255 call-argument facts through existing link-time register-call metadata.
+All linked callers must prove the same narrow factor; the existing eight-bit
+multiplier schedule preserves full word results and the v1 ABI. Original v1
+callers contribute no facts. Explicit/opaque/retained legacy entries,
+signed/non-frameless and nested/recursive bodies retain existing lowering.
+Proven word high bytes also reuse existing call materialization's zero-fill
+path. Shared-mode planning reuses the arithmetic scanner/grouping to reject
+splitting an existing helper or adding calls to unchanged inline arithmetic.
+There are no clones, runtime dispatches, new flags, frame homes or production
+functions. Tracker saves two kernel bytes and 931840 cycles (9.46%) per ordinary/
+shared policy; a second independent call reduction saves two complete-image
+bytes and 28.02% complete cycles. Other seventeen workload ROMs are unchanged.
+All eighteen per-input cost/traffic/full-storage gates pass on three hosts;
+59770 paired fixture cost comparisons and all 24 focused call/arithmetic
+methods pass. All six consoles retain identical observations. Production C
+grows 90 net lines. See
+[step 2az](Z80_CODEGEN_PLAN.md#2az-narrow-value-facts-across-small-leaf-calls-completed)
+for fact/ABI bounds, whole-image sharing fallback, helper accounting and
+qualification. The coupled 2ba/2bb structural project is next.
 
 Normal RA now reuses byte comparison and counter emitters when the existing
 bounded known-bit query proves word values are 0..255. The query also accepts

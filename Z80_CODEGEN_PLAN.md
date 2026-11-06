@@ -414,8 +414,8 @@ extraction.
   2at's forms and reuse the step 3 loop/address machinery, not another matcher.
 - [x] **2ay. Allocation-aware loop-exit and conditional value reuse:** extend
   2au only when complete allocation proves new retained lifetimes profitable.
-- [ ] **2az. Narrow-value facts across small leaf calls:** reuse byte-factor and
-  register-leaf lowering through costed inlining or specialization.
+- [x] **2az. Narrow-value facts across small leaf calls:** reuse byte-factor and
+  register-leaf lowering through caller-proven, sharing-safe specialization.
 - [ ] **2ba. Regional allocation with flexible register/frame roles:** jointly
   select hot scalar, pointer and scratch roles through a compatible frame policy.
 - [ ] **2bb. Shared expression-DAG lowering and actual emission costs:** avoid
@@ -6218,39 +6218,103 @@ parallel memory cache, allocator, ABI or optimization flag. Evidence and
 conservative scouts remain under `C:\cygwin64\tmp\exit-reuse-20261104`.
 Commit locally without pushing; 2az is next.
 
-### 2az. Narrow-Value Facts Across Small Leaf Calls
+### 2az. Narrow-Value Facts Across Small Leaf Calls (Completed)
 
-**Status: planned; follows 2aw-2ay and complements steps 4-5.** Extend existing
-known-zero/width queries, 2af's byte-factor multiplication and 2an's register-leaf
-lowering through costed inlining or specialization. Do not redo the completed
-frameless ABI or add a new convention merely to expose an argument fact.
+**Status: completed (2026-11-06); follows 2aw-2ay and complements steps 4-5.**
+The existing known-zero query now supplies call-argument facts to the existing
+link-time register-call selector. Supported pure frameless multiply/product-add
+leaves reuse 2af's eight-iteration multiplier without narrowing their word
+result, changing the v1 ABI, inlining, cloning or adding runtime dispatch.
 
-- Preserve proven argument widths through supported small pure leaf calls so
-  existing arithmetic lowering can select a narrower execution schedule without
-  narrowing the result. Use typed producer facts, not workload identities.
-- Tracker's hottest sample spends 22.5% in dependencies and 6.2% in call
-  transport. A byte-valued argument reaches a frameless multiply leaf that still
-  executes sixteen iterations. The actually linked z88dk small multiply runtime
-  selects eight iterations when a multiplicand fits a byte; SDCC's
-  `genMultOneChar` is source prior art for width-sensitive emission.
-- Evaluate caller staging, clobbers, result lifetime and full emitted image
-  costs, including retained public/legacy entries, clones and shared helpers.
-  Prefer exposing facts to existing lowering over adding arithmetic bodies.
-  Do not assume that eliminating a call always reduces total code.
-- Reuse call/argument metadata and existing TAC/location handling in
-  [pass_4.c](compiler/pass_4.c), [pass_5.c](compiler/pass_5.c) and
-  [pass_6_z80.c](compiler/pass_6_z80.c). Preserve cross-file, banked, indirect,
-  recursive and assembly-facing contracts; unsupported calls keep their path.
-- Do not add unconditional dispatch overhead to wide inputs or silently trade
-  speed for size. Any policy tradeoff must be explicit, measured and retain
-  the original settings and conservative behavior.
+- Each call records which transported arguments are proven 0..255 by existing
+  typed producer facts. The linker intersects these masks across every linked
+  caller. A common narrow factor selects the existing BC/DE byte-factor emitter;
+  unknown or differing caller widths retain the sixteen-iteration schedule.
+  Calls and result lifetimes, register staging, clobbers and argument order stay
+  on the existing paths. Proven word high bytes also reuse the existing
+  materializer's zero-fill path instead of unnecessary frame reads.
+- Version 2 **call records only** append the bounded three-bit argument mask to
+  `ssc_regcalls`; headers, definitions, escapes and all register-entry labels
+  keep v1. The linker accepts original v1 callers as having no argument facts.
+  Invalid versions, masks, trailing fields and incompatible records fail
+  explicitly. Old objects, cross-file definitions and banked calls remain
+  compatible; old definitions without narrow alternatives remain full-width.
+- Specialization does not apply to explicit assembly-facing register entries,
+  opaque/source-ASM links or retained legacy entries. Signed/non-frameless,
+  nested, recursive, indirect and otherwise unsupported bodies keep existing
+  lowering. There is no wider-input dispatch penalty, callee clone, new ABI,
+  optimization switch, register reservation or frame home.
+- Shared mode reuses the existing guarded arithmetic scanner and byte-for-byte
+  grouping twice, first with original widths and then with proposed widths.
+  Narrowing is rejected for the link if it would split an existing shared
+  group or add a helper call to unchanged, previously inline arithmetic.
+  Uniform groups can still narrow their common helper. This fixes an observed
+  complete-image regression from independently selecting each narrow leaf;
+  it is not a benchmark-specific exception or a second cost table.
+- Allocator-off/all-spill modes can also benefit from intrinsic byte facts.
+  Reused multi-definition TEMP names retain the existing conservative fact
+  fallback; the known-zero proof and its lifetime/effect bounds are not relaxed.
+  Broader CFG facts and costed connected-expression inlining remain 2bd work.
 
-Acceptance: demonstrate smaller/faster complete call-heavy code, including
-Tracker and a second independent call/argument workload, rather than only a
-smaller callee listing. Test mixed widths, signed/full-width fallbacks, multiple
-callers, retained external entries, nested calls and shared-helper accounting.
-Keep complete caller/callee storage, all eighteen ordinary/shared workloads
-and per-input numerical/cycle gates; record helper/clone bytes and source growth.
+**Complete-program measurements against `238f306` (compiler `d7c7610`):**
+
+| Workload/policy | Kernel bytes before -> after | Summed kernel cycles before -> after |
+|---|---:|---:|
+| Tracker, ordinary RA (12 inputs) | 2904 -> 2902 | 9846559 -> 8914719 |
+| Tracker, shared RA (12 inputs) | 2876 -> 2874 | 9861895 -> 8930055 |
+| Independent byte-input call reduction, ordinary RA (28 inputs) | 219 -> 217 | 449892 -> 320868 |
+| Independent byte-input call reduction, shared RA (28 inputs) | 219 -> 217 | 449892 -> 320868 |
+
+Tracker saves **931840 cycles / 9.46%** per policy. Its caller remains 65 bytes
+and 4452 summed cycles; arithmetic helpers remain zero ordinary bytes and
+36 shared bytes, with zero clone bytes. Complete frame footprint remains
+252 bytes, and separate stack reads/writes are unchanged. The other seventeen
+ordinary/shared workload ROMs are **byte-identical** to the parent.
+
+The independent reduction's used image shrinks **364 -> 362 bytes**; its
+66-byte wrapper is unchanged. Complete cycles fall **460560 -> 331536 (28.02%)**,
+including callers/callee/setup/return, with zero helper/clone bytes. All inputs,
+including zero loops and full-word factors/results, preserve separate traffic
+and complete SP/access/below-SP/frame footprints. Size gains here are only
+two bytes: this is a meaningful arithmetic speed improvement, not the
+hundreds-of-bytes structural allocation improvement planned in 2ba/2bb.
+
+**Qualification:**
+
+- The 87-shape argument oracle executes 59280 guarded calls per host, including
+  exhaustive byte factors against wide boundary factors and preserved addends.
+  Sixteen cross-object/ABI contracts execute 648 calls; both-policy reduction
+  and uniform/split/new-helper sharing fixtures bring new coverage to
+  **60418 executions per host**. All four methods pass on the exact parent too.
+- **59770 paired per-input fixture comparisons / 119540 guarded cost calls**
+  pass across default/no-RA/all-spill/RA/quiet and inline/shared policies.
+  Complete used images, individual function/helper sections, allocated frames,
+  instructions, cycles, separate reads/writes and observed SP depth never grow.
+  The sharing oracle independently rejects split groups and newly shared
+  unchanged arithmetic, while accepting a profitable uniform group.
+- All eighteen ordinary/shared workloads pass on release/traced/ASan:
+  **108 builds, 1668 guarded calls, 162 independent timing checks**, plus
+  72 cross-build ROM identities. All per-input complete/kernel cost and full
+  storage gates pass. The second workload additionally passes 112 complete
+  executions and 24 independent emulator timings using the existing calibrated
+  clock correction, not a new tolerance.
+- All **24 focused call/arithmetic methods pass on each host**, including
+  retained/old/assembly entries, direct staging, signed/full-word fallbacks,
+  recursive helpers, unknown guards and malformed metadata/body failures.
+  The existing single-use marker count now includes two unlinked guarded
+  alternatives; its byte-identical ROM/no-helper assertions remain intact.
+- Changed production C passes strict C89. The unchanged native allocation/frame
+  verifier binary passes; it is not claimed to have been rebuilt for this step.
+  All six SMS/Game Gear console records are unchanged, including cycles, full
+  RAM, numerical/display rows, mapper, palette and font controls. Their opaque
+  assembly-facing links intentionally retain conservative leaf lowering.
+
+Production grows by **90 net C lines with no new production functions**.
+The existing fact query, location/materialization, multiplier, call metadata,
+guard scanner and helper grouping remain shared. No rival source is copied.
+Evidence is retained under `C:\cygwin64\tmp\leaf-facts-20261106`, with final
+`*-qualified` host outputs, fixture cost gates and the independent reduction
+profile. Commit locally without pushing; the coupled 2ba/2bb work is next.
 
 ### Profile-Guided Structural Follow-ups After 2ay (2026-11-05)
 
@@ -6293,7 +6357,7 @@ pinned binaries. The inspected z88dk integer runtime is selected by the actual
 Tracker link map.
 
 Prioritize **2ba and 2bb as the coupled structural project**, then 2bc; 2bd
-extends rather than duplicates the still-planned 2az. These optional Z80 projects
+extends rather than duplicates 2az (completed on 2026-11-06). These optional Z80 projects
 are not new prerequisites for initial SM83 support. Keep implementation batches
 bounded and locally committed, but do not call a structural project complete
 after another tiny fixture win. Target hundreds of emitted bytes saved and
@@ -6650,10 +6714,10 @@ to this cross-compiler experiment.
    compiler source growth visible and remove superseded logic. Commit the batch
    locally with the validation summary; do not push.
 
-The recorded implementation batches through **2ay** are complete, including
+The recorded implementation batches through **2az** are complete, including
 the user-requested bounded sequence **2ak-2an**; adding the larger comparison
 applications was qualified separately from those optimizations. Steps
-**2az and 2ba-2bd** remain planned; **2az** is next in the existing sequence.
+**2ba-2bd** remain planned; **2ba** is next in the existing sequence.
 Among the larger new projects, prioritize the coupled **2ba/2bb** work before
 **2bc**; **2bd** extends 2az. Step 2ax and step 3 share induction/address
 machinery; 2az/2bd must reuse steps 4-5's call/arithmetic handling.

@@ -7419,22 +7419,32 @@ static int _generate_asm_function_call_z80(struct tac *t, FILE *file_out, struct
 
   int j, argument, reset_iy = YES, init_ix = NO;
   int frame_end, return_sp_offset, saved_fp_low_offset, saved_fp_high_offset;
-  int push_arguments, return_bytes, argument_offset;
+  int push_arguments, return_bytes, argument_offset, byte_arguments = 0;
   int register_call = variant == 2 ? NO : _is_z80_register_call(t->arg1_node, NO, NULL);
   int explicit_call = (t->arg1_node->flags & TREE_NODE_FLAG_Z80_REGCALL) != 0;
   char return_label[32];
   char register_label[MAX_NAME_LENGTH + 32];
 
-  if (variant == 0 && explicit_call == YES)
-    fprintf(file_out, "      ; ssc_regcalls 1 2 %d %d %s\n",
+  if (explicit_call == YES || register_call == YES) {
+    for (argument = 0; argument < t->arguments_count; argument++) {
+      struct function_argument *arg = &t->arguments[argument];
+      struct tac source = *t;
+      source.arg1_type = arg->type;
+      source.arg1_var_type = arg->var_type;
+      source.arg1_d = arg->value;
+      source.arg1_node = arg->node;
+      if ((_get_z80_known_zero_bits(&source, TAC_USE_ARG1, 3, t) & 65280) == 65280)
+        byte_arguments |= 1 << argument;
+    }
+  }
+  if (variant == 0 && (explicit_call == YES || register_call == YES)) {
+    fprintf(file_out, "      ; ssc_regcalls 2 2 %d %d %s %d\n",
             t->arg1_node->local_variables->arguments_count, op == TAC_OP_FUNCTION_CALL_USE_RETURN_VALUE,
-            t->arg1_node->children[1]->label);
+            t->arg1_node->children[1]->label, byte_arguments);
+  }
   if (variant == 0 && explicit_call == NO) {
     if (register_call == YES) {
       int frame_cache = g_ix_frame_offset;
-      fprintf(file_out, "      ; ssc_regcalls 1 2 %d %d %s\n",
-              t->arg1_node->local_variables->arguments_count, op == TAC_OP_FUNCTION_CALL_USE_RETURN_VALUE,
-              t->arg1_node->children[1]->label);
       fprintf(file_out, "  .IFDEF ssc.auto.v1.w%d.%s\n",
               t->arg1_node->local_variables->arguments_count, t->arg1_node->children[1]->label);
       if (_generate_asm_function_call_z80(t, file_out, function_node, op, 1, direct_sources) == FAILED)
@@ -7569,6 +7579,8 @@ static int _generate_asm_function_call_z80(struct tac *t, FILE *file_out, struct
       /* find the source location in the old stack frame */
       if (_resolve_z80_location(arg->type, arg->label, (int)arg->value, arg->node, arg->var_type, function_node, &source_location, "call_arg", Z80_PHY_NONE) == FAILED)
         return FAILED;
+      if ((byte_arguments & (1 << argument)) != 0)
+        source_location.known_zero = 65280;
 
       source_var_type = arg->var_type;
       source_offset = source_location.offset;
@@ -9137,7 +9149,17 @@ static int _generate_asm_register_leaf_z80(struct tree_node *function_node, int 
         _load_hl_to_bc(file_out);
       else if (strcmp(left, "IY") == 0)
         fprintf(file_out, "      LD  C,E\n      LD  B,D\n");
+      for (operand = 0; operand < 2; operand++) {
+        for (argument = 0; argument < locals->arguments_count; argument++) {
+          if (strcmp(live_ins[argument], operand == 0 ? left : right) == 0)
+            break;
+        }
+        fprintf(file_out, "  .IFDEF ssc.bytearg.v1.a%d.%s\n", argument, function_node->children[1]->label);
+        _multiply_bc_and_de_to_hl(file_out, operand == 0 ? TAC_USE_ARG1 : TAC_USE_ARG2);
+        fprintf(file_out, "  .ELSE\n");
+      }
       _multiply_bc_and_de_to_hl(file_out, NO);
+      fprintf(file_out, "  .ENDIF\n  .ENDIF\n");
     }
     if (count == 3) {
       if (saved != NULL)
