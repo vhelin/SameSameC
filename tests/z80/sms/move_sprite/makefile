@@ -1,6 +1,6 @@
 
 CC = $(SAMESAMECVALGRIND) samesamecc
-CFLAGS = -mz80 -rs 3 -o
+CFLAGS = -ra -mz80 -rs 3 -o
 LD = $(SAMESAMECVALGRIND) samesamecl
 LDFLAGS = -lsms -v -o
 

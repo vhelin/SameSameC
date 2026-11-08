@@ -8,7 +8,7 @@ LINKER = slink
 LLIB = LIB LIB:sc$(MATH).lib LIB:sc.lib LIB:amiga.lib
 LFLAGS = STRIPDEBUG NOICONS
 
-OFILES = definition.o il.o include_file.o inline_asm.o inline_asm_z80.o main.o parse.o pass_1.o pass_2.o pass_3.o pass_4.o pass_5.o pass_6_z80.o printf.o source_line_manager.o stack.o struct_item.o symbol_table.o tac.o token.o tree_node.o
+OFILES = definition.o il.o include_file.o inline_asm.o inline_asm_z80.o main.o parse.o pass_1.o pass_2.o pass_3.o pass_4.o pass_5.o pass_6_z80.o printf.o register_allocator.o source_line_manager.o stack.o struct_item.o symbol_table.o tac.o token.o tree_node.o z80_register_spill.o
 
 
 all: main
@@ -50,14 +50,17 @@ pass_3.o: pass_3.c pass_3.h defines.h
 pass_4.o: pass_4.c pass_4.h defines.h
 	$(CC) $(CFLAGS) pass_4.c
 
-pass_5.o: pass_5.c pass_5.h defines.h
+pass_5.o: pass_5.c pass_5.h defines.h register_allocator.h z80_register_spill.h
 	$(CC) $(CFLAGS) pass_5.c
 
-pass_6_z80.o: pass_6_z80.c pass_6_z80.h defines.h
+pass_6_z80.o: pass_6_z80.c pass_6_z80.h defines.h register_allocator.h z80_register_spill.h
 	$(CC) $(CFLAGS) pass_6_z80.c
 
 printf.o: printf.c printf.h defines.h
 	$(CC) $(CFLAGS) printf.c
+
+register_allocator.o: register_allocator.c register_allocator.h defines.h
+	$(CC) $(CFLAGS) register_allocator.c
 
 source_line_manager.o: source_line_manager.c source_line_manager.h defines.h
 	$(CC) $(CFLAGS) source_line_manager.c
@@ -76,6 +79,9 @@ tac.o: tac.c tac.h defines.h
 
 token.o: token.c token.h defines.h
 	$(CC) $(CFLAGS) token.c
+
+z80_register_spill.o: z80_register_spill.c z80_register_spill.h defines.h
+	$(CC) $(CFLAGS) z80_register_spill.c
 
 tree_node.o: tree_node.c tree_node.h defines.h
 	$(CC) $(CFLAGS) tree_node.c

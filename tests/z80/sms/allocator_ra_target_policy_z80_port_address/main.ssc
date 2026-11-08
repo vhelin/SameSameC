@@ -1,0 +1,84 @@
+// @BT linked.sms
+// @BT TEST-01 01 START
+// @BT DD 21 00 C0 DD 4E 00 ED 78 DD 21 01 C0 DD 77 00
+// @BT END
+// @BT TEST-02 02 START
+// @BT DD 21 00 C0 DD 4E 00 DD 21 00 00 DD 19 DD 7E FC
+// @BT ED 79
+// @BT END
+// @BT TEST-03 03 START
+// @BT DD 21 00 00 DD 19 DD 4E FC ED 78 DD 21 01 C0 DD
+// @BT 77 00
+// @BT END
+// @BT TEST-04 04 START
+// @BT DD 21 00 00 DD 19 DD 4E FC DD 7E FB ED 79
+// @BT END
+// @BT TEST-05 05 START
+// @BT DD 21 6E FF DD 19 DD 4E 00 ED 78 DD 21 01 C0 DD
+// @BT 77 00
+// @BT END
+// @BT TEST-06 06 START
+// @BT DD 21 6D FF DD 19 DD 4E 00 DD 21 00 00 DD 19 DD
+// @BT 7E FA ED 79
+// @BT END
+
+u8 g_allocator_z80_port;
+u8 g_allocator_z80_port_sink;
+u8 *g_allocator_z80_port_padding;
+
+void allocatorRaPolicyZ80InGlobal(void) {
+
+  __asm(".DB \"01>\"");
+  g_allocator_z80_port_sink = __z80_in[g_allocator_z80_port];
+  __asm(".DB \"<01\"");
+}
+
+void allocatorRaPolicyZ80OutGlobal(u8 value) {
+
+  __asm(".DB \"02>\"");
+  __z80_out[g_allocator_z80_port] = value;
+  __asm(".DB \"<02\"");
+}
+
+void allocatorRaPolicyZ80InNear(u8 port) {
+
+  __asm(".DB \"03>\"");
+  g_allocator_z80_port_sink = __z80_in[port];
+  __asm(".DB \"<03\"");
+}
+
+void allocatorRaPolicyZ80OutNear(u8 port, u8 value) {
+
+  __asm(".DB \"04>\"");
+  __z80_out[port] = value;
+  __asm(".DB \"<04\"");
+}
+
+void allocatorRaPolicyZ80InFar(u8 left, u8 right) {
+
+  u8 padding[140];
+  u8 port;
+
+  port = left + right;
+  g_allocator_z80_port_padding = &padding[139];
+  __asm("NOP");
+  __asm(".DB \"05>\"");
+  g_allocator_z80_port_sink = __z80_in[port];
+  __asm(".DB \"<05\"");
+}
+
+void allocatorRaPolicyZ80OutFar(u8 left, u8 right, u8 value) {
+
+  u8 padding[140];
+  u8 port;
+
+  port = left ^ right;
+  g_allocator_z80_port_padding = &padding[139];
+  __asm("NOP");
+  __asm(".DB \"06>\"");
+  __z80_out[port] = value;
+  __asm(".DB \"<06\"");
+}
+
+void main(void) {
+}

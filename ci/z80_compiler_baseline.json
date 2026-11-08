@@ -1,0 +1,1236 @@
+{
+  "schema": 1,
+  "measured_on": "2026-10-19",
+  "commit": "d1e7db1be947a269e1f42d46972c7ef9b21f7eef",
+  "versions": {
+    "sdcc": "4.6.4 #17016",
+    "sccz80": "23854-4d530b6eb7-20251002",
+    "zsdcc": "4.5.0 #15242"
+  },
+  "flags": {
+    "ssc": [
+      "-q",
+      "-mz80",
+      "-rs",
+      "3"
+    ],
+    "sdcc": [
+      "--max-allocs-per-node",
+      "200000",
+      "--no-std-crt0",
+      "--code-loc",
+      "0x100",
+      "--data-loc",
+      "0xc000"
+    ],
+    "zcc": [
+      "--no-crt",
+      "-O3",
+      "-SO3"
+    ],
+    "zsdcc": [
+      "--max-allocs-per-node200000"
+    ]
+  },
+  "modes": {
+    "ssc-ra": [
+      "ssc",
+      [
+        "-ra"
+      ]
+    ],
+    "ssc-no-ra": [
+      "ssc",
+      [
+        "-no-ra"
+      ]
+    ],
+    "sdcc-size": [
+      "sdcc",
+      [
+        "--opt-code-size"
+      ]
+    ],
+    "sdcc-speed": [
+      "sdcc",
+      [
+        "--opt-code-speed"
+      ]
+    ],
+    "sccz80-size": [
+      "sccz80",
+      []
+    ],
+    "sccz80-speed": [
+      "sccz80",
+      [
+        "--opt-code-speed"
+      ]
+    ],
+    "zsdcc-size": [
+      "zsdcc",
+      [
+        "--opt-code-size"
+      ]
+    ],
+    "zsdcc-speed": [
+      "zsdcc",
+      [
+        "--opt-code-speed"
+      ]
+    ]
+  },
+  "corpus": {
+    "calculationMultiplyAdd": {
+      "ssc_sha256": "07ec96eaa9adaf952bfa2da88cb01f2d289e3656dfd5f98e33c86ce5e582c103",
+      "c_sha256": "f5b7c5d7c5b6878a76f6c9ce0147b6deed3f70cdb1560f21cf2bf35bca4c3895",
+      "cases": 17,
+      "oracle_sha256": "58d4b42134fa464a0bb956eab44eb99f3d7c7bee40519c422eec727f2c090b28"
+    },
+    "calculationProductRestore": {
+      "ssc_sha256": "4f353cbb095b22013ac28588b52c7f8bce2c1886da2e7a6e33a058313512555c",
+      "c_sha256": "34e8492c7ba6ebb37a9d54dfaa09fe37322e916bb162386ca4bc7c34671a8536",
+      "cases": 17,
+      "oracle_sha256": "7790970f2fd309728c12e7ed21b9ffbc25b310dd5ea1689307a5ab46532783fe"
+    },
+    "calculationShiftRestore": {
+      "ssc_sha256": "33fe4f2dd9884c1693d9b0ab7487a2033a98516716511e02ba57e102df8f64dd",
+      "c_sha256": "070111b5b107cf08da78fc5224f8b29da74ec7e67e5d941f096bd3270ae1afb8",
+      "cases": 17,
+      "oracle_sha256": "cb237af49e89d75667e3f3fea5b077c4b3d8733ef1365e4a3372b1f1309c77ff"
+    },
+    "calculationPartitionRestore": {
+      "ssc_sha256": "1df89c05a6702e406dd78501ea483c39e104283b781bd7805c5415e26e597b3f",
+      "c_sha256": "4fbba3c75091460b5c07bb15c0df667c285733a79efdecfc453ba62e07027dce",
+      "cases": 17,
+      "oracle_sha256": "f3022262010d04bef75ddb0208af037d64ef1e00acb45026dac21072ddbaa8c9"
+    },
+    "calculationArrayWorkload": {
+      "ssc_sha256": "73232ed89a215a73769b2fb22051e2288cae32f19c9da01816a7b619206f6cc3",
+      "c_sha256": "dbabd8c813304b77d10977758d34bb26375a0fa3aa9b8de01cd88a7de5e0e22c",
+      "cases": 20,
+      "oracle_sha256": "8d65213fcf4e4a483cc443e9762d6520ffd2680a030820ee9796d9fbf634e48c"
+    },
+    "calculationStencilWorkload": {
+      "ssc_sha256": "2347e609559fb2d8fe8a7fde0ea33a8619b000938de086ab5783c7633fe91fdd",
+      "c_sha256": "1c2591c2650a236e23be31d692445cd1a9ac97adfd450543e4a616f52b552b91",
+      "cases": 20,
+      "oracle_sha256": "229716b14a8f886dc0dd951b5cc62c1bcfc99d4402896c614b6fcdfc8b8c24ca"
+    },
+    "calculationTileWorkload": {
+      "ssc_sha256": "3d63df76abf7a341f923ef20b2a7d67feae13774c3f5c4a666d793e1f13b76b5",
+      "c_sha256": "bece012a0e558bd90a19f543f01d0bb028438cf121f482b8cf3bc7df33a817fa",
+      "cases": 20,
+      "oracle_sha256": "74a314acacf4bd764feedb3693d217290115046b33379a53c4da9e83786ef2a5"
+    },
+    "calculationPathWorkload": {
+      "ssc_sha256": "f768b3257a73b9fa74fec2093ee7516b7915d2a79e2ff22f5be4189b0d6de42f",
+      "c_sha256": "80afa8911693455a5ccc042b442cee747f798a7e935d360c42a6464b1df6a2a3",
+      "cases": 20,
+      "oracle_sha256": "5135ba3d146fecd1edb5ae714e6f548c0e0aeef23562c3d53e90b58475d6f4ce"
+    },
+    "unpackPackBits": {
+      "ssc_sha256": "b7eca97c67d9f27bc4b79191bd47595a2fcaa143ad8f04614fb995ed84d67ce7",
+      "c_sha256": "c166c7aab5ce360697a4170cb838aaec1ec1571f39852e743d04c43f33f361e9",
+      "cases": 16,
+      "oracle_sha256": "37dbeb2512a0dc13e6610c540923178995e9a53ab0e09b3422e903ad3e387eeb"
+    },
+    "calculationPackedCrc": {
+      "ssc_sha256": "259b5194b1c402cf96ee81d659ea1a5656235c35c24d0f4d57222bb22afbd05e",
+      "c_sha256": "ffb4080eba303ecfaf5e76cca3ac5d835567fe2aee47ba2a5bc57a67b9ab3fd4",
+      "cases": 17,
+      "oracle_sha256": "6d7a6fa159c7ecc3c09076455c2e9a1bacb39103ff09c413342d6622791b57bb"
+    },
+    "sumBytes": {
+      "ssc_sha256": "4ca2d4ce1f34e3b823d7fb7e82e5627c74be3778752faa785d30a86a2daafa25",
+      "c_sha256": "9d8e56787e77f336ccce407120f6073ecef8cac89eae5de256e709986615585e",
+      "cases": 17,
+      "oracle_sha256": "5afbd0243a3904e928233c16b7ab12d460acff79a60fa0db337ec63e6e9a53a3"
+    },
+    "copyBytes": {
+      "ssc_sha256": "c6a78ca63f64cb3e629ac7b22b5e415c81277f59efe6edf08e2aaa531e48618c",
+      "c_sha256": "93ebcb344b8df8b4adb139c795522e66dcd654736752707cd8d2682e275774fe",
+      "cases": 17,
+      "oracle_sha256": "e49566921ec5430584cd8486d7f712a35f0c49a9ebfa3786f6a60ba46f7f03a0"
+    },
+    "fillBytes": {
+      "ssc_sha256": "4d33d777ee40c7d4fdcc1aed41c935eaa265881eed2e92895999284d3f32e915",
+      "c_sha256": "054f82113672251abc83dbaf049f0bf9d6f98f4a8213efd69d7703d9e0058795",
+      "cases": 17,
+      "oracle_sha256": "f3f82c73ecfaa221f1640a4901179cb9dc7bc2cf10fc64c6c3084eb44a802993"
+    }
+  },
+  "metric_definitions": {
+    "code_bytes": "Kernel, required user dependencies and compiler helper code. Excludes native caller wrapper, CRT/startup, packed data and BSS. Shared helpers charged once per standalone workload.",
+    "total_kernel_cycles": "Sum of T-states from entry through return including nested calls, on fixed inputs; excludes external native caller wrapper.",
+    "total_wrapper_cycles": "Total whole-call T-states minus total kernel T-states, including native argument/result handling.",
+    "max_stack_bytes": "Maximum stack-pointer displacement for complete wrapped calls; frame traffic and source locals can extend below SP on the SameSameC ABI."
+  },
+  "results": [
+    {
+      "routine": "calculationArrayWorkload",
+      "mode": "sccz80-size",
+      "cases": 20,
+      "code_bytes": 1129,
+      "wrapper_bytes": 22,
+      "total_kernel_cycles": 6835545,
+      "total_wrapper_cycles": 2960,
+      "max_stack_bytes": 68
+    },
+    {
+      "routine": "calculationArrayWorkload",
+      "mode": "sccz80-speed",
+      "cases": 20,
+      "code_bytes": 1164,
+      "wrapper_bytes": 22,
+      "total_kernel_cycles": 6321335,
+      "total_wrapper_cycles": 2960,
+      "max_stack_bytes": 68
+    },
+    {
+      "routine": "calculationArrayWorkload",
+      "mode": "sdcc-size",
+      "cases": 20,
+      "code_bytes": 765,
+      "wrapper_bytes": 19,
+      "total_kernel_cycles": 4778721,
+      "total_wrapper_cycles": 2080,
+      "max_stack_bytes": 70
+    },
+    {
+      "routine": "calculationArrayWorkload",
+      "mode": "sdcc-speed",
+      "cases": 20,
+      "code_bytes": 800,
+      "wrapper_bytes": 19,
+      "total_kernel_cycles": 4918175,
+      "total_wrapper_cycles": 2080,
+      "max_stack_bytes": 72
+    },
+    {
+      "routine": "calculationArrayWorkload",
+      "mode": "ssc-no-ra",
+      "cases": 20,
+      "code_bytes": 2438,
+      "wrapper_bytes": 158,
+      "total_kernel_cycles": 9224236,
+      "total_wrapper_cycles": 17780,
+      "max_stack_bytes": 90
+    },
+    {
+      "routine": "calculationArrayWorkload",
+      "mode": "ssc-ra",
+      "cases": 20,
+      "code_bytes": 2065,
+      "wrapper_bytes": 158,
+      "total_kernel_cycles": 8172676,
+      "total_wrapper_cycles": 17780,
+      "max_stack_bytes": 88
+    },
+    {
+      "routine": "calculationArrayWorkload",
+      "mode": "zsdcc-size",
+      "cases": 20,
+      "code_bytes": 882,
+      "wrapper_bytes": 23,
+      "total_kernel_cycles": 5320625,
+      "total_wrapper_cycles": 3040,
+      "max_stack_bytes": 76
+    },
+    {
+      "routine": "calculationArrayWorkload",
+      "mode": "zsdcc-speed",
+      "cases": 20,
+      "code_bytes": 887,
+      "wrapper_bytes": 23,
+      "total_kernel_cycles": 5042775,
+      "total_wrapper_cycles": 3040,
+      "max_stack_bytes": 76
+    },
+    {
+      "routine": "calculationMultiplyAdd",
+      "mode": "sccz80-size",
+      "cases": 17,
+      "code_bytes": 85,
+      "wrapper_bytes": 22,
+      "total_kernel_cycles": 20152,
+      "total_wrapper_cycles": 2618,
+      "max_stack_bytes": 12
+    },
+    {
+      "routine": "calculationMultiplyAdd",
+      "mode": "sccz80-speed",
+      "cases": 17,
+      "code_bytes": 79,
+      "wrapper_bytes": 22,
+      "total_kernel_cycles": 19455,
+      "total_wrapper_cycles": 2618,
+      "max_stack_bytes": 12
+    },
+    {
+      "routine": "calculationMultiplyAdd",
+      "mode": "sdcc-size",
+      "cases": 17,
+      "code_bytes": 40,
+      "wrapper_bytes": 20,
+      "total_kernel_cycles": 16239,
+      "total_wrapper_cycles": 1938,
+      "max_stack_bytes": 6
+    },
+    {
+      "routine": "calculationMultiplyAdd",
+      "mode": "sdcc-speed",
+      "cases": 17,
+      "code_bytes": 40,
+      "wrapper_bytes": 20,
+      "total_kernel_cycles": 16239,
+      "total_wrapper_cycles": 1938,
+      "max_stack_bytes": 6
+    },
+    {
+      "routine": "calculationMultiplyAdd",
+      "mode": "ssc-no-ra",
+      "cases": 17,
+      "code_bytes": 83,
+      "wrapper_bytes": 172,
+      "total_kernel_cycles": 21509,
+      "total_wrapper_cycles": 16507,
+      "max_stack_bytes": 26
+    },
+    {
+      "routine": "calculationMultiplyAdd",
+      "mode": "ssc-ra",
+      "cases": 17,
+      "code_bytes": 71,
+      "wrapper_bytes": 172,
+      "total_kernel_cycles": 20217,
+      "total_wrapper_cycles": 16507,
+      "max_stack_bytes": 24
+    },
+    {
+      "routine": "calculationMultiplyAdd",
+      "mode": "zsdcc-size",
+      "cases": 17,
+      "code_bytes": 80,
+      "wrapper_bytes": 24,
+      "total_kernel_cycles": 19697,
+      "total_wrapper_cycles": 2754,
+      "max_stack_bytes": 14
+    },
+    {
+      "routine": "calculationMultiplyAdd",
+      "mode": "zsdcc-speed",
+      "cases": 17,
+      "code_bytes": 80,
+      "wrapper_bytes": 24,
+      "total_kernel_cycles": 19697,
+      "total_wrapper_cycles": 2754,
+      "max_stack_bytes": 14
+    },
+    {
+      "routine": "calculationPackedCrc",
+      "mode": "sccz80-size",
+      "cases": 17,
+      "code_bytes": 670,
+      "wrapper_bytes": 12,
+      "total_kernel_cycles": 15640415,
+      "total_wrapper_cycles": 1258,
+      "max_stack_bytes": 38
+    },
+    {
+      "routine": "calculationPackedCrc",
+      "mode": "sccz80-speed",
+      "cases": 17,
+      "code_bytes": 687,
+      "wrapper_bytes": 12,
+      "total_kernel_cycles": 14656370,
+      "total_wrapper_cycles": 1258,
+      "max_stack_bytes": 38
+    },
+    {
+      "routine": "calculationPackedCrc",
+      "mode": "sdcc-size",
+      "cases": 17,
+      "code_bytes": 538,
+      "wrapper_bytes": 11,
+      "total_kernel_cycles": 8457127,
+      "total_wrapper_cycles": 969,
+      "max_stack_bytes": 31
+    },
+    {
+      "routine": "calculationPackedCrc",
+      "mode": "sdcc-speed",
+      "cases": 17,
+      "code_bytes": 533,
+      "wrapper_bytes": 11,
+      "total_kernel_cycles": 7756448,
+      "total_wrapper_cycles": 969,
+      "max_stack_bytes": 31
+    },
+    {
+      "routine": "calculationPackedCrc",
+      "mode": "ssc-no-ra",
+      "cases": 17,
+      "code_bytes": 1921,
+      "wrapper_bytes": 108,
+      "total_kernel_cycles": 43775668,
+      "total_wrapper_cycles": 10183,
+      "max_stack_bytes": 58
+    },
+    {
+      "routine": "calculationPackedCrc",
+      "mode": "ssc-ra",
+      "cases": 17,
+      "code_bytes": 1677,
+      "wrapper_bytes": 96,
+      "total_kernel_cycles": 37937604,
+      "total_wrapper_cycles": 8891,
+      "max_stack_bytes": 54
+    },
+    {
+      "routine": "calculationPackedCrc",
+      "mode": "zsdcc-size",
+      "cases": 17,
+      "code_bytes": 491,
+      "wrapper_bytes": 12,
+      "total_kernel_cycles": 7306531,
+      "total_wrapper_cycles": 1258,
+      "max_stack_bytes": 32
+    },
+    {
+      "routine": "calculationPackedCrc",
+      "mode": "zsdcc-speed",
+      "cases": 17,
+      "code_bytes": 482,
+      "wrapper_bytes": 12,
+      "total_kernel_cycles": 7869683,
+      "total_wrapper_cycles": 1258,
+      "max_stack_bytes": 30
+    },
+    {
+      "routine": "calculationPartitionRestore",
+      "mode": "sccz80-size",
+      "cases": 17,
+      "code_bytes": 218,
+      "wrapper_bytes": 22,
+      "total_kernel_cycles": 45144,
+      "total_wrapper_cycles": 2618,
+      "max_stack_bytes": 16
+    },
+    {
+      "routine": "calculationPartitionRestore",
+      "mode": "sccz80-speed",
+      "cases": 17,
+      "code_bytes": 215,
+      "wrapper_bytes": 22,
+      "total_kernel_cycles": 43750,
+      "total_wrapper_cycles": 2618,
+      "max_stack_bytes": 16
+    },
+    {
+      "routine": "calculationPartitionRestore",
+      "mode": "sdcc-size",
+      "cases": 17,
+      "code_bytes": 145,
+      "wrapper_bytes": 20,
+      "total_kernel_cycles": 38833,
+      "total_wrapper_cycles": 1938,
+      "max_stack_bytes": 14
+    },
+    {
+      "routine": "calculationPartitionRestore",
+      "mode": "sdcc-speed",
+      "cases": 17,
+      "code_bytes": 145,
+      "wrapper_bytes": 20,
+      "total_kernel_cycles": 38833,
+      "total_wrapper_cycles": 1938,
+      "max_stack_bytes": 14
+    },
+    {
+      "routine": "calculationPartitionRestore",
+      "mode": "ssc-no-ra",
+      "cases": 17,
+      "code_bytes": 241,
+      "wrapper_bytes": 172,
+      "total_kernel_cycles": 66713,
+      "total_wrapper_cycles": 16507,
+      "max_stack_bytes": 30
+    },
+    {
+      "routine": "calculationPartitionRestore",
+      "mode": "ssc-ra",
+      "cases": 17,
+      "code_bytes": 193,
+      "wrapper_bytes": 172,
+      "total_kernel_cycles": 61545,
+      "total_wrapper_cycles": 16507,
+      "max_stack_bytes": 28
+    },
+    {
+      "routine": "calculationPartitionRestore",
+      "mode": "zsdcc-size",
+      "cases": 17,
+      "code_bytes": 243,
+      "wrapper_bytes": 24,
+      "total_kernel_cycles": 44757,
+      "total_wrapper_cycles": 2754,
+      "max_stack_bytes": 20
+    },
+    {
+      "routine": "calculationPartitionRestore",
+      "mode": "zsdcc-speed",
+      "cases": 17,
+      "code_bytes": 217,
+      "wrapper_bytes": 24,
+      "total_kernel_cycles": 41391,
+      "total_wrapper_cycles": 2754,
+      "max_stack_bytes": 18
+    },
+    {
+      "routine": "calculationPathWorkload",
+      "mode": "sccz80-size",
+      "cases": 20,
+      "code_bytes": 1180,
+      "wrapper_bytes": 22,
+      "total_kernel_cycles": 6632298,
+      "total_wrapper_cycles": 2960,
+      "max_stack_bytes": 169
+    },
+    {
+      "routine": "calculationPathWorkload",
+      "mode": "sccz80-speed",
+      "cases": 20,
+      "code_bytes": 1192,
+      "wrapper_bytes": 22,
+      "total_kernel_cycles": 6023715,
+      "total_wrapper_cycles": 2960,
+      "max_stack_bytes": 169
+    },
+    {
+      "routine": "calculationPathWorkload",
+      "mode": "sdcc-size",
+      "cases": 20,
+      "code_bytes": 882,
+      "wrapper_bytes": 19,
+      "total_kernel_cycles": 3554150,
+      "total_wrapper_cycles": 2080,
+      "max_stack_bytes": 177
+    },
+    {
+      "routine": "calculationPathWorkload",
+      "mode": "sdcc-speed",
+      "cases": 20,
+      "code_bytes": 864,
+      "wrapper_bytes": 19,
+      "total_kernel_cycles": 3310862,
+      "total_wrapper_cycles": 2080,
+      "max_stack_bytes": 176
+    },
+    {
+      "routine": "calculationPathWorkload",
+      "mode": "ssc-no-ra",
+      "cases": 20,
+      "code_bytes": 3001,
+      "wrapper_bytes": 158,
+      "total_kernel_cycles": 13388185,
+      "total_wrapper_cycles": 17780,
+      "max_stack_bytes": 191
+    },
+    {
+      "routine": "calculationPathWorkload",
+      "mode": "ssc-ra",
+      "cases": 20,
+      "code_bytes": 2413,
+      "wrapper_bytes": 158,
+      "total_kernel_cycles": 9977593,
+      "total_wrapper_cycles": 17780,
+      "max_stack_bytes": 187
+    },
+    {
+      "routine": "calculationPathWorkload",
+      "mode": "zsdcc-size",
+      "cases": 20,
+      "code_bytes": 917,
+      "wrapper_bytes": 23,
+      "total_kernel_cycles": 3566289,
+      "total_wrapper_cycles": 3040,
+      "max_stack_bytes": 181
+    },
+    {
+      "routine": "calculationPathWorkload",
+      "mode": "zsdcc-speed",
+      "cases": 20,
+      "code_bytes": 891,
+      "wrapper_bytes": 23,
+      "total_kernel_cycles": 3188130,
+      "total_wrapper_cycles": 3040,
+      "max_stack_bytes": 180
+    },
+    {
+      "routine": "calculationProductRestore",
+      "mode": "sccz80-size",
+      "cases": 17,
+      "code_bytes": 219,
+      "wrapper_bytes": 22,
+      "total_kernel_cycles": 52452,
+      "total_wrapper_cycles": 2618,
+      "max_stack_bytes": 16
+    },
+    {
+      "routine": "calculationProductRestore",
+      "mode": "sccz80-speed",
+      "cases": 17,
+      "code_bytes": 216,
+      "wrapper_bytes": 22,
+      "total_kernel_cycles": 51058,
+      "total_wrapper_cycles": 2618,
+      "max_stack_bytes": 16
+    },
+    {
+      "routine": "calculationProductRestore",
+      "mode": "sdcc-size",
+      "cases": 17,
+      "code_bytes": 140,
+      "wrapper_bytes": 20,
+      "total_kernel_cycles": 49097,
+      "total_wrapper_cycles": 1938,
+      "max_stack_bytes": 12
+    },
+    {
+      "routine": "calculationProductRestore",
+      "mode": "sdcc-speed",
+      "cases": 17,
+      "code_bytes": 140,
+      "wrapper_bytes": 20,
+      "total_kernel_cycles": 49097,
+      "total_wrapper_cycles": 1938,
+      "max_stack_bytes": 12
+    },
+    {
+      "routine": "calculationProductRestore",
+      "mode": "ssc-no-ra",
+      "cases": 17,
+      "code_bytes": 233,
+      "wrapper_bytes": 172,
+      "total_kernel_cycles": 65993,
+      "total_wrapper_cycles": 16507,
+      "max_stack_bytes": 30
+    },
+    {
+      "routine": "calculationProductRestore",
+      "mode": "ssc-ra",
+      "cases": 17,
+      "code_bytes": 197,
+      "wrapper_bytes": 172,
+      "total_kernel_cycles": 62117,
+      "total_wrapper_cycles": 16507,
+      "max_stack_bytes": 28
+    },
+    {
+      "routine": "calculationProductRestore",
+      "mode": "zsdcc-size",
+      "cases": 17,
+      "code_bytes": 234,
+      "wrapper_bytes": 24,
+      "total_kernel_cycles": 53040,
+      "total_wrapper_cycles": 2754,
+      "max_stack_bytes": 20
+    },
+    {
+      "routine": "calculationProductRestore",
+      "mode": "zsdcc-speed",
+      "cases": 17,
+      "code_bytes": 208,
+      "wrapper_bytes": 24,
+      "total_kernel_cycles": 49674,
+      "total_wrapper_cycles": 2754,
+      "max_stack_bytes": 18
+    },
+    {
+      "routine": "calculationShiftRestore",
+      "mode": "sccz80-size",
+      "cases": 17,
+      "code_bytes": 118,
+      "wrapper_bytes": 22,
+      "total_kernel_cycles": 14583,
+      "total_wrapper_cycles": 2618,
+      "max_stack_bytes": 12
+    },
+    {
+      "routine": "calculationShiftRestore",
+      "mode": "sccz80-speed",
+      "cases": 17,
+      "code_bytes": 112,
+      "wrapper_bytes": 22,
+      "total_kernel_cycles": 13886,
+      "total_wrapper_cycles": 2618,
+      "max_stack_bytes": 12
+    },
+    {
+      "routine": "calculationShiftRestore",
+      "mode": "sdcc-size",
+      "cases": 17,
+      "code_bytes": 51,
+      "wrapper_bytes": 20,
+      "total_kernel_cycles": 7218,
+      "total_wrapper_cycles": 1938,
+      "max_stack_bytes": 6
+    },
+    {
+      "routine": "calculationShiftRestore",
+      "mode": "sdcc-speed",
+      "cases": 17,
+      "code_bytes": 53,
+      "wrapper_bytes": 20,
+      "total_kernel_cycles": 7150,
+      "total_wrapper_cycles": 1938,
+      "max_stack_bytes": 6
+    },
+    {
+      "routine": "calculationShiftRestore",
+      "mode": "ssc-no-ra",
+      "cases": 17,
+      "code_bytes": 132,
+      "wrapper_bytes": 172,
+      "total_kernel_cycles": 17329,
+      "total_wrapper_cycles": 16507,
+      "max_stack_bytes": 24
+    },
+    {
+      "routine": "calculationShiftRestore",
+      "mode": "ssc-ra",
+      "cases": 17,
+      "code_bytes": 84,
+      "wrapper_bytes": 172,
+      "total_kernel_cycles": 12161,
+      "total_wrapper_cycles": 16507,
+      "max_stack_bytes": 22
+    },
+    {
+      "routine": "calculationShiftRestore",
+      "mode": "zsdcc-size",
+      "cases": 17,
+      "code_bytes": 63,
+      "wrapper_bytes": 24,
+      "total_kernel_cycles": 8839,
+      "total_wrapper_cycles": 2754,
+      "max_stack_bytes": 8
+    },
+    {
+      "routine": "calculationShiftRestore",
+      "mode": "zsdcc-speed",
+      "cases": 17,
+      "code_bytes": 70,
+      "wrapper_bytes": 24,
+      "total_kernel_cycles": 8804,
+      "total_wrapper_cycles": 2754,
+      "max_stack_bytes": 8
+    },
+    {
+      "routine": "calculationStencilWorkload",
+      "mode": "sccz80-size",
+      "cases": 20,
+      "code_bytes": 1363,
+      "wrapper_bytes": 22,
+      "total_kernel_cycles": 5208963,
+      "total_wrapper_cycles": 2960,
+      "max_stack_bytes": 104
+    },
+    {
+      "routine": "calculationStencilWorkload",
+      "mode": "sccz80-speed",
+      "cases": 20,
+      "code_bytes": 1435,
+      "wrapper_bytes": 22,
+      "total_kernel_cycles": 4253703,
+      "total_wrapper_cycles": 2960,
+      "max_stack_bytes": 104
+    },
+    {
+      "routine": "calculationStencilWorkload",
+      "mode": "sdcc-size",
+      "cases": 20,
+      "code_bytes": 1064,
+      "wrapper_bytes": 19,
+      "total_kernel_cycles": 3039149,
+      "total_wrapper_cycles": 2080,
+      "max_stack_bytes": 114
+    },
+    {
+      "routine": "calculationStencilWorkload",
+      "mode": "sdcc-speed",
+      "cases": 20,
+      "code_bytes": 1196,
+      "wrapper_bytes": 19,
+      "total_kernel_cycles": 3377011,
+      "total_wrapper_cycles": 2080,
+      "max_stack_bytes": 113
+    },
+    {
+      "routine": "calculationStencilWorkload",
+      "mode": "ssc-no-ra",
+      "cases": 20,
+      "code_bytes": 2828,
+      "wrapper_bytes": 158,
+      "total_kernel_cycles": 6976146,
+      "total_wrapper_cycles": 17780,
+      "max_stack_bytes": 124
+    },
+    {
+      "routine": "calculationStencilWorkload",
+      "mode": "ssc-ra",
+      "cases": 20,
+      "code_bytes": 2414,
+      "wrapper_bytes": 158,
+      "total_kernel_cycles": 5989154,
+      "total_wrapper_cycles": 17780,
+      "max_stack_bytes": 122
+    },
+    {
+      "routine": "calculationStencilWorkload",
+      "mode": "zsdcc-size",
+      "cases": 20,
+      "code_bytes": 1122,
+      "wrapper_bytes": 23,
+      "total_kernel_cycles": 3198341,
+      "total_wrapper_cycles": 3040,
+      "max_stack_bytes": 120
+    },
+    {
+      "routine": "calculationStencilWorkload",
+      "mode": "zsdcc-speed",
+      "cases": 20,
+      "code_bytes": 1232,
+      "wrapper_bytes": 23,
+      "total_kernel_cycles": 3488774,
+      "total_wrapper_cycles": 3040,
+      "max_stack_bytes": 117
+    },
+    {
+      "routine": "calculationTileWorkload",
+      "mode": "sccz80-size",
+      "cases": 20,
+      "code_bytes": 1029,
+      "wrapper_bytes": 22,
+      "total_kernel_cycles": 2445544,
+      "total_wrapper_cycles": 2960,
+      "max_stack_bytes": 120
+    },
+    {
+      "routine": "calculationTileWorkload",
+      "mode": "sccz80-speed",
+      "cases": 20,
+      "code_bytes": 1054,
+      "wrapper_bytes": 22,
+      "total_kernel_cycles": 2285198,
+      "total_wrapper_cycles": 2960,
+      "max_stack_bytes": 120
+    },
+    {
+      "routine": "calculationTileWorkload",
+      "mode": "sdcc-size",
+      "cases": 20,
+      "code_bytes": 688,
+      "wrapper_bytes": 19,
+      "total_kernel_cycles": 1177302,
+      "total_wrapper_cycles": 2080,
+      "max_stack_bytes": 111
+    },
+    {
+      "routine": "calculationTileWorkload",
+      "mode": "sdcc-speed",
+      "cases": 20,
+      "code_bytes": 684,
+      "wrapper_bytes": 19,
+      "total_kernel_cycles": 1131372,
+      "total_wrapper_cycles": 2080,
+      "max_stack_bytes": 110
+    },
+    {
+      "routine": "calculationTileWorkload",
+      "mode": "ssc-no-ra",
+      "cases": 20,
+      "code_bytes": 2300,
+      "wrapper_bytes": 158,
+      "total_kernel_cycles": 5917154,
+      "total_wrapper_cycles": 17780,
+      "max_stack_bytes": 130
+    },
+    {
+      "routine": "calculationTileWorkload",
+      "mode": "ssc-ra",
+      "cases": 20,
+      "code_bytes": 1866,
+      "wrapper_bytes": 158,
+      "total_kernel_cycles": 4984256,
+      "total_wrapper_cycles": 17780,
+      "max_stack_bytes": 128
+    },
+    {
+      "routine": "calculationTileWorkload",
+      "mode": "zsdcc-size",
+      "cases": 20,
+      "code_bytes": 664,
+      "wrapper_bytes": 23,
+      "total_kernel_cycles": 1168270,
+      "total_wrapper_cycles": 3040,
+      "max_stack_bytes": 111
+    },
+    {
+      "routine": "calculationTileWorkload",
+      "mode": "zsdcc-speed",
+      "cases": 20,
+      "code_bytes": 667,
+      "wrapper_bytes": 23,
+      "total_kernel_cycles": 1142926,
+      "total_wrapper_cycles": 3040,
+      "max_stack_bytes": 110
+    },
+    {
+      "routine": "copyBytes",
+      "mode": "sccz80-size",
+      "cases": 17,
+      "code_bytes": 99,
+      "wrapper_bytes": 22,
+      "total_kernel_cycles": 607329,
+      "total_wrapper_cycles": 2516,
+      "max_stack_bytes": 16
+    },
+    {
+      "routine": "copyBytes",
+      "mode": "sccz80-speed",
+      "cases": 17,
+      "code_bytes": 99,
+      "wrapper_bytes": 22,
+      "total_kernel_cycles": 490643,
+      "total_wrapper_cycles": 2516,
+      "max_stack_bytes": 16
+    },
+    {
+      "routine": "copyBytes",
+      "mode": "sdcc-size",
+      "cases": 17,
+      "code_bytes": 59,
+      "wrapper_bytes": 19,
+      "total_kernel_cycles": 204480,
+      "total_wrapper_cycles": 1768,
+      "max_stack_bytes": 8
+    },
+    {
+      "routine": "copyBytes",
+      "mode": "sdcc-speed",
+      "cases": 17,
+      "code_bytes": 61,
+      "wrapper_bytes": 19,
+      "total_kernel_cycles": 202594,
+      "total_wrapper_cycles": 1768,
+      "max_stack_bytes": 8
+    },
+    {
+      "routine": "copyBytes",
+      "mode": "ssc-no-ra",
+      "cases": 17,
+      "code_bytes": 219,
+      "wrapper_bytes": 158,
+      "total_kernel_cycles": 932105,
+      "total_wrapper_cycles": 15113,
+      "max_stack_bytes": 27
+    },
+    {
+      "routine": "copyBytes",
+      "mode": "ssc-ra",
+      "cases": 17,
+      "code_bytes": 191,
+      "wrapper_bytes": 158,
+      "total_kernel_cycles": 791598,
+      "total_wrapper_cycles": 15113,
+      "max_stack_bytes": 27
+    },
+    {
+      "routine": "copyBytes",
+      "mode": "zsdcc-size",
+      "cases": 17,
+      "code_bytes": 63,
+      "wrapper_bytes": 23,
+      "total_kernel_cycles": 204667,
+      "total_wrapper_cycles": 2584,
+      "max_stack_bytes": 12
+    },
+    {
+      "routine": "copyBytes",
+      "mode": "zsdcc-speed",
+      "cases": 17,
+      "code_bytes": 57,
+      "wrapper_bytes": 23,
+      "total_kernel_cycles": 203817,
+      "total_wrapper_cycles": 2584,
+      "max_stack_bytes": 10
+    },
+    {
+      "routine": "fillBytes",
+      "mode": "sccz80-size",
+      "cases": 17,
+      "code_bytes": 80,
+      "wrapper_bytes": 22,
+      "total_kernel_cycles": 473423,
+      "total_wrapper_cycles": 2516,
+      "max_stack_bytes": 14
+    },
+    {
+      "routine": "fillBytes",
+      "mode": "sccz80-speed",
+      "cases": 17,
+      "code_bytes": 77,
+      "wrapper_bytes": 22,
+      "total_kernel_cycles": 395400,
+      "total_wrapper_cycles": 2516,
+      "max_stack_bytes": 14
+    },
+    {
+      "routine": "fillBytes",
+      "mode": "sdcc-size",
+      "cases": 17,
+      "code_bytes": 38,
+      "wrapper_bytes": 19,
+      "total_kernel_cycles": 111785,
+      "total_wrapper_cycles": 1768,
+      "max_stack_bytes": 8
+    },
+    {
+      "routine": "fillBytes",
+      "mode": "sdcc-speed",
+      "cases": 17,
+      "code_bytes": 40,
+      "wrapper_bytes": 19,
+      "total_kernel_cycles": 109899,
+      "total_wrapper_cycles": 1768,
+      "max_stack_bytes": 8
+    },
+    {
+      "routine": "fillBytes",
+      "mode": "ssc-no-ra",
+      "cases": 17,
+      "code_bytes": 172,
+      "wrapper_bytes": 158,
+      "total_kernel_cycles": 662407,
+      "total_wrapper_cycles": 15113,
+      "max_stack_bytes": 26
+    },
+    {
+      "routine": "fillBytes",
+      "mode": "ssc-ra",
+      "cases": 17,
+      "code_bytes": 161,
+      "wrapper_bytes": 158,
+      "total_kernel_cycles": 611485,
+      "total_wrapper_cycles": 15113,
+      "max_stack_bytes": 26
+    },
+    {
+      "routine": "fillBytes",
+      "mode": "zsdcc-size",
+      "cases": 17,
+      "code_bytes": 42,
+      "wrapper_bytes": 23,
+      "total_kernel_cycles": 161509,
+      "total_wrapper_cycles": 2584,
+      "max_stack_bytes": 8
+    },
+    {
+      "routine": "fillBytes",
+      "mode": "zsdcc-speed",
+      "cases": 17,
+      "code_bytes": 42,
+      "wrapper_bytes": 23,
+      "total_kernel_cycles": 161509,
+      "total_wrapper_cycles": 2584,
+      "max_stack_bytes": 8
+    },
+    {
+      "routine": "sumBytes",
+      "mode": "sccz80-size",
+      "cases": 17,
+      "code_bytes": 94,
+      "wrapper_bytes": 22,
+      "total_kernel_cycles": 501551,
+      "total_wrapper_cycles": 2516,
+      "max_stack_bytes": 18
+    },
+    {
+      "routine": "sumBytes",
+      "mode": "sccz80-speed",
+      "cases": 17,
+      "code_bytes": 91,
+      "wrapper_bytes": 22,
+      "total_kernel_cycles": 424225,
+      "total_wrapper_cycles": 2516,
+      "max_stack_bytes": 18
+    },
+    {
+      "routine": "sumBytes",
+      "mode": "sdcc-size",
+      "cases": 17,
+      "code_bytes": 47,
+      "wrapper_bytes": 19,
+      "total_kernel_cycles": 148197,
+      "total_wrapper_cycles": 1768,
+      "max_stack_bytes": 8
+    },
+    {
+      "routine": "sumBytes",
+      "mode": "sdcc-speed",
+      "cases": 17,
+      "code_bytes": 49,
+      "wrapper_bytes": 19,
+      "total_kernel_cycles": 146311,
+      "total_wrapper_cycles": 1768,
+      "max_stack_bytes": 8
+    },
+    {
+      "routine": "sumBytes",
+      "mode": "ssc-no-ra",
+      "cases": 17,
+      "code_bytes": 211,
+      "wrapper_bytes": 158,
+      "total_kernel_cycles": 788668,
+      "total_wrapper_cycles": 15113,
+      "max_stack_bytes": 28
+    },
+    {
+      "routine": "sumBytes",
+      "mode": "ssc-ra",
+      "cases": 17,
+      "code_bytes": 182,
+      "wrapper_bytes": 158,
+      "total_kernel_cycles": 627415,
+      "total_wrapper_cycles": 15113,
+      "max_stack_bytes": 26
+    },
+    {
+      "routine": "sumBytes",
+      "mode": "zsdcc-size",
+      "cases": 17,
+      "code_bytes": 52,
+      "wrapper_bytes": 23,
+      "total_kernel_cycles": 144383,
+      "total_wrapper_cycles": 2584,
+      "max_stack_bytes": 12
+    },
+    {
+      "routine": "sumBytes",
+      "mode": "zsdcc-speed",
+      "cases": 17,
+      "code_bytes": 46,
+      "wrapper_bytes": 23,
+      "total_kernel_cycles": 143533,
+      "total_wrapper_cycles": 2584,
+      "max_stack_bytes": 10
+    },
+    {
+      "routine": "unpackPackBits",
+      "mode": "sccz80-size",
+      "cases": 16,
+      "code_bytes": 473,
+      "wrapper_bytes": 27,
+      "total_kernel_cycles": 187129,
+      "total_wrapper_cycles": 2864,
+      "max_stack_bytes": 24
+    },
+    {
+      "routine": "unpackPackBits",
+      "mode": "sccz80-speed",
+      "cases": 16,
+      "code_bytes": 475,
+      "wrapper_bytes": 27,
+      "total_kernel_cycles": 155752,
+      "total_wrapper_cycles": 2864,
+      "max_stack_bytes": 24
+    },
+    {
+      "routine": "unpackPackBits",
+      "mode": "sdcc-size",
+      "cases": 16,
+      "code_bytes": 418,
+      "wrapper_bytes": 24,
+      "total_kernel_cycles": 152519,
+      "total_wrapper_cycles": 2064,
+      "max_stack_bytes": 23
+    },
+    {
+      "routine": "unpackPackBits",
+      "mode": "sdcc-speed",
+      "cases": 16,
+      "code_bytes": 404,
+      "wrapper_bytes": 24,
+      "total_kernel_cycles": 124410,
+      "total_wrapper_cycles": 2064,
+      "max_stack_bytes": 23
+    },
+    {
+      "routine": "unpackPackBits",
+      "mode": "ssc-no-ra",
+      "cases": 16,
+      "code_bytes": 1269,
+      "wrapper_bytes": 202,
+      "total_kernel_cycles": 337204,
+      "total_wrapper_cycles": 18400,
+      "max_stack_bytes": 42
+    },
+    {
+      "routine": "unpackPackBits",
+      "mode": "ssc-ra",
+      "cases": 16,
+      "code_bytes": 1090,
+      "wrapper_bytes": 190,
+      "total_kernel_cycles": 280791,
+      "total_wrapper_cycles": 17184,
+      "max_stack_bytes": 42
+    },
+    {
+      "routine": "unpackPackBits",
+      "mode": "zsdcc-size",
+      "cases": 16,
+      "code_bytes": 380,
+      "wrapper_bytes": 28,
+      "total_kernel_cycles": 130202,
+      "total_wrapper_cycles": 2928,
+      "max_stack_bytes": 24
+    },
+    {
+      "routine": "unpackPackBits",
+      "mode": "zsdcc-speed",
+      "cases": 16,
+      "code_bytes": 351,
+      "wrapper_bytes": 29,
+      "total_kernel_cycles": 119905,
+      "total_wrapper_cycles": 2720,
+      "max_stack_bytes": 22
+    }
+  ],
+  "provenance": {
+    "correct_calls": 1856,
+    "independent_timing_checks": 12,
+    "source_compatibility": [
+      "Ten real functions extracted from branch SSC sources plus three portable byte loops",
+      "C aliases u8=unsigned char, u16=unsigned int (16 bits on all compared targets)",
+      "C casts byte-left-shift input to u16 to avoid signed int16 promotion/overflow; SSC has different promotion rules",
+      "Identical algorithm bodies and inputs; no handwritten assembly kernels",
+      "Native C ABI adapters generated by each compiler from identical no-argument global-input wrappers"
+    ],
+    "limitations": [
+      "Small selected corpus, not a general compiler quality ranking or whole-application comparison",
+      "Only unsigned8/16 tested; no floating point, standard library, signed arithmetic, banking/mapper or hardware timing comparison",
+      "C compilers tested under their shipped ABIs and ordinary size/speed settings, not exhaustive hand tuning",
+      "Different pinned release dates: standalone SDCC is a 2026 snapshot; z88dk is the 2025 stable release, not the latest nightly",
+      "Host executable sizes have different build/link/debug settings and are not a fair efficiency comparison"
+    ],
+    "sources": [
+      "https://sdcc.sourceforge.net/",
+      "https://sourceforge.net/projects/sdcc/rss?path=/snapshot_builds/x86_64-w64-mingw32",
+      "https://github.com/z88dk/z88dk/releases/tag/v2.4",
+      "https://github.com/z88dk/z88dk/wiki/WritingOptimalCode",
+      "https://github.com/z88dk/z88dk/wiki/CallingConventions"
+    ]
+  }
+}

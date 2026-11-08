@@ -752,6 +752,9 @@ int evaluate_token(int type) {
     if (strcaselesscmp(g_tmp, "__pureasm") == 0)
       return token_add(TOKEN_ID_HINT, 0, 0.0, g_tmp);
 
+    if (strcaselesscmp(g_tmp, "__z80_regcall") == 0)
+      return token_add(TOKEN_ID_HINT, 0, 0.0, "__z80_regcall");
+
     /* __org */
     if (strcaselesscmp(g_tmp, "__org") == 0)
       return token_add(TOKEN_ID_HINT, 0, 0.0, g_tmp);

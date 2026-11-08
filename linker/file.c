@@ -12,6 +12,7 @@
 
 struct file *g_files_first = NULL, *g_files_last = NULL;
 unsigned char g_copy_bytes_bank[256];
+extern int g_share_arithmetic;
 
 
 static int _get_plain_filename(char *output, int output_size, char *input) {
@@ -95,7 +96,7 @@ int file_load(char *name) {
   fseek(fp, 0, SEEK_SET);
   f->size = file_size;
 
-  f->data = calloc(file_size, 1);
+  f->data = calloc((size_t)file_size + 1, 1);
   if (f->data == NULL) {
     fprintf(stderr, "FILE_LOAD: Out of memory error.\n");
     free(f);
@@ -193,7 +194,308 @@ int file_find_copy_bytes_calls(void) {
 
 int file_write_all_asm_files_into_tmp_file(FILE *fp) {
 
+  struct register_call {
+    char name[MAX_NAME_LENGTH + 1];
+    int arguments, defined, calls, used_calls, escaped, explicit_call, selected, legacy, frameless, byte_arguments;
+    struct register_call *next;
+  } *register_calls = NULL, *regcall, *next_regcall;
+  struct arithmetic_body {
+    struct file *file;
+    char *start, *body, *end;
+    int kind, bank, slot, length, uses, id;
+    struct arithmetic_body *helper, *narrow_helper, *next;
+  } *bodies = NULL, *wide_bodies = NULL, *wide, *last = NULL, *body, *match, *next;
+  const char *begin_marker = "      ; ssc_arithmetic_begin ";
+  const char *end_marker = "      ; ssc_arithmetic_end";
+  const char *call_marker = "      ; ssc_regcalls ";
+  char *cursor, *start, *end, *code, *guards = NULL;
+  char name[MAX_NAME_LENGTH + 1];
+  int kind, bank, slot, consumed, version, arguments, value, byte_arguments, header, opaque = NO, id = 0, status = FAILED;
+  int width_plan, width_plans = 1, reject_narrowing = NO;
   struct file *f;
+
+  for (f = g_files_first; f != NULL; f = f->next) {
+    header = NO;
+    cursor = f->data;
+    while ((start = strstr(cursor, call_marker)) != NULL) {
+      cursor = start + strlen(call_marker);
+      if (start != f->data && start[-1] != '\n')
+        continue;
+      end = strchr(cursor, '\n');
+      if (end == NULL || end - cursor < 9 || cursor[1] != ' ' || cursor[3] != ' ' ||
+          cursor[5] != ' ' || cursor[7] != ' ' || sscanf(cursor, "%1d %1d %1d %1d %256s%n",
+                               &version, &kind, &arguments, &value, name, &consumed) != 5)
+        goto invalid_regcall;
+      cursor += consumed;
+      if (cursor > end)
+        goto invalid_regcall;
+      while (cursor < end && strchr(" \t\r", *cursor) != NULL)
+        cursor++;
+      byte_arguments = 0;
+      if (version == 2) {
+        if (kind != 2 || cursor >= end || sscanf(cursor, "%1d%n", &byte_arguments, &consumed) != 1)
+          goto invalid_regcall;
+        cursor += consumed;
+        while (cursor < end && strchr(" \t\r", *cursor) != NULL)
+          cursor++;
+      }
+      if (cursor != end || (version != 1 && version != 2) || kind < 0 || kind > 4 ||
+          arguments < 0 || arguments > 3 || value < 0 || value > 1)
+        goto invalid_regcall;
+      if (byte_arguments < 0 || byte_arguments >= (1 << arguments))
+        goto invalid_regcall;
+      cursor = end + 1;
+      if (kind == 0) {
+        if (header == YES || arguments != 0 || strcmp(name, "-") != 0)
+          goto invalid_regcall;
+        header = YES;
+        if (value == YES)
+          opaque = YES;
+        continue;
+      }
+      if (header == NO || ((kind == 1 || kind == 4) && value != 0) || (kind == 3 && (arguments != 0 || value != 0)) ||
+          (!isalpha((unsigned char)name[0]) && name[0] != '_'))
+        goto invalid_regcall;
+      for (code = name; *code != 0; code++) {
+        if (!isalnum((unsigned char)*code) && *code != '_')
+          goto invalid_regcall;
+      }
+      for (regcall = register_calls; regcall != NULL; regcall = regcall->next) {
+        if (strcmp(regcall->name, name) == 0)
+          break;
+      }
+      if (regcall == NULL) {
+        regcall = calloc(1, sizeof(*regcall));
+        if (regcall == NULL) {
+          fprintf(stderr, "FILE_WRITE_ALL_ASM_FILES_INTO_TMP_FILE: Out of memory error.\n");
+          goto cleanup;
+        }
+        strcpy(regcall->name, name);
+        regcall->arguments = -1;
+        regcall->next = register_calls;
+        register_calls = regcall;
+      }
+      if (kind == 3) {
+        regcall->escaped = YES;
+        continue;
+      }
+      if ((regcall->arguments >= 0 && regcall->arguments != arguments) || ((kind == 1 || kind == 4) && regcall->defined == YES)) {
+        fprintf(stderr, "FILE_WRITE_ALL_ASM_FILES_INTO_TMP_FILE: Incompatible register-call records for \"%s\" in \"%s\".\n",
+                name, f->name);
+        goto cleanup;
+      }
+      regcall->arguments = arguments;
+      if (kind == 1 || kind == 4) {
+        regcall->defined = YES;
+        regcall->explicit_call = kind == 4;
+      }
+      else {
+        regcall->byte_arguments = regcall->calls == 0 ? byte_arguments : regcall->byte_arguments & byte_arguments;
+        regcall->calls++;
+        regcall->used_calls += value;
+      }
+    }
+    /* Older inputs and source ASM can reference any ordinary public entry. */
+    if (header == NO)
+      opaque = YES;
+  }
+  for (regcall = register_calls; regcall != NULL; regcall = regcall->next) {
+    int legacy = regcall->explicit_call == NO && (opaque == YES || regcall->escaped == YES);
+    if (regcall->defined != YES || (regcall->explicit_call == NO && regcall->calls == 0) ||
+        (legacy && regcall->used_calls < 2))
+      continue;
+    regcall->selected = YES;
+    regcall->legacy = legacy;
+    fprintf(fp, "  .DEFINE ssc.auto.v1.w%d.%s 1\n", regcall->arguments, regcall->name);
+    if (legacy)
+      fprintf(fp, "  .DEFINE ssc.legacy.v1.w%d.%s 1\n", regcall->arguments, regcall->name);
+    if (legacy == YES || opaque == YES || regcall->explicit_call == YES)
+      regcall->byte_arguments = 0;
+    if (regcall->byte_arguments != 0)
+      width_plans = 2;
+  }
+
+  if (g_share_arithmetic == YES) {
+    for (width_plan = 0; width_plan < width_plans; width_plan++) {
+    for (regcall = register_calls; regcall != NULL; regcall = regcall->next)
+      regcall->frameless = NO;
+    for (f = g_files_first; f != NULL; f = f->next) {
+      char *line = f->data;
+      int depth = 0, active = YES;
+
+      guards = calloc((size_t)f->size + 1, 1);
+      if (guards == NULL) {
+        fprintf(stderr, "FILE_WRITE_ALL_ASM_FILES_INTO_TMP_FILE: Out of memory error while checking arithmetic guards.\n");
+        goto cleanup;
+      }
+      cursor = f->data;
+      while ((start = strstr(cursor, begin_marker)) != NULL) {
+        /* Count active compiler ABI alternatives, not both sides of a frameless leaf. */
+        while (line < start) {
+          char directive[16], symbol[MAX_NAME_LENGTH + 64];
+          char *argument, *next_line = strchr(line, '\n');
+          int evaluated = -1, selector = 0;
+
+          if (next_line == NULL)
+            next_line = f->data + f->size;
+          if (sscanf(line, " .%15s%n", directive, &consumed) == 1 && line + consumed <= next_line) {
+            argument = line + consumed;
+            while (argument < next_line && strchr(" \t\r", *argument) != NULL)
+              argument++;
+            symbol[0] = 0;
+            if (argument < next_line)
+              sscanf(argument, "%319s", symbol);
+            for (consumed = 0; directive[consumed] != 0; consumed++)
+              directive[consumed] = (char)toupper((unsigned char)directive[consumed]);
+            if (strncmp(directive, "IF", 2) == 0) {
+              if (strcmp(directive, "IFDEF") == 0 || strcmp(directive, "IFNDEF") == 0) {
+                if (sscanf(symbol, "ssc.auto.v1.w%d.%256s", &arguments, name) == 2)
+                  selector = 1;
+                else if (sscanf(symbol, "ssc.legacy.v1.w%d.%256s", &arguments, name) == 2)
+                  selector = 2;
+                else if (sscanf(symbol, "ssc.frameless.%256s", name) == 1)
+                  selector = 3;
+                else if (sscanf(symbol, "ssc.bytearg.v1.a%d.%256s", &arguments, name) == 2)
+                  selector = 4;
+                if (selector != 0) {
+                  evaluated = NO;
+                  for (regcall = register_calls; regcall != NULL; regcall = regcall->next) {
+                    if (strcmp(regcall->name, name) == 0 &&
+                        (selector >= 3 || regcall->arguments == arguments)) {
+                      evaluated = selector == 4 ?
+                        width_plan != 0 && regcall->selected && arguments >= 0 && arguments < regcall->arguments &&
+                        (regcall->byte_arguments & (1 << arguments)) != 0 :
+                        selector == 3 ? regcall->frameless :
+                        regcall->selected && (selector == 1 || regcall->legacy);
+                      break;
+                    }
+                  }
+                  if (strcmp(directive, "IFNDEF") == 0)
+                    evaluated = !evaluated;
+                }
+              }
+              guards[depth++] = (char)((active ? 1 : 0) | (evaluated >= 0 ? 4 : 0) | (evaluated == YES ? 2 : 0));
+              active = active && evaluated == YES;
+            }
+            else if (strcmp(directive, "ELSE") == 0 && depth > 0)
+              active = (guards[depth - 1] & 5) == 5 && (guards[depth - 1] & 2) == 0;
+            else if ((strncmp(directive, "ELIF", 4) == 0 || strncmp(directive, "ELSEIF", 6) == 0) && depth > 0) {
+              guards[depth - 1] &= 1;
+              active = NO;
+            }
+            else if (strcmp(directive, "ENDIF") == 0 && depth > 0)
+              active = guards[--depth] & 1;
+            else if (active && strcmp(directive, "DEFINE") == 0 &&
+                     sscanf(symbol, "ssc.frameless.%256s", name) == 1) {
+              for (regcall = register_calls; regcall != NULL; regcall = regcall->next) {
+                if (strcmp(regcall->name, name) == 0) {
+                  regcall->frameless = YES;
+                  break;
+                }
+              }
+            }
+          }
+          line = next_line < f->data + f->size ? next_line + 1 : next_line;
+        }
+        cursor = start + strlen(begin_marker);
+        if (start != f->data && start[-1] != '\n')
+          continue;
+        end = strchr(cursor, '\n');
+        if (end == NULL || sscanf(cursor, "%d %d %d%n", &kind, &bank, &slot, &consumed) != 3)
+          goto invalid_body;
+        for (cursor += consumed; cursor < end && strchr(" \t\r", *cursor) != NULL; cursor++)
+          ;
+        if (cursor != end || kind < 0 || kind > 3 || bank < 0 || bank > 255 || slot < 0 || slot > 3)
+          goto invalid_body;
+        code = end + 1;
+        end = strstr(code, end_marker);
+        cursor = strstr(code, begin_marker);
+        if (end == NULL || end == code || end[-1] != '\n' || (cursor != NULL && cursor < end))
+          goto invalid_body;
+        cursor = end + strlen(end_marker);
+        if (*cursor == '\r')
+          cursor++;
+        if (*cursor != '\n' && *cursor != 0)
+          goto invalid_body;
+        if (*cursor == '\n')
+          cursor++;
+        /* RAM code cannot call an ordinary ROM-bank-local helper. */
+        if (slot == 3 || active == NO)
+          continue;
+        body = calloc(1, sizeof(*body));
+        if (body == NULL) {
+          fprintf(stderr, "FILE_WRITE_ALL_ASM_FILES_INTO_TMP_FILE: Out of memory error.\n");
+          goto cleanup;
+        }
+        body->file = f;
+        body->start = start;
+        body->body = code;
+        body->end = cursor;
+        body->kind = kind;
+        body->bank = bank;
+        body->slot = slot;
+        body->length = (int)(end - code);
+        body->uses = 1;
+        body->id = id++;
+        body->helper = body;
+        for (match = bodies; match != NULL; match = match->next) {
+          if (match->helper == match && match->kind == kind && match->bank == bank && match->slot == slot &&
+              match->length == body->length && memcmp(match->body, code, body->length) == 0) {
+            body->helper = match;
+            match->uses++;
+            break;
+          }
+        }
+        if (last == NULL)
+          bodies = body;
+        else
+          last->next = body;
+        last = body;
+      }
+      free(guards);
+      guards = NULL;
+    }
+    if (width_plan == 0 && width_plans == 2) {
+      wide_bodies = bodies;
+      bodies = last = NULL;
+      id = 0;
+    }
+    }
+    if (width_plans == 2) {
+      /* Keep shared groups intact, without adding calls to unchanged arithmetic. */
+      for (wide = wide_bodies, body = bodies; wide != NULL && body != NULL; wide = wide->next, body = body->next) {
+        if (wide->helper->uses >= 2) {
+          if (wide->helper->narrow_helper == NULL)
+            wide->helper->narrow_helper = body->helper;
+          else if (wide->helper->narrow_helper != body->helper)
+            reject_narrowing = YES;
+        }
+        else if (body->helper->uses >= 2 && wide->length == body->length &&
+                 memcmp(wide->body, body->body, wide->length) == 0)
+          reject_narrowing = YES;
+      }
+      if (wide != NULL || body != NULL) {
+        fprintf(stderr, "FILE_WRITE_ALL_ASM_FILES_INTO_TMP_FILE: Incompatible narrow arithmetic alternatives.\n");
+        goto cleanup;
+      }
+      if (reject_narrowing == YES) {
+        for (body = bodies; body != NULL; body = next) {
+          next = body->next;
+          free(body);
+        }
+        bodies = wide_bodies;
+        wide_bodies = NULL;
+        for (regcall = register_calls; regcall != NULL; regcall = regcall->next)
+          regcall->byte_arguments = 0;
+      }
+    }
+  }
+  for (regcall = register_calls; regcall != NULL; regcall = regcall->next) {
+    for (arguments = 0; regcall->selected == YES && arguments < regcall->arguments; arguments++) {
+      if ((regcall->byte_arguments & (1 << arguments)) != 0)
+        fprintf(fp, "  .DEFINE ssc.bytearg.v1.a%d.%s 1\n", arguments, regcall->name);
+    }
+  }
 
   f = g_files_first;
   while (f != NULL) {
@@ -201,7 +503,16 @@ int file_write_all_asm_files_into_tmp_file(FILE *fp) {
     fprintf(fp, "; ######################################################################\n");
     fprintf(fp, "; %s\n", f->name);
     fprintf(fp, "; ######################################################################\n");
-    fwrite(f->data, 1, f->size, fp);
+    cursor = f->data;
+    for (body = bodies; body != NULL; body = body->next) {
+      if (body->file != f || body->helper->uses < 2)
+        continue;
+      fwrite(cursor, 1, body->start - cursor, fp);
+      fprintf(fp, "      CALL ssc.arithmetic_%d_bank_%.3d_slot_%d\n",
+              body->helper->id, body->bank, body->slot);
+      cursor = body->end;
+    }
+    fwrite(cursor, 1, f->data + f->size - cursor, fp);
 
     /* copy_bytes_bank_??? function? */
     if (f->data_copy_bytes_size > 0)
@@ -210,7 +521,44 @@ int file_write_all_asm_files_into_tmp_file(FILE *fp) {
     f = f->next;
   }
 
-  return SUCCEEDED;
+  for (body = bodies; body != NULL; body = body->next) {
+    /* All four emitted kernels save bytes from their second use, including RET. */
+    if (body->helper != body || body->uses < 2)
+      continue;
+    /* Leading underscores are section-local in WLA; dots cannot collide with C identifiers. */
+    fprintf(fp, "\n  .BANK %d SLOT %d\n", body->bank, body->slot);
+    fprintf(fp, "  .SECTION \"ssc.arithmetic_%d_bank_%.3d_slot_%d\" FREE\n", body->id, body->bank, body->slot);
+    fprintf(fp, "    ssc.arithmetic_%d_bank_%.3d_slot_%d:\n", body->id, body->bank, body->slot);
+    fwrite(body->body, 1, body->length, fp);
+    fprintf(fp, "      RET\n  .ENDS\n");
+  }
+  status = SUCCEEDED;
+  if (fflush(fp) != 0 || ferror(fp)) {
+    fprintf(stderr, "FILE_WRITE_ALL_ASM_FILES_INTO_TMP_FILE: Cannot write combined assembly.\n");
+    status = FAILED;
+  }
+  goto cleanup;
+
+invalid_body:
+  fprintf(stderr, "FILE_WRITE_ALL_ASM_FILES_INTO_TMP_FILE: Invalid arithmetic body in \"%s\".\n", f->name);
+  goto cleanup;
+invalid_regcall:
+  fprintf(stderr, "FILE_WRITE_ALL_ASM_FILES_INTO_TMP_FILE: Invalid register-call metadata in \"%s\".\n", f->name);
+cleanup:
+  free(guards);
+  for (regcall = register_calls; regcall != NULL; regcall = next_regcall) {
+    next_regcall = regcall->next;
+    free(regcall);
+  }
+  for (body = bodies; body != NULL; body = next) {
+    next = body->next;
+    free(body);
+  }
+  for (body = wide_bodies; body != NULL; body = next) {
+    next = body->next;
+    free(body);
+  }
+  return status;
 }
 
 

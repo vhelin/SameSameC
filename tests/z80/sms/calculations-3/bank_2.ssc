@@ -1,0 +1,432 @@
+u16 calculationMultiplyAdd(u16 value, u16 multiplier, u16 addend);
+void printWorkloadResult(u8 *chars, u8 *bytes, u8 row, u8 *label, u16 expected,
+                         u16 actual, u16 expectedCrc, u16 length, u8 compact);
+
+// Portable application kernels: no hardware, library or hand-written ASM adapters.
+// Sprite positions use 8.8 tile coordinates on a 16x12 collision map.
+u16 calculationSpriteSceneWorkload(u16 seed, u16 count, u8 *bytes) {
+
+  u8 terrain[192];
+  u16 x[12];
+  u16 y[12];
+  u8 direction[12];
+  u8 speed[12];
+  u8 animation[12];
+  u16 i;
+  u16 j;
+  u16 frame;
+  u16 row;
+  u16 column;
+  u16 index;
+  u16 next_x;
+  u16 next_y;
+  u16 dx;
+  u16 dy;
+  u16 collisions = 0;
+  u16 checksum = seed;
+
+  for (i = 0; i < 192; i++) {
+    row = i >> 4;
+    column = i & 15;
+    terrain[i] = 0;
+    if (row == 0 || row == 11 || column == 0 || column == 15)
+      terrain[i] = 1;
+    else if (((seed + i * 13 + bytes[400 + (i & 63)]) & 15) == 0)
+      terrain[i] = 1;
+  }
+  for (i = 0; i < 12; i++) {
+    x[i] = (((seed + i * 3) % 14) + 1) * 256;
+    y[i] = ((((seed >> 4) + i * 5) % 10) + 1) * 256;
+    direction[i] = (seed >> (i & 7)) & 3;
+    speed[i] = ((seed + i * 5) & 7) + 1;
+    animation[i] = i & 3;
+    terrain[(y[i] >> 8) * 16 + (x[i] >> 8)] = 0;
+    bytes[192 + i] = 0;
+  }
+  for (frame = 0; frame <= count; frame++) {
+    if (frame != 0) {
+      for (i = 0; i < 12; i++) {
+        index = 400 + (((frame - 1) * 12 + i) & 63);
+        if ((bytes[index] & 1) != 0)
+          direction[i] = direction[i] ^ 1;
+        if ((bytes[index] & 2) != 0)
+          direction[i] = direction[i] ^ 2;
+        if ((direction[i] & 1) != 0)
+          next_x = x[i] - speed[i] * 16;
+        else
+          next_x = x[i] + speed[i] * 16;
+        if (next_x < 256 || next_x > 3584)
+          direction[i] = direction[i] ^ 1;
+        else {
+          index = (y[i] >> 8) * 16 + (next_x >> 8);
+          if (terrain[index] != 0)
+            direction[i] = direction[i] ^ 1;
+          else
+            x[i] = next_x;
+        }
+        if ((direction[i] & 2) != 0)
+          next_y = y[i] - speed[i] * 16;
+        else
+          next_y = y[i] + speed[i] * 16;
+        if (next_y < 256 || next_y > 2560)
+          direction[i] = direction[i] ^ 2;
+        else {
+          index = (next_y >> 8) * 16 + (x[i] >> 8);
+          if (terrain[index] != 0)
+            direction[i] = direction[i] ^ 2;
+          else
+            y[i] = next_y;
+        }
+        dx = speed[i];
+        animation[i] = (animation[i] + (dx >> 1) + 1) & 3;
+      }
+      for (i = 0; i < 12; i++) {
+        for (j = i + 1; j < 12; j++) {
+          if (x[i] > x[j])
+            dx = x[i] - x[j];
+          else
+            dx = x[j] - x[i];
+          if (y[i] > y[j])
+            dy = y[i] - y[j];
+          else
+            dy = y[j] - y[i];
+          if (dx < 192 && dy < 192) {
+            direction[i] = direction[i] ^ 3;
+            direction[j] = direction[j] ^ 3;
+            bytes[192 + i] = bytes[192 + i] + 1;
+            bytes[192 + j] = bytes[192 + j] + 1;
+            collisions++;
+          }
+        }
+      }
+    }
+    for (i = 0; i < 192; i++)
+      bytes[i] = terrain[i];
+    for (i = 0; i < 12; i++) {
+      index = (y[i] >> 8) * 16 + (x[i] >> 8);
+      bytes[index] = 16 + i * 4 + animation[i];
+    }
+  }
+  for (i = 0; i < 12; i++) {
+    bytes[224 + i * 4] = x[i];
+    bytes[225 + i * 4] = x[i] >> 8;
+    bytes[226 + i * 4] = y[i];
+    bytes[227 + i * 4] = y[i] >> 8;
+    bytes[272 + i] = direction[i];
+    bytes[284 + i] = animation[i];
+  }
+  bytes[296] = collisions;
+  bytes[297] = collisions >> 8;
+  bytes[298] = count;
+  bytes[299] = 12;
+  for (i = 0; i < 300; i++)
+    checksum = checksum * 17 + bytes[i];
+  return checksum + collisions;
+}
+
+// Four tracker channels: row events, envelopes, slides/arpeggios/vibrato and PCM.
+u16 calculationTrackerWorkload(u16 seed, u16 count, u8 *bytes) {
+
+  u16 periods[12];
+  u8 pattern[128];
+  u16 phase[4];
+  u16 period[4];
+  u16 target[4];
+  u16 step[4];
+  u8 volume[4];
+  u8 gate[4];
+  u8 effect[4];
+  u8 arpeggio[4];
+  u16 tick;
+  u16 channel;
+  u16 sample;
+  u16 i;
+  u16 index;
+  u16 event;
+  u16 command;
+  u16 note;
+  u16 adjusted;
+  u16 wobble;
+  u16 wave;
+  u16 mix;
+  u16 checksum = seed;
+
+  periods[0] = 856;
+  periods[1] = 808;
+  periods[2] = 762;
+  periods[3] = 720;
+  periods[4] = 678;
+  periods[5] = 640;
+  periods[6] = 604;
+  periods[7] = 570;
+  periods[8] = 538;
+  periods[9] = 508;
+  periods[10] = 480;
+  periods[11] = 453;
+  for (i = 0; i < 128; i++) {
+    pattern[i] = bytes[384 + i] ^ ((seed + i * 11) & 255);
+    bytes[192 + i] = pattern[i];
+  }
+  for (channel = 0; channel < 4; channel++) {
+    phase[channel] = 0;
+    period[channel] = periods[(seed + channel) % 12] >> ((seed >> channel) & 3);
+    target[channel] = period[channel];
+    volume[channel] = 0;
+    gate[channel] = 0;
+    effect[channel] = 0;
+    arpeggio[channel] = 0;
+  }
+  for (tick = 0; tick < count; tick++) {
+    for (channel = 0; channel < 4; channel++) {
+      if ((tick & 3) == 0) {
+        index = ((tick >> 2) & 15) * 8 + channel * 2;
+        event = pattern[index];
+        command = pattern[index + 1];
+        note = event & 15;
+        if (note < 12)
+          target[channel] = periods[note] >> (event >> 6);
+        effect[channel] = (command >> 4) & 3;
+        volume[channel] = command & 15;
+        gate[channel] = 1;
+        if ((event & 32) != 0 || note >= 12)
+          gate[channel] = 0;
+        if (effect[channel] != 1)
+          period[channel] = target[channel];
+      }
+      if (effect[channel] == 1) {
+        if (period[channel] > target[channel]) {
+          adjusted = period[channel] - 2;
+          if (adjusted < target[channel])
+            adjusted = target[channel];
+          period[channel] = adjusted;
+        }
+        else if (period[channel] < target[channel]) {
+          adjusted = period[channel] + 2;
+          if (adjusted > target[channel])
+            adjusted = target[channel];
+          period[channel] = adjusted;
+        }
+      }
+      else if (effect[channel] == 2) {
+        arpeggio[channel] = arpeggio[channel] + 1;
+        if (arpeggio[channel] == 3)
+          arpeggio[channel] = 0;
+        period[channel] = target[channel];
+        if (arpeggio[channel] == 1)
+          period[channel] = target[channel] - (target[channel] >> 3);
+        else if (arpeggio[channel] == 2)
+          period[channel] = target[channel] - (target[channel] >> 2);
+      }
+      else if (effect[channel] == 3) {
+        wobble = tick & 7;
+        if (wobble > 3)
+          wobble = 7 - wobble;
+        period[channel] = target[channel] + wobble;
+      }
+      if (gate[channel] != 0) {
+        if ((tick & 1) == 0 && volume[channel] < 15)
+          volume[channel] = volume[channel] + 1;
+      }
+      else if (volume[channel] != 0)
+        volume[channel] = volume[channel] - 1;
+      step[channel] = 8192 / period[channel] + 1;
+    }
+    for (sample = 0; sample < 4; sample++) {
+      mix = 0;
+      for (channel = 0; channel < 4; channel++) {
+        phase[channel] = phase[channel] + step[channel];
+        wave = (phase[channel] >> 3) & 31;
+        if (wave > 15)
+          wave = 31 - wave;
+        mix = calculationMultiplyAdd(wave, volume[channel], mix);
+      }
+      bytes[tick * 4 + sample] = mix >> 2;
+    }
+  }
+  for (channel = 0; channel < 4; channel++) {
+    index = 128 + channel * 8;
+    bytes[index] = period[channel];
+    bytes[index + 1] = period[channel] >> 8;
+    bytes[index + 2] = phase[channel];
+    bytes[index + 3] = phase[channel] >> 8;
+    bytes[index + 4] = volume[channel];
+    bytes[index + 5] = gate[channel];
+    bytes[index + 6] = effect[channel];
+    bytes[index + 7] = arpeggio[channel];
+  }
+  bytes[160] = count;
+  bytes[161] = 4;
+  for (i = 0; i < 320; i++)
+    checksum = checksum * 33 + bytes[i];
+  return checksum;
+}
+
+// Warehouse routing: 16x12 terrain, repeated BFS jobs and run-length route output.
+u16 calculationNavigationWorkload(u16 seed, u16 count, u8 *bytes) {
+
+  u8 terrain[192];
+  u16 distance[192];
+  u8 parent[192];
+  u8 queue[192];
+  u16 i;
+  u16 job;
+  u16 start;
+  u16 goal;
+  u16 head;
+  u16 tail;
+  u16 position;
+  u16 next;
+  u16 direction;
+  u16 path_length;
+  u16 run;
+  u16 previous_direction;
+  u16 commands = 0;
+  u16 checksum = seed;
+
+  for (i = 0; i < 192; i++) {
+    terrain[i] = 0;
+    if ((i & 15) == 0 || (i & 15) == 15 || i < 16 || i >= 176)
+      terrain[i] = 1;
+    else if ((bytes[320 + i] & 7) == 0)
+      terrain[i] = 1;
+    bytes[i] = terrain[i] * 240;
+  }
+  for (i = 192; i < 288; i++)
+    bytes[i] = 255;
+  for (i = 288; i < 320; i++)
+    bytes[i] = 0;
+  for (job = 0; job < count; job++) {
+    start = 17 + ((seed + job * 37) % 10) * 16 + (((seed >> 4) + job * 3) % 14);
+    goal = 17 + (((seed >> 8) + job * 53) % 10) * 16 + (((seed >> 2) + job * 5 + 7) % 14);
+    terrain[start] = 0;
+    terrain[goal] = 0;
+    for (i = 0; i < 192; i++) {
+      distance[i] = 65535;
+      parent[i] = 255;
+    }
+    head = 0;
+    tail = 1;
+    queue[0] = start;
+    distance[start] = 0;
+    while (head < tail) {
+      position = queue[head++];
+      if (position == goal)
+        break;
+      for (direction = 0; direction < 4; direction++) {
+        if (direction == 0) {
+          if ((position & 15) == 0)
+            continue;
+          next = position - 1;
+        }
+        else if (direction == 1) {
+          if ((position & 15) == 15)
+            continue;
+          next = position + 1;
+        }
+        else if (direction == 2) {
+          if (position < 16)
+            continue;
+          next = position - 16;
+        }
+        else {
+          if (position >= 176)
+            continue;
+          next = position + 16;
+        }
+        if (terrain[next] != 0)
+          continue;
+        if (distance[next] != 65535)
+          continue;
+        distance[next] = distance[position] + 1;
+        parent[next] = position;
+        queue[tail++] = next;
+      }
+    }
+    path_length = 0;
+    if (distance[goal] != 65535) {
+      position = goal;
+      while (position != start && path_length < 192) {
+        queue[path_length++] = position;
+        position = parent[position];
+      }
+    }
+    previous_direction = 4;
+    run = 0;
+    for (i = path_length; i > 0; i--) {
+      position = start;
+      if (i < path_length)
+        position = queue[i];
+      next = queue[i - 1];
+      if (next == position + 1)
+        direction = 0;
+      else if (position == next + 1)
+        direction = 1;
+      else if (next == position + 16)
+        direction = 2;
+      else
+        direction = 3;
+      if (direction != previous_direction || run == 63) {
+        if (run != 0 && commands < 96)
+          bytes[192 + commands++] = (previous_direction << 6) | run;
+        run = 0;
+        previous_direction = direction;
+      }
+      run++;
+    }
+    if (run != 0 && commands < 96)
+      bytes[192 + commands++] = (previous_direction << 6) | run;
+    if (commands < 96)
+      bytes[192 + commands++] = 0;
+    for (i = 0; i < 192; i++) {
+      if (terrain[i] != 0)
+        bytes[i] = 240;
+      else if (distance[i] == 65535)
+        bytes[i] = 255;
+      else
+        bytes[i] = (distance[i] + job * 7) & 127;
+    }
+    i = 288 + job * 8;
+    bytes[i] = start;
+    bytes[i + 1] = goal;
+    bytes[i + 2] = distance[goal];
+    bytes[i + 3] = distance[goal] >> 8;
+    bytes[i + 4] = tail;
+    bytes[i + 5] = tail >> 8;
+    bytes[i + 6] = path_length;
+    bytes[i + 7] = commands;
+  }
+  bytes[319] = commands;
+  for (i = 0; i < 320; i++)
+    checksum = checksum * 17 + bytes[i];
+  return checksum;
+}
+
+void calculateAndPrintApplications(u8 *chars, u8 *bytes, u8 compact) {
+
+  const u8 spriteLabel[] = { 83,80,82,73,84,69,32,83,67,69,78,69,0 };
+  const u8 trackerLabel[] = { 84,82,65,67,75,69,82,32,77,73,88,69,82,0 };
+  const u8 routeLabel[] = { 87,65,82,69,72,79,85,83,69,32,82,79,85,84,69,83,0 };
+  u16 i;
+  u16 result;
+  u8 row = 2;
+  u8 step = 3;
+
+  if (compact != 0)
+    step = 2;
+  for (i = 0; i < 512; i++)
+    bytes[i] = i * 37 + 5 * 53 + ((i * i) >> 3);
+  result = calculationSpriteSceneWorkload(0x1234, 3, bytes);
+  printWorkloadResult(chars, bytes, row, spriteLabel, 0xA9E7, result, 0x18E0, 512, compact);
+  row += step;
+  for (i = 0; i < 512; i++)
+    bytes[i] = i * 37 + 5 * 53 + ((i * i) >> 3);
+  result = calculationTrackerWorkload(0x1234, 24, bytes);
+  printWorkloadResult(chars, bytes, row, trackerLabel, 0x84A0, result, 0xEB88, 512, compact);
+  row += step;
+  for (i = 0; i < 512; i++)
+    bytes[i] = i * 37 + 5 * 53 + ((i * i) >> 3);
+  for (i = 320; i < 512; i++)
+    bytes[i] = 1;
+  result = calculationNavigationWorkload(0x1234, 1, bytes);
+  printWorkloadResult(chars, bytes, row, routeLabel, 0xCB02, result, 0x934A, 512, compact);
+}

@@ -69,7 +69,7 @@ extern struct tac *g_tacs;
 extern int g_tacs_count;
 
 int g_line_count_status = ON, g_bank = 0, g_slot = 0, g_ram_bank = 0, g_ram_slot = 0;
-int g_verbose_mode = OFF, g_test_mode = OFF;
+int g_verbose_mode = OFF, g_test_mode = OFF, g_allocator_enabled = NO, g_allocator_force_all_spill = NO;
 int g_extra_definitions = OFF, g_commandline_parsing = ON, g_makefile_rules = NO;
 int g_listfile_data = NO, g_quiet = NO, g_use_incdir = NO;
 int g_create_sizeof_definitions = YES;
@@ -156,6 +156,9 @@ int main(int argc, char *argv[]) {
     printf("-rs <SLOT> RAM Slot (for global variables)\n");
     printf("-q         Quiet\n");
     printf("-v         Verbose messages\n");
+    printf("-ra        Enable experimental Z80 register allocator\n");
+    printf("-ra-all-spill Enable allocator metadata but force every temp to spill\n");
+    printf("-no-ra     Disable experimental Z80 register allocator metadata\n");
     printf("-I <DIR>   Include directory\n");
     printf("-D <DEF>   Declare definition\n\n");
     printf("Achitectures:\n");
@@ -209,7 +212,7 @@ int main(int argc, char *argv[]) {
   if (g_backend == BACKEND_Z80) {
     if (pass_6_z80(final_name_no_extension, file_out) == FAILED) {
       fclose(file_out);
-      return FAILED;
+      return 1;
     }
   }
 
@@ -340,6 +343,25 @@ int parse_flags(char **flags, int flagc, int *print_usage) {
     }
     else if (!strcmp(flags[count], "-q")) {
       g_quiet = YES;
+      continue;
+    }
+    else if (!strcmp(flags[count], "-ra")) {
+      g_allocator_enabled = YES;
+      g_allocator_force_all_spill = NO;
+      continue;
+    }
+    else if (!strcmp(flags[count], "-ra-all-spill")) {
+      g_allocator_enabled = YES;
+      g_allocator_force_all_spill = YES;
+      continue;
+    }
+    else if (!strcmp(flags[count], "-no-ra")) {
+      g_allocator_enabled = NO;
+      g_allocator_force_all_spill = NO;
+      continue;
+    }
+    else if (!strcmp(flags[count], "-z80-regcalls")) {
+      /* Accepted for existing build commands; register calls are automatic. */
       continue;
     }
     else if (!strcmp(flags[count], "-mz80")) {
@@ -518,7 +540,7 @@ static int _add_a_new_definition(char *name, double d, char *s, int id) {
       token_free(t);
       return print_error("_add_a_new_definition(): Out of memory while allocating a new token.\n", ERROR_DIR);
     }
-    strncpy(t->label, s, strlen(s) + 1);
+    strcpy(t->label, s);
   }
   
   if (definition_add_token(definition, t, 0) == FAILED)

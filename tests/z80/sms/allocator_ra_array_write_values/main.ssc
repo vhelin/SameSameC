@@ -1,0 +1,46 @@
+// @BT linked.sms
+// @BT TEST-01 01 START
+// @BT DD 21 00 00 DD 19 DD 7E FA DD 86 F9 DD 4E FB 06 00
+// @BT FD 21 00 C0 FD 09 FD 77 00
+// @BT END
+// @BT TEST-02 02 START
+// @BT DD 21 00 00 DD 19 DD 6E F8 DD 66 F9 DD 4E F6 DD 46
+// @BT F7 78 AC 67 79 AD 6F DD 4E FA 06 00 FD 21 10 C0 FD
+// @BT 09 FD 09 FD 75 00 FD 74 01
+// @BT END
+// @BT TEST-03 03 START
+// @BT DD 21 00 00 DD 19 DD 7E FA DD 86 F9 DD 4E FB ED 79
+// @BT END
+
+u8 g_allocator_array_write_values_a[16];
+u16 g_allocator_array_write_values_hl[16];
+
+u8 allocatorRaArrayWriteValueA(u8 index, u8 left, u8 right) {
+
+  __asm(".DB \"01>\"");
+  g_allocator_array_write_values_a[index] = left + right;
+  __asm(".DB \"<01\"");
+
+  return left;
+}
+
+u16 allocatorRaArrayWriteValueHl(u8 index, u16 left, u16 right) {
+
+  __asm(".DB \"02>\"");
+  g_allocator_array_write_values_hl[index] = left ^ right;
+  __asm(".DB \"<02\"");
+
+  return left;
+}
+
+u8 allocatorRaZ80OutWriteValueA(u8 port, u8 left, u8 right) {
+
+  __asm(".DB \"03>\"");
+  __z80_out[port] = left + right;
+  __asm(".DB \"<03\"");
+
+  return left;
+}
+
+void main(void) {
+}

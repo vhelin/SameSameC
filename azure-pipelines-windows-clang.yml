@@ -25,7 +25,7 @@ steps:
 - script: |
     if exist build rmdir /s /q build
     if exist wla-dx\build rmdir /s /q wla-dx\build
-    cmake . -B build -T ClangCL || exit /b 1
+    cmake . -B build -T ClangCL -DSAMESAMEC_TRACE=ON || exit /b 1
     cmake --build build --config $(config) -j || exit /b 1
     cmake wla-dx -B wla-dx/build -DCMAKE_POLICY_VERSION_MINIMUM=3.5 || exit /b 1
     cmake --build wla-dx/build --config $(config) -j || exit /b 1
@@ -43,6 +43,8 @@ steps:
     test -x "$PWD/build/binaries/$(config)/samesamecc.exe"
     test -x "$PWD/build/binaries/$(config)/samesamecl.exe"
 
-    ./run_tests.sh
+    bash ./run_tests.sh
   displayName: 'Run Tests ($(config))'
   workingDirectory: '$(Build.SourcesDirectory)'
+
+- template: ci/publish-test-failure-artifacts.yml

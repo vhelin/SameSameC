@@ -1,0 +1,104 @@
+// @BT linked.sms
+// @BT TEST-01 01 START
+// @BT DD 21 00 00 DD 19 DD 7E F9 DD 86 F8 4F 06 00 DD 6E FA DD 66 FB 09 6E 7D DD AE F7 DD 77 F6 DD 21 00 C0 FD 21 F6 FF FD 19 FD 7E 00 DD 77 00
+// @BT END
+// @BT TEST-02 02 START
+// @BT DD 21 00 00 DD 19 DD 4E F7 DD 46 F8 DD 7E F6 A8 47 DD 7E F5 A9 4F DD 6E F9 DD 66 FA 09 09 7E 23 66 6F DD 4E F3 DD 46 F4 78 AC 67 79 AD 6F DD 75 F1 DD 74 F2 DD 21 01 C0 FD 21 F1 FF FD 19 FD 7E 00 DD 77 00 FD 7E 01 DD 77 01
+// @BT END
+// @BT TEST-03 03 START
+// @BT 21 03 C0 DD 21 00 00 DD 19 DD 75 F7 DD 74 F8 DD 4E FB 06 00 09 6E DD 75 F9 DD 4E FA 06 00 21 03 C0 09 6E 7D DD 86 F9 DD 77 F9
+// @BT END
+// @BT TEST-04 04 START
+// @BT 21 03 C0 DD 21 00 00 DD 19 DD 4E FB 06 00 09 DD 75 F5 DD 74 F6 6E DD 75 F7 DD 6E F5 DD 66 F6 DD 4E FA 06 00 09 DD 75 F8 DD 74 F9 DD 6E F8 DD 66 F9 6E 7D DD 86 F7 DD 77 F7 01 01 00 DD 6E F5 DD 66 F6 09 6E 7D DD 86 F7 DD 77 F7
+// @BT END
+// @BT TEST-05 05 START
+// @BT DD 21 00 00 DD 19 DD 4E F8 DD 46 F9 DD 7E F7 A8 47 DD 7E F6 A9 4F DD 6E FA DD 66 FB 09 6E DD 75 F5 DD 21 00 C0 FD 21 F5 FF FD 19 FD 7E 00 DD 77 00
+// @BT END
+
+u8 g_allocator_array_read_pointer_base_sink_a;
+u16 g_allocator_array_read_pointer_base_sink_hl;
+
+u8 allocatorRaArrayReadPointerBaseA(u8 *source, u8 left, u8 right, u8 mask) {
+
+  u8 out;
+
+  __asm(".DB \"01>\"");
+  out = source[left + right] ^ mask;
+  g_allocator_array_read_pointer_base_sink_a = out;
+  __asm(".DB \"<01\"");
+
+  return out;
+}
+
+u16 allocatorRaArrayReadPointerBaseHl(u16 *source, u16 left, u16 right, u16 mask) {
+
+  u16 out;
+
+  __asm(".DB \"02>\"");
+  out = source[left ^ right] ^ mask;
+  g_allocator_array_read_pointer_base_sink_hl = out;
+  __asm(".DB \"<02\"");
+
+  return out;
+}
+
+u8 allocatorRaArrayReadPointerBaseBc(u8 *source, u16 left, u16 right) {
+
+  u8 out;
+
+  __asm(".DB \"05>\"");
+  out = source[left ^ right];
+  g_allocator_array_read_pointer_base_sink_a = out;
+  __asm(".DB \"<05\"");
+
+  return out;
+}
+
+u8 g_allocator_rematerialized_base[4];
+
+u8 allocatorRaRematerializedBase(u8 first, u8 second) {
+
+  u8 *base;
+  u8 out;
+
+  __asm(".DB \"03>\"");
+  base = &g_allocator_rematerialized_base[0];
+  out = base[first];
+  out = out + base[second];
+  __asm(".DB \"<03\"");
+
+  return out;
+}
+
+u8 allocatorRaAddressReload(u8 first, u8 second) {
+
+  u8 *base;
+  u8 *slice;
+  u8 out;
+
+  __asm(".DB \"04>\"");
+  base = &g_allocator_rematerialized_base[first];
+  out = base[0];
+  slice = &base[second];
+  out = out + slice[0];
+  out = out + base[1];
+  __asm(".DB \"<04\"");
+
+  return out;
+}
+
+u8 allocatorRaRematerializedFallback(u8 *source, u8 first, u8 second) {
+
+  u8 *base;
+  u8 out;
+
+  base = &source[first];
+  out = base[0] + base[second];
+  __asm("NOP");
+  out = out + base[1];
+
+  return out;
+}
+
+void main(void) {
+}

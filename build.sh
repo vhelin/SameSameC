@@ -14,7 +14,7 @@ cd ..
 #############################################################################
 
 cd linker
-make -f makefile-gcc clean
+make -f makefile.gcc clean
 make -f makefile.gcc
 cd ..
 

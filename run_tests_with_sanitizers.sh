@@ -41,7 +41,7 @@ echo ""
 echo "1/3: Building SameSameC with AddressSanitizer..."
 mkdir -p build-asan
 cd build-asan
-cmake .. -DCMAKE_BUILD_TYPE=Debug \
+cmake .. -DSAMESAMEC_TRACE=ON -DCMAKE_BUILD_TYPE=Debug \
          -DCMAKE_C_FLAGS="-fsanitize=address -fno-omit-frame-pointer -g -O1" \
          -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address"
 cmake --build . --config Debug
@@ -50,9 +50,10 @@ cd "$ORIGINAL_DIR"
 echo "Running tests with ASan..."
 cp -r build-asan/binaries/* binaries/
 export ASAN_OPTIONS="detect_leaks=1:fast_unwind_on_malloc=0:halt_on_error=0:symbolize=1"
+export SAMESAMEC_FAILURE_ARTIFACT_DIR="$ORIGINAL_DIR/_ci_test_failure/asan"
 
 set +e
-if ./run_tests.sh; then
+if bash ./run_tests.sh; then
     ASAN_RESULT="PASS"
 else
     ASAN_RESULT="FAIL"
@@ -65,7 +66,7 @@ echo "2/3: Building SameSameC with UBSan..."
 rm -rf binaries/*
 mkdir -p build-ubsan
 cd build-ubsan
-cmake .. -DCMAKE_BUILD_TYPE=Debug \
+cmake .. -DSAMESAMEC_TRACE=ON -DCMAKE_BUILD_TYPE=Debug \
          -DCMAKE_C_FLAGS="-fsanitize=undefined -fno-omit-frame-pointer -g" \
          -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=undefined"
 cmake --build . --config Debug
@@ -74,9 +75,10 @@ cd "$ORIGINAL_DIR"
 echo "Running tests with UBSan..."
 cp -r build-ubsan/binaries/* binaries/
 export UBSAN_OPTIONS="print_stacktrace=1:halt_on_error=0"
+export SAMESAMEC_FAILURE_ARTIFACT_DIR="$ORIGINAL_DIR/_ci_test_failure/ubsan"
 
 set +e
-if ./run_tests.sh; then
+if bash ./run_tests.sh; then
     UBSAN_RESULT="PASS"
 else
     UBSAN_RESULT="FAIL"
@@ -91,7 +93,7 @@ if command -v clang >/dev/null 2>&1; then
     mkdir -p build-msan
     cd build-msan
     set +e
-    cmake .. -DCMAKE_BUILD_TYPE=Debug \
+    cmake .. -DSAMESAMEC_TRACE=ON -DCMAKE_BUILD_TYPE=Debug \
              -DCMAKE_C_COMPILER=clang \
              -DCMAKE_C_FLAGS="-fsanitize=memory -fno-omit-frame-pointer -g" \
              -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=memory"
@@ -109,9 +111,10 @@ if command -v clang >/dev/null 2>&1; then
         echo "Running tests with MSan..."
         cp -r build-msan/binaries/* binaries/
         export MSAN_OPTIONS="halt_on_error=0"
+        export SAMESAMEC_FAILURE_ARTIFACT_DIR="$ORIGINAL_DIR/_ci_test_failure/msan"
 
         set +e
-        if ./run_tests.sh; then
+        if bash ./run_tests.sh; then
             MSAN_RESULT="PASS"
         else
             MSAN_RESULT="FAIL"

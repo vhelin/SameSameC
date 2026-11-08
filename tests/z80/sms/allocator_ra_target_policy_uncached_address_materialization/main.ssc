@@ -1,0 +1,68 @@
+// @BT linked.sms
+// @BT TEST-01 01 START
+// @BT DD 21 00 00 DD 19 DD 66 FB DD 21 00 00 DD 19 D5
+// @BT DD 5E FA 16 00 6A 06 08 29 30 01 19 10 FA D1 7D
+// @BT DD 21 00 00 DD 19 DD AE F9 DD 77 F8 DD 21 01 C0
+// @BT FD 21 F8 FF FD 19 FD 7E 00 DD 77 00
+// @BT END
+// @BT TEST-02 02 START
+// @BT DD 21 00 00 DD 19 DD 66 FB DD 21 00 C0 D5 DD 5E
+// @BT 00 AF 06 08 CB 14 17 93 30 01 83 10 F7 47 7C 17
+// @BT 2F D1 DD 21 00 00 DD 19 DD AE FA DD 77 F9 DD 21
+// @BT 01 C0 FD 21 F9 FF FD 19 FD 7E 00 DD 77 00
+// @BT END
+// @BT TEST-03 03 START
+// @BT FD 21 6D FF FD 19 FD 36 00 01 FD 21 6D FF FD 19
+// @BT FD 6E 00 7D DD 21 00 00 DD 19 DD 86 FA DD 21 6C
+// @BT FF DD 19 DD 77 00 DD 21 00 00 DD 19 DD 66 FB DD
+// @BT 21 6C FF DD 19 D5 DD 5E 00 AF 06 08 CB 14 17 93
+// @BT 30 01 83 10 F7 47 7C 17 2F D1 78 DD 21 00 00 DD
+// @BT 19 DD AE F9 DD 21 6B FF DD 19 DD 77 00 DD 21 01
+// @BT C0 FD 21 6B FF FD 19 FD 7E 00 DD 77 00
+// @BT END
+
+u8 g_allocator_uncached_address_operand;
+u8 g_allocator_uncached_address_sink;
+
+u8 allocatorRaPolicyUncachedMulLocal(u8 left, u8 right, u8 mask) {
+
+  u8 out;
+
+  __asm(".DB \"01>\"");
+  out = (left * right) ^ mask;
+  g_allocator_uncached_address_sink = out;
+  __asm(".DB \"<01\"");
+
+  return out;
+}
+
+u8 allocatorRaPolicyUncachedDivGlobal(u8 left, u8 mask) {
+
+  u8 out;
+
+  __asm(".DB \"02>\"");
+  out = (left / g_allocator_uncached_address_operand) ^ mask;
+  g_allocator_uncached_address_sink = out;
+  __asm(".DB \"<02\"");
+
+  return out;
+}
+
+u8 allocatorRaPolicyUncachedModFar(u8 left, u8 right, u8 mask) {
+
+  u8 padding[140];
+  u8 far_right;
+  u8 out;
+
+  __asm(".DB \"03>\"");
+  padding[0] = 1;
+  far_right = right + padding[0];
+  out = (left % far_right) ^ mask;
+  g_allocator_uncached_address_sink = out;
+  __asm(".DB \"<03\"");
+
+  return out;
+}
+
+void main(void) {
+}

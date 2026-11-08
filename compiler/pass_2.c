@@ -22,9 +22,9 @@
 #include "struct_item.h"
 
 
-/* define this for DEBUG */
-
+#ifdef SAMESAMEC_TRACE
 #define DEBUG_PASS_2 1
+#endif
 
 
 extern int g_input_float_mode, g_parsed_int;
@@ -3475,6 +3475,10 @@ int create_variable_or_function(int is_extern, int is_static) {
 
               g_open_function_definition->flags |= TREE_NODE_FLAG_PUREASM;
             }
+            else if (strcmp(g_token_current->label, "__z80_regcall") == 0) {
+              _next_token();
+              g_open_function_definition->flags |= TREE_NODE_FLAG_Z80_REGCALL;
+            }
             else if (strcmp(g_token_current->label, "__org") == 0) {
               /* this token is '__org' */
               _next_token();
@@ -3497,6 +3501,19 @@ int create_variable_or_function(int is_extern, int is_static) {
 
               /* skip the address */
               _next_token();
+            }
+          }
+
+          if ((g_open_function_definition->flags & TREE_NODE_FLAG_Z80_REGCALL) != 0) {
+            int i;
+            if (g_backend != BACKEND_Z80 ||
+                (g_open_function_definition->flags & (TREE_NODE_FLAG_PUREASM | TREE_NODE_FLAG_ORG_DEFINED | TREE_NODE_FLAG_ORGA_DEFINED)) != 0 ||
+                get_variable_type_size(tree_node_get_max_var_type(g_open_function_definition->children[0])) != 16 ||
+                g_open_function_definition->added_children > 8)
+              return print_error("__z80_regcall requires a Z80 word result and at most three word arguments, without __pureasm/__org/__orga.\n", ERROR_ERR);
+            for (i = 2; i < g_open_function_definition->added_children; i += 2) {
+              if (get_variable_type_size(tree_node_get_max_var_type(g_open_function_definition->children[i])) != 16)
+                return print_error("__z80_regcall requires word-width arguments.\n", ERROR_ERR);
             }
           }
 
@@ -3620,7 +3637,9 @@ static int _process_create_variable_struct_union_process_struct_union(struct tre
     return print_error_using_tree_node(g_error_message, ERROR_ERR, child);
   }
 
+#if defined(DEBUG_PASS_2)
   print_simple_tree_node(child);
+#endif
   
   i++;
 
@@ -3656,7 +3675,9 @@ static int _process_create_variable_struct_union_process_struct_union(struct tre
           return FAILED;
       }
       else if (child->type == TREE_NODE_TYPE_EXPRESSION) {
+#if defined(DEBUG_PASS_2)
         print_expression(child);
+#endif
 
         /* store the struct_item pointer for later so we don't have to traverse through the struct_item tree again... */
         child->struct_item = s;
@@ -3678,7 +3699,9 @@ static int _process_create_variable_struct_union_process_struct_union(struct tre
         return print_error_using_tree_node(g_error_message, ERROR_ERR, child);
       }
 
+#if defined(DEBUG_PASS_2)
       print_expression(child);
+#endif
       i++;
 
       for (j = 0; j < s->array_items; j++) {
@@ -3699,7 +3722,9 @@ static int _process_create_variable_struct_union_process_struct_union(struct tre
           /* store the struct_item pointer for later so we don't have to travere through the struct_item tree again... */
           child->struct_item = s;
 
+#if defined(DEBUG_PASS_2)
           print_expression(child);
+#endif
         }
         else if (s->variable_type == VARIABLE_TYPE_STRUCT || s->variable_type == VARIABLE_TYPE_UNION) {
           struct struct_item *next = s;
@@ -3727,7 +3752,9 @@ static int _process_create_variable_struct_union_process_struct_union(struct tre
           /* store the struct_item pointer for later so we don't have to travere through the struct_item tree again... */
           child->struct_item = s;
 
+#if defined(DEBUG_PASS_2)
           print_expression(child);
+#endif
         }
 
         i++;
@@ -3754,7 +3781,9 @@ static int _process_create_variable_struct_union_process_struct_union(struct tre
           }
         }
 
+#if defined(DEBUG_PASS_2)
         print_simple_tree_node(child);
+#endif
 
         i++;
       }
@@ -3774,13 +3803,17 @@ static int _process_create_variable_struct_union_process_struct_union(struct tre
         return print_error_using_tree_node(g_error_message, ERROR_ERR, child);
       }
       
+#if defined(DEBUG_PASS_2)
       print_simple_tree_node(child);
+#endif
       *node_index = i;
   
       return SUCCEEDED;
     }
     else if (child->type == TREE_NODE_TYPE_SYMBOL && child->value == ',') {
+#if defined(DEBUG_PASS_2)
       print_simple_tree_node(child);
+#endif
 
       i++;
     }
@@ -3807,7 +3840,9 @@ static int _process_creation_of_variable_struct_union(struct tree_node *node) {
   if (node->added_children <= 2)
     return SUCCEEDED;
 
+#if defined(DEBUG_PASS_2)
   fprintf(stderr, "ADDED C %d (%s)\n", node->added_children, node->children[1]->label);
+#endif
 
   child = node->children[i];
 
@@ -3824,7 +3859,9 @@ static int _process_creation_of_variable_struct_union(struct tree_node *node) {
       calculate_array_size = YES;
     }
 
+#if defined(DEBUG_PASS_2)
     print_simple_tree_node(child);
+#endif
 
     i++;
   }
@@ -3862,11 +3899,15 @@ static int _process_creation_of_variable_struct_union(struct tree_node *node) {
         return print_error_using_tree_node(g_error_message, ERROR_ERR, child);
       }
 
+#if defined(DEBUG_PASS_2)
       print_simple_tree_node(child);
+#endif
 
       i++;
 
+#if defined(DEBUG_PASS_2)
       fprintf(stderr, "\n");
+#endif
     }
     else if (j < count - 1) {
       if (i >= node->added_children) {
@@ -3886,11 +3927,15 @@ static int _process_creation_of_variable_struct_union(struct tree_node *node) {
         return print_error_using_tree_node(g_error_message, ERROR_ERR, child);
       }
 
+#if defined(DEBUG_PASS_2)
       print_simple_tree_node(child);
+#endif
 
       i++;
 
+#if defined(DEBUG_PASS_2)
       fprintf(stderr, "\n");
+#endif
     }
   }
 
@@ -3922,12 +3967,16 @@ static int _process_creation_of_variable_struct_union(struct tree_node *node) {
       return print_error_using_tree_node(g_error_message, ERROR_ERR, child);
     }
 
+#if defined(DEBUG_PASS_2)
     print_simple_tree_node(child);
+#endif
 
     i++;
   }
 
+#if defined(DEBUG_PASS_2)
   fprintf(stderr, "\n");
+#endif
   
   return SUCCEEDED;
 }
@@ -3946,6 +3995,17 @@ static void _check_ast_check_definition(struct tree_node *node) {
     print_error(g_error_message, ERROR_ERR);
     g_check_ast_failed = YES;
     return;
+  }
+
+  if (node->type != TREE_NODE_TYPE_FUNCTION_CALL &&
+      (node->definition->type == TREE_NODE_TYPE_FUNCTION_DEFINITION ||
+       node->definition->type == TREE_NODE_TYPE_FUNCTION_PROTOTYPE)) {
+    node->definition->flags |= TREE_NODE_FLAG_ADDRESS_TAKEN;
+    if ((node->definition->flags & TREE_NODE_FLAG_Z80_REGCALL) != 0) {
+      print_error("Taking the address of a __z80_regcall function is not supported.\n", ERROR_ERR);
+      g_check_ast_failed = YES;
+      return;
+    }
   }
 
   if (node->type == TREE_NODE_TYPE_FUNCTION_CALL) {
@@ -4226,7 +4286,8 @@ static void _check_ast_simple_tree_node(struct tree_node *node) {
 
   if (node->type == TREE_NODE_TYPE_VALUE_STRING || node->type == TREE_NODE_TYPE_GET_ADDRESS) {
   }
-  else if (node->type == TREE_NODE_TYPE_VALUE_INT || node->type == TREE_NODE_TYPE_VALUE_DOUBLE || node->type == TREE_NODE_TYPE_SYMBOL) {
+  else if (node->type == TREE_NODE_TYPE_VALUE_INT || node->type == TREE_NODE_TYPE_VALUE_DOUBLE ||
+           node->type == TREE_NODE_TYPE_BYTES || node->type == TREE_NODE_TYPE_SYMBOL) {
     return;
   }
   else if (node->type == TREE_NODE_TYPE_STRUCT_ACCESS) {
